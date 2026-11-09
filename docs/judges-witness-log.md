@@ -3030,3 +3030,28 @@ replay. All 28 isolated durable-spool checks pass. Initial fixture failure was a
 incomplete stub signature; it now forwards the production expected-root argument.
 No retention, authorization, destination or delivery rule changed. Review only;
 no live changes or model calls. Remaining #58 artifact/Lab fixes are in progress.
+
+
+## 2026-11-09 — review #58: artifact clock ordering
+
+New requests retain a wall reading bracketed by monotonic samples and bound to the
+boot/time namespace, with a process-local fallback. The original request wall
+lower bound and the existing two-second lower/one-second upper precision allowances
+remain. Only an upper-window failure explained by a same-domain measured backward
+wall discrepancy can continue as unknown_order, and only within the anchored upper
+bound. Raw mtime, raw check time, discrepancy and elapsed bounds are retained. This
+does not attest filesystem causality or turn clock uncertainty into evidence.
+Old requests, changed/invalid domains or anchors, files below the lower bound, and
+files beyond the anchored upper bound still refuse. Exact request paths, sizes,
+known-byte rejection and hashes remain mandatory. A file created after a step can
+still fail the lower bound; this change deliberately addresses the requested upper
+bound only. No tolerances widened.
+
+CLI manifests retain their initial clock check. Authenticated arrival atomically
+records checks beside the result, independently of the immutable result digest;
+repeated arrival and completion preserve earlier unknown ordering for that revision.
+Prior revision receipts remain in history. All 71 nested followthrough/completion
+checks plus the isolated coarse-clock wrapper pass. New regressions cover the
+backstep through delivery, receipt retention, domains, malformed anchors, old/future
+files and unchanged byte-identity gates. Fixtures are synthetic and sends stubbed.
+No live change, model/provider call, merge or deployment. Lab follow-up still pending.

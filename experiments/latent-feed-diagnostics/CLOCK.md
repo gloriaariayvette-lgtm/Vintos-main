@@ -69,3 +69,19 @@ Lab identity reuse, artifact-mtime admission and durable-spool retention gates a
 not changed by this commit. Host correction and their future receipt work remain
 separate. Tests use synthetic inputs and injected backward clocks, never services
 or private observations. Neither change makes missing ancestry or delivery known.
+
+
+## Review #58: artifact upper-window uncertainty
+
+New want requests pair their raw created_at wall bound with bracketed monotonic
+samples and a boot/time-namespace domain (process-local fallback elsewhere). The
+filesystem comparison still uses wall mtime, created_at minus two seconds, and
+current wall plus one second. When only the upper comparison fails, a matching
+anchor can establish a backward wall discrepancy; mtime must still be no later
+than the anchored upper estimate plus the same one-second allowance. Such a file
+continues with unknown_order, never an assertion of causal creation. Raw clocks,
+elapsed bounds and the discrepancy remain on the revision's clock checks, including
+after repeated arrival/completion. CLI manifests retain the initial observation.
+Unknown ordering does not bypass exact request paths, hashes, known-output rejection
+or any other delivery gate. Legacy or changed-domain anchors cannot authorize this
+path. The lower wall bound remains unchanged, including its backstep limitation.

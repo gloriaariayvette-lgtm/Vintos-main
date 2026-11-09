@@ -171,6 +171,60 @@ class Tests(unittest.TestCase):
         self.assertEqual(self.receive(),1)
         self.finish(); self.assertEqual(len(self.endings),1)
 
+    def clock_fixture(self):
+        with patch.object(A.time,'time',return_value=1000.0), patch.object(A.time,'monotonic',return_value=100.0):
+            self.intake()
+        result,artifact=self.result()
+        w=self.current()[0]
+        self.assertEqual(w['agent_work']['artifact_clock']['wall_at'],1000.0)
+        self.assertEqual(w['agent_work']['artifact_clock']['monotonic_after'],100.0)
+        return result,artifact,w
+
+    def test_artifact_backward_wall_step_retains_unknown_order(self):
+        rec,artifact,w=self.clock_fixture();checks=[]
+        with patch.object(A.time,'time',return_value=997.2), patch.object(A.time,'monotonic',return_value=101.0):
+            self.assertEqual(A._artifact(self.ws,rec['artifacts'][0]['path'],w,clock_checks=checks),artifact)
+            self.assertEqual(self.receive(),1)
+        check=checks[0]
+        self.assertEqual(check['status'],'unknown_order')
+        self.assertEqual(check['modified_at'],1000.0)
+        self.assertEqual(check['checked_wall_at'],997.2)
+        self.assertEqual(check['anchored_upper_at'],1001.0)
+        self.assertEqual(self.current()[0]['agent_work']['artifact_clock_checks'],checks)
+        # Later verification must not erase the earlier uncertain observation.
+        with patch.object(A.time,'time',return_value=1002.0), patch.object(A.time,'monotonic',return_value=102.0):
+            self.assertEqual(self.receive(),1)
+            self.assertEqual(self.current()[0]['agent_work']['artifact_clock_checks'],checks)
+            self.finish()
+        archived=json.loads((self.mem/'fulfilled-wants.json').read_text())[0]
+        self.assertEqual(archived['agent_work']['artifact_clock_checks'],checks)
+        self.assertEqual(len(self.published),1)
+
+    def test_artifact_clock_anchor_does_not_admit_old_or_future_files(self):
+        rec,artifact,w=self.clock_fixture()
+        with patch.object(A.time,'time',return_value=997.2), patch.object(A.time,'monotonic',return_value=101.0):
+            for mtime in (997.9,1002.1,5000.0):
+                os.utime(artifact,(mtime,mtime))
+                with self.assertRaises(ValueError): A.verify(w,self.ws)
+            os.utime(artifact,(1000,1000))
+            for changes in ({'domain':'synthetic-other-domain'},{'wall_at':999.0},
+                            {'monotonic_after':102.0},{'monotonic_before':float('nan')},
+                            {'monotonic_after':True},{'schema':'unknown'}):
+                bad=copy.deepcopy(w);bad['agent_work']['artifact_clock'].update(changes)
+                with self.assertRaises(ValueError): A.verify(bad,self.ws)
+            legacy=copy.deepcopy(w);legacy['agent_work'].pop('artifact_clock')
+            with self.assertRaises(ValueError): A.verify(legacy,self.ws)
+
+    def test_artifact_clock_uncertainty_does_not_bypass_byte_identity(self):
+        rec,artifact,w=self.clock_fixture()
+        (self.mem/'art').mkdir()
+        with patch.object(A.time,'time',return_value=997.2), patch.object(A.time,'monotonic',return_value=101.0):
+            self.write('art/gallery.json',[{'sha256':rec['artifacts'][0]['sha256']}])
+            with self.assertRaisesRegex(ValueError,'already recorded'): A.verify(w,self.ws)
+            self.write('art/gallery.json',[])
+            artifact.write_text('Synthetic changed bytes');os.utime(artifact,(1000,1000))
+            with self.assertRaisesRegex(ValueError,'changed'): A.verify(w,self.ws)
+
     def test_clock_tolerance_is_bounded_and_request_time_must_be_valid(self):
         self.intake(); result,artifact=self.result(); w=self.current()[0]
         created=2000000000.5; w['agent_work']['created_at']=created
