@@ -239,3 +239,44 @@ make `enqueue_capture` a durable acknowledgement. Waiting for file/directory fsy
 would add foreground I/O and needs separate measured latency evidence. Until that
 contract is implemented and tested, accepted-in-memory and restart-loss-unknown
 remain the truthful behavior. No boot service, exit flush or new flag is installed.
+
+
+## Stable publication prerequisite for restart recovery
+
+The sink's internal `_publish_bytes` accepts an optional `packet_id`: exactly 32
+lowercase hexadecimal characters supplied by a future durable ingress record.
+The packet's prefix plus that ID selects its immutable final filename. Existing
+callers omit it and retain random-name behavior; no queue or server path uses it
+yet. This is a tested prerequisite, not a delivered persistent queue.
+
+Under the existing nonblocking sink lock, a repeated ID first checks that the
+existing file is regular, owner-private (0600), owned by the current user, and
+exactly the expected bytes and size. It never follows symlinks or replaces a
+conflict. It rechecks enabled/expected configuration and syncs the matching file
+and destination directory before confirming the retry. Missing files take the
+ordinary bounded publication path under that same stable name. Per-packet size,
+permissions, locks and configuration remain enforced on retries.
+
+An already-present match consumes no new packet slot, changes no mtime/retention
+clock, and does not increment persisted written/status counts. It increments only
+a process-local `already_published` diagnostic. If a crash lost the status write,
+the retry confirms the packet without inventing the missing historical counter.
+Diagnostic delta batches cannot accompany a stable-ID retry because repeating a
+batch could double-count it. Sync failure remains unconfirmed and can be retried.
+
+73 local isolated checks pass (sink 26, deferred queue 26, handler hooks 21).
+A child-process fixture exits immediately after the actual atomic file link,
+before status/directory completion; retry finds one unchanged packet. Other
+fixtures cover concurrent processes, conflicting bytes, unsafe entries, changed
+configuration, invalid IDs, full packet capacity and sync failure. This tests a
+process crash, not actual hardware power loss or filesystem crash guarantees.
+
+Next implementation work is the bounded private ingress spool and recovery loop:
+persist packet identity, exact bytes, observed config and original age; replay
+using this API; remove an ingress record only after confirmed publication. Expiry
+must be checked in that loop before replay: an existing packet can still be
+confirmed here after its retention age, and this API does not infer ingress age.
+Idempotence holds while the named final file exists; it is not a permanent
+tombstone against manual deletion or retention removal. Startup/disable/retarget
+semantics and foreground fsync cost remain unresolved until the spool is wired
+and tested. No production durability claim or flag change is made here.

@@ -151,3 +151,16 @@ The two missing toggle ledger writes were already fixed in d3dd754a and covered 
 the router completion suite in the prior 393-check checkpoint; no duplicate fix is
 made for that item. Historical chat origin and surface-less copies remain pending
 private evidence, with the concrete test-origin lead documented separately.
+
+
+## Restart-publication prerequisite
+
+`codex/judges-replay-publication` descends from 9c55f92e. It adds an optional stable
+packet ID to the internal sink publisher, so retrying a confirmed byte-identical
+file under that name cannot create another packet or double-apply status counters.
+Existing callers omit the argument. 73 local isolated checks pass, including a
+child process dying after atomic linking and concurrent retry callers.
+This is not the durable queue: spool storage, age/config binding, acknowledgement,
+startup replay and host latency measurement remain the next work. Stable naming
+provides no permanent tombstone once a final file has been removed. No production
+flag, live data, merge or deployment changed.

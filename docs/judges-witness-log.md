@@ -1935,3 +1935,20 @@ large submissions hold the 8 MiB bound, and failures/drains release capacity.
 These are local synthetic contracts, not host latency acceptance. Durable spool,
 restart replay and host cost tests remain open; no claim of restart survival.
 No live inputs, enabling, sends, model calls, merge or deployment.
+
+
+## 9 November — stable packet publication for recovery
+
+`codex/judges-replay-publication` adds optional stable IDs to the internal publisher.
+Matching retries verify owner-private exact bytes under the sink lock and sync the
+file/directory; conflicts are refused rather than overwritten. Existing producers
+omit the new argument, so their publication semantics are unchanged. Replays do
+not reset retention age or reapply diagnostic/persisted status counters.
+
+73 isolated checks pass: sink 26, deferred queue 26, hooks 21. The new child-process
+crash fixture exits immediately after linking the packet and retries without a
+second packet; concurrent writers, malformed IDs, unsafe files, config changes,
+capacity and fsync failure are also covered. No hardware power-loss claim. This
+is the first restart-recovery prerequisite only: ingress spool, startup replay,
+bounded expiry and acknowledgement remain unfinished. No live writes, enabling,
+model calls, sends, merge or deployment; full host checks remain with review.

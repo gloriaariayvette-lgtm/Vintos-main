@@ -6854,3 +6854,13 @@ of thirty small packets while publication is stalled. Review should remeasure
 host burst retention/latency. Restart persistence is not solved: durable staging,
 bounded replay, idempotent publication and config/disable behavior remain work.
 Do not equate an in-memory enqueue with durable receipt or phone delivery.
+
+
+## 9 November — restart publication prerequisite ready
+
+`codex/judges-replay-publication` provides verified stable-name retries after a
+crash between packet publication and acknowledgement. 73 affected isolated checks
+pass, including actual child-process termination after linking. Existing call
+sites do not yet use the API. Durable ingress spool and startup recovery remain
+required; memory enqueue still does not survive restart. Continue that work
+without waiting for review of this prerequisite. Host fsync cost remains unmeasured.

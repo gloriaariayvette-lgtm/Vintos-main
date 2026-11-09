@@ -117,7 +117,7 @@ def publish(root, packet, prefix):
         return False
 
 
-def _publish_bytes(root, payload, prefix, expected=None, diagnostic=None):
+def _publish_bytes(root, payload, prefix, expected=None, diagnostic=None, packet_id=None):
     """Publish an immutable snapshot, rechecking current limits and permission."""
     c = configuration(root)
     if c is None or (expected is not None and c != expected):
@@ -126,6 +126,9 @@ def _publish_bytes(root, payload, prefix, expected=None, diagnostic=None):
     directory = lock = None
     try:
         if prefix not in PREFIXES: raise ValueError('unknown packet type')
+        if packet_id is not None and (not isinstance(packet_id,str)
+                or not re.fullmatch(r'[0-9a-f]{32}',packet_id) or diagnostic is not None or payload is None):
+            raise ValueError('invalid replay publication')
         if diagnostic is not None and (not isinstance(diagnostic, dict) or any(
                 k not in DEFERRED_COUNT_KEYS or type(v) is not int or not 0 <= v < 10**18
                 for k,v in diagnostic.items())):
@@ -152,6 +155,28 @@ def _publish_bytes(root, payload, prefix, expected=None, diagnostic=None):
         if configuration(root) != c:
             COUNTERS['disabled_or_changed'] += 1
             return False
+        # A durable ingress record can retry its stable name after an uncertain
+        # publication outcome. Never replace conflicting or unsafe evidence.
+        if packet_id is not None:
+            name = prefix + packet_id + '.json'
+            try:
+                existing = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
+            except FileNotFoundError:
+                existing = None
+            if existing is not None:
+                with os.fdopen(existing,'rb') as f:
+                    info = os.fstat(f.fileno())
+                    if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
+                            or stat.S_IMODE(info.st_mode) != 0o600 or info.st_size != len(payload)
+                            or f.read(len(payload)+1) != payload):
+                        raise ValueError('conflicting replay publication')
+                    if configuration(root) != c:
+                        COUNTERS['disabled_or_changed'] += 1
+                        return False
+                    os.fsync(f.fileno())
+                os.fsync(directory)
+                COUNTERS['already_published'] += 1
+                return True
         now = time.time()
         total = files = expired = 0
         with os.scandir(directory) as entries:
@@ -187,7 +212,7 @@ def _publish_bytes(root, payload, prefix, expected=None, diagnostic=None):
             COUNTERS['disabled_or_changed'] += 1
             return False
         if state == 'written':
-            _atomic(directory, prefix + uuid.uuid4().hex + '.json', payload)
+            _atomic(directory, prefix + (packet_id or uuid.uuid4().hex) + '.json', payload)
             files += 1; total += len(payload)
         if state is not None: COUNTERS[state] += 1
         # Persistent counters for lock-owning operations, never a complete-stream
