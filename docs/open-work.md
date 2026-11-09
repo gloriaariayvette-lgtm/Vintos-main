@@ -6877,3 +6877,15 @@ retention and startup recovery on the isolated host copy before enablement. Old
 memory-queue latency cannot be reused for durable mode. Real encoder/runtime cost,
 private historical origin, full identity/lineage and phone-delivery/ancestry work
 remain open. No live writes, model calls, merge or deployment.
+
+
+## 9 November — prospective encoder-call cost receipts
+
+`codex/judges-encoder-call-cost`, on 0c9c42cf, adds timing around existing optional
+CPU parameter observations and encoding calls, plus an offline aggregate over
+retained calls. 111 affected local isolated checks pass. This supplies a way to
+measure real ordinary background calls after approved capture enablement; it is
+not a measured real-encoder result or permission to enable capture. Durations are
+wall time and retained-call coverage only. Host cost/runtime compatibility, full
+identity/lineage, historical source evidence and delivery/ancestry remain open.
+No additional model loads, encodes, live writes, merge or deployment.

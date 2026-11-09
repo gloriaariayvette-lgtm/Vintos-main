@@ -1857,3 +1857,50 @@ The public formatter prints fixed labels and numbers only, validates the exact
 keys/counts/total, and marks legacy reports without this field as unavailable.
 Exact keys establish correlation, not delivery, clean ancestry or training
 eligibility. Matching, strict admission and all runtime producers are unchanged.
+
+
+### Cost of retained encoder calls
+
+Optional audit/forecast call observations now include `timing` with schema
+`encoder-call-timing-v1`: parameter-before, existing encode, and parameter-after
+elapsed seconds, read from the monotonic performance clock. Each is a finite
+nonnegative duration up to one day, or null when unmeasured/unavailable. Unspent
+snapshot stages stay null. Clock errors/reversals/nonfinite readings cannot change
+encoding or cause retries. Backend exceptions propagate unchanged; a failed call
+has no successful-output receipt. Capture-off paths remain unchanged. No model
+loads, additional encodes, GPU transfers or new parameter scans are introduced.
+
+The before/after scan budget remains one pair per wrapper. Times are monotonic
+wall time, not process CPU, GPU completion, whole-wrapper overhead or job latency.
+They omit serialization, private publication and caller work. Successful snapshot
+byte counts describe tensors actually hashed, not full resident model size. An
+unsupported/over-limit snapshot may still have measured attempted-scan time while
+its byte count remains unavailable. Retention keeps the existing selection and
+value-deduplication rules, so these observations are not all runtime calls.
+
+The offline artifact summary adds `encoder_call_cost` over validated supplied
+packets, including inputs that do not bind an admitted reply. Packet duplicates
+are removed; multiple source references or batch outputs do not multiply a call's
+cost. The opaque invocation marker joins copies only within this supplied set.
+Different timing, settings or parameter-snapshot metadata under one marker makes that call
+conflicting and excludes all its copies from duration/size statistics. Legacy
+copies without timing remain valid; mixing missing and present timing for the same
+marker is conservatively conflicting. Missing call identity is counted separately.
+
+The report prints fixed stage labels, measured/unavailable call counts, total and
+maximum seconds, and observed snapshot count/total/max bytes. Totals are repeated
+scan volume, not distinct model bytes. It emits no invocation IDs, parameter
+hashes, text, vectors or source labels. Strict validation checks count partitions,
+finite bounds and size/duration conservation before rendering. A legacy report
+without this section explicitly says cost coverage is unavailable. These numbers
+do not establish encoder identity, delivery, fitting lineage, target association
+or scoring/training eligibility.
+
+Fourteen isolated synthetic tests cover exact staged clock values, unmeasured
+stages, clock failures, backend exceptions, source-observer failure, unchanged
+calls/results, batch deduplication, conflicting copies, missing/legacy fields,
+forecast links, aggregate validation and public-output privacy. Existing encoder,
+audit, join, report and synthetic benchmark suites also pass. No real encoder was
+loaded for this change. Real host cost remains unmeasured until the operator enables
+capture and ordinary background work retains these observations; no user-generated
+test conversation or paid call is needed to collect them.

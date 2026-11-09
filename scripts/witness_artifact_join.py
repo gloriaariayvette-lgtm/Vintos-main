@@ -185,6 +185,7 @@ def join_artifacts(admitted, sources, nodes, packets, cutoff, forecasts=()):
     return {'scope': 'content_binding_only', 'packets_supplied': len(packets), 'unique_packets': len(unique),
             'source_references': len(details), 'states': dict(sorted(states.items())),
             'encoding_consistency': encoding_consistency(encodings),
+            'encoder_call_cost': encoder_call_cost(list(unique.values())),
             'checkpoint_availability_states': checkpoint_availability(list(unique.values()), forecasts, cutoff),
             'encoder_parameter_observation_states': dict(sorted(Counter(
                 validate_encoding_observation(p.get('encoding_observation'), p.get('encoder_input_sha256'), p.get('emb'))
@@ -285,3 +286,74 @@ def encoding_consistency(groups):
             counts[axis][state] += 1
     return {'groups': len(groups), 'references': references,
             **{axis: dict(sorted(values.items())) for axis, values in counts.items()}}
+
+
+def encoder_call_cost(packets):
+    """Aggregate validated retained calls, including unbound inputs; no identities out."""
+    from witness_self_artifacts import TIMING_STAGES
+    calls = defaultdict(dict)
+    unidentified = observations = 0
+    for packet in packets:
+        for index,(_,value,_,_) in enumerate(claims(packet)):
+            # An audit packet can carry several source references for one encoding.
+            if packet['schema']=='self-audit-embedding-v1':
+                if index: continue
+                call = value.get('encoding_observation')
+            else:
+                link = value.get('encoding_link')
+                call = link.get('call') if isinstance(link,dict) else None
+            observations += 1
+            if call is None:
+                unidentified += 1
+                continue
+            signature = {k:call.get(k) for k in ('timing','parameter_before','parameter_after','settings_sha256')}
+            calls[call['invocation']][fingerprint(signature)] = signature
+    conflicts = sum(len(values)>1 for values in calls.values())
+    valid = [next(iter(values.values())) for values in calls.values() if len(values)==1]
+    legacy = sum(v['timing'] is None for v in valid)
+    stages = {}
+    for key in TIMING_STAGES:
+        samples = [v['timing'][key] for v in valid if v['timing'] is not None and v['timing'][key] is not None]
+        stages[key] = {'measured_calls':len(samples),'unavailable_calls':len(valid)-len(samples),
+                       'total_seconds':math.fsum(samples),'max_seconds':max(samples,default=0)}
+    sizes = [v[k]['bytes'] for v in valid for k in ('parameter_before','parameter_after')
+             if v[k]['state']=='observed']
+    return {'scope':'supplied_retained_calls_only','observations':observations,
+            'unidentified_observations':unidentified,'calls':len(calls),
+            'conflicting_calls':conflicts,'legacy_calls':legacy,'timed_calls':len(valid)-legacy,
+            'stages':stages,'parameter_snapshots':{'observed':len(sizes),
+                       'total_bytes':sum(sizes),'max_bytes':max(sizes,default=0)}}
+
+
+def validate_encoder_call_cost(value, references):
+    """Fixed aggregate fields and conserved counts; never render arbitrary labels."""
+    from witness_self_artifacts import TIMING_STAGES, MAX_ENCODER_STATE_BYTES
+    def count(n):
+        if type(n) is not int or n<0: raise ValueError('invalid encoder cost count')
+        return n
+    if (not isinstance(value,dict) or set(value)!={'scope','observations','unidentified_observations',
+            'calls','conflicting_calls','legacy_calls','timed_calls','stages','parameter_snapshots'}
+            or value['scope']!='supplied_retained_calls_only'):
+        raise ValueError('invalid encoder cost scope')
+    obs,missing,calls,conflicts,legacy,timed = [count(value[k]) for k in
+        ('observations','unidentified_observations','calls','conflicting_calls','legacy_calls','timed_calls')]
+    if (obs>count(references) or missing>obs or calls>obs-missing
+            or bool(calls)!=bool(obs-missing) or conflicts+legacy+timed!=calls):
+        raise ValueError('invalid encoder cost totals')
+    stages=value['stages']
+    if not isinstance(stages,dict) or set(stages)!=set(TIMING_STAGES): raise ValueError('invalid cost stages')
+    for stage in stages.values():
+        if not isinstance(stage,dict) or set(stage)!={'measured_calls','unavailable_calls','total_seconds','max_seconds'}:
+            raise ValueError('invalid cost stage')
+        measured,unavailable=count(stage['measured_calls']),count(stage['unavailable_calls'])
+        total,peak=stage['total_seconds'],stage['max_seconds']
+        if (measured+unavailable!=calls-conflicts or measured>timed
+                or any(type(n) not in (int,float) or not math.isfinite(n) or n<0 for n in (total,peak))
+                or peak>86400 or total<peak or (not measured and (total!=0 or peak!=0))
+                or total>peak*measured+max(1e-12,abs(total)*1e-12)):
+            raise ValueError('invalid cost duration')
+    sizes=value['parameter_snapshots']
+    if not isinstance(sizes,dict) or set(sizes)!={'observed','total_bytes','max_bytes'}: raise ValueError('invalid cost sizes')
+    n,total,peak=(count(sizes[k]) for k in ('observed','total_bytes','max_bytes'))
+    if (n>2*(calls-conflicts) or peak>MAX_ENCODER_STATE_BYTES or bool(n)!=bool(peak)
+            or not peak<=total<=peak*n): raise ValueError('invalid cost size totals')

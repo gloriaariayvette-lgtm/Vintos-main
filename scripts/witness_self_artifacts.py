@@ -131,15 +131,69 @@ def parameter_state(before, after):
     return 'observed_equal' if before == after else 'observed_changed'
 
 
-def encoding_observation(text, values, before, after, settings, invocation):
+TIMING_STAGES = ('parameter_before_seconds', 'encode_seconds', 'parameter_after_seconds')
+
+
+def _clock():
+    try:
+        value = time.perf_counter()
+        return value if type(value) in (int,float) and math.isfinite(value) else None
+    except Exception:
+        return None
+
+
+def _elapsed(start, stop):
+    if start is None or stop is None: return None
+    elapsed = stop-start
+    return elapsed if math.isfinite(elapsed) and 0 <= elapsed <= 86400 else None
+
+
+def observed_encode(enc, texts, args, kwargs, sample):
+    """Time existing work; observer failures never retry or replace the encode."""
+    missing = {'schema':'encoder-parameter-snapshot-v1','state':'unavailable',
+               'sha256':None,'tensors':0,'bytes':0}
+    before = after = missing
+    timing = dict.fromkeys(TIMING_STAGES)
+    timing['schema'] = 'encoder-call-timing-v1'
+    if sample:
+        start = _clock()
+        try: before = parameter_snapshot(enc)
+        except Exception: pass
+        timing['parameter_before_seconds'] = _elapsed(start,_clock())
+    start = _clock()
+    result = enc.encode(texts,*args,**kwargs)
+    timing['encode_seconds'] = _elapsed(start,_clock())
+    if sample:
+        start = _clock()
+        try: after = parameter_snapshot(enc)
+        except Exception: pass
+        timing['parameter_after_seconds'] = _elapsed(start,_clock())
+    return result,before,after,timing
+
+
+def validate_call_timing(value):
+    if (not isinstance(value,dict) or set(value) != {'schema',*TIMING_STAGES}
+            or value['schema'] != 'encoder-call-timing-v1'):
+        raise ValueError('invalid encoding timing')
+    for key in TIMING_STAGES:
+        v = value[key]
+        if v is not None and (type(v) not in (int,float) or not math.isfinite(v) or not 0<=v<=86400):
+            raise ValueError('invalid encoding timing')
+
+
+def encoding_observation(text, values, before, after, settings, invocation, timing=None):
     from witness_receipts import digest
     from witness_capture import _fingerprint
-    return {'schema': 'audit-encoding-observation-v1', 'invocation': invocation,
+    observation = {'schema': 'audit-encoding-observation-v1', 'invocation': invocation,
             'input_sha256': digest(text), 'raw_vector_sha256': _fingerprint(values),
             'settings_sha256': settings, 'parameter_before': before, 'parameter_after': after,
             'parameter_state': parameter_state(before, after),
             'encoder_identity': 'unverified',
             'meaning': 'loaded_cpu_parameter_snapshots_only_not_tokenizer_code_or_training_identity'}
+    if timing is not None:
+        validate_call_timing(timing)
+        observation['timing'] = dict(timing)
+    return observation
 
 
 def validate_encoding_observation(observation, text_hash, values, expected_schema='audit-encoding-observation-v1'):
@@ -150,7 +204,7 @@ def validate_encoding_observation(observation, text_hash, values, expected_schem
     if observation is None: return 'missing'
     expected = {'schema','invocation','input_sha256','raw_vector_sha256','settings_sha256',
                 'parameter_before','parameter_after','parameter_state','encoder_identity','meaning'}
-    if (not isinstance(observation,dict) or set(observation) != expected
+    if (not isinstance(observation,dict) or set(observation)-{'timing'} != expected
             or observation['schema'] != expected_schema
             or observation['encoder_identity'] != 'unverified'
             or observation['meaning'] != 'loaded_cpu_parameter_snapshots_only_not_tokenizer_code_or_training_identity'
@@ -160,6 +214,7 @@ def validate_encoding_observation(observation, text_hash, values, expected_schem
             or observation['raw_vector_sha256'] != _fingerprint(values)
             or (observation['settings_sha256'] is not None and not ishash(observation['settings_sha256']))):
         raise ValueError('invalid encoding observation')
+    if 'timing' in observation: validate_call_timing(observation['timing'])
     for key in ('parameter_before','parameter_after'):
         snap = observation[key]
         if (not isinstance(snap,dict) or set(snap) != {'schema','state','sha256','tensors','bytes'}
@@ -184,20 +239,12 @@ class FeatureEncoder:
         self._retained_values = 0
 
     def encode(self, texts, *args, **kwargs):
-        missing = {'schema':'encoder-parameter-snapshot-v1','state':'unavailable',
-                   'sha256':None,'tensors':0,'bytes':0}
-        before = after = missing
         sampled = False
         try:
-            if self._parameter_pairs:
-                self._parameter_pairs -= 1
-                sampled = True
-                before = parameter_snapshot(self.enc)
+            sampled = bool(self._parameter_pairs)
+            if sampled: self._parameter_pairs -= 1
         except Exception: pass
-        result = self.enc.encode(texts, *args, **kwargs)
-        try:
-            if sampled: after = parameter_snapshot(self.enc)
-        except Exception: pass
+        result,before,after,timing = observed_encode(self.enc,texts,args,kwargs,sampled)
         try:
             from witness_receipts import digest
             if (not isinstance(texts,list) or len(texts)>256 or len(result)!=len(texts)
@@ -216,7 +263,7 @@ class FeatureEncoder:
                     COUNTERS['feature_encoding_observation_limit'] += 1
                     break
                 self._retained_values += len(raw)
-                observation=encoding_observation(text,raw,before,after,settings,invocation)
+                observation=encoding_observation(text,raw,before,after,settings,invocation,timing)
                 observation['schema']='forecast-encoding-observation-v1'
                 self.records[text]={'schema':'readout-encoding-link-v1','transform':'readout_units_v1',
                                     'raw_emb':raw,'call':observation}
@@ -276,21 +323,13 @@ class AuditEncoder:
             self.refs.setdefault(text[:400], []).append(ref)
 
     def encode(self, texts, *args, **kwargs):
-        missing = {'schema': 'encoder-parameter-snapshot-v1', 'state': 'unavailable',
-                   'sha256': None, 'tensors': 0, 'bytes': 0}
-        before = after = missing
         sample_parameters = False
         try:
-            sample_parameters = bool(self._parameter_pairs and isinstance(texts, list)
+            sample_parameters = bool(self._parameter_pairs and isinstance(texts,list)
                                      and any(isinstance(t,str) and t in self.refs for t in texts))
-            if sample_parameters:
-                self._parameter_pairs -= 1
-                before = parameter_snapshot(self.enc)
+            if sample_parameters: self._parameter_pairs -= 1
         except Exception: pass
-        result = self.enc.encode(texts, *args, **kwargs)
-        try:
-            if sample_parameters: after = parameter_snapshot(self.enc)
-        except Exception: pass
+        result,before,after,timing = observed_encode(self.enc,texts,args,kwargs,sample_parameters)
         try:
             from witness_capture import _publish_private, _private_root, _fingerprint
             from witness_receipts import digest
@@ -305,7 +344,7 @@ class AuditEncoder:
                 if text not in self.refs:
                     continue
                 values = vector(emb)
-                encoded = encoding_observation(text, values, before, after, settings, invocation)
+                encoded = encoding_observation(text, values, before, after, settings, invocation,timing)
                 observation = (digest(text), _fingerprint(values), _fingerprint([before, after, settings]))
                 if observation in self.seen:
                     continue

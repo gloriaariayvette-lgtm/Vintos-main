@@ -189,3 +189,23 @@ disable/retarget/config changes, original age and fail-open startup. Existing si
 recorded in the coordination reply after completion. This is local contract
 validation, not the full integrated Aegis suite or live acceptance. Review stays
 with Claude Code; enabling/deployment stays with Gloria.
+
+
+## Encoder-call cost increment
+
+`codex/judges-encoder-call-cost` descends from 0c9c42cf; it adds observation around
+existing optional background work, not an on-demand real-model benchmark. New
+`timing` fields separate parameter scan and encode durations, leaving unmeasured
+stages null. The offline report combines supplied retained calls by invocation and
+excludes conflicting cost copies; legacy data remains explicit. Snapshot byte
+counts describe repeated scanned tensors, not model RSS. No identity or admission
+upgrade accompanies the measurement. Existing output/call/exception contracts and
+capture-off behavior are preserved.
+
+111 affected isolated checks pass (cost 14, parameter receipts 19, joins 30,
+report 22, self artifacts 20, benchmark 6). No live encoder or private records were
+loaded. The reviewer can inspect these aggregate fields in future normally captured
+packets after operator enablement; missing receipt coverage is never a zero-cost
+result. These timings exclude serialization/publication and do not replace the
+separate durable-spool reply-path latency test. Full integrated host validation,
+real-runtime compatibility and enablement/deployment boundaries remain unchanged.

@@ -103,6 +103,21 @@ def artifact_coverage(section, eligible):
         if not isinstance(values,dict) or set(values)-set(labels) or sum(count(n) for n in values.values()) != unique: invalid()
         timing += [f'- Encoder parameter observation {label}: {count(values.get(label,0))} packets.' for label in labels]
         timing += ['', 'Matching CPU parameter snapshots and retained feature-call links are partial observations. Tokenizer, execution code and training lineage remain unverified; missing call links are not inferred.', '']
+    if 'encoder_call_cost' in section:
+        from witness_artifact_join import validate_encoder_call_cost
+        from witness_self_artifacts import TIMING_STAGES
+        c=section['encoder_call_cost']
+        validate_encoder_call_cost(c,refs)
+        timing += [f"- Retained encoder calls: {c['calls']}; with timing fields: {c['timed_calls']}; legacy without timing: {c['legacy_calls']}; conflicting cost receipts excluded: {c['conflicting_calls']}.",
+                   f"- Encoding observations without call identity: {c['unidentified_observations']} of {c['observations']}."]
+        for key in TIMING_STAGES:
+            stage=c['stages'][key]
+            timing += [f"- {key}: {stage['measured_calls']} measured calls, {stage['unavailable_calls']} unavailable; total {stage['total_seconds']:.6f} s, max {stage['max_seconds']:.6f} s."]
+        sizes=c['parameter_snapshots']
+        timing += [f"- Retained CPU parameter snapshots: {sizes['observed']}; bytes scanned {sizes['total_bytes']}; maximum snapshot bytes {sizes['max_bytes']}.",
+                   '', 'Costs cover supplied retained calls, including unbound inputs, deduplicated by invocation. Conflicting cost copies are excluded. Durations are monotonic wall time, not CPU time, whole-job latency or complete-stream coverage. Missing stages are unavailable, not zero. Snapshot bytes are repeated scan volume, not resident model size. No encoder identity, delivery or training admission is inferred.', '']
+    else:
+        timing += ['Retained encoder call-cost coverage is unavailable in this legacy report.', '']
     if 'encoding_consistency' in section:
         from witness_artifact_join import ENCODING_CONSISTENCY_LABELS
         c = section['encoding_consistency']

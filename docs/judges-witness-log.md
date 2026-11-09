@@ -1972,3 +1972,23 @@ and fsync; the earlier memory-queue latency does not apply. Diagnostics remain
 lower bounds and restart loss unknown. No private input/config change, enabling,
 sends, model calls, merge or deployment. Host integration and acceptance remain
 with review; work continues on independent branches.
+
+
+## 9 November — retained encoder call costs
+
+`codex/judges-encoder-call-cost` continues from 0c9c42cf while prior tips remain
+fixed for review. Optional capture now records monotonic durations for the existing
+parameter-before, encode and parameter-after stages. Null denotes unmeasured or
+invalid clock evidence, not zero. Existing output objects, exception behavior,
+encoder-call counts and once-per-wrapper snapshot budget are preserved. The
+capture-off path is unchanged. No real encoder is loaded or timed by this batch.
+
+Offline cost aggregates deduplicate invocation markers across batch outputs and
+source references. Conflicting cost/snapshot copies exclude that call; legacy
+receipts remain valid and unknown call identity is counted separately. Fixed
+numbers-only reports keep partial cost evidence separate from identity/admission.
+111 isolated checks pass: new cost 14, parameter receipts 19, artifact joins 30,
+review report 22, self artifacts 20, synthetic benchmark 6. Report validation and
+fixtures cover malformed counts/durations, privacy and nonmutation. Host cost and
+full integration remain reviewer work. No enabling, live inputs/writes, model or
+paid calls, merge or deployment.
