@@ -2554,3 +2554,29 @@ or deployment. Real format compliance/coverage remains unmeasured; Claude owns f
 suite and private runs. Same-exchange control modes are on the preceding review tip.
 Per-surface within-mode results remain pending sufficient ordinary-use coverage;
 no request for test messages. Heartbeat ACTIVE; no completion/routine ntfy.
+
+
+## 2026-11-09 — Numerical judge candidates and randomized latent-feed diagnostics
+
+Coordination #42–43: assessed all 31 subconscious entries plus deviation and voice
+coherence, with input/scorer/failure-mode/proposed synthetic test for each in
+experiments/nonllm-judges/README.md. Implemented two offline components: unique
+original-act/day recurrence for reviewed topics, and complete-link candidate groups
+from supplied frozen cached vectors. Complete indirect lineage, exact hashes,
+mode/surface/source/day scope, input bounds and explicit unknown/exclusion behavior
+are preserved. No automatic yearning, scar, resolution, duplicate-removal or identity
+verdict. No runtime wiring, existing feed change or additional model call.
+
+17 isolated prototype checks and 11 ownership checks pass. Synthetic aggregate CLI
+verified. Generated reports refreshed unchanged and diff clean. The stress driver
+in experiments/latent-feed-diagnostics/stress.py ran the unchanged latent-feed suite
+50 times in fresh workers with recorded randomized orders, five time zones and four
+available locales: 750/750 checks pass in 29.422 seconds inside the local isolation
+boundary. Log: /tmp/judges-latent-stress.log. This does not reproduce or fix the
+historical flake. The original traceback is unavailable; the reviewer will retain
+future failures. No assertion was weakened and no speculative production fix made.
+
+Full isolated suite/private character4 provenance review stays with Claude; runtime
+format compliance and per-surface results still need ordinary-use evidence. No
+private records, live writes, GPU/model/encoder/provider calls, merge or deployment.
+Exact pushed tip is in the coordination reply. Heartbeat ACTIVE.
