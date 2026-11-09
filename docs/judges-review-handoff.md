@@ -1529,3 +1529,31 @@ anchors. No scoreability claim from structural metadata alone.
 No provider/model call, real artifact load, GPU, private data read, live change,
 merge or deployment. Independent full suite/test merge and real private run stay
 with Claude. Heartbeat ACTIVE. No completion/routine ntfy.
+
+
+## 2026-11-09 14:52 CST — #56 sufficiency estimator
+
+Added counts-only sufficiency planning to capture_report, with separate primary
+and window30 views, every supported mode/surface, and separate humor/taste item
+kinds. Existing packet admission, feature/freeze qualification, reference selection
+and positive-anchor normalization determine available counts. Requirements expose
+four past reference days for voice/drift, two positive days for facet similarity,
+four for empirical ranking, and four observed consecutive shift days for sustained
+drift (no forecast of whether a shift happens). Recurrence/grouping stay without
+an ETA until their retained adapters and required inputs exist.
+
+Rates use seven complete local dates including empty dates; forecasts use scoped
+qualifying reference/target day rates, not raw capture traffic. Missing projection,
+zero rates and known degenerate references yield unknown ETA. Zero days means an
+actual score was observed, not merely enough counts. Future estimates explicitly
+assume continued qualification, reference designation, exact outcome joins and a
+later non-reference target; no user conversation/test-data request. Raw clock-unknown
+packets remain countable but contribute no admitted references or targets.
+
+26 isolated coverage/estimator checks pass, including duplicate noninflation,
+unknown-clock packets, scope/kind separation, actual scoring, empty/no-adapter
+states, exact positive days, partial-date exclusion, zero-rate and degeneracy
+refusals. Log /tmp/judges-s56-estimator-final.log. Ownership suite 11/11;
+required reports regenerated unchanged. No private inputs or model calls.
+Branch codex/judges-sufficiency-clocks above 7d45dff4; monotonic gate changes
+are being tested separately and will be their own commit. Heartbeat ACTIVE.

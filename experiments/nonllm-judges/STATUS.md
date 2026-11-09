@@ -61,3 +61,9 @@ exactly equal one unambiguous retained humor draft; rewritten/truncated callback
 remain unjoined. Existing bindings survive exact canonical/ledger overlap. There
 is no historical backfill, extra generation, rating inference or new live feed.
 See the numerical README for the command, bounds and coverage denominators.
+
+Sufficiency planning (#56): capture_report includes per-mode/surface/kind counts,
+current reference-day/positive-anchor floors and seven-complete-day qualifying
+rates. ETAs are conditional, unknown when evidence/rates/adapters are missing, and
+zero only where the existing evaluator has scored. Drift shift occurrence is not
+forecastable. See README for the rate window, exact join and next-target assumptions.
