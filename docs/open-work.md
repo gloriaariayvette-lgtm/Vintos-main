@@ -8029,3 +8029,53 @@ projection and replay remain Claude's. Actual agreement is not measured here;
 legacy missing bindings may leave no overlap. No new unresolved blocker, ntfy,
 private-record access, actual provider call, GPU, live changes, merge or deploy.
 Heartbeat remains ACTIVE.
+
+
+## 2026-11-09 16:39 CST — #62 capture-gap proposals prepared, not applied
+
+New VALUE-MAP-CAPTURE.md specifies a single environment assignment on the existing
+37 3,11,19 cron line, preserving the complete command, wrappers and redirections.
+A tested proposal-only generator takes a private crontab export and the actual
+reviewed config path; neither complete live command nor private config location
+is invented. No crontab/config read or write on the host, no manual value-map run.
+It documents metadata receipts, unknown serving/internal-attempt limits, zero
+additional model/paid/GPU calls, unmeasured per-cron overhead, shared storage caps,
+ordinary-scheduled-run acceptance, and rollback of only that assignment.
+
+New landings_project.py reads explicit authorized private snapshot/map files,
+never the live store or scripts/landings.py. It produces a new 0600
+landings-projection-v1 in a new 0700 directory, stdout counts only. Full frozen
+text must match both piece/made and an exact retained item identity/hash binding.
+Latest rating per item before cutoff wins; partly/missed suppress older landed
+without becoming negative examples. Copies deduplicate; conflicting identities
+refuse. Ambiguous/unknown/backward times cannot resurrect positives. Native naive
+times require a reviewed timezone; DST folds/gaps remain unknown. Images/songs/
+videos, missing exact bindings, truncated/mismatched text and observations before
+the original act stay unused. The downstream runner still enforces strict original
+lineage, attribution and scoring rules; projection alone proves no eligibility.
+
+No explanations, conversation, before-context or piece prose enter output. The
+projector necessarily parses the full staged native records privately, checks a
+nonempty required explanation, and preserves a private source-record hash. Source
+claims/identity map are not independently authenticated. Native snapshots/maps
+remain unchanged; no overwrite/live discovery/network/process calls. Bounds and
+sanitized failure behavior documented. LANDINGS-ASK.md is the one-paragraph,
+precise separate authorization request for a bounded offline projection, not a
+recurring reader. No real Landings data was accessed for this implementation.
+
+28 targeted isolated checks pass: projector/proposal 17, owners 11. Logs
+/tmp/judges-s62-landings.log and /tmp/judges-s62-owners.log. Includes actual
+numerical-runner anchor integration, exact identity/text joins, latest-rating
+retractions, cutoff and timezone edges, unknown clocks, duplicate/conflicting
+records, private permissions, unchanged inputs, no overwrite and the cron-copy
+transformation/refusals. Integration initially exposed reused anchor identities;
+fixed by deriving each evidence ID from its own row, with uniqueness regression.
+Generated reports refreshed (untested inventory changes because the synthetic cron
+proposal test now mentions its wrapper; this is not a live wrapper execution test).
+Diff clean. No runtime/deploy manifest changes.
+
+Branch codex/judges-capture-proposals starts above c1303e2e in the existing isolated
+judges-witness-slices checkout. Both real-data access and actual cron application
+remain for Gloria's separate decision through Claude. No new unresolved failure,
+ntfy, provider calls, private-record access, GPU, live writes, merge or deploy.
+Heartbeat ACTIVE; independent review/private execution remains Claude's.

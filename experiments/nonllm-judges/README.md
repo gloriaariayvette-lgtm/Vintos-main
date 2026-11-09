@@ -867,3 +867,90 @@ may flag a valuable unfamiliar reply. Coverage/selection bias, different constru
 and correlated days prevent an accuracy or causal-benefit claim. Held-out common
 rubrics and independent outcomes would be needed for replace/keep/run-both choices.
 All existing loops remain active; no new data collection, thresholds or live writes.
+
+## Proposed Landings snapshot projector (requires separate authorization)
+
+[`landings_project.py`](landings_project.py) is prepared for the decision in
+[LANDINGS-ASK.md](LANDINGS-ASK.md). Only synthetic snapshots have been read during
+implementation. It is not installed in a service or connected to a context builder.
+It takes an explicitly staged, authorized private JSONL snapshot of the native
+Landings store and a separate exact-item identity map; it never opens/discovers
+the live store or imports `scripts/landings.py` (whose helpers read live context).
+The one-line cron proposal is separate: [VALUE-MAP-CAPTURE.md](VALUE-MAP-CAPTURE.md).
+Neither proposal has been applied.
+
+After authorization, stage a bounded snapshot outside all repositories/live
+workspaces, with 0700 scratch directories and 0600 files. The snapshot contains
+her explanation/context as well as frozen pieces: they are necessarily parsed
+privately, but explanation/context words are never emitted or fed back to him.
+The identity map has exactly this schema (all values below are synthetic):
+
+```json
+{
+  "schema": "landings-item-bindings-v1",
+  "items": [{
+    "surface": "message",
+    "ref": "synthetic-outreach.md",
+    "node_id": "synthetic-original-act",
+    "content_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "finalized_at": "2020-01-10T12:00:00Z",
+    "identity_source_sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+  }]
+}
+```
+
+The example hashes are placeholders and will not match real text. `surface` here
+is Landings' **item kind** (`message`, `joke`, `journal`), not chat's avatar/voice
+surface. `ref` must be the exact native item reference from an independently
+retained identity relation. `node_id` and full-content SHA256 must name that same
+original act in the numerical evidence. `identity_source_sha256` fingerprints
+that retained identity record, kept privately alongside the map. The projector
+checks structure, uniqueness, full frozen text equality and time bounds; it does
+not independently authenticate the caller's identity map. Never derive this map
+from title/nearest timestamp/excerpt similarity or merely identical text across
+different items. Missing identity remains unused. This adapter does not establish
+clean lineage or scoreability; the numerical runner still independently gates its
+supplied ancestry, modes, encoder/freeze/reference and exact anchor joins.
+
+```sh
+python3 experiments/nonllm-judges/landings_project.py \
+  --scratch "$SCRATCH" --snapshot "$SCRATCH/landings-snapshot.jsonl" \
+  --bindings "$SCRATCH/item-bindings.json" --cutoff 2020-02-01T00:00:00Z \
+  --source-timezone America/Chicago \
+  --output "$SCRATCH/projected/landings-projection.json"
+```
+
+Use the actual agreed cutoff and reviewed source timezone, not the example date
+or an assumption about the serving host. The native writer records naive local
+times: without `--source-timezone` those observations stay unknown. Ambiguous or
+nonexistent DST times are never guessed. Explicit offsets need no timezone flag.
+Unknown observation time or a backward timestamp within an item's append history
+excludes that item; an older positive cannot be resurrected through uncertainty.
+The source `item_at` minute timestamp is not an exact original-act binding.
+
+Latest append-order rating per (surface, ref) **before cutoff** wins, matching
+Landings' replacement semantics as of that cutoff. A later partly/missed/invalid
+rating suppresses an earlier landed mark, with no negative example emitted.
+Future/equal-cutoff rows do not alter the historical view. Exact duplicate records
+count once; conflicting repeated rating IDs, item bindings or aliases for one
+original ID refuse the projection. Only exact `landed`, valid native explanation,
+consistent frozen `piece.text`/`made` text and a matching full hash can emit an
+anchor, at or after the original act's finalization. Legacy missing frozen pieces,
+truncated/mismatched content, unsupported media and unbound items stay unused.
+No current mutable item/context store is consulted to fill a gap.
+
+The new output directory must be an immediate child of scratch and not exist;
+its only output is `landings-projection.json`, created 0600 inside a new 0700
+directory. Existing outputs are never overwritten. It has exactly the runner's
+`landings-projection-v1` shape, retaining only private evidence/item IDs, hashes,
+observation times and positive-anchor metadata. Input snapshots/maps are unchanged.
+Stdout is `landings-project-counts-v1` with counts and fixed metadata only; it has
+no IDs, hashes, paths, dates, scores, explanations or arbitrary input strings.
+Network/subprocesses and writes outside the new output are blocked. Inputs are
+bounded at 4 MiB each, 4096 native rows, 512 identity bindings and 10,000 characters
+per full frozen piece; no silent truncation. Malformed JSONL (including duplicate
+keys/nonfinite values) refuses the whole input rather than skipping a correction.
+Errors print only `landings_projection_refused`. An interrupted/failed publication
+must be treated as failed and retried into a new directory, never merged into an
+old projection. A valid output can still have zero anchors. This is a snapshot of
+latest positive ratings, not an event-time retraction system for historical scores.
