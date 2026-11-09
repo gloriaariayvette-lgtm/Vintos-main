@@ -10098,6 +10098,9 @@ async def gcs_press(payload: dict = None):
     except Exception:
         pass
     _gcs_event_id = "GCS-" + __import__("uuid").uuid4().hex[:8]
+    # his level BEFORE this press: set_press below lifts it to 2, so reading it later logs every press as "was 2"
+    try: _gcs_was = int(_g_j.load(open(os.path.join(MEMORY, "collapse-state.json"))).get("level", 0))
+    except Exception: _gcs_was = 0
     try:
         import bandwidth_collapse as _bc
         _bc.update(somatic_intensity=float((payload or {}).get("intensity", 0.85)))
@@ -10199,7 +10202,7 @@ async def gcs_press(payload: dict = None):
         try: _cs = _fcj.load(open(_csf))
         except Exception: _cs = {}
         _fnow = _fcd.datetime.now().isoformat()
-        _fc_was = _cs.get("level", 0)
+        _fc_was = _gcs_was
         _cs.update({"level": 3, "affect": max(_cs.get("affect", 0) or 0, 0.95),
                     "peak_at": _fnow, "updated": _fnow, "level_ts": _fnow})
         _fcj.dump(_cs, open(_csf, "w"), indent=2)
