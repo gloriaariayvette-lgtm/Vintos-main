@@ -730,5 +730,116 @@ class Tests(unittest.TestCase):
         self.assertEqual(pin['declared_contract'],self.bundle['encoder'])
         again=subprocess.run(cmd,capture_output=True,text=True);self.assertNotEqual(again.returncode,0)
 
+    def somatic_mark(self,row,mode='intimate',**changes):
+        mark=dict(mode=mode,source_field='somatic-narrated.json:narration',
+            source_record_sha256=P.digest('synthetic source mark'),start=row['timestamp']-10,
+            end=row['timestamp']+10,observed_at=row['timestamp']+30,surface=row['surface'],
+            session_id=None,join='surface_window')
+        mark.update(changes)
+        mark['review']=dict(reviewed=True,reviewer='reviewer',binding_sha256=P.somatic_review_binding(mark))
+        return mark
+
+    def test_historical_fallback_requires_opt_in_and_has_no_independent_family_verdict(self):
+        self.bundle['mode_observations']=[];self.bundle['historical_family_fallback']=True
+        report,private=P.run(self.bundle,self.cutoff)
+        counts=report['coverage']['mode_observations']
+        self.assertEqual(counts['source_gloria_family_rule'],32)
+        self.assertEqual(counts['opening_everyday'],16);self.assertEqual(counts['intimate'],16)
+        self.assertTrue(all(r['mode_source']=='gloria_family_rule' and not r['family_comparison_eligible'] for r in private))
+        for view in (report['primary_10s'],report['sensitivity_window30']):
+            self.assertEqual(view['shared_day_family_differences'],[])
+            self.assertTrue(all(p['identifiability']=='not_identifiable' for p in view['context_matched_family_comparisons']['pairs']))
+        self.assertIn('gloria_family_rule=32',P.render_reader_summary(report))
+        self.bundle['historical_family_fallback']='yes'
+        with self.assertRaises(ValueError):P.run(self.bundle,self.cutoff)
+
+    def test_somatic_scope_disagreement_and_conflicts_never_fall_back(self):
+        self.bundle['mode_observations']=[];self.bundle['historical_family_fallback']=True
+        row=next(r for r in self.bundle['rows'] if r['role']=='assistant')
+        self.bundle['somatic_marks']=[self.somatic_mark(row)]
+        prepared=P.prepare(self.bundle,self.cutoff)[0];r=next(r for r in prepared if r['id']==row['turn_id'])
+        self.assertEqual((r['mode'],r['mode_source']),('intimate','somatic_narration'))
+        counts=P.run(self.bundle,self.cutoff)[0]['coverage']['mode_observations']
+        self.assertEqual(counts['somatic_covered_replies'],1)
+        self.assertEqual(counts['somatic_rule_disagreements'],1)
+        self.bundle['somatic_marks'].append(self.somatic_mark(row,mode='opening_everyday'))
+        counts=P.run(self.bundle,self.cutoff)[0]['coverage']['mode_observations']
+        self.assertEqual(counts['somatic_conflicting_replies'],1);self.assertEqual(counts['unknown'],1)
+
+    def test_somatic_intervals_are_bounded_reviewed_and_never_daywide(self):
+        self.bundle['mode_observations']=[]
+        row=next(r for r in self.bundle['rows'] if r['role']=='assistant')
+        variants=[dict(start=None),dict(end=row['timestamp']+7201,observed_at=row['timestamp']+7202),
+                  dict(start=row['timestamp']+1,end=row['timestamp']+5),dict(surface='reelroom'),
+                  dict(join='session_window',session_id='other-session')]
+        for changes in variants:
+            self.bundle['somatic_marks']=[self.somatic_mark(row,**changes)]
+            report,_=P.run(self.bundle,self.cutoff)
+            self.assertEqual(report['coverage']['mode_observations']['unknown'],32)
+        row['session_id']='synthetic-session'
+        self.bundle['somatic_marks']=[self.somatic_mark(row,start=row['timestamp'],end=row['timestamp'],
+            join='session_window',session_id='synthetic-session')]
+        report,_=P.run(self.bundle,self.cutoff)
+        self.assertEqual(report['coverage']['mode_observations']['intimate'],1)
+        self.bundle['somatic_marks'][0]['mode']='opening_everyday'
+        with self.assertRaises(ValueError):P.run(self.bundle,self.cutoff)
+
+    def test_independent_mode_has_priority_over_historical_somatic_and_rule(self):
+        row=next(r for r in self.bundle['rows'] if r['role']=='assistant')
+        self.bundle['historical_family_fallback']=True
+        self.bundle['somatic_marks']=[self.somatic_mark(row)]
+        rows=P.prepare(self.bundle,self.cutoff)[0]
+        r=next(r for r in rows if r['id']==row['turn_id'])
+        self.assertEqual((r['mode'],r['mode_source']),('opening_everyday','router_decision'))
+        self.bundle['mode_observations'].append(dict(self.bundle['mode_observations'][0],mode='unknown'))
+        r=next(r for r in P.prepare(self.bundle,self.cutoff)[0] if r['id']==row['turn_id'])
+        self.assertEqual(r['mode'],'unknown')
+
+    def test_prospective_receipt_binding_priority_and_unknown_preservation(self):
+        import request_trace as trace
+        row=next(r for r in self.bundle['rows'] if r['role']=='assistant');ts=row['timestamp']
+        token=trace.current.set('synthetic-request')
+        try:decision=trace.TurnModeDecision(row['turn_id'],row['surface'],clock=lambda:ts)
+        finally:trace.current.reset(token)
+        join=dict(schema='router-completion-join-v1',completion_id='a'*32,request_trace_id='synthetic-request',
+            caller='router:fixture',raw_response_sha256=P.digest(row['content']))
+        decision.note('gate','YES',join)
+        row.update(decision.fields(join,row['content'],row['content']))
+        row['generation_join']=dict(join,stored_response_sha256=P.digest(row['content']))
+        self.bundle['historical_attribution']['compute_ledger'][0].update(
+            generation_completion_id='a'*32,generation_response_sha256=P.digest(row['content']),request_id='synthetic-request')
+        self.bundle['historical_family_fallback']=True
+        def selected():return next(r for r in P.prepare(self.bundle,self.cutoff)[0] if r['id']==row['turn_id'])
+        self.assertEqual((selected()['mode'],selected()['mode_source']),('intimate','prospective_receipt'))
+        row['mode_receipt']['selected_completion_id']='b'*32
+        self.assertEqual(selected()['mode'],'unknown')
+        self.assertEqual(selected()['mode_source'],'prospective_receipt')
+        row['mode_receipt']['selected_completion_id']='a'*32
+        row['mode_receipt']['mode']='unknown';row['mode_receipt']['basis']='gate_ambiguous'
+        self.assertEqual(selected()['mode'],'unknown')
+        row['mode_receipt']['decision_at']=P.instant(self.cutoff)
+        self.assertEqual(selected()['mode'],'unknown')
+
+    def test_family_fallback_reference_blocks_independent_target_comparison(self):
+        self.bundle['historical_family_fallback']=True
+        self.bundle['mode_observations']=[e for e in self.bundle['mode_observations'] if e['reply_id']!='reply-0-0']
+        report,private=P.run(self.bundle,self.cutoff)
+        self.assertTrue(any(r['mode_source']=='router_decision' and not r['family_comparison_eligible'] for r in private))
+        excluded=report['primary_10s']['context_matched_family_comparisons']['excluded_family_derived_mode_or_reference']
+        self.assertGreater(excluded,1)
+        for cell in report['primary_10s']['reference_family_composition']['evaluation_folds']:
+            if cell['day']!='2020-01-01':self.assertIn('gloria_family_rule',cell['mode_sources'])
+
+    def test_historical_mode_public_outputs_exclude_private_metadata(self):
+        row=next(r for r in self.bundle['rows'] if r['role']=='assistant')
+        self.bundle['mode_observations']=[];row['session_id']='private-synthetic-session'
+        mark=self.somatic_mark(row,join='session_window',session_id=row['session_id'])
+        self.bundle['somatic_marks']=[mark];self.bundle['historical_family_fallback']=True
+        report,private=P.run(self.bundle,self.cutoff)
+        public=json.dumps(report)+P.render_summary(report)+P.render_reader_summary(report)
+        for value in (row['session_id'],mark['source_record_sha256'],row['content'],row['turn_id']):
+            self.assertNotIn(value,public)
+        self.assertTrue(any(r['mode_source']=='somatic_narration' for r in private))
+
 
 if __name__=='__main__':unittest.main()

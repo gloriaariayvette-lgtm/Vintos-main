@@ -7242,3 +7242,34 @@ owner family rule second; that is next work on a separate branch, with the priva
 character3 run left to the reviewer. The reported latent-feed flake remains a
 separate follow-up. Completion ntfy alerts are cancelled under the user's new rule;
 only new unresolved issues may use ntfy. No live writes, merge or deployment.
+
+
+## 9 November — historical mode priority and family-derived comparison exclusions
+
+`codex/judges-historical-mode-evidence` follows 2dccf7f0 for note #37.
+The offline prototype consumes bound prospective mode receipts first, preserving
+unknown/invalid receipts as unknown, then independent exact observations, reviewed
+somatic intervals, and an explicitly enabled owner family rule. Final mode_source
+is retained with private evidence hashes; public reports show only source counts,
+somatic coverage and disagreement with the family rule. Reference folds expose
+source composition. Family-labelled targets and targets whose reference folds
+include family-labelled replies are excluded from independent family comparisons.
+No remaining overlap means not_identifiable, never invariant.
+
+Source inspection found the narrator persists through/at/narration and a somatic
+thread, without the detected interval. Its current 24-hour scan is not a session
+label. The private importer must review a bounded interval from retained evidence;
+join is same surface plus optional exact session, inclusive start/end, zero padding,
+maximum 7200 seconds. Unbounded marks contribute no mode. Overlapping disagreement
+stays unknown; stale review bindings fail. Original records and input bundle must
+remain private. No real messages/stores were opened here and no encoder/model calls
+were added. This is not a character3 result or a change to provisional golden days.
+
+Validation: 57 isolated prototype checks and 11 ownership checks pass (68 total);
+new cases cover opt-in fallback, somatic priority/bounds/session/review/conflicts,
+receipt binding/unknown priority, reference contamination and aggregate privacy.
+Generated reports are refreshed unchanged. Source documents give the exact private
+import contract. Claude owns the private character3 run and full-suite review;
+Gloria owns deployment. The latent-feed flake is still a separate follow-up.
+No live writes, merge or deployment; no completion ntfy under the revised policy.
+Heartbeat remains ACTIVE.

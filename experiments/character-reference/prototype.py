@@ -79,24 +79,107 @@ def surface_label(value):
     return value if value in SURFACES else 'unknown'
 
 
-def bind_modes(rows,observations,cutoff):
-    by_id={r['id']:r for r in rows};linked=defaultdict(set);counts=Counter()
+SOMATIC_FIELDS=('mode','source_field','source_record_sha256','start','end','observed_at',
+                'surface','session_id','join')
+SOMATIC_SOURCES=('somatic-narrated.json:narration','somatic_thread:thread')
+MODE_LABEL_SOURCES=('prospective_receipt',)+MODE_SOURCES+('somatic_narration','gloria_family_rule','conflicting','unknown')
+SOMATIC_WINDOW_LIMIT=7200.0
+
+
+def somatic_review_binding(mark):
+    return digest(json.dumps({k:mark.get(k) for k in SOMATIC_FIELDS},sort_keys=True,allow_nan=False,separators=(',',':')))
+
+
+def bind_modes(rows,observations,cutoff,somatic_marks=(),family_fallback=False,raw_rows=()):
+    """Bind supplied evidence; historical intervals are retrospective, never causal signals."""
+    from request_trace import mode_receipt_fields
+    if type(family_fallback) is not bool:raise ValueError('explicit historical fallback boolean required')
+    by_id={r['id']:r for r in rows};linked=defaultdict(list);prospective=defaultdict(list);counts=Counter()
+    for raw in raw_rows:
+        if raw.get('role')!='assistant' or 'mode_receipt' not in raw or instant(raw['timestamp'])>=cutoff:continue
+        row=by_id.get(raw.get('turn_id'))
+        if row is None or digest(final_response(raw))!=row['sha']:continue
+        receipt=raw['mode_receipt'];join=raw.get('generation_join')
+        valid=mode_receipt_fields(receipt,row['id'],row['surface'],row['text'])
+        if valid and isinstance(join,dict):
+            valid=(join.get('request_trace_id')==receipt['request_id']
+                   and join.get('completion_id')==receipt['selected_completion_id']
+                   and join.get('raw_response_sha256')==receipt['raw_response_sha256']
+                   and join.get('stored_response_sha256')==row['sha']
+                   and join.get('schema')=='router-completion-join-v1'
+                   and all(v is None or v<cutoff for v in
+                       (receipt['started_at'],receipt['decision_at'],receipt['reroute_decision_at'])))
+        else:valid=False
+        if valid:
+            prospective[row['id']].append((receipt['mode'],digest(json.dumps(receipt,sort_keys=True))))
+            counts['prospective_linked']+=1
+        else:
+            counts['prospective_invalid']+=1
+            prospective[row['id']].append(('unknown',None))
     for item in observations:
         if (not isinstance(item,dict) or item.get('mode') not in MODES or item.get('source') not in MODE_SOURCES
                 or not isinstance(item.get('evidence_sha256'),str)
                 or not re.fullmatch('[0-9a-f]{64}',item['evidence_sha256'])):
             raise ValueError('invalid independent mode observation')
-        row=by_id.get(item.get('reply_id'))
-        at=instant(item['timestamp'])
+        row=by_id.get(item.get('reply_id'));at=instant(item['timestamp'])
         if (row is None or item.get('reply_sha256')!=row['sha'] or item.get('link')!='exact_reply'
                 or at>=cutoff or at>row['at']):
             counts['unlinked_or_outside']+=1;continue
-        linked[row['id']].add(item['mode']);counts['linked_observations']+=1
+        linked[row['id']].append(item);counts['linked_observations']+=1
+    somatic=defaultdict(list)
+    for mark in somatic_marks:
+        if not isinstance(mark,dict):raise ValueError('invalid somatic mark')
+        review=mark.get('review',{})
+        if (mark.get('mode') not in MODES[:2] or mark.get('source_field') not in SOMATIC_SOURCES
+                or not isinstance(mark.get('source_record_sha256'),str)
+                or not re.fullmatch('[0-9a-f]{64}',mark['source_record_sha256'])
+                or not isinstance(review,dict) or review.get('reviewed') is not True
+                or review.get('reviewer') not in ANNOTATORS
+                or review.get('binding_sha256')!=somatic_review_binding(mark)):
+            raise ValueError('reviewed somatic evidence binding required')
+        if mark.get('start') is None or mark.get('end') is None:
+            counts['somatic_unbounded_marks']+=1;continue
+        start,end,observed=(instant(mark[k]) for k in ('start','end','observed_at'))
+        if not start<=end<=observed<cutoff or end-start>SOMATIC_WINDOW_LIMIT:
+            counts['somatic_outside_or_overlong_marks']+=1;continue
+        if (mark.get('surface') not in SURFACES[:-1] or mark.get('join') not in ('session_window','surface_window')
+                or mark['join']=='session_window' and (not isinstance(mark.get('session_id'),str) or not 1<=len(mark['session_id'])<=160)
+                or mark['join']=='surface_window' and mark.get('session_id') is not None):
+            raise ValueError('invalid somatic join scope')
+        matched=0
+        for row in rows:
+            if (start<=row['at']<=end and row['surface']==mark['surface']
+                    and (mark['join']=='surface_window' or row.get('session_id')==mark['session_id'])):
+                somatic[row['id']].append(mark);matched+=1
+        counts['somatic_linked_marks' if matched else 'somatic_unmatched_marks']+=1
     for row in rows:
-        modes=linked[row['id']]
+        rid=row['id'];rule={'claude':'opening_everyday','grok':'intimate'}.get(row['family'])
+        sm={m['mode'] for m in somatic[rid]}
+        if sm:
+            counts['somatic_covered_replies']+=1
+            if len(sm)>1:counts['somatic_conflicting_replies']+=1
+            elif rule:
+                counts['somatic_rule_comparable_replies']+=1
+                counts['somatic_rule_disagreements']+=int(next(iter(sm))!=rule)
+        if prospective[rid]:
+            modes={m for m,_ in prospective[rid]};source='prospective_receipt'
+            evidence=[e for _,e in prospective[rid] if e]
+        elif linked[rid]:
+            modes={m['mode'] for m in linked[rid]}
+            source=next(src for src in MODE_SOURCES if any(m['source']==src for m in linked[rid]))
+            evidence=[m['evidence_sha256'] for m in linked[rid]]
+        elif sm:
+            modes=sm;source='somatic_narration';evidence=[m['source_record_sha256'] for m in somatic[rid]]
+        elif family_fallback and rule:
+            modes={rule};source='gloria_family_rule';evidence=[]
+        else:modes={'unknown'};source='unknown';evidence=[]
         row['mode']=next(iter(modes)) if len(modes)==1 else 'unknown'
-        if len(modes)>1:counts['conflicting_replies']+=1
-        counts[row['mode']]+=1
+        if len(modes)>1:counts['conflicting_replies']+=1;source='conflicting'
+        row['mode_source']=source;row['mode_evidence_sha256']=sorted(set(evidence))
+        counts[row['mode']]+=1;counts['source_'+source]+=1
+    counts['family_fallback_enabled']=int(family_fallback)
+    counts['somatic_window_max_seconds']=int(SOMATIC_WINDOW_LIMIT)
+    counts['somatic_window_padding_seconds']=0
     return dict(counts)
 
 
@@ -163,7 +246,8 @@ def context_pairs(left,right):
 
 def context_family_comparisons(scored):
     by_family=defaultdict(list);out=[]
-    for row,percentiles in scored:by_family[row['family']].append(row)
+    for row,percentiles in scored:
+        if row.get('family_comparison_eligible',True):by_family[row['family']].append(row)
     outcomes={r['id']:p for r,p in scored}
     for i,left in enumerate(FAMILIES[:3]):
         for right in FAMILIES[i+1:3]:
@@ -180,6 +264,7 @@ def context_family_comparisons(scored):
     return {'matching':'same_mode_surface_day_language_length_ratio_0.5_to_2_context_cosine_at_least_0.7',
         'assignment':'left_reply_id_order_best_available_context_then_right_id',
         'meaning':'descriptive_matched_association_not_causal_model_effect',
+        'excluded_family_derived_mode_or_reference':sum(not r.get('family_comparison_eligible',True) for r,_ in scored),
         'pairs':out}
 
 
@@ -319,7 +404,7 @@ def prepare(bundle,cutoff):
     cfg['window30_enabled']=True
     if cfg.get('window_seconds',10)!=10:raise ValueError('primary attribution must use ten seconds')
     attribution_report,details=attribution(rows,ledger,cfg,cutoff)
-    for key,limit in (('embeddings',10000),('feedback',10000),('controls',4096),('control_pool',4096),('evaluation_annotations',10000),('mode_observations',10000)):
+    for key,limit in (('embeddings',10000),('feedback',10000),('controls',4096),('control_pool',4096),('evaluation_annotations',10000),('mode_observations',10000),('somatic_marks',4096)):
         if not isinstance(bundle.get(key,[]),list) or len(bundle.get(key,[]))>limit:raise ValueError('unbounded prototype input')
     caches={};dimension=None
     for cache in bundle['embeddings']:
@@ -331,10 +416,15 @@ def prepare(bundle,cutoff):
         if key in caches and caches[key][0]!=raw:raise ValueError('conflicting cached vectors')
         caches[key]=(raw,cache,v,c)
     users={};user_surfaces=defaultdict(set);engagement=Counter();excluded=Counter();prepared=[];versions={}
-    all_versions={}
+    all_versions={};sessions=defaultdict(set)
     for row in rows:
         if row.get('role')=='assistant' and row.get('turn_id'):
             key=row['turn_id'];version=digest(final_response(row))
+            session=row.get('session_id')
+            if session is not None:
+                if not isinstance(session,str) or not 1<=len(session)<=160:raise ValueError('invalid session identity')
+                sessions[key].add(session)
+                if len(sessions[key])>1:raise ValueError('conflicting session identity')
             if key in all_versions and all_versions[key]!=version:raise ValueError('conflicting reply content')
             all_versions[key]=version
     assistants=iter(details)
@@ -379,7 +469,7 @@ def prepare(bundle,cutoff):
         prepared.append({'id':tid,'sha':sha,'day':day,'at':at,'text':text,'vector':v,'context_vector':c,
                          'style':style(text),'family':family(version[2]),'primary':primary,
                          'basis':'ledger_10s_or_exact_id' if ledger_match else 'label_observed_agreement' if primary else 'window30',
-                         'language':row.get('language'),'surface':surface_label(row.get('surface'))})
+                         'language':row.get('language'),'surface':surface_label(row.get('surface')),'session_id':next(iter(sessions[tid]),None)})
     # A copied/repeated text cannot appear on both sides of a held-out split.
     seen=set();unique=[]
     for row in sorted(prepared,key=lambda r:(r['at'],r['id'])):
@@ -390,7 +480,8 @@ def prepare(bundle,cutoff):
     threshold=sorted(counts,reverse=True)[max(0,math.ceil(len(counts)/4)-1)] if counts else 0
     candidates=sorted(d for d,n in engagement.items() if n>=threshold and n>median)
     positive=defaultdict(set);feedback_counts=Counter();by_id={r['id']:r for r in unique}
-    mode_counts=bind_modes(unique,bundle.get('mode_observations',[]),cutoff)
+    mode_counts=bind_modes(unique,bundle.get('mode_observations',[]),cutoff,
+        bundle.get('somatic_marks',[]),bundle.get('historical_family_fallback',False),rows)
     for event in bundle.get('feedback',[]):
         row=by_id.get(event.get('reply_id'))
         if (row is None or event.get('reply_sha256')!=row['sha'] or event.get('link')!='exact_reply'
@@ -492,7 +583,8 @@ def evaluate(rows,controls,candidates,positive):
         ref=[r for r in rows if r['day'] in candidates and r['day']!=day
              and r.get('mode')==mode and r.get('surface')==surface]
         composition['evaluation_folds'].append({'day':day,'mode':mode,'surface':surface,'reference_days':len({r['day'] for r in ref}),
-            'reference_replies':len(ref),'families':family_counts(ref)})
+            'reference_replies':len(ref),'families':family_counts(ref),
+            'mode_sources':dict(Counter(r.get('mode_source','unknown') for r in ref))})
         if len({r['day'] for r in ref})<2:status['insufficient_reference_days']+=len(held);continue
         reference_days=sorted({r['day'] for r in ref})
         state=reference_statistics(ref)
@@ -511,7 +603,9 @@ def evaluate(rows,controls,candidates,positive):
             if s is None:status['degenerate_reference']+=1;continue
             pct={k:percentile(v,calibration[k]) if v is not None else None for k,v in s.items()}
             for k,v in pct.items():metrics[k+'_percentile'].append((day,v))
-            families[r['family']].append((day,pct['semantic']))
+            r['family_comparison_eligible']=(r.get('mode_source')!='gloria_family_rule'
+                and all(x.get('mode_source')!='gloria_family_rule' for x in ref))
+            if r['family_comparison_eligible']:families[r['family']].append((day,pct['semantic']))
             scored.append((r,pct))
             hs=score_statistics(r,humor_state)
             if hs:metrics['witnessed_positive_similarity'].append((day,hs['semantic']))
@@ -521,7 +615,9 @@ def evaluate(rows,controls,candidates,positive):
                     for k in ('semantic','style','centroid','recent_centroid'):
                         if s[k] is not None and cs[k] is not None:
                             metrics[control['kind']+'_'+k+'_paired_win'].append((day,float(s[k]>cs[k])+.5*(s[k]==cs[k])))
-            private.append({'turn_id':r['id'],'day':day,'family':r['family'],'mode':mode,'surface':surface,'percentiles':pct,
+            private.append({'turn_id':r['id'],'day':day,'family':r['family'],'mode':mode,'mode_source':r.get('mode_source','unknown'),
+                            'mode_evidence_sha256':r.get('mode_evidence_sha256',[]),
+                            'family_comparison_eligible':r['family_comparison_eligible'],'surface':surface,'percentiles':pct,
                             'reference_days':reference_days,'reference_turns':len(ref),
                             'control_matches':[{k:c[k] for k in ('kind','candidate_id','sha','review_binding','context_cosine','source_surface','reviewer_class')}
                                 for c in by_reply_controls[r['id']]]})
@@ -545,8 +641,8 @@ def evaluate(rows,controls,candidates,positive):
                 if v is not None:b[d].append(v)
             overlap=sorted(set(a)&set(b))
             if overlap:differences.append({'families':[left,right],**summarize([(d,np.mean(a[d])-np.mean(b[d])) for d in overlap])})
-    return {'admitted_replies':len(rows),'status':dict(status),'metrics':results,'reference_family_composition':composition,
-            'family_comparison_interpretation':'within_mode_descriptive' if len({r.get('mode','unknown') for r in rows})==1 and all(r.get('mode','unknown')!='unknown' for r in rows) else 'confounded_with_mode',
+    return {'admitted_replies':len(rows),'status':dict(status),'mode_sources':dict(Counter(r.get('mode_source','unknown') for r in rows)),'metrics':results,'reference_family_composition':composition,
+            'family_comparison_interpretation':'not_identifiable_family_derived_mode_or_reference' if any(not r.get('family_comparison_eligible',True) for r,_ in scored) else 'within_mode_descriptive' if len({r.get('mode','unknown') for r in rows})==1 and all(r.get('mode','unknown')!='unknown' for r in rows) else 'confounded_with_mode',
             'model_families':{f:summarize(families[f]) for f in FAMILIES},'shared_day_family_differences':differences,
             'context_matched_family_comparisons':context_family_comparisons(scored),
             'evaluation_groups':evaluation_groups(rows,scored)},private
@@ -572,6 +668,20 @@ def run(bundle,cutoff,private_control_matches=None):
             'candidate_selection_is_observational','supplied_controls_and_encoder_contract_are_unverified']},details
 
 
+def mode_source_summary(report):
+    counts=report['coverage']['mode_observations']
+    def n(key):
+        value=counts.get(key,0)
+        if type(value) is not int or value<0:raise ValueError('invalid mode coverage')
+        return str(value)
+    return ['Mode source counts across all admitted replies (including sensitivity): '+', '.join(src+'='+n('source_'+src) for src in MODE_LABEL_SOURCES)+'.',
+        'Somatic coverage: '+n('somatic_covered_replies')+' replies; '+n('somatic_rule_disagreements')+
+        ' disagreements among '+n('somatic_rule_comparable_replies')+' comparable family-rule labels. '+
+        n('somatic_unbounded_marks')+' marks have no usable interval. Reviewed intervals use zero padding and a 7200-second cap.',
+        'Somatic intervals are retrospective supplied reviews, not independently authenticated per-turn decisions. '+
+        'Family fallback is an owner assumption, not evidence of cross-model stability.', '']
+
+
 def render_summary(report):
     """Render aggregate measurements only; never include row-level inputs or IDs."""
     def count(value):
@@ -594,7 +704,7 @@ def render_summary(report):
         '', 'Measures familiarity relative to a provisional reference, not authenticity or truth.',
         'No live effect or strict-admission change. Candidate dates are not owner-confirmed.',
         'Percentiles and paired wins are on a 0–1 scale. Other similarities/deltas retain their named units.',
-        'Mode comes from supplied exact-linked signals, never model family; unknown modes are not pooled into a reference.',
+        'Mode sources are reported separately: prospective decisions, independent exact links, reviewed somatic intervals, and optional owner family fallback. Unknown modes are unscored.',
         'Means weight days equally; intervals are descriptive day-bootstrap intervals, not independence guarantees.',
         'Unknown means absent or insufficient evidence, never a failure or proof of invariance.', '',
         '## Coverage', '', '| View | Admitted replies | Scored replies |', '| --- | ---: | ---: |']
@@ -673,7 +783,7 @@ def render_summary(report):
     lines+=['', 'Own-reply shuffling preserves marginal familiarity (expected AUC 0.5); context alignment is a separate check.',
             'Other-surface text is not automatically foreign. Positive ratings/laughs do not label unobserved replies as failures.',
             'No acceptance threshold or identity decision is produced.', '']
-    return '\n'.join(lines)
+    return '\n'.join(lines+mode_source_summary(report))
 
 
 def render_reader_summary(report):
@@ -728,14 +838,14 @@ def render_reader_summary(report):
         'These support a limited positive-example facet, not a general humor verdict; missing reactions are not failures.',
         '- '+count(len(coverage['candidate_days']))+' higher-engagement dates are provisional reference candidates. '
         'High engagement does not certify every reply on those days.',
-        '- Mode comes from supplied independent signals, never the serving family. Unknown modes remain unscored. '
-        'Cross-family comparisons need matched replies inside the same mode and surface; no overlap means not identifiable, not invariant.',
+        '- Mode uses decision receipts first, then independent evidence or reviewed somatic intervals. Explicit owner family fallback is labelled; unknown stays unscored. '
+        'Cross-family comparisons exclude family-labelled targets and any fold with family-labelled references. No independent overlap means not identifiable, not invariant.',
         '- Control authorship and source reviews are supplied claims. Store metadata is kept separate from human review. '
         'Even a verified artifact hash does not establish the revision label or how cached vectors were produced.', '',
         'The detailed summary contains style, surface coverage, source classes and within-mode comparisons. '
         'Private text, individual reply records and vectors remain in local scratch. '
         'No acceptance threshold, model switch or deployment follows from this report.', '']
-    return '\n'.join(lines)
+    return '\n'.join(lines+mode_source_summary(report))
 
 
 def main():
@@ -758,7 +868,7 @@ def main():
     for name,data in (('aggregate.json',report),('private-evaluation.json',details),('private-controls.json',control_matches),
                       ('private-run.json',{'input_sha256':hashlib.sha256(raw).hexdigest(),'cutoff':instant(args.cutoff),'encoder_pin':pin,
                         'code_sha256':{name:hashlib.sha256((ROOT/name).read_bytes()).hexdigest() for name in
-                            ('experiments/character-reference/prototype.py','scripts/witness_attribution.py','scripts/witness_receipts.py')}})):
+                            ('experiments/character-reference/prototype.py','scripts/witness_attribution.py','scripts/witness_receipts.py','scripts/request_trace.py')}})):
         with (out/name).open('x') as f:json.dump(data,f,sort_keys=True,allow_nan=False)
         (out/name).chmod(0o600)
     for name,renderer in (('summary.md',render_summary),('reader-summary.md',render_reader_summary)):

@@ -49,8 +49,10 @@ missing. There is no substitute text embedder or silent fallback.
   that a reply was humorous; the output is `witnessed_positive_similarity`.
 - **Mode first:** `opening_everyday`, `intimate`, or `unknown` from supplied
   exact-linked observations of a router decision, intimate state or a documented
-  conversation transition. Never derive mode from the serving model, a bare model
-  switch, text keywords or missing logs. Unknown/conflicting mode stays unknown.
+  conversation transition, then privately reviewed bounded somatic intervals. The
+  explicitly enabled historical owner family rule is a labelled fallback, never
+  independent evidence. Bare switches, keywords or missing logs are not observations.
+  Unknown/conflicting evidence stays unknown and blocks lower-priority fallback.
   Each reference, calibration, positive-feedback subset and control comparison
   matches mode. Reference rows and cross-family matched pairs also match surface.
 - **Within-mode family checks:** compare recognized families only within a known
@@ -265,7 +267,7 @@ Summary tests cover actual 0600 CLI output, deterministic rendering, unknown
 measurements, source-type labels, rejected malformed dates and private-field exclusion.
 Reference-composition regressions check held-out-day exclusion, family-count
 conservation, primary/sensitivity differences and zero coverage without imputation.
-Mode tests prove no family fallback, exact/dated evidence binding, conflict-to-unknown,
+Mode tests prove no implicit family fallback, exact/dated evidence binding, conflict-to-unknown,
 mode/reference isolation, within-mode identifiability, ReelRoom separation and
 matching-mode controls. All new fixtures remain synthetic and non-intimate text. Encoder-pin tests cover
 unknown/declared/observed/verified states, mismatches, bounds, symlinks, observed
@@ -342,11 +344,79 @@ receipt. Writer/import validation rejects extra fields, inconsistent labels,
 invalid timestamps and wrong turn/surface/text bindings. These are provenance
 checks, not cryptographic authentication of a source.
 
-For a private future export, validate the receipt against its stored row with
-`request_trace.mode_receipt_fields`, then produce the existing mode_observations
-contract: exact reply ID/hash, source router_decision, the recorded decision time,
-and a SHA-256 of the retained receipt. Use only known gate results for known modes;
-leave missing/skipped/error/ambiguous observations unknown. Do not backfill earlier
-rows, infer a mode from serving family, or treat copied store metadata as new
-independent evidence. The gate's coverage limitation remains visible in the
+For a private future export, retain `mode_receipt` and `generation_join` on the
+original history row plus the matching compute-ledger completion. The prototype
+validates the stored response hash, turn, surface, request, selected completion,
+raw response hash and cutoff directly. A valid prospective receipt takes priority
+over all historical labels, including when its mode is unknown. Invalid supplied
+receipts also stay unknown; they cannot silently become family labels. Missing
+receipts allow historical evidence. These checks bind supplied metadata, not
+cryptographic authentication. The receipt can be created after the request's
+history timestamp; it is bound by completion identity rather than nearest time.
+The gate's coverage limitation remains visible in the
 [plain-language status](../../docs/judges-character-status.md).
+
+## Historical mode evidence for the third private run
+
+Set `historical_family_fallback: true` only for the owner-approved historical run.
+Default is false. Priority is (1) bound prospective receipt, (2) existing independent
+exact-linked mode observations, (3) reviewed somatic intervals, (4) owner rule,
+(5) unknown. The owner rule maps known `grok` family to `intimate` and known `claude`
+family to `opening_everyday`; other/unknown families remain unknown. Every admitted
+row has `mode_source`. No prompt, model call or keyword classifier is added.
+
+Source inspection, not private-data inspection:
+
+- `scripts/somatic_narrate.py` reads up to the previous 24 hours, then writes
+  `memory/somatic-narrated.json` with `through`, `at`, and `narration` (200-character
+  prefix). It seeds `source: somatic` / `thread` via `emoclaw_utils.seed_thread`
+  into `memory/unfinished-threads.json`. These are overwriteable/current records,
+  not proof that a complete historical archive exists.
+- Neither the current narration record nor the seeded thread stores the start/end
+  of the identified stretch. `through` is the last input turn, not a session end;
+  `at`/thread timestamp is recording time. A nonempty narration does **not** label
+  the entire preceding day intimate, nor does an empty record identify an everyday
+  interval. The old `PAD = 120` declaration is not used by the current narrator main.
+- `somatic_bridge.py` writes pending `{dur, ts, ...}` and session-end events, but
+  device activity alone does not supply a narration-derived conversational label.
+  No bridge/motor signal is silently promoted into this source class.
+
+The private importer may supply up to 4,096 `somatic_marks`. Each needs:
+
+| Field | Contract |
+| --- | --- |
+| `mode` | `intimate` or `opening_everyday`, explicitly reviewed against retained evidence. |
+| `source_field` | `somatic-narrated.json:narration` or `somatic_thread:thread`. |
+| `source_record_sha256` | SHA-256 of the retained original record bytes; retain bytes privately. |
+| `start`, `end`, `observed_at` | Explicit offset-aware/numeric timestamps; `start <= end <= observed_at < cutoff`. The review may be retrospective. |
+| `surface` | One known history surface; never infer all surfaces from one narration. |
+| `join`, `session_id` | `session_window` requires the same explicit nonempty session ID on the history row; `surface_window` requires null session ID and matches only the stated surface/time. |
+| `review` | `{reviewed: true, reviewer: "owner" or "reviewer", binding_sha256: somatic_review_binding(mark)}`. Binding covers all fields above. |
+
+Join window is **[start, end], inclusive, zero padding, maximum 7,200 seconds**.
+This cap is a conservative prototype admission limit, not a claim about actual
+session duration. The private reviewer supplies the actual narrow interval; do
+not manufacture it from the scan window. A missing start/end is counted as an
+unbounded mark and contributes no mode. Overlong/out-of-cutoff marks are counted
+and excluded. Session conflicts on copied rows fail; overlapping marks that disagree
+make the reply unknown and block family fallback. Supplied review bindings do not
+authenticate a reviewer or establish objective intimacy ground truth.
+
+Public coverage reports somatic-covered and conflicting replies, comparable
+family-rule labels and disagreements, unresolved/unmatched marks, and final source
+counts. Both summaries show source counts, including sensitivity admissions.
+Per-mode views and reference folds retain aggregate source composition.
+Private evaluation retains source/evidence hashes; retain the original input bundle
+and evidence bytes alongside its private-run hash for full reconstruction. No
+session IDs, content, source-record hashes or review bindings enter public output.
+
+Family-labelled rows may contribute descriptive familiarity within their assumed
+mode. They cannot establish cross-family stability: family comparison excludes any
+scored target labelled by the rule **and any target whose reference fold includes
+rule-labelled replies**. Exclusion counts are explicit; comparisons without remaining
+independent overlap say `not_identifiable`. Historical somatic classifications are
+still retrospective observations and should not be read as prospective mode accuracy.
+Controls retain their separate reviewed mode/authorship contract; this fallback
+does not fabricate control modes. No golden-day change or new real-data result is
+claimed here. The reviewer runs character3 privately; the existing status page
+continues to describe character2 until actual aggregates arrive.
