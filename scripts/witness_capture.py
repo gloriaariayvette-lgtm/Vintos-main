@@ -1,4 +1,4 @@
-"""Request-local shadow capture with an explicit private scratch sink; no sends.
+"""Request-local shadow capture with explicit private storage configuration; no sends.
 
 Provider hooks must explicitly label observed identity; configured names alone
 are unknown. A handler selects the raw result before postprocessing, then binds
@@ -30,9 +30,10 @@ def _resource_digest(resource):
 
 def value_map_read(decoded, selected, at, resource=None):
     """Observe the existing newest-entry transform without reopening the source."""
-    if not os.environ.get("JUDGES_CAPTURE_SCRATCH"):
+    location = _capture_location()
+    if not location:
         return None
-    _private_root(os.environ["JUDGES_CAPTURE_SCRATCH"])
+    _private_root(location)
     if not isinstance(decoded, str) or len(decoded) > 4194304 or not isinstance(selected, str) or not selected:
         return None
     import re
@@ -457,7 +458,30 @@ class Capture:
                              "influence": "unknown"}})
 
 
+def _capture_location():
+    location = os.environ.get("JUDGES_CAPTURE_SCRATCH")
+    if location:
+        return location
+    from witness_sink import configuration
+    config = configuration()
+    return config["directory"] if config is not None else None
+
+
+def capture_enabled():
+    try:
+        location = _capture_location()
+        return location is not None and _private_root(location) is not None
+    except Exception:
+        return False
+
+
 def _private_root(value):
+    if not os.environ.get("JUDGES_CAPTURE_SCRATCH"):
+        from witness_sink import configuration
+        config = configuration(value)
+        if config is None:
+            raise ValueError("production shadow capture disabled or changed")
+        return config["directory"]
     raw = Path(value).absolute()
     root = raw.resolve(strict=True)
     repo = Path(__file__).resolve().parents[1]
@@ -471,8 +495,8 @@ def _private_root(value):
 
 
 def begin_shadow(turn_id, surface, started_at, *, original_text=None, input_message=None, input_slot=None):
-    """Disabled unless scratch and workspace explicitly name the same private root."""
-    location = os.environ.get("JUDGES_CAPTURE_SCRATCH")
+    """Disabled unless explicit scratch or dedicated production configuration permits capture."""
+    location = _capture_location()
     if not location:
         return None
     root = _private_root(location)
@@ -715,7 +739,7 @@ def _value_map_material_bindings(build, payload, at):
 
 def begin_value_map_call(payload):
     """Observe one existing HTTP invocation; this is not a chat witness or a build."""
-    location = os.environ.get("JUDGES_CAPTURE_SCRATCH")
+    location = _capture_location()
     if not location:
         return None
     root = _private_root(location)
@@ -786,7 +810,7 @@ def finish_value_map_call(observation, response, http_status, returned_text, out
 
 
 def begin_value_map_build():
-    location = os.environ.get("JUDGES_CAPTURE_SCRATCH")
+    location = _capture_location()
     if not location:
         return None
     return {"root": _private_root(location), "build_id": uuid.uuid4().hex,
@@ -862,6 +886,9 @@ def finish_value_map_build(build, selected_stage, result, entry, mode, resource=
 
 
 def _publish_private(root, packet, prefix):
+    if not os.environ.get("JUDGES_CAPTURE_SCRATCH"):
+        from witness_sink import publish
+        return publish(root, packet, prefix)
     # Write an invisible temporary name, then atomically publish a complete file.
     # link (rather than replacing rename) also refuses an existing final name.
     directory = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
@@ -891,7 +918,7 @@ def _publish_private(root, packet, prefix):
 
 def begin_self_forecast():
     """Scope one existing self forecast; no encoder/model/store work here."""
-    location = os.environ.get("JUDGES_CAPTURE_SCRATCH")
+    location = _capture_location()
     if not location:
         return None
     root = _private_root(location)

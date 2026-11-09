@@ -107,7 +107,7 @@ except: pass
 
 
 def _witness_call(method, *args):
-    if not os.environ.get("JUDGES_CAPTURE_SCRATCH"):
+    if not (os.environ.get("JUDGES_CAPTURE_SCRATCH") or os.environ.get("JUDGES_CAPTURE_CONFIG")):
         return None
     try:
         import witness_capture

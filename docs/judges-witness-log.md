@@ -1269,3 +1269,103 @@ Required reports regenerated. No production or scoring change, paid/model call,
 real test send, private census rerun, merge or deploy. The reviewer owns the ready
 private census on approved 4a8fc11e and the full Aegis suite; this work does not
 hold up that run. Earlier submitted branch tips remain fixed.
+
+## 8 November — shadow review report scaffolding
+
+`codex/judges-shadow-review-report` follows coordination note 22 while the reviewer
+runs the private census. New offline `experiments/judges-witness/report.py` formats
+one explicit replay aggregate with its supplied run receipt. It checks aggregate
+bytes/hash/size and the manifest fingerprint, clearly distinguishing that from
+verification of the original input, scoring checkout or other outputs. It reads
+no per-turn data and never reruns the census. Both output files are private and
+written only to a new separate scratch directory; no network or subprocesses.
+
+The numerical projection omits arbitrary labels, strings, dates and identifiers.
+It distinguishes per-copy coverage from unique eligible replies, unconfigured
+scope from an empty scope, and missing forecasts from zero innovation. Behaviour
+and checkpoint/block groups stay separate; paired full-reply and excerpt controls
+remain distinct, without pooled scores, intervals or a pass verdict. Zero eligible
+observations produce an explicit insufficient outcome. Real results are pending
+with the reviewer, not reconstructed or fabricated here.
+
+165 affected isolated checks pass: formatter 15, witness 106, baseline coverage 13,
+excerpt controls 20 and ownership 11. Actual synthetic replay-to-formatter tests
+cover empty and populated runs, privacy projection, inconsistent counts, invalid
+numbers, manifest/output tampering, scratch/symlink/no-overwrite rules and private
+permissions. Reports regenerated. No model/paid call, actual test send, live write,
+merge or deployment. Previous submitted tips remain fixed; full Aegis suite and
+private census remain with the reviewer.
+
+## 8 November — review coverage denominators
+
+`codex/judges-review-coverage` extends the pending shadow formatter to display the
+existing optional excerpt-control coverage beside paired scores. Unique replies,
+scorable targets and forecast rows retain different denominators. Missing pairs
+and predictions remain visible; multiple checkpoints cannot inflate unique-target
+coverage. Zero denominators are undefined, while omitted coverage stays unsupplied.
+Cross-report counts must agree with the census, innovation groups and comparison
+rows. Private block labels and day activity remain omitted; no scores or selection
+are recomputed and no data is collected.
+
+68 affected isolated checks pass: new report coverage 9, formatter 15, excerpt
+controls 20, baseline coverage 13 and ownership 11. The new tests use actual
+synthetic producer/replay outputs, including one target with two checkpoints,
+missing receipts, no forecasts, unfinished blocks and inconsistent counts.
+Required reports regenerated; whitespace clean. The reviewer's private census
+remains in progress per note 22; no actual measurement is claimed or duplicated.
+Full Aegis suite/review remain there. No live writes, model/paid calls, actual test
+sends, merge or deployment; submitted previous branch tips remain fixed.
+
+## 8 November — dedicated disabled production sink
+
+`codex/judges-production-sink` implements note 23's independent config/destination,
+atomic 0600 packets, 0700 directory, nonblocking writer lock, bounded packet/byte/file
+counts, opportunistic expiry, kill switch and rollback contract. Existing capture
+hooks accept the explicit config pointer, without repointing SPARK_WORKSPACE or
+changing forecasts, value-map output or feeds. No config/environment was installed
+or enabled. Existing scratch capture retains precedence and its original guard.
+
+314 affected isolated checks pass, including 19 sink cases, actual synthetic
+self-forecast off/on equality and concurrent capacity handling. Required reports
+regenerated. A 100-call tiny synthetic local storage benchmark measured median
+1.139 ms, p95 1.300 ms and maximum 1.659 ms; Aegis end-to-end/occupancy measurements
+remain with review. Persistent status counts only lock-owning operations; other
+failures have process-local counters and are not silently claimed complete.
+
+The reviewer reported the strict census had zero eligible replies. Note 24 corrects
+its interpretation: historical served_by labels and compute-ledger model fields
+exist. Strict observed identity absence is not tracking absence. A separately
+labelled historical attribution tier is next; checkpoint/target-vector retention
+also remains open. No historical eligibility, delivery or lineage upgrade. Full
+Aegis suite, review and Gloria's enable decision remain outstanding; no merge,
+deploy, live write, model/paid call or actual test send occurred.
+
+## 9 November — historical model-attribution tiers
+
+`codex/judges-legacy-attribution` implements notes 24/25's corrected distinction:
+historical served_by/model labels exist even when strict observed identity is
+unknown. Optional offline attribution uses exact provider-request IDs first,
+otherwise a uniquely nearest foreground call within an explicit at-most-ten-second
+window and exact surface/caller map. Recorded labels, ledger attribution, observed
+receipt identity and unknown remain separate tiers. Conflicts, ties, reused calls,
+invalid nearest records and unknown chronology cannot silently improve the tier.
+Naive historical clocks require an explicit reviewer-supplied timezone; ambiguous
+or nonexistent local times remain unresolved. No current-host timezone is guessed.
+
+Aggregate counts are per assistant source copy, with label/ledger agreement and
+cutoff coverage made explicit. Model/provider/IDs/hashes and join methods stay in
+a private 0600 manifest-bound detail file, not public reports. The formatter shows
+the new tiers beside strict eligibility. Existing census and innovation outputs
+remain identical with the optional attribution object removed, tested through the
+actual CLI. No private census rerun or measured tier counts are claimed here.
+
+167 affected isolated checks pass: attribution 17, strict witness 106, formatter
+15, report coverage 9, capture/replay 9 and ownership 11. The new fixtures cover
+legacy-only labels, exact-ID priority/no fallback, time/caller scope, ties, bad
+nearest records, duplicate/reused calls, explicit timezone/DST, copy-versus-turn
+counts, unknown clocks, observed precedence, privacy and unchanged strict results.
+Reports regenerated; whitespace clean. Full Aegis suite/private census rerun remain
+with the reviewer. Historical model-switch stratification is recommended with tiers
+and matching methods labelled; character-training admission is not changed. The
+separate sink remains disabled and in review; checkpoint/target retention is next.
+No live write, model/paid call, real test send, merge or deployment.

@@ -6560,3 +6560,39 @@ sidecars against exact forecast rows and emits aggregate consistency diagnostics
 source identity, complete ancestry and delivery remain unresolved where missing.
 The approved private census is ready with the reviewer and is not duplicated or
 blocked by this newer work. Full Aegis suite/review remain there; no live changes.
+
+## 8 November — shadow review report scaffolding
+
+`codex/judges-shadow-review-report` adds a private offline formatter for measured
+replay aggregates, requested in coordination note 22. 165 affected isolated checks
+pass. It does not rerun the census, infer missing observations or make a pass claim.
+The reviewer is running the real snapshot census; its measured coverage is still
+pending for the actual shadow report. Full Aegis validation/review remain there.
+No feed or production change; generated reports stay private until reviewed.
+
+## 8 November — review coverage denominators
+
+`codex/judges-review-coverage` exposes the existing paired-control coverage in the
+private shadow report, distinguishing forecast rows from unique target replies and
+undefined fractions from zero. 68 affected isolated checks pass. Measured census
+results and full Aegis suite remain with the reviewer; no live or scoring change.
+
+## 8 November — dedicated shadow sink and corrected historical attribution
+
+`codex/judges-production-sink` implements the independent disabled sink requested
+in note 23, with config limits, private atomic writes, expiry, status and kill switch.
+314 affected isolated checks pass. No config/environment or production flag changed.
+Full Aegis suite and representative sink latency precede Gloria's enable decision.
+Note 24 confirms historical model labels already exist: implement their separate
+recorded-label/ledger-attributed tier next, without promoting them to observed or
+strict-eligible. Checkpoint-manifest and target-embedding retention remain open.
+
+## 9 November — historical model-attribution tiers ready for private rerun
+
+`codex/judges-legacy-attribution` adds optional per-copy observed / ledger_attributed /
+recorded_label / unknown counts, explicit caller/clock matching and private join
+details. 167 affected isolated checks pass. Strict eligibility and all live feeds
+are unchanged. The reviewer owns the corrected private census rerun and full Aegis
+suite. No historical training admission is decided here; descriptive per-model
+checks can use labelled tiers. Dedicated sink review/enablement and checkpoint /
+target-embedding retention remain separate, with retention next per note 25.
