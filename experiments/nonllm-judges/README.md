@@ -954,3 +954,20 @@ Errors print only `landings_projection_refused`. An interrupted/failed publicati
 must be treated as failed and retried into a new directory, never merged into an
 old projection. A valid output can still have zero anchors. This is a snapshot of
 latest positive ratings, not an event-time retraction system for historical scores.
+
+## Explicit offline growth adoption (note #63)
+
+[`adoption.py`](adoption.py) recomputes exact sustained windows from a retained
+private run and its cached input, renders dates/mode/surface-only private weekly
+cards, and signs explicit owner answers (growth / not him / not sure). Only a
+verified growth answer yields an offline adoption candidate, bound to the digest,
+active reference, full original membership, timezone and attribution view.
+The drift replay now also forbids updates on the local review day. Earlier scores
+remain unchanged. Existing admission/provenance/calibration gates still apply.
+
+[`ADOPTION.md`](ADOPTION.md) documents the proposed three-button phone interaction,
+private CLI schemas, HMAC trust/key-custody boundary, complete-answer-set and stale
+reference rules, and synthetic validation. This builds no UI or runtime wiring,
+generates no actual signing key, signs no real answer, and reads no live store.
+The low-level analyzer remains a claim-based pure function; a future private
+integrator must use the verification boundary and preserve its signed audit trail.

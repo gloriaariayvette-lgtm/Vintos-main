@@ -146,6 +146,15 @@ class Tests(unittest.TestCase):
         self.assertEqual(len(details['revisions']),1);self.assertEqual(details['revisions'][0]['effective_day'],'2021-01-13')
         self.assertTrue(details['drift'][-2]['sustained_shift'])
 
+    def test_review_day_never_changes_reference_even_before_first_reply(self):
+        ids=[self.add(d,SHIFT,2.5) for d in range(6,10)]
+        same=self.add(10,SHIFT,2.5,offset=100);self.add(11,SHIFT,2.5)
+        a=self.adoption(ids,10)
+        _,before=self.run_analysis();_,after=self.run_analysis(adoptions=[a])
+        self.assertEqual(next(r for r in before['voice'] if r['turn_id']==same),
+                         next(r for r in after['voice'] if r['turn_id']==same))
+        self.assertEqual(after['revisions'][0]['effective_day'],'2021-01-12')
+
     def test_bad_adoption_bindings_and_automatic_reviewer_refused(self):
         ids=[self.add(d,SHIFT,2.5) for d in range(6,10)]
         for field,value in (('reviewer','automatic'),('decision','persisted'),('observed_at',BASE)):
