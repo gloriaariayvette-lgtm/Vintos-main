@@ -311,3 +311,42 @@ file or a physical event is not automatically a label for every contemporaneous
 reply. The private exporter must bind actual retained evidence to an exact reply,
 record its mapping, and emit unknown where that link or meaning is unavailable.
 This runner does not read those stores or create new gate/latent-model calls.
+
+## Prospective mode evidence
+
+The server can now retain `mode_receipt` beside `generation_join` in its existing
+history/canonical rows and in the existing background interaction-ledger writer.
+This is a passive observation of the already executed gate, not a new classifier,
+mode switch or retrospective inference. It remains active when shadow capture is
+off. No new file, queue, sender or model call is added; decision observation only
+updates request-local memory. Existing history writers keep their timing, and the
+ledger receives the bounded JSON via its existing background process environment.
+
+`turn-mode-decision-v1` contains existing turn/request IDs, surface, a receipt ID,
+start/decision times, normalized mode and fixed basis, optional refusal-guard
+reroute decision time/reason, the evaluated and selected completion IDs, and raw/stored
+response hashes. It contains no prompt, reply, gate answer, model name or vector.
+Exact YES maps to intimate; exact NO to opening_everyday. Ambiguous output, gate
+failure before a decision, and a skipped gate stay unknown. The existing routing
+condition is preserved even if an ambiguous answer contains YES; that cannot
+become a known mode merely because a reroute occurred. A later refusal-check
+failure does not erase a completed gate decision. A manual provider toggle does
+not establish an intimate mode.
+
+The evaluated completion may be the refused first reply while the selected
+completion is the replacement. Both IDs remain explicit. A reroute decision is not proof that the replacement
+succeeded; after a failed attempt the selected ID can remain the original. History can include
+device marks absent from the ledger's reply, so each sink has its own exact stored
+text hash. Invalid/missing identities or a selected-response mismatch omit the
+receipt. Writer/import validation rejects extra fields, inconsistent labels,
+invalid timestamps and wrong turn/surface/text bindings. These are provenance
+checks, not cryptographic authentication of a source.
+
+For a private future export, validate the receipt against its stored row with
+`request_trace.mode_receipt_fields`, then produce the existing mode_observations
+contract: exact reply ID/hash, source router_decision, the recorded decision time,
+and a SHA-256 of the retained receipt. Use only known gate results for known modes;
+leave missing/skipped/error/ambiguous observations unknown. Do not backfill earlier
+rows, infer a mode from serving family, or treat copied store metadata as new
+independent evidence. The gate's coverage limitation remains visible in the
+[plain-language status](../../docs/judges-character-status.md).

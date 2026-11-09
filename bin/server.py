@@ -11059,6 +11059,20 @@ Your current self-model (excerpt):
                 pass
             return None, options
 
+        _mode_observation = None
+        try:
+            from request_trace import TurnModeDecision
+            _mode_observation = TurnModeDecision(_turn.turn_id if _turn is not None else "", _surface)
+        except Exception:
+            pass
+        def _mode_note(event, value=None):
+            try:
+                if _mode_observation is not None:
+                    _mode_observation.note(event, value,
+                        _history_join_selected.join if _history_join_selected is not None else None)
+            except Exception:
+                pass
+
         _witness_selected = None
         _history_join_selected = None
         # No thinking before an avatar reply (Gloria, 2026-10-01: "Off"). It had been on since before this
@@ -11128,12 +11142,15 @@ Your current self-model (excerpt):
                     _o = await _mr.gemma_call([{"role": "user", "content": _p}], temp=0.0, max_tokens=_n)
                     return str(_o or "").strip().upper()
                 _um = (msg.message or "")[:600]
-                if "YES" in await _gaio.wait_for(_gask(_GATE % _um, 6), timeout=8):
+                _gate_answer = await _gaio.wait_for(_gask(_GATE % _um, 6), timeout=8)
+                _mode_note("gate", _gate_answer)
+                if "YES" in _gate_answer:
                     _gj = await _gaio.wait_for(_gask(_JUDGE % (_um, (reply or "")[:900]), 8), timeout=10)
                     if "DECLIN" in _gj:
                         print(f"[guard] {_model_used} declined intimate content - re-routing to grok", flush=True)
                         _declined_by = {"argon": "Argon", "sol": "Sol", "gemini": "Argon"}.get(
                             str(_model_used).split(":")[0].split("(")[0].lower(), "Claude")
+                        _mode_note("reroute")
                         _mr.arm_grok_turns(1)
                         _witness_request, _witness_kwargs = _prepare_witness(messages[0]["content"], messages[1:], params, _reason)
                         _history_join_candidate, _witness_kwargs = _prepare_history_join(_witness_kwargs)
@@ -11168,6 +11185,7 @@ Your current self-model (excerpt):
                                 timeout=5)
                         except Exception: pass
         except Exception as _ge:
+            _mode_note("error")
             print("[guard] check skipped:", _ge, flush=True)
 
         _history_join_raw = reply
@@ -11325,6 +11343,19 @@ Your current self-model (excerpt):
                     _history_join_fields = _history_join_selected.fields(_history_join_raw, reply + _turn_marks)
             except Exception:
                 pass
+            _mode_writer_env = {"VINTOS_TURN_MODE_RECEIPT": ""}
+            try:
+                if _mode_observation is not None and _history_join_selected is not None:
+                    _history_join_fields.update(_mode_observation.fields(
+                        _history_join_selected.join, _history_join_raw, reply + _turn_marks))
+                    _mode_ledger_fields = _mode_observation.fields(
+                        _history_join_selected.join, _history_join_raw, reply)
+                    if _mode_ledger_fields:
+                        from request_trace import MODE_ENV
+                        import json as _mode_json
+                        _mode_writer_env[MODE_ENV] = _mode_json.dumps(_mode_ledger_fields["mode_receipt"], allow_nan=False)
+            except Exception:
+                pass
             av_history.append({"role": "assistant", "content": reply + _turn_marks,
                                "ts": __import__("time").time(), "served_by": str(_model_used),
                                **_history_join_fields,
@@ -11375,7 +11406,7 @@ Your current self-model (excerpt):
                 _rr_skip = ("nudge_gloria", "imprint", "voice_coherence", "ledger") if _defer_session_ledger else ("nudge_gloria", "imprint", "voice_coherence")
                 _post_turn(_surface, _counterpart_text, reply, skip=_rr_skip,
                            ledger_media=_sent_media(msg, _note),
-                           writer_env=dict(_prov_writer_env or os.environ, VINTOS_DEVICE_MARKS=_turn_marks),
+                           writer_env=dict(_prov_writer_env or os.environ, VINTOS_DEVICE_MARKS=_turn_marks, **_mode_writer_env),
                            turn_id=(_turn.turn_id if _turn is not None else ""),
                            test_mode=(getattr(_turn, "test_mode", None) if _turn is not None else None),
                            on_writer=(lambda ok: _tc.note_writer(_turn, ok)))   # avatar: no imprint or voice-coherence by declaration

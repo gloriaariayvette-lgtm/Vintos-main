@@ -7217,3 +7217,28 @@ entrypoint; ownership results are recorded in the dated handoff. No real private
 records were accessed. Real coverage is still pending the independent rerun.
 Notification delivery remains rate-limited until the recorded 11:43:46 CST retry
 window; no early retry, new destination, live writes, merge or deployment.
+
+
+## 9 November — prospective mode decision receipts and honest character2 summary
+
+`codex/judges-prospective-mode-receipt` follows 97ea9e09, implementing note #36.
+Existing gate decisions now produce content-free request-local metadata with turn,
+request and evaluated/selected completion IDs. Exact YES/NO provide mode; skipped,
+failed or ambiguous gates remain unknown. Refusal-guard reroute decisions have
+separate times/causes and do not claim a replacement succeeded. No extra gate,
+provider call or routing mutation. Metadata is retained beside generation_join
+in history/canonical records and via the existing background ledger environment;
+receipt construction performs no file/network I/O. Existing history write timing
+is unchanged. Both ledger twins agree; merged chat retains the new field.
+50 isolated checks pass: mode receipts 9, completion joins 10, router completions
+7, device marks 13, ownership 11. All sends/providers are stubbed and stores are
+scratch. Six changed Python sources compile without execution. Generated reports
+refreshed unchanged. The plain-language status page uses only reviewer-reported
+character2 aggregates: 0/123 mode coverage, zero controls, and no stability verdict.
+These code changes are for review, not deployed. Gate-bypassing routes will still
+be unknown; a provider toggle is not an independent intimacy decision.
+New note #37 authorizes historical somatic marks first and an explicitly labelled
+owner family rule second; that is next work on a separate branch, with the private
+character3 run left to the reviewer. The reported latent-feed flake remains a
+separate follow-up. Completion ntfy alerts are cancelled under the user's new rule;
+only new unresolved issues may use ntfy. No live writes, merge or deployment.

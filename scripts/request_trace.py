@@ -88,6 +88,85 @@ def prepare_reply_join(options):
     return observation, {'observer': observation.observe}
 
 
+MODE_ENV = 'VINTOS_TURN_MODE_RECEIPT'
+MODE_FIELDS = {'schema','receipt_id','turn_id','request_id','surface','started_at','decision_at',
+               'mode','basis','reroute_decision_at','reroute_reason','evaluated_completion_id','selected_completion_id',
+               'raw_response_sha256','response_sha256'}
+
+
+class TurnModeDecision:
+    """In-memory observation of the existing gate; never calls, routes or writes."""
+    def __init__(self, turn_id, surface, clock=time.time):
+        import re
+        import uuid
+        request_id=current.get()
+        if (not isinstance(turn_id,str) or re.fullmatch(r'[A-Za-z0-9:._-]{1,160}',turn_id) is None
+                or not isinstance(request_id,str) or re.fullmatch(r'[A-Za-z0-9:._-]{1,160}',request_id) is None
+                or surface not in ('avatar','reelroom')):
+            raise ValueError('mode observation needs existing turn and request identities')
+        self.clock=clock
+        self.row=dict(schema='turn-mode-decision-v1',receipt_id=uuid.uuid4().hex,turn_id=turn_id,
+            request_id=request_id,surface=surface,started_at=clock(),decision_at=None,mode='unknown',
+            basis='gate_not_evaluated',reroute_decision_at=None,reroute_reason=None,evaluated_completion_id=None)
+
+    def note(self, event, value=None, join=None):
+        if event=='gate':
+            answer=value.strip().upper() if isinstance(value,str) else ''
+            self.row.update(decision_at=self.clock(),mode={'YES':'intimate','NO':'opening_everyday'}.get(answer,'unknown'),
+                basis={'YES':'gate_yes','NO':'gate_no'}.get(answer,'gate_ambiguous'),
+                evaluated_completion_id=(join or {}).get('completion_id'))
+        elif event=='reroute':self.row.update(reroute_decision_at=self.clock(),reroute_reason='refusal_guard')
+        elif event=='error' and self.row['decision_at'] is None:
+            self.row.update(decision_at=self.clock(),basis='gate_error')
+
+    def fields(self, join, raw_text, stored_text):
+        import hashlib
+        if (not isinstance(join,dict) or join.get('request_trace_id')!=self.row['request_id']
+                or not isinstance(raw_text,str) or not isinstance(stored_text,str)
+                or join.get('raw_response_sha256')!=hashlib.sha256(raw_text.encode()).hexdigest()):return {}
+        receipt=dict(self.row,selected_completion_id=join.get('completion_id'),
+            raw_response_sha256=join['raw_response_sha256'],response_sha256=hashlib.sha256(stored_text.encode()).hexdigest())
+        return mode_receipt_fields(receipt,self.row['turn_id'],self.row['surface'],stored_text)
+
+
+def mode_receipt_fields(receipt, turn_id, surface, text):
+    """Validate content-free fields and exact stored-reply binding; no trust inference."""
+    import hashlib
+    import math
+    import re
+    if not isinstance(receipt,dict) or set(receipt)!=MODE_FIELDS or not isinstance(text,str):return {}
+    if (receipt['schema']!='turn-mode-decision-v1' or receipt['turn_id']!=turn_id or receipt['surface']!=surface
+            or surface not in ('avatar','reelroom')
+            or any(not isinstance(receipt[k],str) or re.fullmatch(r'[A-Za-z0-9:._-]{1,160}',receipt[k]) is None for k in ('turn_id','request_id'))
+            or any(not isinstance(receipt[k],str) or re.fullmatch(r'[0-9a-f]{32}',receipt[k]) is None for k in ('receipt_id','selected_completion_id'))
+            or receipt['evaluated_completion_id'] is not None and (not isinstance(receipt['evaluated_completion_id'],str)
+                or re.fullmatch(r'[0-9a-f]{32}',receipt['evaluated_completion_id']) is None)
+            or not isinstance(receipt['raw_response_sha256'],str) or re.fullmatch(r'[0-9a-f]{64}',receipt['raw_response_sha256']) is None
+            or receipt['response_sha256']!=hashlib.sha256(text.encode()).hexdigest()):return {}
+    expected={'gate_not_evaluated':'unknown','gate_error':'unknown','gate_ambiguous':'unknown',
+              'gate_yes':'intimate','gate_no':'opening_everyday'}
+    if not isinstance(receipt['basis'],str) or receipt['basis'] not in expected or receipt['mode']!=expected[receipt['basis']]:return {}
+    for key in ('started_at','decision_at','reroute_decision_at'):
+        value=receipt[key]
+        if value is None and key!='started_at':continue
+        if type(value) not in (int,float) or not math.isfinite(value) or value<0:return {}
+    if (receipt['basis']=='gate_not_evaluated')!=(receipt['decision_at'] is None):return {}
+    if receipt['decision_at'] is not None and receipt['decision_at']<receipt['started_at']:return {}
+    if receipt['reroute_decision_at'] is not None and (receipt['decision_at'] is None or receipt['reroute_decision_at']<receipt['decision_at']):return {}
+    if receipt['reroute_reason']!=('refusal_guard' if receipt['reroute_decision_at'] is not None else None):return {}
+    if receipt['reroute_decision_at'] is not None and receipt['basis'] not in ('gate_yes','gate_ambiguous'):return {}
+    if receipt['basis'] in ('gate_yes','gate_no','gate_ambiguous') and receipt['evaluated_completion_id'] is None:return {}
+    return {'mode_receipt':dict(receipt)}
+
+
+def mode_receipt_from_env(environ, turn_id, surface, text):
+    try:
+        raw=environ.get(MODE_ENV,'')
+        if not isinstance(raw,str) or not 0<len(raw)<=4096:return {}
+        return mode_receipt_fields(json.loads(raw),turn_id,surface,text)
+    except Exception:return {}
+
+
 def record(path, method, status, started):
     row = {'at': time.time(), 'request_id': current.get(), 'route': path,
            'method': method, 'status': status, 'latency_ms': round((time.monotonic()-started)*1000)}
