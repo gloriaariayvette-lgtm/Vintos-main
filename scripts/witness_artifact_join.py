@@ -4,7 +4,7 @@ import json
 import math
 import re
 from witness_receipts import admission, digest, final_response, joined_identity, row_receipt, instant
-from witness_self_artifacts import bound_source, availability_receipt, validate_encoding_observation, validate_forecast_encoding_link
+from witness_self_artifacts import bound_source, availability_receipt, validate_encoding_observation, validate_forecast_encoding_link, checkpoint_observed_fields
 
 
 def fingerprint(value):
@@ -62,6 +62,7 @@ def claims(packet):
         raise ValueError('unsupported self artifact packet')
     if not isinstance(manifest, dict) or not _hash(manifest.get('checkpoint_id')):
         raise ValueError('invalid retained checkpoint identity')
+    checkpoint_observed_fields(manifest)
     for ref, value in values:
         if (not isinstance(ref, dict) or not _hash(value.get('encoder_input_sha256'))
                 or type(value.get('encoder_input_chars')) is not int
@@ -187,6 +188,7 @@ def join_artifacts(admitted, sources, nodes, packets, cutoff, forecasts=()):
             'encoding_consistency': encoding_consistency(encodings),
             'encoder_call_cost': encoder_call_cost(list(unique.values())),
             'checkpoint_availability_states': checkpoint_availability(list(unique.values()), forecasts, cutoff),
+            'checkpoint_consistency': checkpoint_consistency(list(unique.values())),
             'encoder_parameter_observation_states': dict(sorted(Counter(
                 validate_encoding_observation(p.get('encoding_observation'), p.get('encoder_input_sha256'), p.get('emb'))
                 if p.get('schema') == 'self-audit-embedding-v1' else forecast_parameter_state(p)
@@ -357,3 +359,54 @@ def validate_encoder_call_cost(value, references):
     n,total,peak=(count(sizes[k]) for k in ('observed','total_bytes','max_bytes'))
     if (n>2*(calls-conflicts) or peak>MAX_ENCODER_STATE_BYTES or bool(n)!=bool(peak)
             or not peak<=total<=peak*n): raise ValueError('invalid cost size totals')
+
+
+CHECKPOINT_CONSISTENCY_STATES = ('consistent_observed_fields','conflicting_observations',
+                                 'incomplete_observations','legacy_only')
+
+
+def checkpoint_consistency(packets):
+    """Compare fields carried by the same checkpoint hash, never certify its lineage."""
+    groups = defaultdict(list)
+    observed = legacy = 0
+    for packet in packets:
+        manifest = (packet['checkpoint'] if packet['schema']=='self-audit-embedding-v1'
+                    else packet['artifacts']['checkpoint'])
+        fields = checkpoint_observed_fields(manifest)
+        groups[manifest['checkpoint_id']].append(fields)
+        if fields is None: legacy += 1
+        else: observed += 1
+    states = dict.fromkeys(CHECKPOINT_CONSISTENCY_STATES,0)
+    for copies in groups.values():
+        known={fingerprint(v) for v in copies if v is not None}
+        if len(known)>1: state='conflicting_observations'
+        elif not known: state='legacy_only'
+        elif any(v is None for v in copies): state='incomplete_observations'
+        else: state='consistent_observed_fields'
+        states[state] += 1
+    return {'scope':'supplied_checkpoint_observations_only','manifest_copies':len(packets),
+            'checkpoint_groups':len(groups),'observed_manifests':observed,'legacy_manifests':legacy,
+            'states':states,'lineage':'unverified','scoring_effect':'none'}
+
+
+def validate_checkpoint_consistency(value, packets):
+    def count(n):
+        if type(n) is not int or n<0: raise ValueError('invalid checkpoint consistency count')
+        return n
+    if (not isinstance(value,dict) or set(value)!={'scope','manifest_copies','checkpoint_groups',
+            'observed_manifests','legacy_manifests','states','lineage','scoring_effect'}
+            or value['scope']!='supplied_checkpoint_observations_only'
+            or value['lineage']!='unverified' or value['scoring_effect']!='none'):
+        raise ValueError('invalid checkpoint consistency scope')
+    copies,groups,observed,legacy=(count(value[k]) for k in
+        ('manifest_copies','checkpoint_groups','observed_manifests','legacy_manifests'))
+    states=value['states']
+    if not isinstance(states,dict) or set(states)!=set(CHECKPOINT_CONSISTENCY_STATES):
+        raise ValueError('invalid checkpoint consistency states')
+    consistent,conflicts,incomplete,old=(count(states[k]) for k in CHECKPOINT_CONSISTENCY_STATES)
+    if (copies!=count(packets) or observed+legacy!=copies or groups>copies or bool(groups)!=bool(copies)
+            or consistent+conflicts+incomplete+old!=groups
+            or consistent+2*conflicts+incomplete>observed or incomplete+old>legacy
+            or (not (consistent+conflicts+incomplete) and observed)
+            or (not (conflicts+incomplete+old) and legacy)):
+        raise ValueError('invalid checkpoint consistency totals')

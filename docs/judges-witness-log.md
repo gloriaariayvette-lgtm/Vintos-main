@@ -2010,3 +2010,22 @@ clock ambiguity, cutoff, duplicate rows, nonmutation, private-label exclusion an
 the actual CLI's permissions/hashes. No real-data census or execution evidence was
 read. Reviewer owns that check using the already-copied evidence. No live writes,
 new model calls, enablement, merge or deployment; heartbeat continues.
+
+
+## 9 November — checkpoint field consistency
+
+`codex/judges-checkpoint-consistency` follows 2895b42f. Offline artifact ingestion
+now validates the existing versioned checkpoint observation contract, rejecting
+malformed fields or invented verified identities. Schemaless legacy records with
+valid hashes remain unknown. The aggregate compares manifests sharing a checkpoint
+hash, excluding separately validated read clocks, and preserves conflicts with
+incomplete peers. It emits only fixed counts, not labels, dates, hashes or vectors.
+
+111 affected isolated checks pass: new consistency 13, joins 30, availability 12,
+report 22, cost 14, self artifacts 20. Tests cover current and older producer shapes,
+read-clock differences, all metadata conflict fields, malformed/forged copies,
+legacy mixing, duplicate references/packets, forecast/audit grouping, nonmutation
+and public formatter conservation/privacy. Consistency is not authentication or
+fitting-lineage verification; content joins and scoring permission stay separate.
+No runtime producers, capture flags, private inputs, model calls, live writes,
+merge or deployment changed. Host integration remains with review.

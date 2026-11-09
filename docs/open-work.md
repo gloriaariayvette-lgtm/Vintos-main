@@ -6900,3 +6900,14 @@ No private evidence has been newly collected or measured. Reviewer should inspec
 fixed aggregate counts on the existing admitted copy; origin remains unconfirmed
 without execution provenance. No automatic relabelling, exclusion, model
 attribution, training decision, live writes, merge or deployment occurs.
+
+
+## 9 November — checkpoint manifest consistency
+
+`codex/judges-checkpoint-consistency`, on 2895b42f, validates versioned checkpoint
+observation shapes and reports contradictions under the same checkpoint hash.
+Legacy gaps stay explicit; read clocks are not compared as immutable metadata.
+111 affected isolated checks pass. This completes the consistency diagnostic,
+not verification of real weights, encoder identity, fitting lineage or target
+association. Runtime capture and scoring rules are unchanged. Reviewer owns host
+integration and existing private evidence; no live reads/writes or deployment.

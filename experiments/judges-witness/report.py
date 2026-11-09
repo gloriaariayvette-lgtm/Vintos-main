@@ -103,6 +103,15 @@ def artifact_coverage(section, eligible):
         if not isinstance(values,dict) or set(values)-set(labels) or sum(count(n) for n in values.values()) != unique: invalid()
         timing += [f'- Encoder parameter observation {label}: {count(values.get(label,0))} packets.' for label in labels]
         timing += ['', 'Matching CPU parameter snapshots and retained feature-call links are partial observations. Tokenizer, execution code and training lineage remain unverified; missing call links are not inferred.', '']
+    if 'checkpoint_consistency' in section:
+        from witness_artifact_join import validate_checkpoint_consistency, CHECKPOINT_CONSISTENCY_STATES
+        c=section['checkpoint_consistency']
+        validate_checkpoint_consistency(c,unique)
+        timing += [f"- Checkpoint observation copies: {c['manifest_copies']}; checkpoint groups: {c['checkpoint_groups']}; validated observation shapes: {c['observed_manifests']}; legacy shapes: {c['legacy_manifests']}."]
+        timing += [f"- Checkpoint consistency {key}: {c['states'][key]} groups." for key in CHECKPOINT_CONSISTENCY_STATES]
+        timing += ['', 'These compare supplied fields grouped by checkpoint hash. Read-availability clocks are separate; missing legacy fields stay unknown. Consistent fields do not authenticate checkpoint bytes, encoder identity or fitting lineage, and reported dates remain reported. Content joins and scoring permission are unchanged.', '']
+    else:
+        timing += ['Checkpoint field-consistency coverage is unavailable in this legacy report.', '']
     if 'encoder_call_cost' in section:
         from witness_artifact_join import validate_encoder_call_cost
         from witness_self_artifacts import TIMING_STAGES

@@ -1921,3 +1921,45 @@ directory. Report only the fixed aggregate section; keep private caller records,
 IDs and timestamps private. A matching pattern requires independent execution
 provenance before it can establish origin. The new contract has 55 passing
 isolated coverage/attribution checks; no live source was read or model called.
+
+
+### Checkpoint observation consistency
+
+The offline artifact reader now validates `self-checkpoint-observation-v1`
+manifests before using their content references. It requires the producer's
+bounded byte count, hash fields, supported mode, bounded reported strings and
+explicitly unobserved training/encoder identity. Invented verified identities,
+weights-retained flags, malformed current-version fields and unsupported schemas
+are rejected; they cannot disappear behind a good copy. Older observations without
+availability are accepted. Schemaless legacy manifests with a valid checkpoint
+hash remain legacy evidence and never acquire missing identity fields.
+
+The `checkpoint_consistency` aggregate groups one manifest per unique supplied
+artifact packet by checkpoint hash. Repeated source references do not multiply it.
+It compares the metadata hash, byte count, mode, source and reported fields, while
+validating read-availability clocks separately. Different read times for the same
+bytes are expected and do not create metadata conflicts. Groups are classified
+as consistent observed fields, conflicting observations, incomplete observations,
+or legacy only. Observed conflicts remain visible even with missing legacy peers.
+Consistent fields may come from a single observation; they do not mean independent
+confirmation. These counts describe supplied copies, not unique physical loads.
+
+Only fixed labels/counts are published: manifest copies, checkpoint groups,
+validated observation shapes, legacy shapes and the four group states. Hashes,
+reported labels/dates, paths and vectors are absent. The formatter checks count
+conservation and possible minimum group sizes. Older reports lacking this section
+explicitly say consistency coverage is unavailable.
+
+This is an internal consistency check, not authentication of the underlying bytes.
+It does not reconstruct weights, certify a training completion date, establish
+encoder/tokenizer/runtime identity, choose a forecast target or admit a record for
+scoring. Valid conflicting manifests remain visible alongside the separate content
+joins; content equality is still a separate question. Existing runtime capture,
+forecasts and training/evaluation rules are unchanged. Full fitting-lineage and
+forecast-target association remain unresolved.
+
+111 affected local isolated checks pass: consistency 13, artifact joins 30,
+checkpoint availability 12, report 22, retained-call cost 14, self artifacts 20.
+All inputs are synthetic; no real checkpoint, private snapshot, model or live
+store was accessed. Host integration and private retained-data checks remain with
+review. No capture is enabled by this change.

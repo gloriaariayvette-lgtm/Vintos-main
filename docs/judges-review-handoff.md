@@ -227,3 +227,21 @@ reviewer can rerun the documented coverage command on the existing admitted copy
 with a new private output directory and report only `historical_fixture_coverage`.
 No recollection is requested. Retained execution evidence is still needed to
 establish origin; none was inspected by this worker. No merge or deployment.
+
+
+## Checkpoint consistency increment
+
+`codex/judges-checkpoint-consistency` descends from 2895b42f. Offline ingestion
+validates the existing manifest contract and reports differing metadata under the
+same checkpoint hash. Read-availability clocks are separately validated; they do
+not make identical checkpoints conflict merely because they were read at different
+times. Legacy peers remain incomplete, and cannot hide known conflicts. Current
+version malformed/forged fields fail explicitly rather than being dropped.
+
+111 affected isolated checks pass (consistency 13, joins 30, availability 12,
+report 22, cost 14, self artifacts 20). No raw checkpoint is authenticated by this
+check, no reported date becomes an observed training date, and no scoring/admission
+change is made. The aggregate exposes only counts. Runtime capture remains exactly
+as before; real encoder/runtime/fitting lineage and forecast-target association
+are still open. Full host integration and private copied-evidence review remain
+yours; no enabling, merge or deployment.

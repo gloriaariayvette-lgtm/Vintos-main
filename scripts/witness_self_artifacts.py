@@ -44,6 +44,35 @@ def checkpoint(raw, meta, availability=None):
             'weights_retained': False, 'availability': availability_receipt(availability)}
 
 
+
+def checkpoint_observed_fields(value):
+    """Validate this producer's manifest shape; legacy identity-only data stays unknown."""
+    def hashed(v):
+        return isinstance(v,str) and len(v)==64 and all(c in '0123456789abcdef' for c in v)
+    if not isinstance(value,dict) or not hashed(value.get('checkpoint_id')):
+        raise ValueError('invalid checkpoint observation identity')
+    if value.get('schema') is None:
+        return None
+    required = {'schema','checkpoint_id','byte_count','metadata_sha256','source','mode',
+                'reported_trained_through','reported_calibrated_through','reported_trained_at',
+                'reported_encoder_label','trained_at','encoder_id','training_completion_evidence',
+                'encoder_weights_identity','weights_retained'}
+    if (set(value)-{'availability'}!=required or value['schema']!='self-checkpoint-observation-v1'
+            or type(value['byte_count']) is not int or not 0<value['byte_count']<=MAX_CHECKPOINT
+            or not hashed(value['metadata_sha256']) or value['mode'] not in ('self_ahead','self_on_message')
+            or value['trained_at'] is not None or value['encoder_id'] is not None
+            or value['training_completion_evidence']!='unobserved'
+            or value['encoder_weights_identity']!='unobserved' or value['weights_retained'] is not False):
+        raise ValueError('invalid checkpoint observation contract')
+    for key in ('source','reported_trained_through','reported_calibrated_through','reported_trained_at','reported_encoder_label'):
+        if value[key] is not None and _text(value[key]) != value[key]:
+            raise ValueError('invalid reported checkpoint field')
+    if 'availability' in value and availability_receipt(value['availability'])!=value['availability']:
+        raise ValueError('invalid checkpoint availability observation')
+    # Read clocks vary across uses of identical bytes and are compared separately.
+    return {key:value[key] for key in sorted(required-{'schema','checkpoint_id'})}
+
+
 def vector(value):
     if not hasattr(value, '__len__') or not 1 <= len(value) <= 8192:
         raise ValueError('invalid vector size')
