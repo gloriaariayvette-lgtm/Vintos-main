@@ -58,6 +58,9 @@
     display: flex; align-items: center; justify-content: center; font-size: 15px; }
   #drawer.open #drawer-handle .chev { transform: rotate(180deg); }
   #drawer-handle .chev { transition: transform 320ms ease; }
+  /* no double-tap zoom delay: a slow handle made her tap again, and the second tap landed on GCS */
+  #drawer button { touch-action: manipulation; }
+  #drawer-handle:active { background: rgba(255,255,255,0.12); }
   #drawer-body { background: var(--panel); border: 1px solid var(--line); border-right: none;
     border-radius: 14px 0 0 14px; padding: 16px 18px; display: flex; flex-direction: column;
     gap: 14px; min-width: 190px; backdrop-filter: blur(14px); }
@@ -267,14 +270,29 @@
 
   /* ---------- drawer + controls ---------- */
   const drawer = document.getElementById('drawer');
-  document.getElementById('drawer-handle').addEventListener('click', () => drawer.classList.toggle('open'));
+  // 9 November: the handle sometimes answered late, she tapped again, and a tap meant for the model
+  // toggle reached GCS while the drawer was still sliding. The handle ignores repeats for 400ms, and
+  // nothing inside the drawer acts until it has been open and still for 450ms (the slide is 320ms).
+  let drawerMovedAt = 0;
+  document.getElementById('drawer-handle').addEventListener('click', () => {
+    if (Date.now() - drawerMovedAt < 400) return;
+    drawerMovedAt = Date.now();
+    drawer.classList.toggle('open');
+  });
+  const settled = () => drawer.classList.contains('open') && Date.now() - drawerMovedAt >= 450;
+  const guarded = (fn) => () => { if (settled()) fn(); };
 
   const modelBtn = document.getElementById('model-toggle');
-  modelBtn.addEventListener('click', () => emit('model-toggle'));
+  modelBtn.addEventListener('click', guarded(() => emit('model-toggle')));
   function setModel(name) { modelBtn.textContent = '✦ ' + name; }
 
-  document.getElementById('btn-call').addEventListener('click', () => emit('call'));
-  document.getElementById('btn-gcs').addEventListener('click', () => emit('gcs'));
+  document.getElementById('btn-call').addEventListener('click', guarded(() => emit('call')));
+  // GCS: one press per 3s from this button, however many taps arrive
+  let gcsAt = 0;
+  document.getElementById('btn-gcs').addEventListener('click', guarded(() => {
+    if (Date.now() - gcsAt < 3000) return;
+    gcsAt = Date.now(); emit('gcs');
+  }));
   // review 337: ONE close path. It stops and releases every media layer before telling the host, so a
   // later handler cannot leave a video decoding behind an invisible overlay. Idempotent.
   let closed = false;
