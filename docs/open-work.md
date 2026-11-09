@@ -7295,3 +7295,21 @@ mode decisions, references, controls, thresholds or public scores. No private
 collection, encoding/model call, live write, merge or deployment. Claude owns the
 private character3 run; its aggregates have not arrived. The latent-feed failure
 trace remains requested; no speculative fix or repeated alert. Heartbeat ACTIVE.
+
+
+## 9 November — distinguish absent mode measurements from measured zeros
+
+`codex/judges-mode-coverage-unknown` follows 32beae6f. Review found that both
+summary renderers treated absent source counters in older schema-v3 reports as
+zero, although those reports never measured source-labelled mode coverage. They
+now state not recorded/not measured when the recording-state field is absent.
+New sparse-counter reports still preserve measured zeros. Somatic disagreement
+is not measured when no labels are comparable; zero disagreements with a positive
+denominator remains zero. Invalid state flags/counts fail without echoing metadata.
+
+Both new regressions reproduced the issue before the fix; 61 isolated prototype
+checks pass afterward. Ownership validation is recorded in the coordination handoff.
+This is a presentation correction only: no mode/source assignment, scoring,
+reference/control selection or input admission change. No private data, model calls,
+live writes, merge or deployment. Character3 and the latent-feed failure trace
+remain with the reviewer. No repeated status alert; heartbeat remains ACTIVE.

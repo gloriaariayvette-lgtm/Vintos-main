@@ -880,5 +880,30 @@ class Tests(unittest.TestCase):
         public=''.join((out/name).read_text() for name in ('aggregate.json','summary.md','reader-summary.md'))+result.stdout+result.stderr
         for value in (first['turn_id'],first['response_sha256'],event['evidence_sha256']):self.assertNotIn(value,public)
 
+    def test_legacy_mode_reports_do_not_invent_zero_source_measurements(self):
+        report,_=P.run(self.bundle,self.cutoff)
+        report['coverage']['mode_observations']={'linked_observations':32,'opening_everyday':32}
+        for render in (P.render_summary,P.render_reader_summary):
+            text=render(report)
+            self.assertIn('Mode source coverage was not recorded',text)
+            self.assertNotIn('router_decision=0',text)
+            self.assertNotIn('Somatic coverage: 0 replies',text)
+            self.assertNotIn('0 disagreements',text)
+
+    def test_recorded_zero_coverage_keeps_disagreement_unmeasured_without_pairs(self):
+        report,_=P.run(self.bundle,self.cutoff)
+        for render in (P.render_summary,P.render_reader_summary):
+            text=render(report)
+            self.assertIn('router_decision=32',text)
+            self.assertIn('Somatic coverage: 0 replies',text)
+            self.assertIn('disagreement not measured (no comparable replies)',text)
+        counts=report['coverage']['mode_observations']
+        counts.update(somatic_covered_replies=2,somatic_rule_comparable_replies=2,somatic_rule_disagreements=0)
+        self.assertIn('0 disagreements among 2 comparable',P.render_reader_summary(report))
+        counts['family_fallback_enabled']='private-sentinel'
+        with self.assertRaises(ValueError):P.render_reader_summary(report)
+        counts['family_fallback_enabled']=0;counts['somatic_rule_disagreements']=3
+        with self.assertRaises(ValueError):P.render_summary(report)
+
 
 if __name__=='__main__':unittest.main()

@@ -677,13 +677,20 @@ def run(bundle,cutoff,private_control_matches=None,private_mode_assignments=None
 
 def mode_source_summary(report):
     counts=report['coverage']['mode_observations']
+    if 'family_fallback_enabled' not in counts:
+        return ['Mode source coverage was not recorded in this older report; somatic coverage and disagreement are not measured.', '']
+    if type(counts['family_fallback_enabled']) is not int or counts['family_fallback_enabled'] not in (0,1):
+        raise ValueError('invalid mode coverage state')
     def n(key):
         value=counts.get(key,0)
         if type(value) is not int or value<0:raise ValueError('invalid mode coverage')
         return str(value)
+    compared=n('somatic_rule_comparable_replies');disagreements=n('somatic_rule_disagreements')
+    if int(disagreements)>int(compared):raise ValueError('invalid mode disagreement count')
+    disagreement=(disagreements+' disagreements among '+compared+' comparable family-rule labels'
+                  if int(compared) else 'disagreement not measured (no comparable replies)')
     return ['Mode source counts across all admitted replies (including sensitivity): '+', '.join(src+'='+n('source_'+src) for src in MODE_LABEL_SOURCES)+'.',
-        'Somatic coverage: '+n('somatic_covered_replies')+' replies; '+n('somatic_rule_disagreements')+
-        ' disagreements among '+n('somatic_rule_comparable_replies')+' comparable family-rule labels. '+
+        'Somatic coverage: '+n('somatic_covered_replies')+' replies; '+disagreement+'. '+
         n('somatic_unbounded_marks')+' marks have no usable interval. Reviewed intervals use zero padding and a 7200-second cap.',
         'Somatic intervals are retrospective supplied reviews, not independently authenticated per-turn decisions. '+
         'Family fallback is an owner assumption, not evidence of cross-model stability.', '']

@@ -439,3 +439,13 @@ It is populated after admission/deduplication and before evaluation, so reviewin
 labels does not require recomputing scores or re-running preparation. Retain the
 original input and evidence bytes with the input hash in private-run.json; this
 file records normalized assignments, not independently authenticated source data.
+
+
+Both summary renderers accept older schema-v3 aggregate reports that predate
+source-labelled mode coverage. If their mode coverage lacks the
+`family_fallback_enabled` recording-state field, source/somatic measurements are
+shown as **not recorded/not measured**, never fabricated zeros. On newer reports,
+absent sparse counter entries remain genuine zeros. Disagreement requires at least
+one comparable label: zero comparable replies is **not measured**, while zero
+disagreements among a positive number of comparable replies remains a measured zero.
+Invalid recording flags and disagreement counts exceeding the denominator fail.
