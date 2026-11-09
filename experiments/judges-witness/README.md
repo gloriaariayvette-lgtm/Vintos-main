@@ -2032,3 +2032,21 @@ new tests exercise concurrent request contexts, shared coordinator key parity,
 missing/malformed input, exception behavior and the actual launcher, pending file
 and forecast log (including the full 66-character ID). No live inputs, models or
 services are used. Full integrated host validation remains with review.
+
+
+### Handoff cardinality
+
+The offline handoff diagnostic also checks the reverse relation: one pending
+resource cannot certify multiple distinct saved forecast rows. All valid supplied
+job receipts participate, including references to absent rows and rows outside
+the forecast cutoff. A competing row cannot disappear through filtering and make
+the remaining one look unambiguous. Such records report `conflicting_receipts`.
+Exact copies remain duplicates; separate pending resources sharing a request/turn
+marker remain separate observations. This does not alter innovation's existing
+earliest-forecast policy or any runtime producer.
+
+Four new synthetic regressions cover conflicting vectors, later/outside-cutoff
+peers, missing row peers, order/duplicate invariance and distinct-resource controls.
+The first three reproduced the prior false joined results before the fix. All
+165 affected isolated checks pass: handoffs 23, chat keys 11, report 22 and
+census/innovation 109. No private data or new capture is required for the fix.

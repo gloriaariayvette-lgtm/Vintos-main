@@ -2066,3 +2066,18 @@ include actual pending/log propagation, two interleaved request contexts and
 unchanged no-event random coordinator fallback. This metadata operates with
 capture off. No history/merge/post-turn feed, model, scoring or training changes;
 no private data, live calls/writes, enabling, merge or deployment.
+
+
+## 9 November — reverse handoff cardinality correction
+
+Source review found that forward uniqueness did not prevent one pending resource
+from being claimed by two distinct saved forecast rows. Three new synthetic
+regressions reproduced false joined states. The offline index now retains every
+supplied job row hash per pending resource before filtering; conflicting, absent
+or outside-cutoff peers cannot be hidden. Distinct pending resources sharing a
+turn remain separate. No runtime producer, forecast selection or admission change.
+
+165 isolated checks pass: handoffs 23, chat forecast keys 11, report 22 and
+census/innovation 109. Fixtures remain synthetic and sender/encoder/launcher
+boundaries stubbed. No private data, new capture, model calls, live writes, merge
+or deployment. Submitted predecessor branches remain fixed for review.

@@ -226,4 +226,43 @@ class Tests(unittest.TestCase):
         self.assertEqual(packet['forecast_row_sha256'],H.digest(H.encoded(row)))
         self.assertFalse(S.S.enqueue_capture(case.sink,{},prefix='unknown-'))
 
+    def test_one_pending_observation_cannot_claim_two_distinct_forecast_rows(self):
+        row=self.run_job(self.launch());packets=self.packets()
+        other=copy.deepcopy(row);other['self']['emb']=[.5,.5]
+        job=copy.deepcopy(next(p for p in packets if 'forecast_row_sha256' in p))
+        job['forecast_row_sha256']=H.digest(H.encoded(other));packets.append(job)
+        for rows,receipts in (([row,other],packets),([other,row],list(reversed(packets))*2)):
+            result=self.audit(rows,receipts)
+            self.assertEqual(result['states']['conflicting_receipts'],2)
+            self.assertEqual(result['states']['joined'],0)
+
+    def test_unseen_forecast_peer_cannot_hide_pending_origin_conflict(self):
+        row=self.run_job(self.launch());packets=self.packets()
+        job=copy.deepcopy(next(p for p in packets if 'forecast_row_sha256' in p))
+        job['forecast_row_sha256']='a'*64
+        result=self.audit([row],packets+[job])
+        self.assertEqual(result['states']['conflicting_receipts'],1)
+        self.assertEqual(result['job_receipts_without_row'],1)
+        self.assertEqual(result['states']['joined'],0)
+
+    def test_later_or_outside_cutoff_peer_does_not_hide_pending_origin_conflict(self):
+        row=self.run_job(self.launch());packets=self.packets()
+        for at in (220.,1000.):
+            other=copy.deepcopy(row);other['ts']=at
+            job=copy.deepcopy(next(p for p in packets if 'forecast_row_sha256' in p))
+            job['forecast_row_sha256']=H.digest(H.encoded(other))
+            result=self.audit([row,other],packets+[job])
+            self.assertEqual(result['states']['joined'],0)
+            self.assertEqual(result['states']['conflicting_receipts'],1 if at==1000 else 2)
+            self.assertEqual(result['states']['outside_cutoff'],1 if at==1000 else 0)
+
+    def test_distinct_pending_resources_are_not_fused_by_shared_turn_marker(self):
+        one=self.run_job(self.launch())
+        path=self.launch();two=self.case.ns['on_message_job'](path,enc=self.case.enc,now=220.)
+        self.assertEqual(one['turn_id'],two['turn_id'])
+        result=self.audit([one,two])
+        self.assertEqual(result['states']['joined'],2)
+        self.assertEqual(result['states']['conflicting_receipts'],0)
+        self.assertEqual(result['forecast_rows'],2)
+
 if __name__=='__main__':unittest.main()

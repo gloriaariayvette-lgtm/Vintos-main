@@ -301,3 +301,18 @@ Actual launcher/pending/log propagation and concurrent request separation are
 covered with synthetic data and stubbed external actions. No real encoder,
 checkpoint, source snapshot or service was used. Host integration remains yours;
 Gloria owns enabling/deployment. No review pause or deploy action introduced.
+
+
+## Reverse handoff cardinality correction
+
+`codex/judges-handoff-cardinality` descends from 991f4830. This fixes a false joined
+state in the offline handoff diagnostic: a pending resource may correspond to
+only one distinct saved row. Every supplied job reference participates, even if
+its row is absent or outside cutoff. Exact duplicates collapse; independent
+pending resources sharing a turn are not fused. Runtime producers and the
+innovation scorer's existing earliest-forecast policy are unchanged.
+
+Three synthetic failures reproduced the old behavior; all 165 affected isolated
+checks now pass (handoffs 23, chat keys 11, report 22, census/innovation 109).
+No source authentication or training permission is conferred. No private input,
+live service, enabling, merge or deployment. Full host integration stays yours.

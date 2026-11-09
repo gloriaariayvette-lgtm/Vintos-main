@@ -51,13 +51,16 @@ def coverage(forecasts, receipts, cutoff):
         rows[digest(encoded(row))]=row
     launches=defaultdict(set);jobs=defaultdict(set);resources=defaultdict(set)
     unique={}
+    resource_rows=defaultdict(set)
     for packet in receipts:
         launch=validate_receipt(packet)
         key=encoded(packet);unique[key]=packet
         descriptor=encoded(packet['pending']);resource=packet['pending']['resource_sha256']
         resources[resource].add(descriptor)
         if launch: launches[resource].add(descriptor)
-        else: jobs[packet['forecast_row_sha256']].add(descriptor)
+        else:
+            jobs[packet['forecast_row_sha256']].add(descriptor)
+            resource_rows[resource].add(packet['forecast_row_sha256'])
     job_descriptors=set().union(*jobs.values()) if jobs else set()
     states=dict.fromkeys(STATES,0)
     for key,row in rows.items():
@@ -67,7 +70,10 @@ def coverage(forecasts, receipts, cutoff):
         elif len(jobs[key])!=1: state='conflicting_receipts'
         else:
             descriptor=next(iter(jobs[key]));p=json.loads(descriptor);resource=p['resource_sha256']
-            if len(resources[resource])!=1: state='conflicting_receipts'
+            # Include orphan and out-of-window peers: one consumed pending file
+            # cannot silently certify several distinct saved rows.
+            if len(resources[resource])!=1 or len(resource_rows[resource])!=1:
+                state='conflicting_receipts'
             elif descriptor not in launches[resource]: state='launch_receipt_missing'
             elif p['turn_id_sha256'] is None or p['surface_sha256'] is None: state='origin_markers_missing'
             else:

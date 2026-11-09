@@ -6934,3 +6934,13 @@ off; it changes no reply or training rule. A reserved event key still requires a
 real matching target and independent delivery/lineage evidence. Historical empty
 markers stay unknown; full host integration and the remaining identity work stay
 open. No enabling, merge or deployment.
+
+
+## 9 November — reject ambiguous reverse handoff joins
+
+`codex/judges-handoff-cardinality`, on 991f4830, fixes an offline diagnostic that
+could join one pending resource to multiple different forecast rows. Missing and
+outside-cutoff peers now remain in the conflict check. 165 isolated checks pass,
+including three regression failures demonstrated before the fix. Runtime, scoring
+and training admission are unchanged. Host integration and remaining evidence
+requirements stay open; no enabling, merge or deployment.
