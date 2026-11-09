@@ -6469,3 +6469,13 @@ which is already an ancestor; the newer stack still needs independent review.
 Evidence-view internals, cached material and complete source/effect ancestry
 remain open. Production capture and eligibility remain unchanged; full Aegis
 validation/private census stay with the reviewer.
+
+
+## 8 November — evidence-view return coverage
+
+`codex/judges-value-map-view-receipts` observes the actual consumer return path and
+canonical view hash, retaining explicit standing/permission/influence counts.
+365 affected isolated checks pass. Existing filtering/fallback/feed behavior is
+unchanged. Returned-view identity is not raw-file identity or complete ancestry;
+source/effect history, cached material and trusted delivery remain open. Production
+capture stays disabled. Independent Aegis suite/private census stay with reviewer.

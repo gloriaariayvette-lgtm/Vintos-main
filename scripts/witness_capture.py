@@ -574,6 +574,65 @@ def observe_value_map_read(resource, decoded):
         _value_map_context.set((build, started, reads, chars, True))
 
 
+def observe_value_map_view(resource, lane, rows):
+    """Observe the returned view, not raw bytes or a new eligibility decision."""
+    current = _value_map_context.get()
+    if current is None:
+        return
+    build, started, reads, chars, truncated = current
+    if len(reads) >= 64:
+        _value_map_context.set((build, started, reads, chars, True))
+        return
+    encoded_chars = 0
+    try:
+        if lane not in ("ledger_view", "history_view", "raw_fallback", "empty_fallback"):
+            raise ValueError("invalid view lane")
+        record = {"observation": "returned_view", "resource_sha256": _resource_digest(resource),
+                  "lane": lane, "at": instant(time.time()), "complete": False,
+                  "origin": "view_unknown_ancestry", "state": "unavailable"}
+        if not isinstance(rows, list) or len(rows) > 4096:
+            raise ValueError("unsupported view shape")
+        import hashlib
+        encoded_chars, version = 0, hashlib.sha256()
+        for chunk in json.JSONEncoder(sort_keys=True, separators=(",", ":"), allow_nan=False).iterencode(rows):
+            encoded_chars += len(chunk)
+            if chars + encoded_chars > 4194304:
+                raise ValueError("view over limit")
+            version.update(chunk.encode("utf-8"))
+        # Preserve explicit returned markers as counts; never normalize a missing
+        # envelope into permission or relabel the existing consumer's decision.
+        standing = {key: 0 for key in ("eligible", "ineligible", "HELD", "unknown")}
+        permission = {key: 0 for key in ("true", "false", "missing", "malformed")}
+        withheld, influence_markers = 0, 0
+        for row in rows:
+            if not isinstance(row, dict):
+                standing["unknown"] += 1; permission["malformed"] += 1
+                continue
+            status = row.get("evidence_standing")
+            standing[status if isinstance(status, str) and status in standing else "unknown"] += 1
+            env = row.get("generation_provenance", row.get("provenance"))
+            influence_markers += (row.get("character_influenced") is True or row.get("tactical") is True
+                                  or (isinstance(env, dict) and env.get("output_provenance") == "stratagem_influenced"))
+            if "generation_provenance" not in row and "provenance" not in row:
+                permission["missing"] += 1
+            else:
+                marker = env.get("may_witness") if isinstance(env, dict) else None
+                permission["true" if marker is True else "false" if marker is False else "malformed"] += 1
+            withheld += row.get("vintos_withheld") is True
+        record.update(state="observed", view_sha256=version.hexdigest(), rows=len(rows),
+                      standing_counts=standing, permission_counts=permission, withheld_rows=withheld,
+                      known_influence_marker_rows=influence_markers,
+                      hash_basis="canonical_returned_json", source_version="unobserved")
+        _value_map_context.set((build, started, reads + (record,), chars + encoded_chars, truncated))
+    except Exception:
+        # Unsupported/malformed/oversized evidence must not change the caller's
+        # result or erase already observed reads. No exception contents retained.
+        if "record" in locals():
+            _value_map_context.set((build, started, reads + (record,), min(4194304, chars + encoded_chars), True))
+        else:
+            _value_map_context.set((build, started, reads, chars, True))
+
+
 def finish_value_map_context(token, build, rendered):
     if token is None:
         return
@@ -591,7 +650,7 @@ def finish_value_map_context(token, build, rendered):
         return
     metadata = {"schema": "value-map-context-v1", "started_at": started, "ended_at": ended,
                 "rendered_sha256": digest(rendered), "rendered_chars": len(rendered),
-                "scope": "direct_reads_during_assembly", "contribution": "not_established",
+                "scope": "instrumented_reads_and_views_during_assembly", "contribution": "not_established",
                 "upstream_complete": False, "reads": list(reads), "truncated": truncated}
     # Only this bounded string lives until the build returns; packets contain hashes.
     build["assembled_context"] = (rendered, metadata)

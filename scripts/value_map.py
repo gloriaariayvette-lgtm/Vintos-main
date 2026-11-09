@@ -63,21 +63,25 @@ MEMORY = os.path.join(WORKSPACE, "memory")
 
 
 def _door(path):
-    """Guarded evidence goes through evidence_view, never raw json.load: the
-    envelope on the record is what stops a tactical act becoming a value, a
-    cause, a want or an identity line one cron later."""
+    """Preserve the existing evidence view and fallback; observe only its result."""
     import os as _os
     try:
         import evidence_view as _EV
         if _os.path.basename(str(path)) == "interaction-ledger.json":
-            return _EV.ledger_view(path)
-        return _EV.open_history(path)
+            result = _EV.ledger_view(path)
+            lane = "ledger_view"
+        else:
+            result = _EV.open_history(path)
+            lane = "history_view"
     except Exception:
         import json as _json
         try:
-            return _json.load(open(path))
+            result = _json.load(open(path))
+            lane = "raw_fallback"
         except Exception:
-            return []
+            result, lane = [], "empty_fallback"
+    _witness_call("observe_value_map_view", path, lane, result)
+    return result
 
 
 def get_temporal_context():

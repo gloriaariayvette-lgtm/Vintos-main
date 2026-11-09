@@ -178,3 +178,15 @@ identity has unavailable read evidence, and empty text cannot match every prompt
 This covers those two reader boundaries without completing their upstream history
 or granting eligibility. Evidence-view internals, cached material, source/effect
 history, trusted delivery and production enablement remain separate work.
+
+
+## Implementation follow-up: evidence-view return path
+
+The value-map consumer now observes the returned ledger/history view or existing
+raw/empty fallback. Bounded canonical view hashes and explicit marker counts
+record what returned, without reloading sources, normalizing away missing
+permissions or altering filtering. View internals' raw source versions and
+ancestry remain unobserved; empty views do not prove empty/readable stores.
+Known returned influence markers remain visible as counts, not causal proof
+that every returned row reached or affected the generated map. No eligibility
+or production enablement changes.

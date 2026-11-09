@@ -1014,3 +1014,31 @@ This newer increment is not yet independently reviewed. Source/effect history,
 evidence-view internals, cached material, complete ancestry and delivery remain
 open. No private run, model/paid call, real test send, live write, merge or deploy.
 Production capture stays disabled; reviewer owns full Aegis suite/private census.
+
+
+## 8 November — returned evidence-view boundary
+
+`codex/judges-value-map-view-receipts` continues from ec470e34, preserving prior
+review tips. Note #20 remains latest; aa85ff5e is already an ancestor. The actual
+consumer boundary now distinguishes filtered ledger/history returns from its
+existing raw/empty fallbacks. Observation leaves all filtering, fallback and
+feeds unchanged. Canonical returned-view hashes are explicitly not file-version
+hashes. Explicit standing/permission/withheld/influence markers survive as counts,
+including contradictory permission and influence; no row text or IDs persist.
+
+Views share the direct-read scope's 64-record/4,194,304-character budget and are
+capped at 4096 rows. Incremental hashing preserves earlier observations, debits
+failed over-budget work and records unavailable/truncated evidence on malformed
+or oversized views. No reread, new inference, complete ancestry or eligibility
+upgrade. Existing raw-fallback unclosed-file warnings are unchanged.
+
+365 affected isolated checks pass: view receipts 9, auxiliary inputs 9, context
+10, write/read 11, builds 11, calls 9, main-chat binding 7, capture 27, hooks 21,
+capture/replay 9, fragments 11, renderer reads 12, witness 106, map day 17, choices
+18, partials 25, ownership 11, evidence view 31 and evidence provenance 11. The
+new suite executes actual consumer/view code on synthetic scratch data, with all
+paths repointed and senders stubbed. Rechecked view tests after adding explicit
+influence counts. Full builder suites use installed Python 3.12 and existing
+read-only dependencies; no installation or runner edit. Reports regenerated;
+whitespace checked. No private-data run, model/paid call, real test send, live
+write, merge or deploy. Full Aegis review/private census remain with the reviewer.

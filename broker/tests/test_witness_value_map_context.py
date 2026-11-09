@@ -82,7 +82,7 @@ class Tests(unittest.TestCase):
         self.assertEqual(len(metadata['reads']),3)
         self.assertIn(digest('{broken synthetic json'),[r['decoded_sha256'] for r in metadata['reads']])
         self.assertNotIn('WANTS YOU FULFILLED',text)
-        self.assertEqual(metadata['scope'],'direct_reads_during_assembly')
+        self.assertEqual(metadata['scope'],'instrumented_reads_and_views_during_assembly')
         class Handle:
             name='synthetic-resource'
             calls=0

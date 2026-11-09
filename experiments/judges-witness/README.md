@@ -914,3 +914,29 @@ Both components remain unknown ancestry; field contribution, source history,
 evidence-view internals, cached material, effects and delivery are not established.
 Their call-packet metadata does not make a chat turn eligible. No source reopen,
 new model call or feed change; production capture remains disabled.
+
+
+### Returned evidence views in the value-map read scope
+
+The existing consumer boundary records which path returned: ledger_view,
+history_view, raw_fallback or empty_fallback. Existing filtering, raw fallback
+and returned objects stay unchanged. The observer hashes canonical returned JSON,
+not source-file bytes; source_version is explicitly unobserved. No file reopen,
+additional view computation or provenance normalization occurs.
+
+Returned counts preserve explicit standing, true/false/missing/malformed witness
+permission, withheld replies, and named influence markers (tactical, character
+influence or stratagem-influenced output provenance). Contradictory permission
+and influence markers remain independently visible. These are observations of
+returned records, not proof the records contributed or qualify for the census.
+Row text/IDs, raw paths and exception text are never retained in these receipts.
+
+Views share the context scope's 64-observation and 4,194,304-character hashing
+budget with direct reads; at most 4096 rows are inspected per view. Hashing uses
+incremental canonical encoding, and failed/oversized attempts consume their
+bounded work budget rather than repeatedly hashing a fresh budget. Unsupported
+shapes, non-finite data and oversize results retain an unavailable observation and
+a truncated flag, preserving earlier observations and the reader's exact result.
+Empty views and empty fallbacks have distinct paths; an empty view does not prove
+the source was empty or readable. Context scope now says instrumented reads and
+views during assembly. Full source/effect ancestry remains unknown.
