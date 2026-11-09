@@ -2207,3 +2207,14 @@ one descriptor's bytes/time and reject observable changes during the read.
 80 isolated checks pass: audit races 6, artifacts 20, availability 12, readout 5,
 ranking 26, owners 11. Capture-off behavior is included; mtime remains an estimate,
 not an attested fitting date. No live data, real encoding, enabling or deployment.
+
+
+## 9 November — counterpart and arriving inputs no longer omitted from observation
+
+Optional artifacts now record ordered selected-input hashes and six computed array
+hashes before prediction, without additional encoding. Existing artifacts remain
+available when the new observer fails. The offline reader validates optional data
+and cross-checks retained own inputs; no complete-ancestry claim or admission change.
+148 isolated checks pass: selected 8, artifacts 20, inputs 15, joins 30, runtime 12,
+loaded checkpoint 8, availability 12, owners 11, store guard 32. Maximum bounded
+receipt is under 4 KiB. Source and host evidence remains open; no deployment.

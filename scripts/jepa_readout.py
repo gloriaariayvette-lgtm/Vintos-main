@@ -284,6 +284,13 @@ def forecast(enc, mode, exs=None, her='', now=None, model_dir=None):
             pass
     cache = Embeddings(feature_encoder)
     a=arrays([r],cache)
+    feature_inputs = None
+    if retain:
+        try:
+            from witness_self_artifacts import selected_feature_inputs
+            feature_inputs = selected_feature_inputs(r, a)
+        except Exception:
+            pass
     self_mode = mode in ('self_ahead','self_on_message')
     m=load(path, retain=retain, bind_identity=True) if self_mode else load(path)
     if m['meta']['mode'] != mode:raise ValueError('checkpoint is for a different head or mode')
@@ -303,7 +310,7 @@ def forecast(enc, mode, exs=None, her='', now=None, model_dir=None):
         try:
             sh._forecast_witness('observe_self_forecast', exs, r['own'], r['at'], result)
             sh._forecast_witness('observe_self_artifacts', exs, cache.bank, m, result,
-                                 getattr(feature_encoder, 'records', None) if feature_encoder is not enc else None)
+                                 getattr(feature_encoder, 'records', None) if feature_encoder is not enc else None, feature_inputs)
         except Exception:
             pass
     return result

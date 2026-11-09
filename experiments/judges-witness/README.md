@@ -2389,3 +2389,45 @@ replacement, deletion, capture off/on, observed metadata mutations, short reads,
 nonregular observations, and the unchanged other-head path. Existing synthetic
 numerical warnings occur with passing assertions. Real-host integration, source
 ancestry and delivery evidence remain open.
+
+
+## 9 November — record counterpart and arriving forecast inputs
+
+`codex/judges-selected-feature-inputs`, on 2e3962a3, extends optional forecast
+artifacts with `feature_inputs` (`self-selected-features-v1`). Previous receipts
+covered selected recent-own replies, leaving the counterpart and arriving inputs
+unrecorded. The new observation is made directly from the existing selected context
+and six computed arrays before prediction; no encoder call or prediction changes.
+
+The receipt preserves ordered input hashes/character counts for up to six own,
+six counterpart and one arriving prefix (400 codepoints each), including duplicate
+occurrences. It hashes all six numeric arrays: last/mean own, last/mean counterpart,
+arriving and clock. It records their dimensions and selected exchange epoch.
+Values use canonical float-list JSON hashing, not a dtype/byte representation;
+zero arrays are valid. The clock array is the existing host-local computation.
+Its hash records the computed values, not a portable timezone/reconstruction proof.
+The added receipt contains no message text, private IDs, paths or numeric arrays.
+
+Capture OFF adds no observation work. Capture ON hashes at most 40,963 numeric
+values (five arrays of dimension 8,192 plus three clock values); its maximal test
+receipt is under 4 KiB. This is bounded additional background CPU/serialization
+work; real-host latency remains unmeasured. A failed observation leaves the old
+artifact path available, with the new receipt absent. Existing row, payload join,
+encoder calls, sink caps and defaults remain unchanged.
+
+Offline artifact readers strictly validate optional receipts and require their
+ordered own-prefix hashes, last-own array hash and dimensions to agree with retained
+own embeddings. Legacy absence stays unknown; malformed present data is rejected.
+These hashes do not prove encoder identity, feature derivation, complete source
+ancestry, fitting, final target selection or client delivery. They do not include
+the separate context-baseline encoding. Existing `complete_forecast_context` and
+`upstream_complete` remain false. No admission/scoring upgrade or historical inference.
+
+148 isolated checks pass: selected features 8, artifacts 20, forecast inputs 15,
+artifact joins 30, runtime comparison 12, loaded checkpoint 8, availability 12,
+entry owners 11 and store guard 32. Tests exercise actual predictor inputs,
+capture parity, truncation/order/repeats, future exclusion, absent counterpart
+zero features, failure isolation, malformed claims, legacy data and maximum bounds.
+All inputs synthetic and encoders/sends stubbed. No new model calls, private input,
+live writes, enabling, merge or deployment. Host integration and remaining ancestry
+and delivery evidence are still open.

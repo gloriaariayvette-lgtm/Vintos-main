@@ -1117,12 +1117,12 @@ def self_artifact_capture_enabled():
     return scope is not None and _private_root(scope["root"]) is not None
 
 
-def observe_self_artifacts(exchanges, bank, model, forecast, encoding_records=None):
+def observe_self_artifacts(exchanges, bank, model, forecast, encoding_records=None, feature_inputs=None):
     scope = _self_forecast_scope.get()
     if scope is None or scope.get("observations") != 1 or scope.get("inputs") is None:
         return
     from witness_self_artifacts import forecast_artifacts
-    artifacts = forecast_artifacts(exchanges, bank, model, forecast, encoding_records)
+    artifacts = forecast_artifacts(exchanges, bank, model, forecast, encoding_records, feature_inputs)
     _self_forecast_scope.set(dict(scope, artifacts=artifacts))
 
 

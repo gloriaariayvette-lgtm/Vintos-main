@@ -4,7 +4,7 @@ import json
 import math
 import re
 from witness_receipts import admission, digest, final_response, joined_identity, row_receipt, instant
-from witness_self_artifacts import bound_source, availability_receipt, validate_encoding_observation, validate_forecast_encoding_link, checkpoint_observed_fields
+from witness_self_artifacts import bound_source, availability_receipt, validate_selected_feature_inputs, validate_encoding_observation, validate_forecast_encoding_link, checkpoint_observed_fields
 
 
 def fingerprint(value):
@@ -53,6 +53,17 @@ def claims(packet):
         if not isinstance(refs, list) or not 1 <= len(refs) <= 6:
             raise ValueError('invalid forecast input references')
         manifest = artifacts.get('checkpoint')
+        if 'feature_inputs' in artifacts:
+            feature_inputs = artifacts['feature_inputs']
+            validate_selected_feature_inputs(feature_inputs)
+            if any(not isinstance(r,dict) for r in refs):
+                raise ValueError('invalid selected own references')
+            own = [{'sha256':r.get('encoder_input_sha256'),'chars':r.get('encoder_input_chars')}
+                   for r in refs if isinstance(r,dict)]
+            if (feature_inputs['selection']['own'] != own
+                    or feature_inputs['features'][0]['values_sha256'] != _vector(refs[-1].get('emb'))
+                    or feature_inputs['features'][0]['dimensions'] != len(refs[-1]['emb'])):
+                raise ValueError('selected own features disagree with retained embeddings')
         values = []
         for ref in refs:
             if not isinstance(ref, dict) or ref.get('transform') != 'normalized_exchange_his_first_400_codepoints':

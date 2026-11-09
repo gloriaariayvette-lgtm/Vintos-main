@@ -7027,3 +7027,12 @@ and its existing filesystem cutoff to one open file; observable mutation refuses
 the audit. Active with capture off; the timestamp is still not fitting provenance.
 80 isolated checks pass. Host integration and source/encoder/delivery evidence
 remain open. No enabling, merge or deployment.
+
+
+## 9 November — selected forecast feature dependencies
+
+`codex/judges-selected-feature-inputs`, on 2e3962a3, adds optional bounded hash-only
+receipts for the selected own/counterpart/arriving inputs and six computed arrays.
+148 isolated checks pass. Complete ancestry, separate context-baseline encoding,
+real-host cost, delivery and integration remain open. Capture defaults and scoring
+unchanged; no enabling, merge or deployment.

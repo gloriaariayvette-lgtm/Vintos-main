@@ -84,7 +84,90 @@ def vector(value):
     return result
 
 
-def forecast_artifacts(exchanges, bank, model, forecast, encoding_records=None):
+FEATURE_ROLES = ('last_own', 'mean_own', 'last_other', 'mean_other', 'arriving', 'clock')
+
+
+def selected_feature_inputs(selected, arrays):
+    """Hash the existing selected strings and numeric predictor inputs; no encoding."""
+    from witness_receipts import digest, instant
+    from witness_capture import _fingerprint
+    if not isinstance(selected, dict) or set(selected) != {'own','other','now','at'}:
+        raise ValueError('invalid selected readout context')
+    def text_ref(text):
+        if not isinstance(text, str) or not 1 <= len(text) <= 400:
+            raise ValueError('invalid selected readout text')
+        return {'sha256':digest(text), 'chars':len(text)}
+    selection = {}
+    for role in ('own','other'):
+        texts=selected[role]
+        if not isinstance(texts,list) or not (1 if role=='own' else 0) <= len(texts) <= 6:
+            raise ValueError('invalid selected readout list')
+        selection[role]=[text_ref(t) for t in texts]
+    selection['now']=None if selected['now']=='' else text_ref(selected['now'])
+    if not isinstance(arrays,(list,tuple)) or len(arrays)!=6:
+        raise ValueError('invalid readout feature arrays')
+    retained=[]
+    for role, array in zip(FEATURE_ROLES,arrays):
+        if len(array)!=1 or not 1 <= len(array[0]) <= 8192:
+            raise ValueError('unbounded readout feature array')
+        values=array[0]
+        if any(isinstance(v,bool) or not isinstance(v,numbers.Real) for v in values):
+            raise ValueError('invalid readout feature value')
+        values=[float(v) for v in values]
+        if not all(math.isfinite(v) for v in values):
+            raise ValueError('nonfinite readout feature value')
+        retained.append({'role':role,'dimensions':len(values),'values_sha256':_fingerprint(values)})
+    result={'schema':'self-selected-features-v1', 'selection':selection,
+            'features':retained, 'exchange_at':instant(selected['at']),
+            'text_transform':'selected_normalized_first_400_codepoints',
+            'value_transform':'float_list_json_sha256_v1',
+            'clock_basis':'selected_exchange_epoch_host_local_clock',
+            'source_identity':'unverified','encoder_identity':'unverified',
+            'upstream_complete':False,'values_retained':False}
+    validate_selected_feature_inputs(result)
+    return result
+
+
+def validate_selected_feature_inputs(value):
+    """Strict bounded receipt validation; hashes alone do not prove feature derivation."""
+    from witness_receipts import instant
+    fixed={'schema':'self-selected-features-v1','text_transform':'selected_normalized_first_400_codepoints',
+           'value_transform':'float_list_json_sha256_v1','clock_basis':'selected_exchange_epoch_host_local_clock',
+           'source_identity':'unverified','encoder_identity':'unverified'}
+    if (not isinstance(value,dict) or set(value)!={*fixed,'selection','features','exchange_at','upstream_complete','values_retained'}
+            or any(value[k]!=v for k,v in fixed.items())
+            or value['upstream_complete'] is not False or value['values_retained'] is not False):
+        raise ValueError('invalid selected feature receipt')
+    if type(value['exchange_at']) not in (float,int):raise ValueError('invalid selected feature clock')
+    instant(value['exchange_at'])
+    def hashed(v):return isinstance(v,str) and len(v)==64 and all(c in '0123456789abcdef' for c in v)
+    def text_ref(ref):
+        if (not isinstance(ref,dict) or set(ref)!={'sha256','chars'} or not hashed(ref['sha256'])
+                or type(ref['chars']) is not int or not 1<=ref['chars']<=400):
+            raise ValueError('invalid selected text receipt')
+    selection=value['selection']
+    if not isinstance(selection,dict) or set(selection)!={'own','other','now'}:
+        raise ValueError('invalid feature selection')
+    for role in ('own','other'):
+        refs=selection[role]
+        if not isinstance(refs,list) or not (1 if role=='own' else 0)<=len(refs)<=6:
+            raise ValueError('invalid feature selection length')
+        for ref in refs:text_ref(ref)
+    if selection['now'] is not None:text_ref(selection['now'])
+    features=value['features']
+    if not isinstance(features,list) or len(features)!=6:raise ValueError('invalid feature receipt list')
+    dimensions=[]
+    for role,feature in zip(FEATURE_ROLES,features):
+        if (not isinstance(feature,dict) or set(feature)!={'role','dimensions','values_sha256'}
+                or feature['role']!=role or not hashed(feature['values_sha256'])
+                or type(feature['dimensions']) is not int or not 1<=feature['dimensions']<=8192):
+            raise ValueError('invalid feature array receipt')
+        dimensions.append(feature['dimensions'])
+    if len(set(dimensions[:5]))!=1 or dimensions[5]!=3:
+        raise ValueError('inconsistent feature dimensions')
+
+
+def forecast_artifacts(exchanges, bank, model, forecast, encoding_records=None, feature_inputs=None):
     """Recent-own vectors can cover earlier targets; never claim all targets exist."""
     from witness_receipts import digest
     manifest = model.get('_witness_checkpoint')
@@ -106,9 +189,13 @@ def forecast_artifacts(exchanges, bank, model, forecast, encoding_records=None):
                          'encoding_link': forecast_encoding_link(encoded, bank[encoded], encoding_records),
                          'source_identity': 'unverified', 'encoder_id': None,
                          'reply_source': bound_source(row.get('_witness_reply_source'), text, row.get('turn_id'))})
-    return {'checkpoint': manifest, 'recent_own_embeddings': retained,
+    result = {'checkpoint': manifest, 'recent_own_embeddings': retained,
             'coverage': 'selected_recent_own_inputs_only', 'target_finalization': 'unobserved',
             'encoder_weights_identity': 'unobserved'}
+    if feature_inputs is not None:
+        validate_selected_feature_inputs(feature_inputs)
+        result['feature_inputs'] = feature_inputs
+    return result
 
 
 
