@@ -1721,3 +1721,38 @@ interchangeable. It also does not reinterpret the legacy persisted embedding cac
 as a current-runtime observation. The forecast-side readout and live feeds are
 unchanged. Host review must check the installed runtime's state types, packet
 sizes and audit CPU/memory overhead; synthetic array tests are not that acceptance.
+
+
+### Forecast feature encoding links
+
+When an on-message self-forecast capture scope is active, its replacement readout
+observes the existing feature-batch encoder call with `FeatureEncoder`. The same
+raw result object is returned to `Embeddings.fill`; the existing `units` transform
+still produces the bank. No extra encoding or model load occurs. The context-copy
+control remains a direct call through the original encoder, and other head modes
+and the legacy persisted cache are unchanged.
+
+The observer holds at most 256 distinct input records and 65,536 raw vector values,
+with at most one before/after CPU parameter snapshot pair for its first call. This
+is up to two GiB of bounded parameter hashing per captured forecast, not per vector;
+production timing/memory acceptance remains with host review. Only the selected
+recent-own references are serialized. Their `encoding_link` contains the raw vector,
+its input/output-bound call receipt and the explicit `readout_units_v1` transform.
+The private packet already contains the normalized vector; the additional raw
+observation allows the offline reader to verify the actual transform rather than
+infer it from a model name. No new message text, parameter bytes or settings values
+are serialized. Existing private sink packet caps can refuse oversized observations.
+
+Validation requires the exact input hash, raw-vector hash, forecast-call receipt
+schema and exact float64 normalized output, including the existing 1e-12 norm
+floor. A supplied link with no call receipt or a mismatched transform is rejected.
+Missing links remain `not_instrumented_forecast`. The packet-level parameter summary
+uses `mixed_forecast_observations` when its references have different observation
+states; it never borrows an observed state from one reference for another. Counts
+are diagnostic only, with no score/admission or automatic raw/normalized conversion.
+
+This closes the feature-call/normalization observation gap for those captured
+references, not complete encoder identity. Tokenizer/code/configuration identity,
+checkpoint fitting lineage, observation clocks and target selection remain separate
+requirements. The context-copy control has no new encoder receipt in this slice.
+No historical vector or legacy cache is attributed to a present runtime by guessing.

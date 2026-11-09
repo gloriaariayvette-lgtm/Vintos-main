@@ -1760,3 +1760,30 @@ between snapshots, observer failures, missing settings and forged bindings. Actu
 self-audit fragments and scratch CLI remain exercised by existing suites. Three
 generated reports refreshed. No live reads/writes, new model calls, sends, enabling,
 merge or deployment. Full host suite and loaded-runtime overhead remain with review.
+
+
+## 9 November — forecast feature encoding links
+
+`codex/judges-forecast-encoding-links` binds optional on-message self-readout feature
+vectors to the existing encoding call and exact raw-to-normalized transformation.
+The helper returns the original result object, observes one bounded CPU parameter
+pair, and retains at most 256 inputs/65,536 raw values in process. Only selected
+recent-own records enter private artifact packets; no new messages or weight bytes.
+Other head modes, legacy cache and context-copy control remain unchanged.
+
+Offline validation checks the forecast-call schema, input/raw hashes and exact
+normalization including its floor. Missing links remain not instrumented; mixed
+per-reference parameter states stay mixed at packet level. Full encoder identity,
+training lineage and scoring remain unverified/unchanged. Host review must measure
+up to two GiB of hashing per captured forecast and packet sizes against sink caps.
+
+76 unit cases plus five readout scenario groups pass in isolated scratch:
+encoder/feature observations 19, self artifacts 20, artifact joins 21, review report
+16, existing readout groups 5. Actual job still makes two encode calls (feature batch
+and untouched context-copy control); off/on results remain identical in the existing
+contract test. Covers forged input/raw/transform links, null call receipts, small
+norm floor, mixed/legacy states, bounds and failures without retries. The readout
+suite emitted RuntimeWarnings in untouched fitting/ranking matrix routines while
+norm/finiteness assertions passed; no mathematical change or warning suppression
+was made. Three reports regenerated. No live data reads/writes, provider calls,
+sends, enabling, merge or deployment; full host suite remains with review.

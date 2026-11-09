@@ -122,6 +122,86 @@ class Tests(unittest.TestCase):
             with self.assertRaises(ValueError):self.validate(bad)
         self.assertEqual(A.validate_encoding_observation(None,'a'*64,[1.,0.]),'missing')
 
+    def test_feature_encoder_preserves_raw_return_and_binds_normalization(self):
+        import jepa_readout as readout
+        wrapped=A.FeatureEncoder(self.enc)
+        self.assertIs(wrapped.encode(['synthetic source reply'],show_progress_bar=False),self.output)
+        normalized=readout.units(self.output)[0]
+        link=A.forecast_encoding_link('synthetic source reply',normalized,wrapped.records)
+        self.assertEqual(A.validate_forecast_encoding_link(link,W.digest('synthetic source reply'),normalized),'observed_equal')
+        self.assertEqual(link['raw_emb'],[3.,4.])
+        self.enc.encode.assert_called_once_with(['synthetic source reply'],show_progress_bar=False)
+        self.assertEqual(self.enc.state_dict.call_count,2)
+        wrapped.encode(['other synthetic input'])
+        self.assertEqual(self.enc.state_dict.call_count,2)
+        self.assertEqual(wrapped.records['other synthetic input']['call']['parameter_state'],'unavailable')
+
+    def test_feature_link_has_exact_input_raw_output_and_transform_binding(self):
+        wrapped=A.FeatureEncoder(self.enc);wrapped.encode(['synthetic source reply'])
+        link=A.forecast_encoding_link('synthetic source reply',[.6,.8],wrapped.records)
+        for bad in (dict(link,raw_emb=[4.,3.]),dict(link,transform='other'),dict(link,call=None)):
+            with self.assertRaises(ValueError):A.validate_forecast_encoding_link(bad,W.digest('synthetic source reply'),[.6,.8])
+        for inp,out in [('different',[.6,.8]),('synthetic source reply',[.8,.6])]:
+            with self.assertRaises(ValueError):A.validate_forecast_encoding_link(link,W.digest(inp),out)
+        link['call']['schema']='audit-encoding-observation-v1'
+        with self.assertRaises(ValueError):A.validate_forecast_encoding_link(link,W.digest('synthetic source reply'),[.6,.8])
+        self.assertEqual(A.validate_forecast_encoding_link(None,'a'*64,[1.,0.]),'not_instrumented_forecast')
+
+    def test_feature_link_normalization_floor_matches_actual_readout(self):
+        import jepa_readout as readout
+        for raw in (np.array([[1e-14,0.]]),np.array([[3.,4.]],dtype='float32')):
+            self.enc.encode.return_value=raw
+            wrapped=A.FeatureEncoder(self.enc);wrapped.encode(['synthetic source reply'])
+            link=A.forecast_encoding_link('synthetic source reply',readout.units(raw)[0],wrapped.records)
+            self.assertEqual(A.validate_forecast_encoding_link(link,W.digest('synthetic source reply'),readout.units(raw)[0]),'observed_equal')
+
+    def test_actual_forecast_job_retains_feature_call_without_extra_encoding(self):
+        enc=self.case.case.enc
+        enc.state_dict=Mock(return_value=self.weights)
+        row=self.case.case.job()
+        self.assertIsNotNone(row)
+        packet,=self.case.packets()
+        refs=packet['artifacts']['recent_own_embeddings']
+        self.assertTrue(refs)
+        self.assertEqual(len({r['encoding_link']['call']['invocation'] for r in refs}),1)
+        for ref in refs:
+            self.assertEqual(A.validate_forecast_encoding_link(ref['encoding_link'],ref['encoder_input_sha256'],ref['emb']),'observed_equal')
+            self.assertIsNone(ref['encoder_id'])
+        self.assertEqual(enc.state_dict.call_count,2)
+        self.assertEqual(enc.encode.call_count,2)  # Existing feature batch and unchanged context-copy control.
+
+    def test_feature_observer_failure_and_bounds_never_retry_encode(self):
+        with patch.object(A,'parameter_snapshot',side_effect=RuntimeError('synthetic observer failure')):
+            wrapped=A.FeatureEncoder(self.enc)
+            self.assertIs(wrapped.encode(['synthetic source reply']),self.output)
+        self.assertEqual(wrapped.records['synthetic source reply']['call']['parameter_state'],'unavailable')
+        self.enc.encode.assert_called_once()
+        self.enc.encode.return_value=np.ones((9,8192))
+        oversized=A.FeatureEncoder(self.enc)
+        self.assertIs(oversized.encode(['synthetic%d'%i for i in range(9)]),self.enc.encode.return_value)
+        self.assertFalse(oversized.records)
+        self.assertEqual(self.enc.encode.call_count,2)
+
+    def test_feature_records_are_bounded_across_calls_and_first_bank_value_kept(self):
+        wrapped=A.FeatureEncoder(self.enc);wrapped.encode(['synthetic source reply'])
+        original=copy.deepcopy(wrapped.records)
+        self.enc.encode.return_value=np.array([[4.,3.]])
+        wrapped.encode(['synthetic source reply'])
+        self.assertEqual(wrapped.records,original)
+        wrapped._retained_values=65536
+        wrapped.encode(['another synthetic reply'])
+        self.assertEqual(wrapped.records,original)
+
+    def test_forecast_packet_parameter_counts_mixed_and_legacy_are_explicit(self):
+        import witness_artifact_join as J
+        wrapped=A.FeatureEncoder(self.enc);wrapped.encode(['one'])
+        wrapped.encode(['two'])
+        refs=[dict(encoder_input_sha256=W.digest(t),emb=[.6,.8],encoding_link=wrapped.records[t]) for t in ('one','two')]
+        packet={'artifacts':{'recent_own_embeddings':refs}}
+        self.assertEqual(J.forecast_parameter_state(packet),'mixed_forecast_observations')
+        for r in refs:r.pop('encoding_link')
+        self.assertEqual(J.forecast_parameter_state(packet),'not_instrumented_forecast')
+
     def test_offline_report_keeps_parameter_counts_separate_from_identity(self):
         from test_witness_artifact_join import Tests as JoinFixture
         from test_witness_review_report import M

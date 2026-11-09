@@ -4,7 +4,7 @@ import json
 import math
 import re
 from witness_receipts import admission, digest, final_response, joined_identity, row_receipt, instant
-from witness_self_artifacts import bound_source, availability_receipt, validate_encoding_observation
+from witness_self_artifacts import bound_source, availability_receipt, validate_encoding_observation, validate_forecast_encoding_link
 
 
 def fingerprint(value):
@@ -70,6 +70,8 @@ def claims(packet):
         vector_sha = _vector(value.get('emb'))
         if schema == 'self-audit-embedding-v1':
             validate_encoding_observation(value.get('encoding_observation'), value['encoder_input_sha256'], value['emb'])
+        else:
+            validate_forecast_encoding_link(value.get('encoding_link'), value['encoder_input_sha256'], value['emb'])
         expected = 'encoder_return_v1' if schema == 'self-audit-embedding-v1' else 'readout_units_v1'
         if 'vector_representation' in value and value['vector_representation'] != expected:
             raise ValueError('invalid retained vector representation')
@@ -180,7 +182,7 @@ def join_artifacts(admitted, sources, nodes, packets, cutoff, forecasts=()):
             'checkpoint_availability_states': checkpoint_availability(list(unique.values()), forecasts, cutoff),
             'encoder_parameter_observation_states': dict(sorted(Counter(
                 validate_encoding_observation(p.get('encoding_observation'), p.get('encoder_input_sha256'), p.get('emb'))
-                if p.get('schema') == 'self-audit-embedding-v1' else 'not_instrumented_forecast'
+                if p.get('schema') == 'self-audit-embedding-v1' else forecast_parameter_state(p)
                 for p in unique.values()).items())),
             'bound_unique_replies': len({item['turn_id'] for item in matched}),
             'admission_effect': 'none', 'scoring_effect': 'none', 'encoder_identity': 'unverified',
@@ -224,3 +226,9 @@ def checkpoint_availability(packets, forecasts, cutoff):
         else:
             states['parsed_by_logged_forecast'] += 1
     return dict(sorted(states.items()))
+
+
+def forecast_parameter_state(packet):
+    states={validate_forecast_encoding_link(r.get('encoding_link'),r['encoder_input_sha256'],r['emb'])
+            for r in packet['artifacts']['recent_own_embeddings']}
+    return next(iter(states)) if len(states)==1 else 'mixed_forecast_observations'

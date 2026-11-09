@@ -55,7 +55,7 @@ def vector(value):
     return result
 
 
-def forecast_artifacts(exchanges, bank, model, forecast):
+def forecast_artifacts(exchanges, bank, model, forecast, encoding_records=None):
     """Recent-own vectors can cover earlier targets; never claim all targets exist."""
     from witness_receipts import digest
     manifest = model.get('_witness_checkpoint')
@@ -74,6 +74,7 @@ def forecast_artifacts(exchanges, bank, model, forecast):
                          'encoder_input_chars': len(encoded), 'emb': vector(bank[encoded]),
                          'transform': 'normalized_exchange_his_first_400_codepoints',
                          'vector_representation': 'readout_units_v1',
+                         'encoding_link': forecast_encoding_link(encoded, bank[encoded], encoding_records),
                          'source_identity': 'unverified', 'encoder_id': None,
                          'reply_source': bound_source(row.get('_witness_reply_source'), text, row.get('turn_id'))})
     return {'checkpoint': manifest, 'recent_own_embeddings': retained,
@@ -141,7 +142,7 @@ def encoding_observation(text, values, before, after, settings, invocation):
             'meaning': 'loaded_cpu_parameter_snapshots_only_not_tokenizer_code_or_training_identity'}
 
 
-def validate_encoding_observation(observation, text_hash, values):
+def validate_encoding_observation(observation, text_hash, values, expected_schema='audit-encoding-observation-v1'):
     """Validate binding, never turn parameter equality into complete encoder identity."""
     from witness_capture import _fingerprint
     def ishash(value):
@@ -150,7 +151,7 @@ def validate_encoding_observation(observation, text_hash, values):
     expected = {'schema','invocation','input_sha256','raw_vector_sha256','settings_sha256',
                 'parameter_before','parameter_after','parameter_state','encoder_identity','meaning'}
     if (not isinstance(observation,dict) or set(observation) != expected
-            or observation['schema'] != 'audit-encoding-observation-v1'
+            or observation['schema'] != expected_schema
             or observation['encoder_identity'] != 'unverified'
             or observation['meaning'] != 'loaded_cpu_parameter_snapshots_only_not_tokenizer_code_or_training_identity'
             or not isinstance(observation['invocation'],str) or len(observation['invocation']) != 32
@@ -172,6 +173,81 @@ def validate_encoding_observation(observation, text_hash, values):
             raise ValueError('invalid parameter snapshot')
     state = parameter_state(observation['parameter_before'], observation['parameter_after'])
     if observation['parameter_state'] != state: raise ValueError('inconsistent parameter comparison')
+    return state
+
+
+
+class FeatureEncoder:
+    """Observe existing feature encoding only; never change its output or retry it."""
+    def __init__(self, enc):
+        self.enc, self.records, self._parameter_pairs = enc, {}, 1
+        self._retained_values = 0
+
+    def encode(self, texts, *args, **kwargs):
+        missing = {'schema':'encoder-parameter-snapshot-v1','state':'unavailable',
+                   'sha256':None,'tensors':0,'bytes':0}
+        before = after = missing
+        sampled = False
+        try:
+            if self._parameter_pairs:
+                self._parameter_pairs -= 1
+                sampled = True
+                before = parameter_snapshot(self.enc)
+        except Exception: pass
+        result = self.enc.encode(texts, *args, **kwargs)
+        try:
+            if sampled: after = parameter_snapshot(self.enc)
+        except Exception: pass
+        try:
+            from witness_receipts import digest
+            if (not isinstance(texts,list) or len(texts)>256 or len(result)!=len(texts)
+                    or any(not isinstance(t,str) or not 0 < len(t)<=65536 for t in texts)):
+                raise ValueError('unbounded encoding inputs')
+            values = [vector(v) for v in result]
+            if sum(map(len,values))>65536: raise ValueError('unbounded feature observations')
+            try:
+                options=json.dumps([args,kwargs],sort_keys=True,allow_nan=False)
+                settings=digest(options) if len(options)<=4096 else None
+            except Exception: settings=None
+            invocation=uuid.uuid4().hex
+            for text, raw in zip(texts,values):
+                if text in self.records: continue  # Bank entries were filled by the first call.
+                if len(self.records)>=256 or self._retained_values+len(raw)>65536:
+                    COUNTERS['feature_encoding_observation_limit'] += 1
+                    break
+                self._retained_values += len(raw)
+                observation=encoding_observation(text,raw,before,after,settings,invocation)
+                observation['schema']='forecast-encoding-observation-v1'
+                self.records[text]={'schema':'readout-encoding-link-v1','transform':'readout_units_v1',
+                                    'raw_emb':raw,'call':observation}
+        except Exception:
+            COUNTERS['feature_encoding_observation_failed'] += 1
+        return result
+
+
+def forecast_encoding_link(text, stored, records):
+    """Copy only a validated link for this exact input and normalized bank value."""
+    if records is None: return None
+    from witness_receipts import digest
+    value=records.get(text) if isinstance(records,dict) else None
+    if value is None: return None
+    validate_forecast_encoding_link(value,digest(text),vector(stored))
+    return json.loads(json.dumps(value,allow_nan=False))
+
+
+def validate_forecast_encoding_link(value, text_hash, stored):
+    if value is None: return 'not_instrumented_forecast'
+    if (not isinstance(value,dict) or set(value)!={'schema','transform','raw_emb','call'}
+            or value['schema']!='readout-encoding-link-v1' or value['transform']!='readout_units_v1'
+            or not isinstance(value['call'],dict)):
+        raise ValueError('invalid forecast encoding link')
+    raw=vector(value['raw_emb'])
+    state=validate_encoding_observation(value['call'],text_hash,raw,expected_schema='forecast-encoding-observation-v1')
+    import numpy as np
+    a=np.asarray(raw,dtype=float)
+    normalized=a/np.maximum(np.linalg.norm(a,axis=-1,keepdims=True),1e-12)
+    if not np.array_equal(normalized,np.asarray(vector(stored),dtype=float)):
+        raise ValueError('forecast vector transform mismatch')
     return state
 
 

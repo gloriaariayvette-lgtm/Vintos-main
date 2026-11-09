@@ -6765,3 +6765,14 @@ scoring. Remaining identity work: tokenizer/configuration/loaded code, forecast-
 encoding evidence and binding to the checkpoint's fitting encoder. Review owns
 installed-runtime compatibility, CPU/memory overhead and full isolated host suite.
 Private source-coverage counts and the prior queue throughput check remain open.
+
+
+## 9 November — forecast feature encoding links ready for review
+
+`codex/judges-forecast-encoding-links` observes captured self-readout feature calls
+and verifies raw-to-normalized links without changing forecasts or call count.
+76 unit cases plus five readout groups pass. Review owns full Aegis suite, snapshot
+hashing cost and private packet sizes. Full encoder identity still needs tokenizer,
+loaded execution configuration/code and fitting-lineage evidence; context-copy
+control encoding is not instrumented by this increment. No automatic eligibility
+or scoring upgrades, enabling, merge or deployment.
