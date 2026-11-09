@@ -137,6 +137,7 @@ class Tests(unittest.TestCase):
 
     def test_input_hash_length_and_normalized_hash_must_match(self):
         sources,admitted,packet,_=self.make()
+        packet.pop('encoding_observation', None)  # Legacy synthetic observation for this content-only check.
         for key,value in [('encoder_input_sha256','0'*64),('encoder_input_chars',400)]:
             changed=copy.deepcopy(packet);changed[key]=value
             self.state('input_transform_mismatch',sources,admitted,changed)
@@ -150,6 +151,7 @@ class Tests(unittest.TestCase):
 
     def test_duplicate_packets_deduplicate_and_conflicting_vectors_hold_both(self):
         sources,admitted,packet,_=self.make()
+        packet.pop('encoding_observation', None)  # Legacy synthetic observation for this content-only check.
         summary,details=J.join_artifacts(admitted,sources,self.nodes,[packet,packet],1000)
         self.assertEqual(summary['unique_packets'],1);self.assertEqual(len(details),1)
         bad=copy.deepcopy(packet);bad['emb']=[1.,0.]
@@ -175,6 +177,7 @@ class Tests(unittest.TestCase):
     def test_raw_and_readout_vectors_are_mixed_not_an_encoder_conflict(self):
         import jepa_readout as readout
         sources, admitted, audit, ex = self.make()
+        audit.pop('encoding_observation', None)  # Legacy synthetic observation for this content-only check.
         audit['emb'] = [3., 4.]
         normalized = readout.units(audit['emb']).tolist()
         art = A.forecast_artifacts([ex], {ex['his'][:400]: normalized},
@@ -197,6 +200,7 @@ class Tests(unittest.TestCase):
 
     def test_missing_representation_is_not_reconstructed_from_packet_schema(self):
         sources, admitted, packet, _ = self.make()
+        packet.pop('encoding_observation', None)  # Legacy synthetic observation for this content-only check.
         old = copy.deepcopy(packet); old.pop('vector_representation')
         summary, details = self.state('bound_full_text', sources, admitted, old)
         self.assertIsNone(details[0]['vector_representation'])
@@ -215,6 +219,7 @@ class Tests(unittest.TestCase):
 
     def test_same_representation_conflict_is_not_hidden_by_mixed_packet(self):
         sources, admitted, packet, ex = self.make()
+        packet.pop('encoding_observation', None)  # Legacy synthetic observation for this content-only check.
         bad = copy.deepcopy(packet); bad['emb'] = [1., 0.]
         art = A.forecast_artifacts([ex], {ex['his'][:400]: [.8, .6]},
             {'_witness_checkpoint': self.manifest}, {'checkpoint_id': self.manifest['checkpoint_id']})

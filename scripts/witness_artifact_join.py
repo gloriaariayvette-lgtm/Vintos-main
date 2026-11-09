@@ -4,7 +4,7 @@ import json
 import math
 import re
 from witness_receipts import admission, digest, final_response, joined_identity, row_receipt, instant
-from witness_self_artifacts import bound_source, availability_receipt
+from witness_self_artifacts import bound_source, availability_receipt, validate_encoding_observation
 
 
 def fingerprint(value):
@@ -68,6 +68,8 @@ def claims(packet):
                 or not 1 <= value['encoder_input_chars'] <= 400):
             raise ValueError('invalid retained input identity')
         vector_sha = _vector(value.get('emb'))
+        if schema == 'self-audit-embedding-v1':
+            validate_encoding_observation(value.get('encoding_observation'), value['encoder_input_sha256'], value['emb'])
         expected = 'encoder_return_v1' if schema == 'self-audit-embedding-v1' else 'readout_units_v1'
         if 'vector_representation' in value and value['vector_representation'] != expected:
             raise ValueError('invalid retained vector representation')
@@ -176,6 +178,10 @@ def join_artifacts(admitted, sources, nodes, packets, cutoff, forecasts=()):
     return {'scope': 'content_binding_only', 'packets_supplied': len(packets), 'unique_packets': len(unique),
             'source_references': len(details), 'states': dict(sorted(states.items())),
             'checkpoint_availability_states': checkpoint_availability(list(unique.values()), forecasts, cutoff),
+            'encoder_parameter_observation_states': dict(sorted(Counter(
+                validate_encoding_observation(p.get('encoding_observation'), p.get('encoder_input_sha256'), p.get('emb'))
+                if p.get('schema') == 'self-audit-embedding-v1' else 'not_instrumented_forecast'
+                for p in unique.values()).items())),
             'bound_unique_replies': len({item['turn_id'] for item in matched}),
             'admission_effect': 'none', 'scoring_effect': 'none', 'encoder_identity': 'unverified',
             'artifact_observation_time': 'unverified', 'forecast_target_selection': 'not_evaluated'}, details

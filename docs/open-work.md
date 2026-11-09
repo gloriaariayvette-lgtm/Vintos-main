@@ -6754,3 +6754,14 @@ throughput and reply latency for the extra drain-time background status flush;
 full isolated Aegis suite remains with review. Production stays disabled until
 Gloria's enable decision. Encoder identity and private source-coverage counts
 remain pending independently of this review.
+
+
+## 9 November — audit parameter receipts ready for review
+
+`codex/judges-encoder-parameter-receipts` adds bounded loaded-CPU-state observations
+around the first retained encoding call per self-audit wrapper; 69 isolated checks
+pass. It does not establish complete encoder identity or promote vectors into
+scoring. Remaining identity work: tokenizer/configuration/loaded code, forecast-side
+encoding evidence and binding to the checkpoint's fitting encoder. Review owns
+installed-runtime compatibility, CPU/memory overhead and full isolated host suite.
+Private source-coverage counts and the prior queue throughput check remain open.

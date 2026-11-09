@@ -1679,3 +1679,45 @@ and usable pre-cutoff clocks. It does not repair rows or change attribution.
 Private caller summaries also distinguish nonempty model/provider values from
 mere key presence and count stages. See `docs/judges-source-coverage.md` for the
 source trace, limitations and command for the existing admitted private bundle.
+
+
+### Audit encoding call and loaded-parameter observations
+
+With private capture enabled, the existing self-audit encoder wrapper now binds
+retained raw vectors to an `encoding_observation`: random invocation identifier,
+input digest, raw-vector digest, bounded JSON settings digest (or null), and CPU
+parameter/buffer snapshots immediately before/after the existing encode call.
+No extra encode or model load occurs. The return object and arguments are unchanged.
+The shared audit's other head is not wrapped by this observer.
+
+Overhead is bounded to **one before/after snapshot pair per wrapper**, consumed by
+the first call containing a retained self-text input. Each snapshot admits at most
+8,192 state entries and one GiB of already loaded CPU tensor/array bytes. It hashes
+names, dtype, shape and logical contiguous bytes; only the combined digest, tensor
+count and byte count are retained. CPU tensors support a byte view without a device
+transfer. Non-CPU/sparse/unsupported state, oversized state or observation failures
+produce unavailable snapshots. Later calls do not inherit the first call's identity;
+they remain unavailable and perform no further parameter reads. No weights, tokens,
+parameter names, settings values or source text are added to the private packet.
+
+The first successful matching call can therefore supply `observed_equal` or
+`observed_changed`. These mean matching/different loaded-state snapshots around
+that call; they do not prove immutability throughout the interval. `unavailable`
+is not a match. Output deduplication includes the snapshot/settings evidence, so
+an observed receipt and an unavailable receipt are not silently collapsed even
+when the same vector was returned. Existing observation count caps still apply.
+
+The offline join validates each supplied receipt's schema, parameter comparison,
+input digest and exact raw-vector digest. Contradictory attached evidence is an
+input error; older packets with no receipt remain explicitly `missing`. Forecast
+feature packets remain `not_instrumented_forecast`. Aggregate review output exposes
+only these fixed labels and packet counts; hashes and invocation IDs remain private.
+No existing content-binding verdict, witness admission or score is upgraded.
+
+Full `encoder_identity` remains unverified. Parameter bytes omit tokenizer,
+pooling/execution configuration, loaded code, training lineage and the forecast's
+encoding call. This increment does not close those gaps or make representations
+interchangeable. It also does not reinterpret the legacy persisted embedding cache
+as a current-runtime observation. The forecast-side readout and live feeds are
+unchanged. Host review must check the installed runtime's state types, packet
+sizes and audit CPU/memory overhead; synthetic array tests are not that acceptance.

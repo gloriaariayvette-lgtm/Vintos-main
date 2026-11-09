@@ -1733,3 +1733,30 @@ unsafe status paths, hot disable, fork and process-exit loss. Only synthetic
 throwaway stores and stub senders. Three generated reports refreshed and diff
 checked. No live-store writes, capture enabling, paid/model calls, merge or deploy.
 Full host suite and acceptance remain with review. Encoder identity remains open.
+
+
+## 9 November — bounded audit encoding parameter receipts
+
+`codex/judges-encoder-parameter-receipts` binds optional private self-audit vectors
+to their actual encoding invocation, input/output hashes, bounded settings digest
+and one before/after loaded CPU parameter snapshot pair per wrapper. No additional
+encode, model load, GPU operation or device transfer. Byte/count caps bound hashing;
+unsupported state and later calls remain unavailable. Encoder identity remains
+unverified: tokenizer/execution code/configuration and forecast-call binding are
+still missing. No learned weights or source text are retained by the new receipt.
+
+Offline validation rejects contradictory receipts and reports fixed parameter
+observation counts separately from full encoder identity and scoring. Legacy
+packets remain missing, forecast packets not instrumented. Existing content-only
+synthetic fixtures now explicitly remove the new receipt before manufacturing
+legacy vector conflicts; forged new receipts have independent rejection tests.
+Initial run exposed five such fixture contradictions; corrected, no contract
+weakened. Removed imported-fixture duplicate discovery from the new test module.
+
+69 isolated checks pass: parameter observer 12, self artifacts 20, artifact join 21,
+review report 16. Tests cover parameter content/order/dtype/shape, bounded scans,
+non-CPU refusal before transfer, unchanged return identity/call count, mutation
+between snapshots, observer failures, missing settings and forged bindings. Actual
+self-audit fragments and scratch CLI remain exercised by existing suites. Three
+generated reports refreshed. No live reads/writes, new model calls, sends, enabling,
+merge or deployment. Full host suite and loaded-runtime overhead remain with review.

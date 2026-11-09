@@ -97,6 +97,12 @@ def artifact_coverage(section, eligible):
         for label in labels:
             timing.append(f'- Checkpoint availability {label}: {count(values.get(label,0))} packets.')
         timing += ['', 'These clock checks do not supply a training date or authenticate a forecast. Metadata-only reads never attest loaded parameters.', '']
+    if 'encoder_parameter_observation_states' in section:
+        values = section['encoder_parameter_observation_states']
+        labels = ('observed_equal','observed_changed','unavailable','missing','not_instrumented_forecast')
+        if not isinstance(values,dict) or set(values)-set(labels) or sum(count(n) for n in values.values()) != unique: invalid()
+        timing += [f'- Encoder parameter observation {label}: {count(values.get(label,0))} packets.' for label in labels]
+        timing += ['', 'Matching CPU parameter snapshots are not full encoder identity. Tokenizer, execution code, training lineage and forecast-call matching remain unverified.', '']
     return ['## Retained artifact content joins', '',
             f'- Packets supplied: {supplied}; unique packets: {unique}.',
             f'- Source references: {refs}; full-text bindings: {full}; excerpt bindings: {excerpt}.',
