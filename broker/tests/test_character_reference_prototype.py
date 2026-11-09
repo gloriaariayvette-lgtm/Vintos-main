@@ -498,6 +498,40 @@ class Tests(unittest.TestCase):
         pool[-1]['context_vector']=[-1.,0.]
         with self.assertRaisesRegex(ValueError,'conflicting control candidate'):P.prepare(self.bundle,self.cutoff)
 
+    def test_reader_summary_labels_synthetic_and_preserves_zero_and_unknown(self):
+        report,_=P.run(self.bundle,self.cutoff)
+        page=P.render_reader_summary(report)
+        self.assertIn('Synthetic demonstration only',page)
+        self.assertIn('32 of 32',page)
+        self.assertIn('95% interval',page)
+        self.assertIn('not a probability',page)
+        report['primary_10s']['per_mode']['opening_everyday']['metrics']['foreign_semantic_paired_win']['mean']=0
+        self.assertIn('0.00 (95% interval',P.render_reader_summary(report))
+        report['primary_10s']['per_mode']['opening_everyday']['metrics'].pop('foreign_semantic_paired_win')
+        self.assertIn('not measured',P.render_reader_summary(report))
+
+    def test_reader_summary_keeps_unscored_primary_separate_from_sensitivity(self):
+        for row in self.bundle['historical_attribution']['compute_ledger']:row['at']-=20
+        report,_=P.run(self.bundle,self.cutoff);report['input_kind']='retained_snapshot'
+        page=P.render_reader_summary(report)
+        self.assertIn('primary analysis has no scored replies',page)
+        self.assertIn('| Primary | Opening / everyday | 0 / 0 | not measured | not measured |',page)
+        self.assertIn('| 30-second sensitivity | Opening / everyday | 32 / 32 |',page)
+        self.assertIn('cannot replace missing primary evidence',page)
+        self.assertNotIn('Synthetic demonstration',page)
+
+    def test_reader_summary_whitelists_output_and_rejects_invalid_numbers(self):
+        report,_=P.run(self.bundle,self.cutoff)
+        report['meaning']='private-sentinel';report['encoder_pin']['private_id']='private-sentinel'
+        report['coverage']['control_selection']['private_source']='private-sentinel'
+        for bad in ('private-sentinel','reply-0-0','synthetic shared topic','synthetic-frozen'):
+            self.assertNotIn(bad,P.render_reader_summary(report))
+        metric=report['primary_10s']['per_mode']['opening_everyday']['metrics']['semantic_percentile']
+        metric['mean']=float('nan')
+        with self.assertRaisesRegex(ValueError,'reader proportion'):P.render_reader_summary(report)
+        metric['mean']=.5;metric['observations']=True
+        with self.assertRaisesRegex(ValueError,'reader count'):P.render_reader_summary(report)
+
     def test_control_only_surfaces_accept_explicit_store_authorship(self):
         pool=self.pool();pool[:]=pool[:3]
         for item,surface in zip(pool,('slack','moltbook','journal')):
@@ -666,6 +700,7 @@ class Tests(unittest.TestCase):
         report=json.loads((out/'aggregate.json').read_text());self.assertEqual(report['input_kind'],'synthetic')
         self.assertNotIn('reply-0-0',json.dumps(report))
         self.assertEqual((out/'summary.md').read_text(),P.render_summary(report))
+        self.assertEqual((out/'reader-summary.md').read_text(),P.render_reader_summary(report))
         pin=json.loads((out/'private-run.json').read_text())['encoder_pin']
         self.assertEqual(pin['artifact_status'],'unknown')
         self.assertEqual(pin['declared_contract'],self.bundle['encoder'])

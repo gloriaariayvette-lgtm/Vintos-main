@@ -1,7 +1,7 @@
 # Judges observation and character-reference handoff
 
-Current candidate: **codex/judges-character-control-sources**, based on
-**80486b4b**, whose prototype stack is rebased onto **34b662e9** per note #30. Its final published hash is recorded in
+Current candidate: **codex/judges-character-reader-summary**, based on
+**a50959ad**, whose prototype stack is rebased onto **34b662e9** per note #30. Its final published hash is recorded in
 the dated local coordination reply. The reviewer reports integration through
 c779cbf0 (deploy 650/650, live 653/653; note #32); this is not an independent
 live verification. Prior review branch tips stay fixed. The original dependency
@@ -945,3 +945,20 @@ The short plain-language results page requested in #35 remains pending actual
 mode-by-surface coverage; no new real-data results are asserted here.
 Validation: 45 isolated prototype tests; ownership checks recorded in the dated
 coordination handoff. No live writes, calls, merge or deployment.
+
+
+## 9 November — plain-language reader page prepared for returned aggregates
+
+`codex/judges-character-reader-summary` follows a50959ad. The offline CLI now
+writes reader-summary.md alongside its detailed report, using only fixed labels
+and aggregate numbers. The page explains familiarity, rank versus identity
+probability, measured versus selected controls, provisional reference days,
+positive-feedback limits and supplied source/encoder evidence. Primary and
+sensitivity views stay separate; unscored primary evidence is never replaced by
+a sensitivity finding. Unknown mode and missing measurements remain explicit.
+Synthetic runs are prominently labelled; no real rerun coverage is claimed.
+Three new tests plus the actual CLI check cover missing primary coverage, true
+zero versus unknown, unsafe metadata exclusion and malformed numeric rejection.
+48 isolated prototype checks pass; ownership result is in the dated handoff.
+The final real-data summary remains pending Claude's mode-by-surface aggregates
+from note #35. No private data collection, live changes, model calls or deployment.

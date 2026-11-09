@@ -676,6 +676,68 @@ def render_summary(report):
     return '\n'.join(lines)
 
 
+def render_reader_summary(report):
+    """A short reader page, using only fixed labels and aggregate numbers."""
+    def count(value):
+        if type(value) is not int or value<0:raise ValueError('invalid reader count')
+        return str(value)
+    def number(value):
+        if type(value) not in (int,float) or not math.isfinite(value) or not 0<=value<=1:
+            raise ValueError('invalid reader proportion')
+        return f'{value:.2f}'
+    def measure(value):
+        if not value or value.get('mean') is None:return 'not measured'
+        interval=value.get('interval95')
+        uncertainty='interval unavailable'
+        if interval is not None:
+            if not isinstance(interval,list) or len(interval)!=2 or interval[0]>interval[1]:
+                raise ValueError('invalid reader interval')
+            uncertainty='95% interval '+number(interval[0])+'–'+number(interval[1])
+        return number(value['mean'])+' ('+uncertainty+'; '+count(value['observations'])+' observations across '+count(value['days'])+' days)'
+    if report.get('schema')!='character-reference-prototype-v3':raise ValueError('reader requires schema v3')
+    if report.get('input_kind') not in ('synthetic','retained_snapshot'):raise ValueError('invalid reader input kind')
+    primary=report['primary_10s'];coverage=report['coverage']
+    scored=count(primary['status'].get('scored',0))
+    lines=['# What the character judge can say', '',
+        '**Synthetic demonstration only — these are not findings about his conversations.**' if report['input_kind']=='synthetic'
+        else 'Offline results from a supplied copy of historical records. No live behavior was changed.', '',
+        'The primary analysis scored '+scored+' of '+count(primary['admitted_replies'])+' attributable replies.' if int(scored)
+        else '**The primary analysis has no scored replies. It cannot yet support a familiarity comparison.**', '',
+        'This measures how familiar a reply is compared with his replies on higher-engagement days. '
+        'Each reply uses references from other days in the same conversation mode and surface. '
+        'It does not determine identity, truth, or whether a reply is good.', '',
+        '## What was measurable', '',
+        'Primary uses the narrower attribution rule. The 30-second sensitivity check uses a broader rule; '
+        'it cannot replace missing primary evidence. The two views overlap and must not be added.', '',
+        '| View | Conversation mode | Attributable / scored replies | Familiarity percentile | Own vs other-author comparison |',
+        '| --- | --- | ---: | --- | --- |']
+    labels={'opening_everyday':'Opening / everyday','intimate':'Intimate','unknown':'Unknown mode'}
+    for title,key in (('Primary','primary_10s'),('30-second sensitivity','sensitivity_window30')):
+        view=report[key]
+        for mode in MODES:
+            cell=view['per_mode'][mode];metrics=cell['metrics']
+            lines.append('| '+' | '.join((title,labels[mode],count(cell['admitted_replies'])+' / '+count(cell['status'].get('scored',0)),
+                measure(metrics.get('semantic_percentile')),measure(metrics.get('foreign_semantic_paired_win'))))+' |')
+    lines+=['', 'A percentile is a rank against the reference replies, not a probability that a reply is him. '
+        'The other-author number is how often his reply scored higher than its matched comparison '
+        '(ties count half). Days receive equal weight. These intervals describe this sample, not a validated identity detector.', '',
+        '## What remains uncertain', '',
+        '- '+count(coverage['matched_controls'])+' control pairs were selected. Selection is not the same as scoring: '
+        'the table shows the comparisons that had usable references. His own writing on another surface is a separate check, not another-author evidence.',
+        '- '+count(coverage['positive_reply_links'])+' replies have linked positive laughs or ratings. '
+        'These support a limited positive-example facet, not a general humor verdict; missing reactions are not failures.',
+        '- '+count(len(coverage['candidate_days']))+' higher-engagement dates are provisional reference candidates. '
+        'High engagement does not certify every reply on those days.',
+        '- Mode comes from supplied independent signals, never the serving family. Unknown modes remain unscored. '
+        'Cross-family comparisons need matched replies inside the same mode and surface; no overlap means not identifiable, not invariant.',
+        '- Control authorship and source reviews are supplied claims. Store metadata is kept separate from human review. '
+        'Even a verified artifact hash does not establish the revision label or how cached vectors were produced.', '',
+        'The detailed summary contains style, surface coverage, source classes and within-mode comparisons. '
+        'Private text, individual reply records and vectors remain in local scratch. '
+        'No acceptance threshold, model switch or deployment follows from this report.', '']
+    return '\n'.join(lines)
+
+
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     for arg in ('scratch','input','output','cutoff'):p.add_argument('--'+arg,required=True)
@@ -699,8 +761,9 @@ def main():
                             ('experiments/character-reference/prototype.py','scripts/witness_attribution.py','scripts/witness_receipts.py')}})):
         with (out/name).open('x') as f:json.dump(data,f,sort_keys=True,allow_nan=False)
         (out/name).chmod(0o600)
-    with (out/'summary.md').open('x') as f:f.write(render_summary(report))
-    (out/'summary.md').chmod(0o600)
+    for name,renderer in (('summary.md',render_summary),('reader-summary.md',render_reader_summary)):
+        with (out/name).open('x') as f:f.write(renderer(report))
+        (out/name).chmod(0o600)
     print(json.dumps({'written':True,'scored':report['primary_10s']['status'].get('scored',0)}))
 
 

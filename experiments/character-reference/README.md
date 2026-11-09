@@ -136,6 +136,11 @@ stay inside that scratch, without symlinks. Output must be new. The inherited of
 guard forbids network/subprocesses and confines writes to the output directory.
 Outputs are mode 0600 in a 0700 directory:
 
+- `reader-summary.md`: a short plain-language page generated only from aggregate
+  values. It separates primary and sensitivity coverage, marks unmeasured values,
+  explains percentiles and uncertainty, and distinguishes familiarity from identity.
+  Synthetic runs are prominently labelled. It is preparation for the private
+  rerun, not a claim that real coverage has already returned.
 - `summary.md`: readable aggregate tables for coverage, candidate dates, primary
   and sensitivity facets, family comparisons and supplied evaluation groups.
   Missing measurements are explicitly unknown; overlapping views are never added.
