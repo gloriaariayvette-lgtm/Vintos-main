@@ -764,3 +764,20 @@ Reports regenerated and whitespace checked. This is synthetic contract evidence,
 not a live-data finding or a new accuracy measurement. No private input read,
 model call, real test send, live write, merge or deployment. Independent full
 Aegis review remains pending.
+
+
+## 8 November — source-grounded producer coverage handoff
+
+`codex/judges-producer-coverage-map` continues from d22d4032 with documentation
+only. Traced offer assembly, marker-based turn recording, later prompt edits and
+the exact per-invocation scratch fingerprint boundary. The new
+[judges-producer-coverage.md](judges-producer-coverage.md) identifies which existing
+records can be reused and which claims they cannot establish. It specifies the
+next bounded generated-fragment binding increment and its synthetic acceptance,
+without declaring completeness or enabling capture.
+
+Source references checked against the unchanged implementation. No new tests
+were run for this documentation-only change; the preceding 126-check result is
+historical, not a fresh suite. No live inputs, model calls, sends from tests,
+production changes, merge or deploy. Code implementation of these producer
+bindings and independent full Aegis review remain outstanding.

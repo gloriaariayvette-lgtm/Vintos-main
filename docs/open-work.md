@@ -6365,3 +6365,13 @@ sequence claims and rating types from hiding behind Python numeric equality.
 Canonical JSON agreement is required before selecting a duplicate event; both
 input orders are covered. 126 affected isolated checks pass. Live feeds are
 unchanged; independent full Aegis review remains pending.
+
+
+## 8 November — next producer coverage increment
+
+Source trace documented in [judges-producer-coverage.md](judges-producer-coverage.md).
+Existing offer/marker records predate the final router boundary and cannot be
+promoted to complete prompt ancestry. Next: context-local exact rendered-fragment
+bindings per invocation, preserving incomplete generated parents and unknown
+delivery. Documentation only; producer implementation and independent Aegis
+review remain outstanding. No capture enablement or live-feed changes.
