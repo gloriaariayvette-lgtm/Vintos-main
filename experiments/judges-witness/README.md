@@ -560,7 +560,7 @@ re-walking. This is a strict shadow-consumer repair, not a new live gating rule.
 
 The CLI writes `private-run.json` last, with mode 0600 in the explicit scratch
 output directory. It binds the exact input bytes, input kind, parsed cutoff,
-optional behaviour window/surfaces, innovation history minimum, four named local
+optional behaviour window/surfaces, innovation history minimum, named local
 scoring files, Python implementation/version, and every report's exact bytes.
 The run fingerprint is SHA256 of the remaining manifest serialized with sorted
 keys, compact separators and no nonfinite numbers. Repeating the same replay
@@ -1198,3 +1198,87 @@ is not filled in. The formatter checks these totals against the census, innovati
 and comparison counts and refuses inconsistent evidence. It does not sum comparison
 rows to invent a unique-target count. Per-block/day activity and arbitrary nested
 coverage labels are omitted; no selection or score is recomputed.
+
+### Historical model attribution (separate from strict witness admission)
+
+The optional `historical_attribution` bundle uses existing labels and compute-ledger
+records even when the new witness receipt is absent. The strict census's unknown
+served identity does **not** mean that model tracking never existed. The reviewer
+confirmed historical `served_by` labels and ledger model/provider fields. This
+increment preserves that information without promoting it to observed identity.
+
+Supply unchanged private ledger rows plus an explicit matching contract:
+
+```json
+{
+  "historical_attribution": {
+    "compute_ledger": [],
+    "window_seconds": 5,
+    "surface_callers": {"fixture-chat": ["router:fixture-chat"]},
+    "source_surfaces": {},
+    "naive_timezone": null
+  }
+}
+```
+
+This is a synthetic example. Replace the empty list with the explicitly captured
+compute-ledger rows and use verified surface/caller mappings. No store discovery,
+model call or new capture occurs. `source_surfaces` may supply a reviewed default
+only where a source adapter's records omit `surface`; explicit row surfaces are
+never overwritten. Do not label a mixed-surface store wholesale without evidence.
+`window_seconds` must be greater than zero and at most ten seconds, fixed before
+looking at agreement counts. Exact identifier matching does not use that window.
+
+The tiers, in precedence order, are:
+
+- `observed`: an internally consistent receipt binds observed selected model
+  metadata to the explicit turn, surface and exact finalized reply version. This
+  tier does not itself prove delivery, clean ancestry or witness eligibility.
+- `ledger_attributed`: a unique scoped compute-ledger match with model/provider.
+  Its private record retains the matching method and ledger hash. Ledger metadata
+  can reflect configured/fallback names and does not attest successful generation
+  or which output was finally selected.
+- `recorded_label`: a nonempty row `served_by` or `model` label, with conflicts
+  between those fields kept unresolved. A configured name remains a recorded label.
+- `unknown`: none of those usable facts. No model is inferred from date or a
+  default setting.
+
+Match `provider_request_id` from the row or its provenance envelopes first. An
+explicit invalid, conflicting or unmatched ID never falls back to proximity.
+Otherwise choose the uniquely nearest foreground call within the declared window,
+with an exact allowed `organ` for that surface. Ties stay unresolved. Outbound
+attempt/reservation records are not reply completions. A closest call with missing
+model/provider or an explicitly failed/accounting stage cannot promote a farther
+candidate. Unknown foreground call clocks for that caller prevent claiming a known
+nearest call. Exact duplicate ledger records count once; differing records sharing
+one provider ID stay ambiguous. A call used by different/unknown turn identities
+or different final reply versions is held for reuse. Duplicate source copies with
+the same explicit turn and exact final text may retain the same match.
+
+`compute_admission.record` currently writes naive local `at` strings. No host-local
+timezone is borrowed. An explicit `naive_timezone` may interpret such historical
+clocks only when its provenance is established by the reviewer; it is recorded in
+the input bundle and manifest. Ambiguous DST folds and nonexistent local times
+remain unresolved. Missing reply clocks are counted separately; labels on those
+copies are still reported but are not claimed to fall before the cutoff. Known
+reply clocks at/after cutoff are excluded from tier totals. Calls need usable clocks
+before the cutoff even for ID matching. Numeric or offset-aware instants need no
+extra interpretation. Conflicting `ts`/`timestamp` fields remain unresolved.
+
+`aggregate.json.historical_attribution` contains fixed tier, join-state and
+label/ledger agreement counts only. Denominators are **assistant source copies**,
+not distinct training turns; no sum of copy counts becomes a training-set size.
+`private-model-attribution.json` retains per-copy model/provider, explicit identity,
+reply/ledger hashes and join method, mode 0600 and hash-bound in `private-run.json`.
+It contains no message body but remains private. The local scoring-file receipt
+includes `scripts/witness_attribution.py`. The review formatter shows the aggregate
+tiers beside, never instead of, strict eligibility.
+
+Recommended historical use: use separately labelled tiers for descriptive
+model-switch stratification and per-model checks now. Agreement helps check the
+recorded attribution, but is not two independent proofs if both labels came from
+one configuration. Provider-ID and time-nearest joins should remain separate in
+sensitivity checks. This increment makes **no training admission decision** and
+changes no existing strict holds, behaviour/innovation scores or live feed. The
+reviewer and Gloria still decide any historical character-training contract; that
+contract must also handle provenance, final-version conflicts and duplicate turns.

@@ -1339,3 +1339,33 @@ labelled historical attribution tier is next; checkpoint/target-vector retention
 also remains open. No historical eligibility, delivery or lineage upgrade. Full
 Aegis suite, review and Gloria's enable decision remain outstanding; no merge,
 deploy, live write, model/paid call or actual test send occurred.
+
+## 9 November — historical model-attribution tiers
+
+`codex/judges-legacy-attribution` implements notes 24/25's corrected distinction:
+historical served_by/model labels exist even when strict observed identity is
+unknown. Optional offline attribution uses exact provider-request IDs first,
+otherwise a uniquely nearest foreground call within an explicit at-most-ten-second
+window and exact surface/caller map. Recorded labels, ledger attribution, observed
+receipt identity and unknown remain separate tiers. Conflicts, ties, reused calls,
+invalid nearest records and unknown chronology cannot silently improve the tier.
+Naive historical clocks require an explicit reviewer-supplied timezone; ambiguous
+or nonexistent local times remain unresolved. No current-host timezone is guessed.
+
+Aggregate counts are per assistant source copy, with label/ledger agreement and
+cutoff coverage made explicit. Model/provider/IDs/hashes and join methods stay in
+a private 0600 manifest-bound detail file, not public reports. The formatter shows
+the new tiers beside strict eligibility. Existing census and innovation outputs
+remain identical with the optional attribution object removed, tested through the
+actual CLI. No private census rerun or measured tier counts are claimed here.
+
+167 affected isolated checks pass: attribution 17, strict witness 106, formatter
+15, report coverage 9, capture/replay 9 and ownership 11. The new fixtures cover
+legacy-only labels, exact-ID priority/no fallback, time/caller scope, ties, bad
+nearest records, duplicate/reused calls, explicit timezone/DST, copy-versus-turn
+counts, unknown clocks, observed precedence, privacy and unchanged strict results.
+Reports regenerated; whitespace clean. Full Aegis suite/private census rerun remain
+with the reviewer. Historical model-switch stratification is recommended with tiers
+and matching methods labelled; character-training admission is not changed. The
+separate sink remains disabled and in review; checkpoint/target retention is next.
+No live write, model/paid call, real test send, merge or deployment.

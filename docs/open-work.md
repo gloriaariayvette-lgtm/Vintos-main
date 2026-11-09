@@ -6586,3 +6586,13 @@ Full Aegis suite and representative sink latency precede Gloria's enable decisio
 Note 24 confirms historical model labels already exist: implement their separate
 recorded-label/ledger-attributed tier next, without promoting them to observed or
 strict-eligible. Checkpoint-manifest and target-embedding retention remain open.
+
+## 9 November — historical model-attribution tiers ready for private rerun
+
+`codex/judges-legacy-attribution` adds optional per-copy observed / ledger_attributed /
+recorded_label / unknown counts, explicit caller/clock matching and private join
+details. 167 affected isolated checks pass. Strict eligibility and all live feeds
+are unchanged. The reviewer owns the corrected private census rerun and full Aegis
+suite. No historical training admission is decided here; descriptive per-model
+checks can use labelled tiers. Dedicated sink review/enablement and checkpoint /
+target-embedding retention remain separate, with retention next per note 25.

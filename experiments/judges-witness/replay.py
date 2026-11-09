@@ -16,6 +16,7 @@ import statistics
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+from witness_attribution import attribution
 from witness_receipts import admission, digest, envelope_status, instant, row_receipt, joined_identity, final_response, normalize_receipt, lineage_status, final_reply_status
 
 
@@ -1215,7 +1216,7 @@ def install_guard(root, output):
 
 
 # The local scoring implementation, not provider dependencies or live stores.
-SCORING_FILES = ("experiments/judges-witness/replay.py", "scripts/witness_receipts.py",
+SCORING_FILES = ("scripts/witness_attribution.py", "experiments/judges-witness/replay.py", "scripts/witness_receipts.py",
                  "scripts/evidence_provenance.py", "scripts/evidence_view.py")
 
 
@@ -1298,6 +1299,15 @@ def main():
     if "self_forecast_clocks" in bundle:
         report["forecast_clock_observations"] = forecast_clock_observations(
             bundle.get("forecasts", []), bundle["self_forecast_clocks"], args.cutoff)
+    private_attribution = None
+    if "historical_attribution" in bundle:
+        config = bundle["historical_attribution"]
+        if not isinstance(config, dict) or "compute_ledger" not in config:
+            raise ValueError("historical attribution requires explicit compute ledger records")
+        config = dict(config)
+        ledger = config.pop("compute_ledger")
+        rows = [row for kind, records in sources for row in adapt(records, kind)]
+        report["historical_attribution"], private_attribution = attribution(rows, ledger, config, args.cutoff)
     private_self_inputs = None
     if "self_input_controls" in bundle:
         report["self_input_baselines"], private_self_inputs = self_input_baselines(
@@ -1318,6 +1328,8 @@ def main():
     output.mkdir(mode=0o700)
     outputs = [("aggregate.json", report), ("private-innovation.json", details),
                ("private-feedback.json", private_feedback)]
+    if private_attribution is not None:
+        outputs.append(("private-model-attribution.json", private_attribution))
     if private_self_inputs is not None:
         outputs.append(("private-self-input-controls.json", private_self_inputs))
     if private_behaviour is not None:

@@ -102,6 +102,21 @@ def render(report):
             other = copies - positive_n - unevaluated
             lines.append(f'- {field}: {positive}={positive_n}; not evaluated={unevaluated}; other recorded states={other}.')
         lines += ['', 'Coverage fields count copies independently, including excluded acts. A positive field does not admit a reply.', '']
+        if 'historical_attribution' in report:
+            historical = report['historical_attribution']
+            tiers = historical['tiers']
+            counts = {tier:count(tiers[tier]) for tier in ('observed','ledger_attributed','recorded_label','unknown')}
+            excluded = count(historical['excluded'].get('outside_cutoff',0))
+            if sum(counts.values()) + excluded != copies or count(historical['assistant_copies']) != copies:
+                invalid()
+            lines += ['## Historical model attribution', '']
+            for tier, n in counts.items(): lines.append(f'- {tier}: {n} assistant source copies.')
+            agreement = historical['label_ledger_agreement']
+            for state in ('agree','disagree','label_conflict','label_missing','ledger_unavailable'):
+                lines.append(f'- Label/ledger {state}: {count(agreement.get(state,0))}.')
+            lines += [f'- Outside cutoff: {excluded}.',
+                      f"- Without a usable cutoff clock: {count(historical['copies_without_cutoff_clock'])}.", '',
+                      'Historical labels and ledger matches are separate evidence tiers. They do not grant observed identity, strict eligibility, clean ancestry or a training decision. Counts are per source copy, not unique training turns.', '']
         if not eligible:
             lines += ['No strictly eligible replies: behaviour and prediction accuracy are insufficient on this evidence.', '']
         behaviour = report['behaviour_receipt']

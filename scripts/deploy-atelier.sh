@@ -115,7 +115,7 @@ causality_engine.py value_map.py repair_case.py encounter.py
 jepa_predictor.py drift_head.py relational_head.py world_model.py
 gloria_prediction.py withheld_head.py self_pressure.py resonance_felt.py inner_context.py
 value-map.py relational-mismatch.py causality-engine.py self-prediction.py
-effect_gate.py toy_link.py device_patterns.py evidence_provenance.py witness_receipts.py witness_capture.py witness_sink.py heart_rate.py
+effect_gate.py toy_link.py device_patterns.py evidence_provenance.py witness_receipts.py witness_attribution.py witness_capture.py witness_sink.py heart_rate.py
 stratagem.py stratagem_turn.py stratagem_realtime.py turn_record.py formation_observatory.py thruster_link.py
 concurrency-canary.py
 atelier-door.sh atelier-canary.sh atelier-broker-watch.sh atelier-status.sh
