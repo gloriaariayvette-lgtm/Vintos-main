@@ -449,3 +449,40 @@ absent sparse counter entries remain genuine zeros. Disagreement requires at lea
 one comparable label: zero comparable replies is **not measured**, while zero
 disagreements among a positive number of comparable replies remains a measured zero.
 Invalid recording flags and disagreement counts exceeding the denominator fail.
+
+
+## Generate pages from an existing aggregate report only
+
+For the character3 handoff, the reviewer can render both pages directly from the
+returned schema-v3 `aggregate.json`. No private reply bundle, vectors, artifact
+file, scoring or encoding is needed. With `TASK_SCRATCH` naming an existing separate
+0700 private scratch directory (outside this checkout and live stores):
+
+```sh
+SPARK_WORKSPACE="$TASK_SCRATCH" python3 experiments/character-reference/prototype.py \
+  --scratch "$TASK_SCRATCH" \
+  --aggregate-report "$TASK_SCRATCH/character3/aggregate.json" \
+  --output "$TASK_SCRATCH/character3-pages"
+```
+
+The new output directory contains only `reader-summary.md`, `summary.md` and
+`render-manifest.json`, all 0600. The manifest records the exact input-byte and
+renderer hashes, no source path. The source report is not copied or modified.
+Only allowlisted labels/numeric aggregates and validated candidate dates reach
+the pages; arbitrary metadata is ignored. The generated pages retain primary
+versus sensitivity separation, source assumptions and unknown evidence. The
+renderer does not independently verify the input's provenance or measurements.
+
+`--aggregate-report` and `--input` are mutually exclusive. Aggregate rendering
+rejects `--cutoff` and `--encoder-artifact`; it does not rerun evaluation or pin an
+artifact. It reads at most 8 MiB, rejects symlink/out-of-scratch input/output and
+existing output, and uses the same offline guard. Both pages must validate before
+the output directory is created. I/O failures can still leave partial output; only
+exit zero plus `{"written": true, "render_only": true}` is success. CLI failures
+retain the existing fixed, sanitized error contract.
+
+Evaluation mode still uses `--input`, `--cutoff`, and optional artifact verification
+with its existing 64 MiB input limit and private outputs. Aggregate rendering is
+not a new evaluation, a deployment or a claim that character3 has run. The public
+status document remains on the last supplied real results until new aggregates
+arrive.

@@ -7313,3 +7313,25 @@ This is a presentation correction only: no mode/source assignment, scoring,
 reference/control selection or input admission change. No private data, model calls,
 live writes, merge or deployment. Character3 and the latent-feed failure trace
 remain with the reviewer. No repeated status alert; heartbeat remains ACTIVE.
+
+
+## 9 November — aggregate-only summary command for character3
+
+`codex/judges-aggregate-summary-cli` follows f6647451 for note #38. The existing
+reader and detailed renderers can now run through --aggregate-report, with no
+private bundle, scoring or encoder/artifact access. It reads a bounded schema-v3
+aggregate file inside explicit private scratch and writes only the two pages plus
+a source-byte/renderer hash manifest into a new 0700 directory, files 0600. Both
+pages validate before writing; arbitrary input metadata is not echoed. Source
+bytes are unchanged. No scoring or result values are regenerated.
+
+Mixed evaluation/artifact options, symlinks, outside-scratch paths, oversized input
+and overwrites are rejected. Existing evaluation CLI behavior remains intact.
+64 isolated prototype checks pass, including actual aggregate CLI success without
+private inputs, exact renderer parity, permissions, error privacy and refusal cases.
+The success and sanitized-error regressions failed before implementation. Required
+report/ownership results are in the coordination handoff. README gives the exact
+command for the private character3 report. Actual character3 aggregates and the
+latent-feed failure trace remain pending with the reviewer; this is not new data.
+No private reads, model/encoder calls, live writes, merge or deployment.
+Heartbeat remains ACTIVE; no completion/routine ntfy under the revised policy.

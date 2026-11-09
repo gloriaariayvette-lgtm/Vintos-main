@@ -905,5 +905,54 @@ class Tests(unittest.TestCase):
         counts['family_fallback_enabled']=0;counts['somatic_rule_disagreements']=3
         with self.assertRaises(ValueError):P.render_summary(report)
 
+    def aggregate_cli(self,source,out,*extra):
+        return subprocess.run([sys.executable,str(ROOT/'experiments/character-reference/prototype.py'),
+            '--scratch',str(self.root),'--aggregate-report',str(source),'--output',str(out),*extra],capture_output=True,text=True)
+
+    def test_aggregate_only_cli_renders_without_private_inputs_or_recomputation(self):
+        report,_=P.run(self.bundle,self.cutoff)
+        report['private_metadata']='private-synthetic-sentinel'
+        self.assertNotIn('rows',report);self.assertNotIn('encoder',report)
+        source=self.root/'aggregate.json';source.write_text(json.dumps(report));before=source.read_bytes()
+        out=self.root/'pages';result=self.aggregate_cli(source,out)
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertEqual(json.loads(result.stdout),{'written':True,'render_only':True})
+        self.assertEqual({p.name for p in out.iterdir()},{'reader-summary.md','summary.md','render-manifest.json'})
+        self.assertEqual((out/'reader-summary.md').read_text(),P.render_reader_summary(report))
+        self.assertEqual((out/'summary.md').read_text(),P.render_summary(report))
+        self.assertEqual(source.read_bytes(),before)
+        self.assertEqual(out.stat().st_mode & 0o777,0o700)
+        for path in out.iterdir():
+            self.assertEqual(path.stat().st_mode & 0o777,0o600)
+            self.assertNotIn('private-synthetic-sentinel',path.read_text())
+        manifest=json.loads((out/'render-manifest.json').read_text())
+        import hashlib
+        self.assertEqual(manifest['source_sha256'],hashlib.sha256(before).hexdigest())
+        self.assertEqual(manifest['renderer_sha256'],hashlib.sha256((ROOT/'experiments/character-reference/prototype.py').read_bytes()).hexdigest())
+        self.assertNotEqual(self.aggregate_cli(source,out).returncode,0)
+
+    def test_aggregate_only_cli_rejects_mixed_modes_and_unsafe_paths(self):
+        report,_=P.run(self.bundle,self.cutoff)
+        source=self.root/'aggregate.json';source.write_text(json.dumps(report))
+        for extra in (('--cutoff',self.cutoff),('--encoder-artifact',str(source)),('--input',str(source))):
+            out=self.root/'mixed';result=self.aggregate_cli(source,out,*extra)
+            self.assertNotEqual(result.returncode,0);self.assertFalse(out.exists())
+        linked=self.root/'linked.json';linked.symlink_to(source)
+        self.assertNotEqual(self.aggregate_cli(linked,self.root/'symlink-out').returncode,0)
+        self.assertFalse((self.root/'symlink-out').exists())
+        self.assertNotEqual(self.aggregate_cli(source,self.root.parent/'outside-pages').returncode,0)
+
+    def test_aggregate_only_cli_validates_before_writing_and_sanitizes_errors(self):
+        report,_=P.run(self.bundle,self.cutoff)
+        source=self.root/'aggregate.json';out=self.root/'invalid-pages'
+        report['coverage']['candidate_days'][0]['date']='private-synthetic-sentinel'
+        source.write_text(json.dumps(report));result=self.aggregate_cli(source,out)
+        self.assertNotEqual(result.returncode,0);self.assertFalse(out.exists())
+        self.assertNotIn('private-synthetic-sentinel',result.stderr)
+        self.assertEqual(json.loads(result.stderr)['error'],'prototype_failed')
+        source.write_bytes(b' '* (8*1024*1024+1))
+        result=self.aggregate_cli(source,out)
+        self.assertNotEqual(result.returncode,0);self.assertFalse(out.exists())
+
 
 if __name__=='__main__':unittest.main()

@@ -864,15 +864,37 @@ def render_reader_summary(report):
 
 def main():
     p=argparse.ArgumentParser(description=__doc__)
-    for arg in ('scratch','input','output','cutoff'):p.add_argument('--'+arg,required=True)
+    for arg in ('scratch','output'):p.add_argument('--'+arg,required=True)
+    inputs=p.add_mutually_exclusive_group(required=True)
+    inputs.add_argument('--input',help='private evaluation input bundle')
+    inputs.add_argument('--aggregate-report',help='existing aggregate.json; render pages only')
+    p.add_argument('--cutoff',help='required only for evaluation input')
     p.add_argument('--encoder-artifact',help='explicit regular artifact copy inside private scratch; hash only')
-    args=p.parse_args();root=scratch_root(args.scratch)
-    source,out=inside(root,args.input),inside(root,args.output)
+    args=p.parse_args()
+    if args.aggregate_report and (args.cutoff is not None or args.encoder_artifact is not None):
+        p.error('aggregate rendering does not accept evaluation or artifact options')
+    if args.input and args.cutoff is None:p.error('evaluation input requires --cutoff')
+    root=scratch_root(args.scratch)
+    source,out=inside(root,args.aggregate_report or args.input),inside(root,args.output)
     if out.exists() or out in source.parents:raise ValueError('new output directory required')
     install_guard(root,out)
-    with source.open('rb') as f:raw=f.read(64*1024*1024+1)
-    if len(raw)>64*1024*1024:raise ValueError('snapshot exceeds prototype limit')
+    limit=(8 if args.aggregate_report else 64)*1024*1024
+    with source.open('rb') as f:raw=f.read(limit+1)
+    if len(raw)>limit:raise ValueError('snapshot exceeds prototype limit')
     bundle=decode_snapshot(raw)
+    if args.aggregate_report:
+        pages={'reader-summary.md':render_reader_summary(bundle),'summary.md':render_summary(bundle)}
+        manifest={'schema':'character-summary-render-v1','render_only':True,
+                  'source_sha256':hashlib.sha256(raw).hexdigest(),
+                  'renderer_sha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}
+        out.mkdir(mode=0o700)
+        for name,content in pages.items():
+            with (out/name).open('x') as f:f.write(content)
+            (out/name).chmod(0o600)
+        with (out/'render-manifest.json').open('x') as f:json.dump(manifest,f,sort_keys=True)
+        (out/'render-manifest.json').chmod(0o600)
+        print(json.dumps({'written':True,'render_only':True}))
+        return
     control_matches=[];mode_assignments=[]
     report,details=run(bundle,args.cutoff,control_matches,mode_assignments)
     artifact=inside(root,args.encoder_artifact) if args.encoder_artifact else None
