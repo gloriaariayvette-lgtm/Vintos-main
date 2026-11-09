@@ -7054,3 +7054,15 @@ for selected-input receipts with exact forecast/cutoff/arrival consistency check
 90 isolated checks pass. This is offline-only; runtime capture and admission are
 unchanged. Source identity, full ancestry, host integration and delivery remain
 open. No enabling, merge or deployment.
+
+
+## 9 November — active focus moved to the character-reference instrument
+
+Note #29 pauses new audit-receipt work except review findings. The offline cached-
+vector prototype is implemented on `codex/judges-character-reference`, based on
+the reviewer-integrated 34b662e9 per note #30; 49 isolated checks pass. See
+`experiments/character-reference/README.md`.
+Actual copied-history evaluation and real candidate dates are still outstanding:
+Claude needs to supply/run the explicit frozen-cache bundle and matched controls.
+Synthetic fixtures are not real-history findings. No strict admission change,
+model load, paid call, enabling, deployment or merge. Continue instrument work.

@@ -2239,3 +2239,15 @@ validation leaves baseline semantics unchanged. 90 isolated checks pass: coverag
 9, selected 8, baseline 10, joins 30, report 22, owners 11. Actual scratch replay
 CLI writes 0600 aggregate-only output. No producer or admission change; full
 source/encoder/delivery evidence and host integration remain open.
+
+
+## 9 November — character-reference prototype, not another receipt batch
+
+Implemented day-held-out reference familiarity, interpretable style, exact-linked
+positive-feedback reference, paired controls, model-family strata and day-level
+intervals. Reuses historical attribution with a distinct 30-second sensitivity
+view. Input vectors are explicitly supplied frozen caches; no encoder calls.
+49 isolated checks pass: prototype 12, attribution 26, owners 11. Private CLI writes
+0600 aggregate/evaluation/run files in new 0700 scratch output. Synthetic fixture
+results are labelled; actual-history results and candidate dates await the private
+bundle/run. Full scope and limits are in the new instrument README.

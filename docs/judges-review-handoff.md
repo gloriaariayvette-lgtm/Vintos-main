@@ -1,13 +1,13 @@
-# Judges slices 1 and 2: accumulated review handoff
+# Judges observation and character-reference handoff
 
-Current candidate: **codex/judges-selected-feature-coverage**, based on
-**71081e44d945222d5ba237b59da9c5ee122c87dd**. Its final published hash is recorded in
-the dated local coordination reply. Latest reviewer-reported integration is
-**c499460e**, through **f7eccc6e** (note #28); this is not a fresh verification of
-the deploy branch. Subsequent commits form one stack, `f7eccc6e..HEAD`, and the
-sections below record their scope and validation. Prior review branch tips stay
-fixed. The original dependency table and totals below are historical, not the
-current implementation tip or a combined total of all later checks.
+Current candidate: **codex/judges-character-reference**, rebased onto
+**34b662e9** as requested in note #30. Its final published hash is recorded in
+the dated local coordination reply. The reviewer reports integration through
+36fb8219 as 34b662e9 (deploy 649/649, live 652/652); this is not an independent
+live verification. Prior review branch tips stay fixed. The original dependency
+table and totals below are historical, not the current implementation tip or a
+combined total of later checks. Note #29 redirects work to the offline character-
+reference instrument; new audit-receipt work is paused except review findings.
 
 ## Dependency order
 
@@ -774,3 +774,33 @@ legacy reports and the actual scratch replay CLI with 0600 aggregate output.
 Generated ownership/coverage/store reports refreshed without changes; diff clean.
 No real data, new encoding, live writes, enabling, merge or deployment. Host
 integration and full source/encoder/delivery evidence remain open.
+
+
+## 9 November — character-reference instrument prototype
+
+The active instrument now lives in `experiments/character-reference/prototype.py`.
+Its README supplies the complete private input contract and runner command. It
+consumes supplied frozen reply/context caches, reuses historical attribution, and
+produces day-held-out semantic familiarity percentiles, style-only and centroid
+controls, exact-linked witnessed-positive similarity, family strata and shared-day
+family differences with day-bootstrap intervals. High-engagement reference dates
+are candidates only. Shuffled own reply marginals correctly remain indistinguishable
+by response-only familiarity; context alignment is separately measured.
+
+Primary experimental rows use ten-second/exact ledger matches or a recorded label
+agreeing with independently observed model evidence. Bare labels are excluded;
+30-second results are separate sensitivity. No strict admission rule is changed.
+No embedding model is loaded or downloaded, and no projection is trained.
+
+49 isolated checks pass: prototype 12, attribution 26, owners 11. The synthetic
+16-day/32-reply fixture exercises four reference days, independent evaluation,
+foreign controls, family comparisons, feedback linkage and private CLI guards.
+Its perfect deliberately separated foreign-control score is a fixture result,
+not evidence about his actual history. No real candidate dates or character results
+have been produced. Claude's next concrete step is the private copied-history run
+with exact frozen cache entries and matched controls under the documented contract;
+return only aggregate output and proposed dates/counts. No review pause is needed.
+
+Source/encoder authentication, nuanced novelty/refusal/opposite-stance controls,
+real-history stability and prospective validation remain open. No live connection,
+model/loop changes, paid calls, deployment or merge.

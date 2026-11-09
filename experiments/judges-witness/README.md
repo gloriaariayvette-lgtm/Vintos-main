@@ -2516,3 +2516,13 @@ legacy reports and the actual scratch replay CLI with 0600 aggregate output.
 Generated ownership/coverage/store reports refreshed without changes; diff clean.
 No real data, new encoding, live writes, enabling, merge or deployment. Host
 integration and full source/encoder/delivery evidence remain open.
+
+
+## 9 November — character instrument is the active next slice
+
+Coordination note #29 redirects work from additional receipt refinements to the
+[offline character-reference prototype](../character-reference/README.md). The
+instrument now exists with historical-tier admission separate from strict witness
+eligibility, held-out-day facets/controls and uncertainty. It consumes explicit
+private frozen caches; actual-history results are not yet available. New receipt
+work is paused except required review fixes. No production behavior changes.
