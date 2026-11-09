@@ -1488,3 +1488,44 @@ Independent full suite, private capture run and test merge remain with the revie
 Gloria deploys/enables. Heartbeat ACTIVE. No new unresolved issue or routine alert.
 
 Final merge compatibility check: a nonstring legacy turn ID bypasses the new binding lookup without failing the existing merge. Added a regression; humor binding suite is now 7 checks, total 101 targeted checks.
+
+
+## 2026-11-09 14:29 CST — note #55 private encoder runtime compatibility
+
+Branch codex/judges-encoder-runtime above 26fff99f; exact pushed tip/path is in
+the designated coordination reply. The producer opts into opening only the literal
+/dev/null character device for runtime import. Shared guard defaults stay unchanged;
+aliases, other external writes, network and subprocesses remain denied. Runtime
+context, batch and microbatch sizes now match and are recorded in private settings.
+
+Copy completion and encoding clocks use one bracketed wall anchor plus monotonic
+elapsed time. Private manifest/entries retain the anchor, bracket width and elapsed
+values. Invalid monotonic readings refuse; no wall timestamp clamping, historical
+backfill, published-pin change or cross-process clock attestation. README documents
+the run-local epoch estimates and unchanged copy-time/published freeze policies.
+CLOCK.md inventories named latent, Lab, artifact, capture and spool gates under a
+backward step, with scoped design recommendations. No live gate/host changes here.
+The reviewer-reported host steps support candidate mechanisms; the old tracebacks
+still do not prove which clock bound failed. Host correction is with the owner via
+Claude; no duplicate alert or diagnostic run.
+
+194 targeted isolated checks pass: producer 40, witness census/guard 109,
+numerical builder 16, private runner 18, entry owners 11. Logs:
+/tmp/judges-runtime-producer-final.log, /tmp/judges-runtime-witness-final.log,
+/tmp/judges-runtime-test_numerical_evidence_builder.log,
+/tmp/judges-runtime-test_nonllm_private_run.log,
+/tmp/judges-runtime-test_entry_owners.log. The first new default-null denial check
+expected PermissionError but the existing outside-scratch refusal is ValueError;
+the regression now asserts that exact existing refusal. Production behavior was
+not loosened to satisfy it. Reports regenerated unchanged; git diff check clean.
+
+Real native compatibility remains for Claude's authorized private run; these tests
+used only synthetic bytes and a stub runtime. His diagnostic 183-entry/123-freeze
+counts are reviewer-reported, not reproduced here. Capture plus joke IDs are not
+sufficient by themselves: raw capture still lacks complete ancestry/known delivery;
+numerical evaluation additionally needs suitable modes, references and outcome
+anchors. No scoreability claim from structural metadata alone.
+
+No provider/model call, real artifact load, GPU, private data read, live change,
+merge or deployment. Independent full suite/test merge and real private run stay
+with Claude. Heartbeat ACTIVE. No completion/routine ntfy.

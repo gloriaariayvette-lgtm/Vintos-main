@@ -1212,6 +1212,10 @@ for event,args in [("subprocess.Popen",("unused",[],None,None)),("socket.connect
     try: sys.audit(event,*args)
     except PermissionError: pass
     else: raise AssertionError(event)
+try: sys.audit("open","/dev/null","w",0)
+except ValueError as exc:
+    assert "strictly inside scratch" in str(exc)
+else: raise AssertionError("default guard permitted null write")
 '''
             result = subprocess.run([sys.executable, "-c", code, str(R.__file__), str(root)],
                                     capture_output=True, text=True, env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1"))

@@ -596,11 +596,11 @@ subprocess fallback occurs. The adapter uses `Llama(..., embedding=True)` and
 never silent truncation. This API and its pooling/offload options are documented in
 the [upstream API reference](https://llama-cpp-python.readthedocs.io/en/latest/api-reference/).
 CPU settings explicitly disable layer, K/Q/V and operation offload and flash attention;
-context tokens are bounded 128–32768, threads 1–32, with equal context/batch sizes.
+context tokens are bounded 128–32768, threads 1–32, with equal context/batch/microbatch sizes (`n_ctx`, `n_batch`, `n_ubatch`).
 A runtime lacking those options fails rather than silently selecting a substitute.
 
 The producer creates `encoder-copy.gguf` (0400) inside the new output directory
-(0700), hashes that copy, records copy-completion wall-clock time as `frozen_at`,
+(0700), hashes that copy, records anchored copy-completion time as default `frozen_at`,
 and loads **only that copy**, without mmap. Source mutation during copy is refused.
 Copy identity/size/modification/change timestamps are checked around every encoding;
 the full copy hash is checked before/after loading, after encoding/closing and before
@@ -634,7 +634,8 @@ Outputs (JSON files 0600):
   `encoder-cache-metadata-v1` with `entries`. Each entry includes `reply_ids`, exact
   full-reply/input/context hashes, encoder ID, artifact hash, effective freeze timestamp and qualification receipt,
   runtime name/version, pooling/normalization/input/CPU settings, and actual reply
-  and context encoding start/finish clocks. Duplicate identical copies retain all
+  and context encoding start/finish clocks, monotonic elapsed values and the run clock
+  anchor. Duplicate identical copies retain all
   bound reply IDs without extra encoding.
 - `counts.json`: counts only (IDs counted, cache entries, unique encoded strings,
   dimension, replies predating freeze, completion-call count); no IDs/text/hashes,
@@ -656,8 +657,11 @@ prospective contract. The summary counts them. The explicit reviewed external-ar
 qualification below is the sole alternative; it preserves the actual copy time. Previously cached vectors
 are never reused and relabelled as if this run produced them.
 
-The Python audit guard confines Python writes to the new output directory and denies
-network and **all** subprocesses; only the installed in-process local runtime is used.
+The Python audit guard confines Python writes to the new output directory, with an
+explicit producer-only exception for opening the literal character device `/dev/null`
+for writing during runtime import. Aliases and other external writes remain denied;
+the shared guard defaults to refusing even that exception. It denies network and
+**all** subprocesses; only the installed in-process local runtime is used.
 Native loader stdout/stderr is suppressed so private paths cannot leak in an error;
 CLI errors are fixed, sanitized JSON. This is not an OS sandbox for native extensions:
 the installed runtime is trusted, and private execution should retain the reviewer's
@@ -667,6 +671,24 @@ compatibility. Real runtime/artifact compatibility and private-data coverage rem
 unverified until the reviewer's separately authorized run; the dependency was not
 installed or exercised here.
 
+
+### Clock semantics for private encoding
+
+One wall-clock reading is bracketed by two monotonic readings at run start. The
+receipt records that wall anchor, the midpoint monotonic anchor, the bracket width,
+and `cross_process_order: not_attested`. Copy completion and encoding boundaries
+are sampled from monotonic time; their epoch estimates are the wall anchor plus
+elapsed seconds. The receipt keeps elapsed values beside every estimate, including
+copy completion. Wall steps during the run therefore cannot reverse the recorded
+encoding order. Nonfinite or backward monotonic readings still refuse the run;
+timestamps are never clamped or inferred from artifact modification times.
+
+These estimates establish ordering within this run, not a corrected UTC clock or
+causality with another process, boot, host or historical reply. The copy-time
+qualifier still uses the new copy boundary; it does not backdate historical acts.
+The published-artifact qualifier still uses the separately reviewed revision date.
+Neither this change nor a successful encoding supplies missing lineage, delivery,
+mode/reference coverage or outcome anchors. Old metadata is not rewritten.
 
 ### Reviewed external-artifact freeze qualification
 

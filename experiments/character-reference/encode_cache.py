@@ -19,6 +19,33 @@ C=R.C;P=R.P;Q=R.Q
 MAX_ARTIFACT=4*1024**3
 
 
+class AnchoredClock:
+    """One wall anchor plus monotonic elapsed time, scoped to this private run.
+
+    Epoch estimates establish run-local ordering, not cross-host causal proof.
+    """
+    def __init__(self, wall=None, monotonic=None):
+        wall = wall or time.time
+        self.monotonic = monotonic or time.monotonic
+        before = self.monotonic(); epoch = wall(); after = self.monotonic()
+        if (any(type(v) not in (int,float) or not math.isfinite(v) or v < 0 for v in (before,epoch,after))
+                or after < before): raise ValueError('invalid clock anchor')
+        self.anchor = {'schema':'anchored-monotonic-clock-v1','wall_at_anchor':epoch,
+                       'monotonic_at_anchor':before+(after-before)/2,'anchor_bracket_seconds':after-before,
+                       'epoch_semantics':'wall_anchor_plus_monotonic_elapsed','cross_process_order':'not_attested'}
+        self.last = after
+
+    def sample(self):
+        value = self.monotonic()
+        if type(value) not in (int,float) or not math.isfinite(value) or value < self.last:
+            raise ValueError('invalid monotonic clock')
+        self.last = value
+        elapsed = value-self.anchor['monotonic_at_anchor']
+        epoch = self.anchor['wall_at_anchor']+elapsed
+        if not math.isfinite(epoch): raise ValueError('invalid anchored epoch')
+        return {'at':epoch,'elapsed_seconds':elapsed}
+
+
 def signature(info):
     return tuple(getattr(info,k) for k in ('st_dev','st_ino','st_size','st_mtime_ns','st_ctime_ns'))
 
@@ -41,7 +68,7 @@ def pin_copy(path):
     return h.hexdigest(),signature(before)
 
 
-def copy_artifact(source,target):
+def copy_artifact(source,target,clock):
     before=regular(source)
     if not 4<=before.st_size<=MAX_ARTIFACT:raise ValueError('artifact size outside bound')
     total=0
@@ -59,9 +86,9 @@ def copy_artifact(source,target):
         dst.flush();os.fsync(dst.fileno())
     if signature(regular(source))!=signature(before):raise ValueError('source changed')
     target.chmod(0o400)
-    frozen_at=time.time()
+    copied=clock.sample()
     digest,sig=pin_copy(target)
-    return digest,sig,frozen_at
+    return digest,sig,copied
 
 
 class EncoderRuntimeUnavailable(RuntimeError):
@@ -86,7 +113,7 @@ class LocalEncoder:
         if not P.identifier(self.version):raise ValueError('runtime version unavailable')
         pool=getattr(llama_cpp,'LLAMA_POOLING_TYPE_'+settings['pooling'].upper())
         self.model=llama_cpp.Llama(model_path=str(path),embedding=True,n_gpu_layers=0,
-            n_ctx=settings['context_tokens'],n_batch=settings['context_tokens'],pooling_type=pool,
+            n_ctx=settings['context_tokens'],n_batch=settings['context_tokens'],n_ubatch=settings['context_tokens'],pooling_type=pool,
             n_threads=settings['threads'],n_threads_batch=settings['threads'],verbose=False,use_mmap=False,
             offload_kqv=False,op_offload=False,flash_attn=False)
         if self.model.pooling_type()!=pool:
@@ -141,7 +168,7 @@ def unit(value,dimension=None):
     return [v/norm for v in value]
 
 
-def run(argv=None,factory=LocalEncoder):
+def run(argv=None,factory=LocalEncoder,clock=None):
     p=R.Parser(description=__doc__)
     for k in ('gguf','input','scratch','output','cutoff','pooling'):p.add_argument('--'+k,required=True)
     p.add_argument('--context-tokens',type=int,default=8192);p.add_argument('--threads',type=int,default=2)
@@ -159,16 +186,18 @@ def run(argv=None,factory=LocalEncoder):
     regular(inp)
     null_fd=os.open(os.devnull,os.O_WRONLY)
     try:
-        C.install_guard(root,out)
+        C.install_guard(root,out,allow_devnull=True)
+        clock=clock or AnchoredClock()
         bundle,input_hash=R.read_projection(inp,64*1024*1024)
         cutoff=P.stamp(args.cutoff);rows,ids=selected_rows(bundle,cutoff)
         check=copy.deepcopy(bundle);check['embeddings']=[];C.prepare(check,cutoff)
         out.mkdir(mode=0o700);artifact=out/'encoder-copy.gguf'
-        artifact_hash,artifact_sig,copied_at=copy_artifact(source,artifact)
+        artifact_hash,artifact_sig,copy_clock=copy_artifact(source,artifact,clock)
+        copied_at=copy_clock['at']
         freeze=Q.qualify(artifact_hash,copied_at,args.freeze_source,args.artifact_kind,args.published_pin)
         frozen_at=freeze['frozen_at']
         settings=dict(pooling=args.pooling,normalization='l2',input_policy='exact_full_strings',truncate=False,
-                      context_tokens=args.context_tokens,threads=args.threads,n_gpu_layers=0,use_mmap=False,
+                      context_tokens=args.context_tokens,n_batch=args.context_tokens,n_ubatch=args.context_tokens,threads=args.threads,n_gpu_layers=0,use_mmap=False,
                       offload_kqv=False,op_offload=False,flash_attn=False)
         def unchanged(full=False):
             if signature(regular(artifact))!=artifact_sig:raise ValueError('copied artifact changed')
@@ -182,9 +211,11 @@ def run(argv=None,factory=LocalEncoder):
                 for row in rows:
                     for text in (row['text'],row['context']):
                         if text in vectors:continue
-                        unchanged();started=time.time();vector=unit(encoder.encode(text),dimension);finished=time.time();unchanged()
-                        if started<copied_at or finished<started:raise ValueError('encoding clock inconsistent')
-                        clocks[text]={'started_at':started,'finished_at':finished}
+                        unchanged();started=clock.sample();vector=unit(encoder.encode(text),dimension);finished=clock.sample();unchanged()
+                        if started['at']<copied_at or finished['at']<started['at']:raise ValueError('encoding clock inconsistent')
+                        clocks[text]={'started_at':started['at'],'finished_at':finished['at'],
+                            'started_elapsed_seconds':started['elapsed_seconds'],'finished_elapsed_seconds':finished['elapsed_seconds'],
+                            'clock_source':'anchored_monotonic'}
                         dimension=len(vector);vectors[text]=vector
             finally:
                 if encoder is not None:encoder.close()
@@ -196,12 +227,12 @@ def run(argv=None,factory=LocalEncoder):
         for row in rows:
             binding={k:row[k] for k in ('reply_sha256','input_sha256','context_sha256')}
             entry=dict(binding,reply_ids=sorted(row['reply_ids']),encoder_id=encoder_id,artifact_sha256=artifact_hash,
-                       frozen_at=frozen_at,freeze_source=args.freeze_source,freeze_receipt=freeze,runtime=runtime,settings=settings,reply_encoding=clocks[row['text']],context_encoding=clocks[row['context']])
+                       frozen_at=frozen_at,freeze_source=args.freeze_source,freeze_receipt=freeze,clock_receipt=clock.anchor,copy_completed_elapsed_seconds=copy_clock['elapsed_seconds'],runtime=runtime,settings=settings,reply_encoding=clocks[row['text']],context_encoding=clocks[row['context']])
             entries.append(entry)
             embeddings.append(dict(binding,encoder_id=encoder_id,vector=vectors[row['text']],context_vector=vectors[row['context']]))
         projection=copy.deepcopy(bundle);projection['encoder']=enc;projection['embeddings']=embeddings
         manifest={'schema':'private-cache-producer-v1','input_sha256':input_hash,'source_encoder_declaration':bundle['encoder'],
-                  'artifact_sha256':artifact_hash,'artifact_bytes':artifact_sig[2],'frozen_at':frozen_at,'copy_completed_at':copied_at,'freeze_source':args.freeze_source,'freeze_receipt':freeze,'runtime':runtime,'settings':settings,
+                  'artifact_sha256':artifact_hash,'artifact_bytes':artifact_sig[2],'frozen_at':frozen_at,'copy_completed_at':copied_at,'clock_receipt':clock.anchor,'copy_completed_elapsed_seconds':copy_clock['elapsed_seconds'],'freeze_source':args.freeze_source,'freeze_receipt':freeze,'runtime':runtime,'settings':settings,
                   'encoder_id':encoder_id,'embedding_calls':len(vectors),'completion_calls':0,'historical_backfill':False,
                   'code_sha256':{str(path.relative_to(R.REPO)):C.digest(path.read_text()) for path in
                     (Path(__file__),Path(Q.__file__),Q.PIN_FILE,HERE/'prototype.py',HERE.parent/'nonllm-judges/run_private.py',HERE.parent/'judges-witness/replay.py')},

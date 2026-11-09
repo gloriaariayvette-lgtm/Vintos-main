@@ -13,6 +13,7 @@ import os
 import re
 from pathlib import Path
 import statistics
+import stat
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
@@ -1202,7 +1203,7 @@ def inside(root, value):
     return resolved
 
 
-def install_guard(root, output):
+def install_guard(root, output, *, allow_devnull=False):
     """Guard all writes (including rename) plus subprocesses and network."""
     def write_path(value):
         if not isinstance(value, (str, bytes, os.PathLike)):
@@ -1217,7 +1218,11 @@ def install_guard(root, output):
             mode, flags = args[1], args[2]
             if (isinstance(mode, str) and any(c in mode for c in "wax+")) or (
                     isinstance(flags, int) and flags & (os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC | os.O_APPEND)):
-                write_path(args[0])
+                null_open = (allow_devnull and isinstance(args[0], (str, bytes, os.PathLike))
+                             and os.fsdecode(args[0]) == os.devnull
+                             and os.path.realpath(os.devnull) == os.devnull
+                             and stat.S_ISCHR(os.stat(os.devnull).st_mode))
+                if not null_open: write_path(args[0])
         if event in ("os.rename", "os.link", "os.symlink"):
             raise PermissionError("replay does not need link or rename operations")
         if event in ("os.remove", "os.rmdir", "os.mkdir", "os.chmod", "os.chown", "os.truncate", "os.utime"):

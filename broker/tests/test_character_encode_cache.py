@@ -24,6 +24,17 @@ import importlib.util,json,os,sys
 from pathlib import Path
 spec=importlib.util.spec_from_file_location('producer',sys.argv[1]);m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
 action=os.environ.get('STUB_ACTION','normal');calls=[]
+clock_state={'wall':1800000000.,'mono':100.,'wall_calls':0}
+if action=='stepping-clock':
+    import types
+    def wall():
+        clock_state['wall_calls']+=1
+        return clock_state['wall']
+    def mono():
+        clock_state['mono']+=.125
+        return clock_state['mono']
+    m.time=types.SimpleNamespace(time=wall,monotonic=mono)
+
 if os.environ.get('STUB_PINS'):
     pins=m.Q.validate_registry(json.loads(os.environ['STUB_PINS']))
     m.Q.load_pins=lambda:pins
@@ -46,6 +57,7 @@ class Encoder:
             raise ValueError('PRIVATE-CANARY')
     def encode(self,text):
         calls.append(text)
+        if action=='stepping-clock':clock_state['wall']-=2.8
         if action=='mutate':
             self.path.chmod(0o600);self.path.write_bytes(b'GGUFchanged')
         if action=='samebytes':
@@ -58,9 +70,10 @@ class Encoder:
     def close(self):pass
 try:
     if action=='missing-runtime':sys.modules['llama_cpp']=None
-    m.run(sys.argv[2:],factory=m.LocalEncoder if action=='missing-runtime' else Encoder)
+    m.run(sys.argv[2:],factory=m.LocalEncoder if action=='missing-runtime' or action.startswith('runtime-') else Encoder)
     out=Path(sys.argv[sys.argv.index('--output')+1])
     (out/'stub-calls.json').write_text(json.dumps(calls))
+    if action=='stepping-clock':(out/'stub-clock.json').write_text(json.dumps(clock_state))
 except Exception as exc:
     print(json.dumps(m.error_payload(exc)),file=sys.stderr);sys.exit(1)
 '''
@@ -289,6 +302,78 @@ class Tests(unittest.TestCase):
         self.assertNotIn(str(self.root),result.stderr)
         self.assertFalse((self.out/'cache.json').exists())
         self.assertFalse((self.out/'stub-loaded').exists())
+
+    def runtime_stub(self, opening):
+        # Import happens inside the producer guard, using only this synthetic module.
+        text="""import os
+__version__='fixture-runtime'
+LLAMA_POOLING_TYPE_MEAN=1
+"""+opening+"""
+class Llama:
+    def __init__(self, **kw):
+        assert kw['n_batch']==kw['n_ctx']==kw['n_ubatch']==8192
+        assert kw['n_gpu_layers']==0 and kw['use_mmap'] is False
+    def pooling_type(self):return 1
+    def embed(self,text,normalize,truncate):
+        assert normalize is False and truncate is False
+        return [len(text),1.,2.]
+    def close(self):pass
+"""
+        (self.root/'llama_cpp.py').write_text(text)
+
+    def test_runtime_import_can_open_only_real_devnull_for_writing(self):
+        self.runtime_stub("with open(os.devnull,'w') as f:f.write('synthetic discard')\n")
+        result=self.run_cli('runtime-null');self.assertEqual(result.returncode,0,result.stderr)
+        manifest=json.loads((self.out/'character-input.json').read_text())['cache_producer']
+        self.assertEqual(manifest['runtime']['version'],'fixture-runtime')
+        self.assertEqual(manifest['settings']['n_ubatch'],8192)
+
+    def test_runtime_import_outside_output_write_remains_forbidden(self):
+        self.runtime_stub("with open(os.path.join(os.path.dirname(__file__),'escape.txt'),'w') as f:f.write('denied')\n")
+        result=self.run_cli('runtime-outside');self.assertNotEqual(result.returncode,0)
+        self.assertFalse((self.root/'escape.txt').exists());self.assertFalse((self.out/'cache.json').exists())
+
+    def test_runtime_import_null_alias_remains_forbidden(self):
+        (self.root/'null-alias').symlink_to(os.devnull)
+        self.runtime_stub("with open(os.path.join(os.path.dirname(__file__),'null-alias'),'w') as f:f.write('denied')\n")
+        self.assertNotEqual(self.run_cli('runtime-null-alias').returncode,0)
+
+    def test_local_adapter_microbatch_matches_context_at_other_sizes(self):
+        for size in (1024,16384):
+            constructor=Mock(return_value=types.SimpleNamespace(pooling_type=lambda:1,close=lambda:None))
+            module=types.SimpleNamespace(__version__='synthetic',LLAMA_POOLING_TYPE_MEAN=1,Llama=constructor)
+            with patch.dict(sys.modules,llama_cpp=module):
+                model=E.LocalEncoder(self.original,dict(pooling='mean',context_tokens=size,threads=2));model.close()
+            self.assertEqual(constructor.call_args.kwargs['n_ubatch'],size)
+            self.assertEqual(constructor.call_args.kwargs['n_batch'],size)
+            self.assertEqual(constructor.call_args.kwargs['n_ctx'],size)
+
+    def test_stepping_wall_clock_preserves_real_monotonic_order_and_anchor(self):
+        result=self.run_cli('stepping-clock');self.assertEqual(result.returncode,0,result.stderr)
+        manifest=json.loads((self.out/'character-input.json').read_text())['cache_producer']
+        metadata=json.loads((self.out/'cache-metadata.json').read_text())['entries']
+        state=json.loads((self.out/'stub-clock.json').read_text())
+        anchor=manifest['clock_receipt'];self.assertEqual(anchor['wall_at_anchor'],1800000000.)
+        self.assertEqual(state['wall_calls'],1);self.assertLess(state['wall'],anchor['wall_at_anchor']-3)
+        self.assertEqual(anchor['cross_process_order'],'not_attested')
+        copied=manifest['copy_completed_elapsed_seconds']
+        self.assertAlmostEqual(manifest['copy_completed_at'],anchor['wall_at_anchor']+copied)
+        self.assertEqual(manifest['freeze_receipt']['copy_completed_at'],manifest['copy_completed_at'])
+        for row in metadata:
+            self.assertEqual(row['clock_receipt'],anchor)
+            for label in ('reply_encoding','context_encoding'):
+                c=row[label];self.assertEqual(c['clock_source'],'anchored_monotonic')
+                self.assertGreaterEqual(c['started_elapsed_seconds'],copied)
+                self.assertGreaterEqual(c['finished_elapsed_seconds'],c['started_elapsed_seconds'])
+                self.assertAlmostEqual(c['started_at'],anchor['wall_at_anchor']+c['started_elapsed_seconds'])
+                self.assertAlmostEqual(c['finished_at'],anchor['wall_at_anchor']+c['finished_elapsed_seconds'])
+
+    def test_invalid_monotonic_clock_refuses_instead_of_clamping(self):
+        clock=E.AnchoredClock(wall=lambda:1000.,monotonic=iter([10.,10.1,11.,10.9]).__next__)
+        self.assertGreater(clock.sample()['at'],1000.)
+        with self.assertRaises(ValueError):clock.sample()
+        for value in (float('nan'),float('inf'),-1,True):
+            with self.assertRaises(ValueError):E.AnchoredClock(wall=lambda:value,monotonic=lambda:10.)
 
     def test_zero_vector_refused(self):self.assertNotEqual(self.run_cli('zero').returncode,0)
     def test_nonfinite_vector_refused(self):self.assertNotEqual(self.run_cli('nan').returncode,0)
