@@ -3683,6 +3683,16 @@ if os.path.isdir(AVATAR_MODELS_DIR):
 # === Startup ===
 
 @app.on_event("startup")
+async def start_judges_capture_recovery():
+    try:
+        import sys as _capture_sys
+        _capture_sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+        from witness_sink import start_recovery
+        start_recovery()
+    except Exception:
+        pass
+
+@app.on_event("startup")
 async def startup():
     # Ensure required files exist
     os.makedirs(MEMORY, exist_ok=True)

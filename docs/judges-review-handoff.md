@@ -164,3 +164,28 @@ This is not the durable queue: spool storage, age/config binding, acknowledgemen
 startup replay and host latency measurement remain the next work. Stable naming
 provides no permanent tombstone once a final file has been removed. No production
 flag, live data, merge or deployment changed.
+
+
+## Durable spool implementation
+
+`codex/judges-durable-spool` descends from 272b2d0b and now wires the previous
+publication primitive into bounded private ingress and startup replay. This
+supersedes the unfinished-spool statements above; default memory mode remains
+unchanged and no capture is enabled. Full operating semantics and costs are in
+[judges-capture-enable-proposal.md](judges-capture-enable-proposal.md#durable-ingress-mode-implemented-host-acceptance-pending).
+
+Explicit durable mode confirms synced ingress, then replays exact bytes under a
+stable ID and the original config/retention age. It holds changed-config records,
+keeps publication failures for retry, and never infers phone delivery. The startup
+hook runs no disk replay inline. Counter updates remain lower bounds. Host burst,
+near-cap foreground fsync latency and filesystem acceptance remain reviewer work;
+the previous 0.3–0.4 ms memory-queue result is not a durability measurement.
+
+The new isolated spool suite covers 25 synthetic cases, including new-process
+startup without a new capture, abrupt exit after publication before acknowledgement,
+30-packet retention, slot/byte bounds, old-store headroom, corrupted/unsafe records,
+disable/retarget/config changes, original age and fail-open startup. Existing sink
+26, deferred queue 26 and hook 21 checks also pass. Generated-report checks are
+recorded in the coordination reply after completion. This is local contract
+validation, not the full integrated Aegis suite or live acceptance. Review stays
+with Claude Code; enabling/deployment stays with Gloria.

@@ -6864,3 +6864,16 @@ pass, including actual child-process termination after linking. Existing call
 sites do not yet use the API. Durable ingress spool and startup recovery remain
 required; memory enqueue still does not survive restart. Continue that work
 without waiting for review of this prerequisite. Host fsync cost remains unmeasured.
+
+
+## 9 November — durable queue implemented; host acceptance remains
+
+`codex/judges-durable-spool` wires optional private ingress and startup replay on
+272b2d0b. This completes the local spool implementation left open in the preceding
+entries. Default memory mode and production configuration remain unchanged.
+25 new isolated spool checks and 73 existing sink/queue/hook checks pass. Reviewer
+must measure the new synchronous ingress/fsync response cost near capacity, burst
+retention and startup recovery on the isolated host copy before enablement. Old
+memory-queue latency cannot be reused for durable mode. Real encoder/runtime cost,
+private historical origin, full identity/lineage and phone-delivery/ancestry work
+remain open. No live writes, model calls, merge or deployment.

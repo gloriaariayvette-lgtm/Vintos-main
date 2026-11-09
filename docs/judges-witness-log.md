@@ -1952,3 +1952,23 @@ capacity and fsync failure are also covered. No hardware power-loss claim. This
 is the first restart-recovery prerequisite only: ingress spool, startup replay,
 bounded expiry and acknowledgement remain unfinished. No live writes, enabling,
 model calls, sends, merge or deployment; full host checks remain with review.
+
+
+## 9 November — durable ingress and startup replay
+
+`codex/judges-durable-spool` completes optional synchronous private staging plus
+background replay, stacked on 272b2d0b. Records preserve exact bytes, config identity
+and age; stable publication and acknowledgement handle process exits without
+another final packet. 64 spool entry names/8 MiB logical bytes are bounded separately
+from final packet count; final capacity reserves the spool budget. New startup
+hook recovers enabled durable capture without a new turn. Default memory mode,
+reply text/routing and delivery/admission semantics remain unchanged.
+
+25 synthetic spool checks pass, plus sink 26, queue 26 and hooks 21. Includes real
+process termination, config/age retention, capacity, privacy, busy locks, immutable
+bytes, 30 roughly 24 KB packets and fail-open hook behavior. This is not hardware
+power-loss or host latency acceptance. Durable ingress introduces foreground scans
+and fsync; the earlier memory-queue latency does not apply. Diagnostics remain
+lower bounds and restart loss unknown. No private input/config change, enabling,
+sends, model calls, merge or deployment. Host integration and acceptance remain
+with review; work continues on independent branches.
