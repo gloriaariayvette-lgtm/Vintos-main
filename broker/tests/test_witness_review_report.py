@@ -102,6 +102,29 @@ class Tests(unittest.TestCase):
         self.report['census']['evidence_coverage']['fields'].pop('request_binding')
         self.assertIn('request_binding: coverage not supplied',M.render(self.report))
 
+    def test_window30_report_validates_separate_partition_and_comparisons(self):
+        import witness_attribution as A
+        row = dict(role='assistant', content='Synthetic historical reply', turn_id='synthetic-turn',
+                   surface='synthetic-chat', timestamp=100, served_by='synthetic-model')
+        call = dict(at=80, organ='router:synthetic-chat', model='synthetic-model',
+                    provider='synthetic-provider', **{'class':'foreground'})
+        config = dict(window_seconds=10, window30_enabled=True,
+                      surface_callers={'synthetic-chat':['router:synthetic-chat']})
+        historical, _ = A.attribution([row], [call], config, 1000)
+        self.report['historical_attribution'] = historical
+        text = M.render(self.report)
+        self.assertIn('ledger_attributed_window30: 1', text)
+        self.assertIn('Exact agreement among added copies with one label: 1/1', text)
+        self.assertNotIn('synthetic-model', text)
+        for changes in ({'added_copies':2}, {'window_seconds':True}, {'training_effect':'enabled'},
+                        {'added_label_ledger_agreement':{'agree':2}}, {'join_states':{'matched_window30':0}}):
+            changed = copy.deepcopy(self.report)
+            changed['historical_attribution']['window30'].update(changes)
+            with self.assertRaises(ValueError): M.render(changed)
+        changed = copy.deepcopy(self.report)
+        changed['historical_attribution']['window30']['tiers']['observed'] = 1
+        with self.assertRaises(ValueError): M.render(changed)
+
     def paired(self):
         return {'checkpoint_group':1,'n':1,'paired_head_mean_error':.2,'head_error':.2,
                 'last_reply_error':.3,'recent_mean_error':.25}

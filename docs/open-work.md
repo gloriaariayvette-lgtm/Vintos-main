@@ -6709,3 +6709,15 @@ separately from within-representation conflict. 65 affected isolated checks pass
 No retained vector values, live audit results, eligibility or scoring rules changed. Encoder
 identity, private coverage diagnosis and full host acceptance remain open. No
 production write, enabling or deployment.
+
+
+## 9 November — separate historical 30-second tier ready for review
+
+`codex/judges-window30-attribution` adds an opt-in alternative historical partition
+with ledger_attributed_window30, sole-call selection, competing-reply holds and
+exact-label sensitivity counts. 162 isolated checks pass. The original tight-window
+and strict census/scoring outputs remain unchanged. Reviewer must run the new view
+on the existing private snapshot before interpreting added counts; no real-data
+result is claimed. Note 27 follow-ups still open: prospective ledger/history join
+key, source tracing of stopped chat logging and absent surfaces, durable queue-loss
+diagnostics, encoder identity. Full Aegis suite remains with review; no deployment.

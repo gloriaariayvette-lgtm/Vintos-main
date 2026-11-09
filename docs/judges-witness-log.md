@@ -1631,3 +1631,27 @@ unknown packets, invalid producer labels, fixed-count report output and unchange
 live audit results/call counts. All tests use synthetic data, scratch paths and
 stubbed transports. No real inputs, new model calls, live writes, enabling, merge
 or deployment. Full host suite and private coverage acceptance remain with review.
+
+
+## 9 November — opt-in 30-second historical tier
+
+Reviewer note 27 accepted the completion-path repair and measured the deferred
+writer on Aegis at median 0.35 ms, p95 0.49 ms, max 0.62 ms at representative
+occupancy. A 30-reply burst retained 9; queue loss across restart remains unknown.
+Persisted queue-drop diagnostics are follow-up work, not claimed complete here.
+
+`codex/judges-window30-attribution` adds the explicitly requested separate
+ledger_attributed_window30 view. Original tight-window fields remain unchanged;
+only unmatched copies with a sole in-scope call within 30 seconds can be added.
+All nearby replies compete, including existing exact-ID matches outside the window.
+Identity, metadata, clock, cutoff and reuse holds are retained. Extra exact-label
+agreement counts provide sensitivity evidence without model-family guesses.
+Neither strict eligibility nor training admission changes.
+
+162 focused isolated checks pass: attribution 26, coverage 14, review report 16,
+strict witness 106. Cases cover original-result preservation, exact window edges,
+ambiguity, duplicate copies, competing unknown/different replies, reserved exact
+IDs, configured-only/failed calls, bad clocks, cutoff, invalid opt-in, report
+partition validation, scratch CLI and unchanged strict outputs. Synthetic only;
+real added-tier counts remain for the reviewer on the admitted private snapshot.
+No live writes, provider/model calls, enabling, merge or deployment.

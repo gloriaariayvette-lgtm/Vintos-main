@@ -157,6 +157,34 @@ def render(report):
             lines += [f'- Outside cutoff: {excluded}.',
                       f"- Without a usable cutoff clock: {count(historical['copies_without_cutoff_clock'])}.", '',
                       'Historical labels and ledger matches are separate evidence tiers. They do not grant observed identity, strict eligibility, clean ancestry or a training decision. Counts are per source copy, not unique training turns.', '']
+            if 'window30' in historical:
+                extension = historical['window30']
+                names = ('observed','ledger_attributed','recorded_label','unknown','ledger_attributed_window30')
+                alternative = {name:count(extension['tiers'][name]) for name in names}
+                added = count(extension['added_copies'])
+                comparisons = {state:count(extension['added_label_ledger_agreement'].get(state,0))
+                               for state in ('agree','disagree','label_conflict','label_missing')}
+                if (type(extension['window_seconds']) is not int or extension['window_seconds'] != 30
+                        or extension['selection'] != 'sole_call_all_replies_compete'
+                        or extension['admission_effect'] != 'none' or extension['training_effect'] != 'none'
+                        or sum(alternative.values()) != sum(counts.values())
+                        or any(alternative[k] != counts[k] for k in ('observed','ledger_attributed'))
+                        or any(alternative[k] > counts[k] for k in ('recorded_label','unknown'))
+                        or alternative['ledger_attributed_window30'] != added
+                        or sum(comparisons.values()) != added
+                        or sum(count(v) for v in extension['join_states'].values()) != sum(counts.values())
+                        or count(extension['join_states'].get('matched_window30',0)) != added):
+                    invalid()
+                lines += ['## Optional 30-second historical view', '',
+                          'Alternative partition of the same source copies; do not add these counts to the original tiers.', '']
+                for name in names:
+                    lines.append(f'- {name}: {alternative[name]} assistant source copies.')
+                for state, n in comparisons.items():
+                    lines.append(f'- Added-copy exact label agreement {state}: {n}.')
+                denominator = comparisons['agree'] + comparisons['disagree']
+                lines += [f'- Exact agreement among added copies with one label: {comparisons["agree"]}/{denominator}.'
+                          if denominator else '- Exact agreement is undefined: no added copies have one comparable label.', '',
+                          'This uses a sole call within 30 seconds, not the nearest of several. All nearby replies compete. Exact string disagreement can reflect route aliases; no model family is inferred. This is sensitivity evidence, not validated accuracy, independent samples or a training decision.', '']
         if not eligible:
             lines += ['No strictly eligible replies: behaviour and prediction accuracy are insufficient on this evidence.', '']
         behaviour = report['behaviour_receipt']

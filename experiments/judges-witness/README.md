@@ -1596,3 +1596,41 @@ single consistent old observation can still establish the same text-content bind
 as before, with unknown representation and no scoring permission. The report emits
 only fixed labels and aggregate counts for these distinctions. Strict eligibility,
 forecast scoring and live audit results are unchanged.
+
+
+### Optional separate 30-second historical attribution
+
+To evaluate the reviewer's requested wider historical tier on an existing private
+snapshot, set `historical_attribution.window30_enabled` to the JSON boolean `true`.
+Keep the original explicit surface map, naive timezone, exclusive cutoff and
+`window_seconds` (at most 10) unchanged, then run the existing scratch replay into
+a **new** output directory. There are no default changes and no extra input reads.
+
+The original `historical_attribution.tiers`, joins and label-agreement counts stay
+unchanged. Its optional `window30` section gives an **alternative partition of the
+same assistant source copies**, with the additional `ledger_attributed_window30`
+tier. Never sum the two partitions or treat duplicate source copies as independent
+training turns. Private per-copy details keep the original fields plus a separate
+`window30` object containing the selected ledger identity and state.
+
+Only original `no_matching_call` copies without an observed identity can enter the
+extension. There must be exactly one foreground call in the mapped caller scope
+within inclusive +/-30 seconds and before the exclusive cutoff. This is not the
+nearest of multiple calls. Missing/invalid call metadata, explicitly configured-only
+identity and unordered caller clocks cannot be promoted. Exact-ID failures,
+unmapped surfaces and bad reply clocks are not repaired by widening.
+
+All other clocked replies compete for nearby calls, including already matched,
+observed, ambiguous and failed-exact-ID replies. An existing exact-ID match outside
+the window also reserves its call. Reuse is allowed only for copies with the same
+explicit turn ID and final-text hash; different or unidentified replies hold the
+candidate. Identical ledger records are deduplicated before this check.
+
+The aggregate report supplies added-copy exact label agreement, disagreement,
+conflicting-label and missing-label counts. The agreement denominator excludes
+missing/conflicting labels and is explicitly undefined when empty. Route aliases
+are not guessed to be model families. These descriptive checks are sensitivity
+results, not proof of accuracy or a historical training authorization. The original
+strict census, behaviour receipt, forecasts, baselines and scoring do not change.
+The real-data tier counts must be measured by the reviewer on the admitted copy;
+previous wider-window opportunity counts are not silently relabelled as results.
