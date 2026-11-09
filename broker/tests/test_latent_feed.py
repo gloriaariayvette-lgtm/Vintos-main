@@ -220,6 +220,46 @@ class Tests(unittest.TestCase):
             combined=dream.gather_present()
             self.assertTrue(combined.startswith(original));self.assertIn('TRAINED CONTEXT',combined)
 
+    def monotonic_packet(self):
+        import types
+        with patch.object(F,'_clock_domain',return_value='synthetic-boot'), patch.object(F,'time',types.SimpleNamespace(time=lambda:self.now,monotonic=lambda:100.)):
+            self.assertEqual(F.refresh(enc=self.enc,memory=MEM,exs=self.exs)['status'],'updated')
+        return F.load(MEM/'latent-feed.json')
+
+    def clock_read(self,wall,mono,domain='synthetic-boot'):
+        import types
+        with patch.object(F,'_clock_domain',return_value=domain), patch.object(F,'time',types.SimpleNamespace(time=lambda:wall,monotonic=lambda:mono)):
+            return F.evidence('trajectory',MEM,diagnostics=True)
+
+    def test_monotonic_freshness_survives_backward_wall_step(self):
+        p=self.monotonic_packet()
+        self.assertEqual(p['freshness_clock']['generated_at'],self.now)
+        text,_=self.clock_read(self.now-3,101.)
+        self.assertIn('TRAINED CONTEXT',text)
+        self.assertEqual(F.load(MEM/'latent-feed.json'),p)
+
+    def test_monotonic_freshness_expires_even_when_wall_is_behind(self):
+        self.monotonic_packet()
+        self.assertEqual(self.clock_read(self.now-300,101.+F.TTL)[1]['reason'],'stale_or_invalid_packet')
+        self.assertEqual(self.clock_read(self.now+F.TTL+1,101.)[1]['reason'],'stale_or_invalid_packet')
+
+    def test_monotonic_different_domain_or_backward_clock_refuses(self):
+        self.monotonic_packet()
+        self.assertEqual(self.clock_read(self.now,101.,'other-boot')[1]['reason'],'freshness_clock_unavailable')
+        self.assertEqual(self.clock_read(self.now,99.)[1]['reason'],'future_packet')
+        self.assertEqual(self.clock_read(self.now,float('nan'))[1]['reason'],'freshness_clock_unavailable')
+
+    def test_monotonic_binding_and_future_evidence_are_not_relaxed(self):
+        p=self.monotonic_packet();p['generated_at']+=1;F.atomic(MEM/'latent-feed.json',p)
+        self.assertEqual(self.clock_read(self.now,101.)[1]['reason'],'freshness_clock_unavailable')
+        p['generated_at']-=1;p['cutoff']=datetime.fromtimestamp(self.now+1,timezone.utc).isoformat()
+        p['freshness_clock']['cutoff']=p['cutoff'];F.atomic(MEM/'latent-feed.json',p)
+        self.assertEqual(self.clock_read(self.now-3,101.)[1]['reason'],'future_cutoff')
+
+    def test_explicit_replay_clock_keeps_wall_gate(self):
+        self.monotonic_packet()
+        self.assertEqual(F.evidence('trajectory',MEM,now=self.now-3,diagnostics=True)[1]['reason'],'future_packet')
+
     def test_10_reading_keeps_call_count_and_original_words(self):
         import reading as R
         calls=[]

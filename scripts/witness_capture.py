@@ -6,6 +6,7 @@ the receipt to its exact final return text. Persistence is a separate caller.
 """
 from copy import deepcopy
 import json
+import math
 import os
 import sys
 import time
@@ -108,11 +109,20 @@ def prepare_shadow(capture, system, messages, params, reason, at):
 
 
 class Capture:
-    def __init__(self, turn_id, surface, started_at):
+    def __init__(self, turn_id, surface, started_at, *, monotonic=None):
         if not isinstance(turn_id, str) or not turn_id or not isinstance(surface, str) or not surface:
             raise ValueError("capture needs an existing turn identity")
         self.turn_id, self.surface = turn_id, surface
         self.started_at = instant(started_at)
+        self._interval_clock = monotonic
+        self._clock_pid = os.getpid()
+        self._clock_uncertain = False
+        self._clock_samples = []
+        if monotonic is not None:
+            self._mono_start = monotonic()
+            if type(self._mono_start) not in (int,float) or not math.isfinite(self._mono_start) or self._mono_start < 0:
+                raise ValueError("invalid capture monotonic clock")
+            self._mono_last = self._mono_start
         self.context_id = "context:" + turn_id
         self._attempts = []
         self._selected = None
@@ -123,6 +133,19 @@ class Capture:
         self._input_bindings = []
         self._finalization_nodes = []
         self._rendered_fragments = []
+
+    def _local_stamp(self, at, boundary):
+        at = instant(at)
+        if self._interval_clock is not None:
+            mono = self._interval_clock()
+            if (os.getpid() != self._clock_pid or type(mono) not in (int,float)
+                    or not math.isfinite(mono) or mono < self._mono_last or len(self._clock_samples) >= 128):
+                raise ValueError("invalid capture monotonic interval")
+            self._mono_last = mono
+            if at < max([self.started_at] + [n["at"] for n in self._nodes]):
+                self._clock_uncertain = True
+            self._clock_samples.append(dict(boundary=boundary, wall_at=at, elapsed_seconds=mono-self._mono_start))
+        return at
 
     def bind_value_map(self, observation, fragment):
         """Bind the exact current-handler read to its offered block; ancestry stays unknown."""
@@ -271,8 +294,8 @@ class Capture:
         prompt/history entries remain unknown until their producers supply
         complete ancestry. Even role=user is not evidence of external origin.
         """
-        at = instant(at)
-        if self._closed or self._finalization_nodes or at < max([self.started_at] + [n["at"] for n in self._nodes]):
+        at = self._local_stamp(at, "request")
+        if self._closed or self._finalization_nodes or (self._interval_clock is None and at < max([self.started_at] + [n["at"] for n in self._nodes])):
             raise ValueError("invalid request lifecycle")
         if not isinstance(system, str) or not isinstance(messages, list) or not isinstance(params, dict):
             raise ValueError("invalid handler request")
@@ -339,8 +362,8 @@ class Capture:
         if request_id is not None and request is None:
             raise ValueError("unknown request")
         if observed_at is not None:
-            observed_at = instant(observed_at)
-            if request is None or observed_at < request["at"]:
+            observed_at = self._local_stamp(observed_at, "result")
+            if request is None or (self._interval_clock is None and observed_at < request["at"]):
                 raise ValueError("invalid result clock")
         for stage in list(stages) + [result]:
             if not isinstance(stage, dict) or id(stage) in seen:
@@ -400,9 +423,9 @@ class Capture:
         self._record_finalization("before_final_guard", text, at)
 
     def _record_finalization(self, boundary, text, at):
-        at = instant(at)
-        if self._closed or not isinstance(text, str) or at < max(
-                [self.started_at] + [n["at"] for n in self._nodes]):
+        at = self._local_stamp(at, boundary)
+        if self._closed or not isinstance(text, str) or (self._interval_clock is None and at < max(
+                [self.started_at] + [n["at"] for n in self._nodes])):
             raise ValueError("invalid finalization boundary")
         selected = next((a for a in self._attempts if a["attempt_id"] == self._selected), None)
         previous = self._finalization_nodes[-1] if self._finalization_nodes else None
@@ -425,7 +448,7 @@ class Capture:
         if transport not in ("unknown", "handed_to_framework", "failed"):
             raise ValueError("capture cannot attest delivery")
         final = instant(finalized_at)
-        if not isinstance(final_text, str) or final < max([self.started_at] + [n["at"] for n in self._nodes]):
+        if not isinstance(final_text, str) or (self._interval_clock is None and final < max([self.started_at] + [n["at"] for n in self._nodes])):
             raise ValueError("invalid finalization")
         self._record_finalization("handler_return", final_text, finalized_at)
         self._closed = True
@@ -436,11 +459,20 @@ class Capture:
                 attempt["outcome"] = "selected"
         r = receipt(self.turn_id, self.surface, self.started_at, finalized_at, final_text,
                     self.context_id, attempts, self._selected, delivery="unknown")
+        if self._clock_uncertain:
+            # Monotonic ordering retains the observation, never repairs wall chronology.
+            r = {"schema": r["schema"], "status": "unknown", "started_at": self.started_at,
+                 "finalized_at": final, "clock_status": "wall_order_unknown"}
         selected = next((a for a in self._attempts if a["attempt_id"] == self._selected), None)
         return deepcopy({"schema": "witness-capture-v1", "turn_id": self.turn_id,
                          "surface": self.surface, "witness_receipt": r,
                          "witness_final_text": final_text, "witness_final_sha256": digest(final_text),
                          "transport": transport, "attempt_history_complete": False,
+                         **({"capture_clock": {"schema": "capture-interval-clock-v1",
+                             "scope": "same_process_capture_lifecycle", "wall_anchor": self.started_at,
+                             "elapsed_origin": "capture_construction", "samples": self._clock_samples,
+                             "wall_order": "unknown" if self._clock_uncertain else "observed",
+                             "cross_process_order": "not_attested"}} if self._interval_clock is not None else {}),
                          "requests": self._requests,
                          "observed_attempts": attempts,
                          "finalization": {"selected_raw_sha256": selected["_raw_sha256"] if selected else None,
@@ -504,7 +536,7 @@ def begin_shadow(turn_id, surface, started_at, *, original_text=None, input_mess
     if not location:
         return None
     root = _private_root(location)
-    capture = Capture(turn_id, surface, started_at)
+    capture = Capture(turn_id, surface, started_at, monotonic=time.monotonic)
     capture._scratch_root = root
     try:
         capture.bind_counterpart_input(original_text, input_message, input_slot)
