@@ -8079,3 +8079,53 @@ judges-witness-slices checkout. Both real-data access and actual cron applicatio
 remain for Gloria's separate decision through Claude. No new unresolved failure,
 ntfy, provider calls, private-record access, GPU, live writes, merge or deploy.
 Heartbeat ACTIVE; independent review/private execution remains Claude's.
+
+
+## 2026-11-09 17:11 CST — #63 offline weekly adoption review
+
+Added experiments/nonllm-judges/adoption.py and ADOPTION.md on
+codex/judges-growth-adoption above 0bed7879 in the existing judges-witness-slices
+scratch. No UI, runtime integration, actual key provisioning/signing, live reads,
+notifications, provider calls, merge or deployment. Heartbeat ACTIVE.
+
+The private digest recomputes the retained run's voice/drift receipts from its
+supplied cached input at the requested local-week cutoff. Counts-only flags cannot
+supply exact bindings. It reconstructs each full consecutive sustained run, not
+just its fourth-day-and-later flags, including pre-week beginning days. Modes,
+surfaces, reference versions and attribution views stay separate. The phone
+Markdown includes only dates/scope/fixed language; private JSON retains exact
+original IDs/content hashes/times/days plus canonical input/receipt hashes.
+
+Explicit growth / not him / not sure answers produce adoption-receipt-v1 envelopes
+bound to the exact digest/window/members, owner claim, answer timestamp, timezone,
+view and next eligible local day. HMAC-SHA256 with a separately trusted 256-bit key
+provides keyed integrity, not independent human authentication or nonrepudiation.
+Owner-controlled key custody and deliberate-answer authentication remain a future
+private integration decision; no actual key or answer was used. Unknown/malformed,
+non-owner, duplicate answers and conflicting signed answers refuse; exact receipt
+copies deduplicate. The full answer set must be supplied; withheld corrections
+cannot be discovered. No revocation service is claimed.
+
+Only verified growth emits an offline candidate in the existing adoption shape.
+The pure drift analyzer's day gate is tightened to require a target day strictly
+after the local review day, even if the answer preceded that day's first reply.
+Original ancestry (including indirect influence), exact hashes, current reference,
+sustained membership, independent modes and calibration gates remain intact.
+Earlier/same-day scores never change; not him/not sure/unanswered change nothing.
+No CLI applies reference updates; run_private still takes no adoption option.
+A future integrator must verify, preserve signed audit evidence, regenerate the
+reviewed digest and respect its view/timezone; low-level claimed receipts alone
+are still not authentication. Serving/provenance fields are preserved in inputs,
+not guessed or copied into public output.
+
+72 targeted isolated checks pass: adoption 19, drift 24, numerical runner 18,
+owners 11. Logs /tmp/judges-s63-test_judges_adoption.py.log,
+/tmp/judges-s63-test_nonllm_voice_drift.py.log,
+/tmp/judges-s63-test_nonllm_private_run.py.log and
+/tmp/judges-s63-test_entry_owners.py.log. Coverage includes actual cached-input
+reconstruction, full membership, tamper/wrong-key/conflict refusal, different views,
+unknown ancestry, no automatic answer, DST/local-day boundaries, future-only
+replay, count privacy, private file modes, symlink refusal, unchanged inputs and
+no overwrite. Generated reports refreshed without changes; diff clean.
+Independent review/full suite/test merge remain Claude's. Real Landings access
+and cron application from #62 remain unapplied and for Gloria's separate decision.

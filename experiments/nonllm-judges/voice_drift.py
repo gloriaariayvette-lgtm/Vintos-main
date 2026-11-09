@@ -165,6 +165,7 @@ def analyze(events,nodes,features,encoder,reference_ids,cutoff,*,adoptions=(),zo
             # Process only receipts already available before this entire local day.
             eligible=[a for a in reviews if a['key'] not in used and (a['rows'][0]['mode'],a['rows'][0]['surface'])==scope
                       and a['receipt']['observed_at']<min(r['at'] for r in batch)
+                      and P.datetime.fromtimestamp(a['receipt']['observed_at'],P.ZoneInfo(zone)).date().isoformat()<day
                       and max(r['day'] for r in a['rows'])<day]
             for a in sorted(eligible,key=lambda a:(a['receipt']['observed_at'],a['key'])):
                 receipt=a['receipt'];replacement=a['rows'];why=None
