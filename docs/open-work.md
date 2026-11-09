@@ -6815,3 +6815,12 @@ call; this does not establish Aegis cost or scale to real tensors automatically.
 Reviewer can run the documented command without models/private inputs; actual
 loaded-runtime compatibility, parameter-scan overhead, worker throughput and full
 Aegis suite remain pending. No production flag, feed, merge or deployment changed.
+
+
+## 9 November — consolidated review handoff
+
+`docs/judges-review-handoff.md` now maps the thirteen pending implementation commits
+through 83118e87 and their dependencies. 393 local isolated checks across 16 suites
+pass at that tip. The full integrated Aegis suite and listed host/private-data
+acceptance checks remain with review. This documentation-only branch does not
+change feeds or grant enablement/merge/deployment approval.

@@ -1869,3 +1869,19 @@ performance. Array initialization/helper imports are outside timing; temporary
 copy cost is included, peak RSS is unmeasured. README has exact reviewer commands.
 Generated reports refreshed. No producer/feed behavior change, paid calls, sends,
 enabling, merge or deployment; full host suite remains reviewer work.
+
+
+## 9 November — accumulated integration review handoff
+
+`codex/judges-review-integration-handoff` documents the thirteen-commit chain after
+the last reviewer-reported integrated base, with exact dependency order, active
+metadata paths, optional capture costs and offline-only boundaries. No runtime
+code changes. Reran 16 affected/ownership suites together at implementation tip
+83118e87: 393 local isolated checks passed. The report distinguishes unittest cases
+from older named checks; this is not the full Aegis suite.
+
+`docs/judges-review-handoff.md` consolidates host acceptance work: full integrated
+suite, occupied sink throughput/retention, CPU observation cost/compatibility,
+private source/attribution counts and future artifact coverage. No historical
+training decision or full encoder identity is inferred. No live inputs, sends,
+model calls, enabling, merge or deployment. Previous submitted tips remain fixed.
