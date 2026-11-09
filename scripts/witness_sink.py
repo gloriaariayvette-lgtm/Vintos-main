@@ -26,7 +26,7 @@ SPOOL_BYTES = 8 * 1024 * 1024
 SPOOL_FILES = 64
 SPOOL_NAME = '.capture-spool'
 SPOOL_PACKET = re.compile(r'[0-9a-f]{32}\.packet\Z')
-PREFIXES = ('capture-', 'value-map-call-', 'value-map-build-', 'self-forecast-inputs-', 'self-forecast-clock-', 'self-forecast-artifacts-', 'self-audit-embedding-')
+PREFIXES = ('capture-', 'value-map-call-', 'value-map-build-', 'self-forecast-inputs-', 'self-forecast-launch-', 'self-forecast-handoff-', 'self-forecast-clock-', 'self-forecast-artifacts-', 'self-audit-embedding-')
 PACKET = re.compile(r'(?:' + '|'.join(PREFIXES) + r')[0-9a-f]{32}\.json\Z')
 
 
@@ -343,8 +343,11 @@ def _spool_read(directory, name):
             return out
         header = json.loads(line,object_pairs_hook=unique)
         payload = f.read(MAX_PACKET+1)
-    if (not isinstance(header,dict) or set(header) != {'schema','configuration','created_at','sha256'}
-            or header['schema'] != 'judges-ingress-v1'
+    expected_keys = {'schema','configuration','created_at','sha256'}
+    if isinstance(header,dict) and header.get('schema')=='judges-ingress-v2': expected_keys.add('prefix')
+    if (not isinstance(header,dict) or set(header) != expected_keys
+            or header.get('schema') not in ('judges-ingress-v1','judges-ingress-v2')
+            or (header.get('schema')=='judges-ingress-v2' and header.get('prefix')!='self-forecast-launch-')
             or not isinstance(header['configuration'],str) or not re.fullmatch('[0-9a-f]{64}',header['configuration'])
             or type(header['created_at']) not in (int,float) or not math.isfinite(header['created_at']) or header['created_at']<0
             or not payload or len(payload)>MAX_PACKET
@@ -353,14 +356,16 @@ def _spool_read(directory, name):
     return header,payload
 
 
-def _stage_capture(c,payload):
+def _stage_capture(c,payload,prefix="capture-"):
     """True confirms synced private ingress, not final publication or phone delivery."""
     try:
+        if prefix not in ('capture-','self-forecast-launch-'): raise ValueError('unsupported ingress prefix')
         now = time.time()
         if not math.isfinite(now) or now<0 or not payload or len(payload)>c['max_packet_bytes']:
             raise ValueError('invalid ingress')
         header = dict(schema='judges-ingress-v1',configuration=_config_sha(c),created_at=now,
                       sha256=hashlib.sha256(payload).hexdigest())
+        if prefix!='capture-': header.update(schema='judges-ingress-v2',prefix=prefix)
         record = json.dumps(header,separators=(',',':')).encode()+b'\n'+payload
         with _spool_lock(c,create=True) as (root,directory):
             entries,total = _spool_entries(directory)
@@ -435,7 +440,7 @@ def recover_spool(limit=8):
             if attempted>=limit: break
             attempted += 1
             # Do not hold the ingress lock across the slower final sink scan.
-            if not _publish_bytes(c['directory'],payload,'capture-',expected=c,packet_id=name[:-7],retained_at=header['created_at']):
+            if not _publish_bytes(c['directory'],payload,header.get('prefix','capture-'),expected=c,packet_id=name[:-7],retained_at=header['created_at']):
                 continue
             with _spool_lock(c) as (_,directory):
                 try: current,body = _spool_read(directory,name)
@@ -576,8 +581,8 @@ def start_recovery():
     finally: _writer_lock.release()
 
 
-def enqueue_capture(root, packet):
-    """Snapshot final chat capture; neither mode confirms client delivery.
+def enqueue_capture(root, packet, *, prefix="capture-"):
+    """Snapshot final chat capture or a forecast launch; neither confirms delivery.
 
     Default True means volatile admission without waiting for storage or a slot.
     Explicit durable mode waits for private ingress file/directory sync instead;
@@ -586,6 +591,7 @@ def enqueue_capture(root, packet):
     """
     global _writer
     try:
+        if prefix not in ('capture-','self-forecast-launch-'): return False
         c = configuration(root)
         if c is None:
             COUNTERS['disabled_or_changed'] += 1
@@ -595,7 +601,7 @@ def enqueue_capture(root, packet):
             COUNTERS['oversize'] += 1
             return False
         if c.get('durable_queue'):
-            staged = _stage_capture(c,payload)
+            staged = _stage_capture(c,payload) if prefix=='capture-' else _stage_capture(c,payload,prefix)
             start_recovery()  # Staging remains confirmed even if worker startup fails.
             return staged
         if not _writer_lock.acquire(blocking=False):
@@ -607,7 +613,7 @@ def enqueue_capture(root, packet):
                 _note_deferred_locked(c, 'unavailable')
                 return False
             try:
-                _writer[1].put_nowait((root, payload, 'capture-', c))
+                _writer[1].put_nowait((root, payload, prefix, c))
             except queue.Full:
                 COUNTERS['deferred_full'] += 1
                 _note_deferred_locked(c, 'full')

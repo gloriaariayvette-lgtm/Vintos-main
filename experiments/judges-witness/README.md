@@ -1963,3 +1963,45 @@ checkpoint availability 12, report 22, retained-call cost 14, self artifacts 20.
 All inputs are synthetic; no real checkpoint, private snapshot, model or live
 store was accessed. Host integration and private retained-data checks remain with
 review. No capture is enabled by this change.
+
+
+### Prospective pending-file handoff receipts
+
+The optional self-forecast capture observes the existing launcher after its runner
+returns, and observes the decoded pending record consumed by the background job.
+It never reopens that pending file. `self-forecast-launch-v1` records a digest of
+the pending locator and canonical decoded value, a message digest, arrival time,
+and optional surface/turn marker digests. After the existing forecast-log close,
+`self-forecast-handoff-v1` binds that observation to the exact saved forecast-row
+digest. Raw text, paths and turn IDs are absent from these new private sidecars.
+These hashes still belong in the private snapshot, not public documentation.
+
+No field is added to the pending record or forecast log. Existing process launch,
+reply flow, model selection and forecast/feed content remain unchanged. Capture
+off produces no sidecars. Observer failure is swallowed; no retry, extra model
+load or encoding is introduced. Capture on adds one bounded launcher publication
+and one background sidecar. Launcher cost uses the configured queue/spool path and
+needs isolated host measurement; earlier latency numbers do not cover it.
+
+Supply both sidecar kinds unchanged in a new explicit `self_forecast_handoffs`
+list in the existing replay bundle, alongside the exact original `forecasts`.
+The normal replay command and public formatter then report fixed counts for
+launches/jobs and their missing peers, plus per-unique-forecast states. Duplicate
+copies do not multiply witnesses. Pending content/locator disagreements, multiple
+job observations, absent launches, absent origin markers and row-field mismatches
+stay separate. Every receipt is validated before cutoff filtering. Cutoff is
+exclusive on the supplied forecast time; absent peers do not establish failure or
+loss. The new offline module is included in the private run's code hashes.
+
+A `joined` state only establishes supplied-record consistency between these
+boundaries. It does not authenticate a source, prove the subprocess executed the
+claimed code, prove that her input was fully represented, or associate the
+forecast with a delivered reply. No receipt fills in a missing chat turn ID, and
+no historical marker is invented. Scoring and strict training admission are
+unchanged. Tokenizer/runtime/fitting lineage, caller identity, reply delivery and
+complete influence ancestry remain separate work.
+
+307 affected isolated synthetic checks pass (handoffs 19, forecast inputs 15,
+source clocks 12, census/innovation 109, existing on-message head 32, public report
+22, capture hooks 21, sink 26, deferred queue 26 and durable spool 25). The legacy synthetic head suite emits numerical runtime
+warnings while all 32 checks pass; no live encoder or checkpoint was loaded.

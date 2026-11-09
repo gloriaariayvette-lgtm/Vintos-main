@@ -925,13 +925,46 @@ def _publish_private(root, packet, prefix):
     return True
 
 
-def begin_self_forecast():
+def self_forecast_pending(path, pending):
+    """Observe the existing pending value and locator, without reopening it."""
+    location = _capture_location()
+    if not location:
+        return None
+    _private_root(location)
+    if not isinstance(pending, dict) or set(pending) != {"her", "arrived_at", "surface", "turn_id"}:
+        return None
+    for field, limit in (("her",4000),("surface",40),("turn_id",80)):
+        if not isinstance(pending[field],str) or len(pending[field])>limit:
+            return None
+    if not pending["her"]:
+        return None
+    return {"resource_sha256":_resource_digest(path), "pending_sha256":_fingerprint(pending),
+            "her_sha256":digest(pending["her"]), "arrived_at":instant(pending["arrived_at"]),
+            "surface_sha256":digest(pending["surface"]) if pending["surface"] else None,
+            "turn_id_sha256":digest(pending["turn_id"]) if pending["turn_id"] else None}
+
+
+def publish_self_forecast_launch(path, pending):
+    """Runner return is an observed launch boundary, not successful execution."""
+    observation = self_forecast_pending(path,pending)
+    if observation is None:
+        return None
+    root = _private_root(_capture_location())
+    packet = {"schema":"self-forecast-launch-v1", "pending":observation,
+              "boundary":"runner_return", "source_identity":"unverified"}
+    if not os.environ.get("JUDGES_CAPTURE_SCRATCH"):
+        from witness_sink import enqueue_capture
+        return enqueue_capture(root,packet,prefix="self-forecast-launch-")
+    return _publish_private(root,packet,"self-forecast-launch-")
+
+
+def begin_self_forecast(pending=None):
     """Scope one existing self forecast; no encoder/model/store work here."""
     location = _capture_location()
     if not location:
         return None
     root = _private_root(location)
-    return _self_forecast_scope.set({"root": str(root), "observations": 0, "inputs": None})
+    return _self_forecast_scope.set({"root": str(root), "observations": 0, "inputs": None, "pending": deepcopy(pending)})
 
 
 def self_exchange_clock(raw, parsed, rendered):
@@ -1056,6 +1089,13 @@ def publish_self_forecast(scope, row):
               "state": "observed" if matched else "unavailable",
               "inputs": scope["inputs"] if matched else None, "complete_forecast_context": False}
     published = _publish_private(root, packet, "self-forecast-inputs-")
+    if scope.get("pending") is not None:
+        try:
+            _publish_private(root, {"schema":"self-forecast-handoff-v1", "pending":scope["pending"],
+                "forecast_row_sha256":packet["forecast_row_sha256"], "boundary":"forecast_log_close",
+                "source_identity":"unverified"}, "self-forecast-handoff-")
+        except Exception:
+            pass
     if (matched and scope.get("context_clock") is not None
             and isinstance(row["self"].get("context_last_ts"), str)
             and digest(row["self"]["context_last_ts"]) == scope["context_clock"]["rendered_clock_sha256"]):

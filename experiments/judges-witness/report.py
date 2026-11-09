@@ -11,6 +11,7 @@ import sys
 # Import without initializing any serving organ or model.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import replay
+from forecast_handoffs import validate_coverage as validate_handoffs, STATES as HANDOFF_STATES
 
 
 def invalid():
@@ -185,6 +186,15 @@ def render(report):
             other = copies - positive_n - unevaluated
             lines.append(f'- {field}: {positive}={positive_n}; not evaluated={unevaluated}; other recorded states={other}.')
         lines += ['', 'Coverage fields count copies independently, including excluded acts. A positive field does not admit a reply.', '']
+        if 'forecast_handoffs' in report:
+            handoffs=report['forecast_handoffs']
+            validate_handoffs(handoffs)
+            lines += ['## Forecast pending handoffs', '']
+            for name in ('forecast_rows','unique_receipts','launch_receipts','job_receipts','launch_receipts_without_job','job_receipts_without_row'):
+                lines.append(f'- {name}: {handoffs[name]}.')
+            for state in HANDOFF_STATES:
+                lines.append(f'- {state}: {handoffs["states"][state]}.')
+            lines += ['', 'These compare supplied launcher, pending-file and forecast-log observations. A join does not authenticate the caller, establish forecast-to-delivered-reply association or grant training eligibility. Missing origin markers remain unknown; scoring is unchanged.', '']
         if 'historical_attribution' in report:
             historical = report['historical_attribution']
             if (not isinstance(historical, dict)

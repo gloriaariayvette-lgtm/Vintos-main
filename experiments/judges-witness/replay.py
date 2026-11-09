@@ -16,6 +16,8 @@ import statistics
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from forecast_handoffs import coverage as forecast_handoff_coverage
 from witness_attribution import attribution
 from witness_artifact_join import join_artifacts
 from witness_receipts import admission, digest, envelope_status, instant, row_receipt, joined_identity, final_response, normalize_receipt, lineage_status, final_reply_status
@@ -1223,7 +1225,7 @@ def install_guard(root, output):
 
 
 # The local scoring implementation, not provider dependencies or live stores.
-SCORING_FILES = ("scripts/witness_artifact_join.py", "scripts/witness_self_artifacts.py", "scripts/witness_attribution.py", "experiments/judges-witness/replay.py", "scripts/witness_receipts.py",
+SCORING_FILES = ("experiments/judges-witness/forecast_handoffs.py", "scripts/witness_artifact_join.py", "scripts/witness_self_artifacts.py", "scripts/witness_attribution.py", "experiments/judges-witness/replay.py", "scripts/witness_receipts.py",
                  "scripts/evidence_provenance.py", "scripts/evidence_view.py")
 
 
@@ -1306,6 +1308,9 @@ def main():
     if "self_forecast_clocks" in bundle:
         report["forecast_clock_observations"] = forecast_clock_observations(
             bundle.get("forecasts", []), bundle["self_forecast_clocks"], args.cutoff)
+    if "self_forecast_handoffs" in bundle:
+        report["forecast_handoffs"] = forecast_handoff_coverage(
+            bundle.get("forecasts", []), bundle["self_forecast_handoffs"], args.cutoff)
     private_attribution = None
     if "historical_attribution" in bundle:
         config = bundle["historical_attribution"]

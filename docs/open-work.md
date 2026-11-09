@@ -6911,3 +6911,14 @@ Legacy gaps stay explicit; read clocks are not compared as immutable metadata.
 not verification of real weights, encoder identity, fitting lineage or target
 association. Runtime capture and scoring rules are unchanged. Reviewer owns host
 integration and existing private evidence; no live reads/writes or deployment.
+
+
+## 9 November — forecast pending handoff capture
+
+`codex/judges-forecast-handoff`, on c6829c80, adds optional receipts connecting
+launcher return, the pending record consumed by the job, and the exact saved
+forecast row. Offline aggregate joins remain diagnostic; missing turn/surface
+markers stay unknown, and consistency does not authenticate the source or grant
+scoring/training admission. 307 affected isolated synthetic checks pass. Host
+integration and added launch-publication cost still need review. No capture was
+enabled; full forecast-to-delivered-reply association and lineage remain open.

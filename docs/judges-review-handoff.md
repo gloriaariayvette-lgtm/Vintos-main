@@ -245,3 +245,35 @@ change is made. The aggregate exposes only counts. Runtime capture remains exact
 as before; real encoder/runtime/fitting lineage and forecast-target association
 are still open. Full host integration and private copied-evidence review remain
 yours; no enabling, merge or deployment.
+
+
+## Forecast pending handoff increment
+
+`codex/judges-forecast-handoff` descends from c6829c80. New optional launch/job
+sidecars bind canonical pending data and locator hashes to the exact forecast log
+row; no changes to the pending/log schema or forecast content. Capture-off paths
+remain inert. Capture on adds a small launcher publication using the existing
+queue/spool and one background sidecar; measure its incremental host cost.
+
+The new `self_forecast_handoffs` replay input accepts both sidecar kinds. The
+`forecast_handoffs` report is a counts-only consistency diagnostic, including
+missing peers and markers, mismatches/conflicts and exact row binding. Receipts
+are validated before filtering; duplicates collapse; source identity remains
+unverified. No forecast or reply becomes eligible because of this join. This
+supplies one missing prospective handoff boundary; it does not complete caller,
+training, encoder or delivery lineage, and cannot backfill historical markers.
+
+307 affected isolated synthetic checks pass. Existing numerical warnings from the
+synthetic head training suite did not fail its 32 checks. Owner/generated checks
+and the exact pushed commit are recorded in the coordination reply. Full host
+integration and existing copied-data interpretation remain review work. No real
+encoder/checkpoint or private records were loaded, no capture enabled, no merge
+or deployment performed. Earlier review branch tips remain fixed.
+
+The launcher uses deferred publication in configured memory mode. Durable mode
+uses a narrowly versioned v2 ingress header retaining the launch prefix; existing
+chat ingress still writes/reads v1 unchanged. Background job sidecars retain the
+existing synchronous publication semantics. Both new final packet prefixes are
+recognized by sink retention. Invalid v2 prefixes are held, never replayed as chat
+packets. Older sink code does not understand these new types; coordinate the sink
+and producer versions if capture is enabled. No configuration is changed here.

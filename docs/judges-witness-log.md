@@ -2029,3 +2029,21 @@ and public formatter conservation/privacy. Consistency is not authentication or
 fitting-lineage verification; content joins and scoring permission stay separate.
 No runtime producers, capture flags, private inputs, model calls, live writes,
 merge or deployment changed. Host integration remains with review.
+
+
+## 9 November — pending-to-forecast handoff observations
+
+Continued from fixed submitted c6829c80 on a new branch. Optional capture now
+hashes the existing pending value/locator at launcher return and job consumption,
+then binds job observation to the exact unchanged saved row. The offline replay
+and formatter report only fixed states/counts, with code included in run hashes.
+No new origin markers enter the historical or runtime forecast log. Missing or
+conflicting evidence never becomes a joined observation or training admission.
+
+307 affected isolated checks pass: new handoffs 19, existing forecast inputs 15,
+source clocks 12, census/innovation 109, existing on-message head 32, public report
+22, capture hooks 21, sink 26, deferred queue 26 and durable spool 25. New tests use stub process launches/encoders/senders and
+synthetic files, including the actual replay CLI and private output permissions.
+Observer failures preserve output and previous sidecars. Full integration, real
+cost, source authenticity and delivery association remain unverified. No live
+writes, model calls, enabling, merge or deployment.
