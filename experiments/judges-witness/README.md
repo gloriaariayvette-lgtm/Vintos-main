@@ -1840,3 +1840,20 @@ observations, not performance tests with thresholds. They do not establish real
 encoder cost, tensor-runtime compatibility, end-to-end response latency or Aegis
 acceptance. The benchmark uses numpy buffers, not the loaded tensor library; real
 CPU-runtime overhead and packet/sink behavior remain separate reviewer checks.
+
+
+### Historical match-method coverage
+
+The historical aggregate now includes `matched_methods`, a fixed three-key count
+of source copies matched by `generation_completion_id`, `provider_request_id`, or
+`nearest_time`. It is computed after conflicting-ledger and call-reuse checks and
+excludes copies outside the cutoff. Its sum equals `join_states.matched`.
+
+This is a second view of the same copies, not another attribution tier or a count
+of unique requests. An `observed` copy may also match a ledger row. Duplicate
+source copies count individually; duplicate identical ledger records do not create
+extra matches. Optional window30 additions remain in their separate partition.
+The public formatter prints fixed labels and numbers only, validates the exact
+keys/counts/total, and marks legacy reports without this field as unavailable.
+Exact keys establish correlation, not delivery, clean ancestry or training
+eligibility. Matching, strict admission and all runtime producers are unchanged.

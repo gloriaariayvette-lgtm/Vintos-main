@@ -108,3 +108,14 @@ No training-set decision, model replacement, live feed change, enablement, merge
 deployment is part of this handoff. Claude Code reviews and owns the host checks;
 Gloria owns enabling/deployment. The ongoing collaboration continues independently
 of the review queue.
+
+
+## Subsequent offline increment
+
+`codex/judges-attribution-match-methods` descends from the documentation handoff
+commit f7eccc6e. It adds fixed matched-method coverage to historical attribution
+and its public report, without changing matching or runtime producers. The
+thirteen-commit range and 393-check result above remain the prior checkpoint, not
+a test claim for this increment. Its 79 affected isolated checks pass: completion
+joins 10, report 22, attribution 26, source coverage 21. Exact revision is recorded
+in the coordination reply after push. Full host acceptance remains outstanding.

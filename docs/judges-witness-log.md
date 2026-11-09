@@ -1885,3 +1885,21 @@ suite, occupied sink throughput/retention, CPU observation cost/compatibility,
 private source/attribution counts and future artifact coverage. No historical
 training decision or full encoder identity is inferred. No live inputs, sends,
 model calls, enabling, merge or deployment. Previous submitted tips remain fixed.
+
+
+## 9 November — historical exact-key coverage exposed
+
+`codex/judges-attribution-match-methods` adds an offline-only matched-method count
+and public fixed-label rendering. Exact completion keys, provider request keys and
+bounded timestamp matches no longer disappear inside one aggregate matched count.
+Counts are source copies after ambiguity/reuse/cutoff checks and overlap the
+attribution tiers; observed copies may also have a ledger match. Legacy aggregates
+remain readable with coverage explicitly unavailable. Window30 stays separate.
+
+79 isolated checks pass: completion joins 10, report 22, attribution 26, coverage
+21. New regressions first reproduced two missing-field errors and seven validation
+failures. Synthetic fixtures cover mixed methods, duplicate copies/ledger records,
+conflicting completion records, reused keys, cutoffs, observed-tier overlap,
+legacy reports, privacy and nonmutation. No matching algorithm, live producer,
+training permission, model call, live input, enablement, merge or deployment
+changed. Full integrated Aegis suite and private-data runs remain with review.

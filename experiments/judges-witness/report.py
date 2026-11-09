@@ -191,6 +191,18 @@ def render(report):
             lines += [f'- Outside cutoff: {excluded}.',
                       f"- Without a usable cutoff clock: {missing_clock}.", '',
                       'Historical labels and ledger matches are separate evidence tiers. They do not grant observed identity, strict eligibility, clean ancestry or a training decision. Counts are per source copy, not unique training turns.', '']
+            if 'matched_methods' in historical:
+                methods = historical['matched_methods']
+                labels = {'generation_completion_id':'selected completion key',
+                          'provider_request_id':'provider request key', 'nearest_time':'bounded nearest time'}
+                if (not isinstance(methods, dict) or set(methods) != set(labels)
+                        or sum(count(n) for n in methods.values()) != count(joins.get('matched',0))):
+                    invalid()
+                lines += [f'- Retained ledger matches by {label}: {count(methods[key])} source copies.'
+                          for key,label in labels.items()]
+                lines += ['', 'This breakdown overlaps the attribution tiers: an observed reply can also have a ledger match. It counts source copies after ambiguity and reuse checks, not unique calls or training turns. Exact correlation keys do not prove delivery or clean ancestry. The optional 30-second view remains separate.', '']
+            else:
+                lines += ['Match-method coverage not supplied; exact-key counts cannot be inferred from the aggregate tier totals.', '']
             if 'window30' in historical:
                 extension = historical['window30']
                 names = ('observed','ledger_attributed','recorded_label','unknown','ledger_attributed_window30')

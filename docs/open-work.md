@@ -6824,3 +6824,12 @@ through 83118e87 and their dependencies. 393 local isolated checks across 16 sui
 pass at that tip. The full integrated Aegis suite and listed host/private-data
 acceptance checks remain with review. This documentation-only branch does not
 change feeds or grant enablement/merge/deployment approval.
+
+
+## 9 November — attribution method coverage ready for review
+
+`codex/judges-attribution-match-methods` adds counts separating retained exact
+completion/provider-key matches from bounded timestamp matches. 79 affected local
+isolated checks pass. This is an offline aggregate/report increment on the submitted
+handoff tip; private source/window30 counts and the full integrated Aegis suite
+remain review work. No historical training decision or production change.
