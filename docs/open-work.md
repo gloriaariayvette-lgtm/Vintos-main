@@ -6611,3 +6611,14 @@ any replay adapter respect those limits and prefix-versus-full-target semantics.
 No historical fields are fabricated and no strict scoring holds are relaxed.
 Historical attribution census rerun and production capture enablement remain
 separate reviewer/owner steps.
+
+## 9 November — prospective source-ID loss repaired
+
+`codex/judges-self-source-identity` retains original string IDs and raw/normalized
+source hashes through the existing self adapters/merger and ranking projection,
+inside optional capture scopes. 209 affected isolated checks pass. No changed
+ranking/forecast inputs or scores. This resolves the preceding source-ID retention
+item for new observations; old data with missing identity remains unknown.
+Still open: exact producer-final-version joins, explicit encoder-weight and training
+completion evidence, and honest handling of excerpt versus full-reply metrics.
+Review/full Aegis validation and production enablement remain separate.

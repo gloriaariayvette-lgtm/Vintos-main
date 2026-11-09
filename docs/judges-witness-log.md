@@ -1399,3 +1399,28 @@ was initially refused; the authorized outer runner then executed the isolated
 suite normally. Required reports regenerated; whitespace clean. Full Aegis suite
 and independent review remain with the reviewer. No live writes, real test sends,
 model/paid calls, merge, deployment or capture enablement.
+
+## 9 November — source identity survives the self audit adapter
+
+`codex/judges-self-source-identity` continues above db7500ac. Scoped adapters now
+observe the actual raw ledger/chat reply before cleanup, retaining raw/normalized
+hashes, source-row digest and original string ID/surface. The observation follows
+the preferred text through existing merge rules; it does not follow an earlier
+clock from a different copy. Missing/non-string original IDs remain unknown. The
+ranking adapter keeps its original three values and adds optional metadata only
+when bound to the selected text/ID. Forecast/audit-vector refs retain it privately.
+No additional source read, model call or changed forecast/ranking input.
+
+209 affected isolated checks pass: source identity 13, source clocks 12, artifacts
+16, input receipts 15, sink 19, ranking 26, self on-message 32, self source 39,
+readout 5, capture hooks 21 and ownership 11. Cases cover actual cleanup/merge,
+preferred-source conflicts, missing/malformed IDs, earlier duplicate clocks,
+exception restoration, disabled/bad sinks, unchanged ranking streams and private
+artifact publication. The existing clock equality fixture now removes both optional
+observations before comparing the unchanged source fields. Reports regenerated;
+whitespace clean. Full Aegis suite and private census remain with the reviewer.
+
+The ID-loss gap is addressed prospectively, not by upgrading old rows. Exact
+producer-final-version joins, encoder-weight/training evidence and excerpt/full
+metric comparability remain open; source identity is still labelled unverified.
+No live writes, actual test sends, paid/model calls, enablement, merge or deployment.

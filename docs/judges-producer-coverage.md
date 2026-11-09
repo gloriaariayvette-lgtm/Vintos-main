@@ -259,3 +259,13 @@ null. Training completion and encoder-weight identity are unobserved; file dates
 and configured labels do not fill them. Replay promotion/final-version joins and
 prefix-versus-full-target comparability remain open. Production enablement and full
 Aegis validation remain separate review steps.
+
+## Implementation follow-up: source identity through the audit adapter
+
+The source-ID loss noted above is now addressed for newly scoped reads. Existing
+ledger/chat adapters observe raw and normalized reply hashes plus original string
+ID/surface, and the ranking adapter retains these optional observations. They follow
+the merger's preferred text source, not an earlier duplicate's clock; missing IDs
+are never backfilled. Existing ranking fields, deduplication and scores are unchanged.
+The private artifact refs now include optional reply_source; old packets remain
+incomplete. Finalization/authentication and strict replay joins are still open.

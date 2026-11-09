@@ -1075,3 +1075,10 @@ def observe_self_artifacts(exchanges, bank, model, forecast):
     from witness_self_artifacts import forecast_artifacts
     artifacts = forecast_artifacts(exchanges, bank, model, forecast)
     _self_forecast_scope.set(dict(scope, artifacts=artifacts))
+
+
+def self_reply_source(row, field, normalized):
+    from witness_self_artifacts import _source_scope, reply_source
+    if _self_forecast_scope.get() is None and _source_scope.get() is None:
+        return None
+    return reply_source(row, field, normalized)

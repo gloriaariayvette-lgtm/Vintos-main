@@ -96,6 +96,7 @@ class Tests(unittest.TestCase):
             off=self.job(); off_exs=copy.deepcopy(self.exs)
         on=self.job(); on_exs=copy.deepcopy(self.exs)
         on_exs[0].pop('_witness_clock')
+        on_exs[0].pop('_witness_reply_source')
         self.assertEqual(off_exs,on_exs)
         self.assertEqual(off,on)
         self.assertEqual(self.enc.encode.call_count,2)

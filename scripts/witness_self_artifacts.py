@@ -4,12 +4,16 @@ These are observations, not a training-time attestation, encoder-weight identity
 final-reply origin, or permission to score. No encoder calls are added.
 """
 from collections import Counter
+from contextlib import contextmanager
+from contextvars import ContextVar
+import json
 import hashlib
 import math
 import numbers
 
 COUNTERS = Counter()
 MAX_CHECKPOINT = 64 * 1024 * 1024
+_source_scope = ContextVar("self_audit_sources", default=None)
 
 
 def _text(value, limit=256):
@@ -63,7 +67,8 @@ def forecast_artifacts(exchanges, bank, model, forecast):
                          'normalized_reply_sha256': digest(text), 'encoder_input_sha256': digest(encoded),
                          'encoder_input_chars': len(encoded), 'emb': vector(bank[encoded]),
                          'transform': 'normalized_exchange_his_first_400_codepoints',
-                         'source_identity': 'unverified', 'encoder_id': None})
+                         'source_identity': 'unverified', 'encoder_id': None,
+                         'reply_source': bound_source(row.get('_witness_reply_source'), text, row.get('turn_id'))})
     return {'checkpoint': manifest, 'recent_own_embeddings': retained,
             'coverage': 'selected_recent_own_inputs_only', 'target_finalization': 'unobserved',
             'encoder_weights_identity': 'unobserved'}
@@ -88,7 +93,8 @@ class AuditEncoder:
             if not text or text in ('--source', 'voice'):
                 continue
             ref = {'observed_turn_id': _text(row.get('turn_id')), 'source_row_sha256': _fingerprint(row),
-                   'source_reply_sha256': digest(raw), 'normalized_reply_sha256': digest(text)}
+                   'source_reply_sha256': digest(raw), 'normalized_reply_sha256': digest(text),
+                   'reply_source': bound_source(row.get('_witness_reply_source'), raw, row.get('turn_id'))}
             self.refs.setdefault(text[:400], []).append(ref)
 
     def encode(self, texts, *args, **kwargs):
@@ -127,3 +133,78 @@ def audit_encoder(enc, ledger, manifest):
     if not location:
         return enc
     return AuditEncoder(enc, ledger, manifest, str(_private_root(location)))
+
+
+@contextmanager
+def audit_source_scope():
+    """Scope optional source metadata; an unavailable sink changes no source read."""
+    root = None
+    try:
+        from witness_capture import _capture_location, _private_root
+        location = _capture_location()
+        if location:
+            root = str(_private_root(location))
+    except Exception:
+        pass
+    token = _source_scope.set(root)
+    try:
+        yield root
+    finally:
+        _source_scope.reset(token)
+
+
+def reply_source(row, field, normalized):
+    """Observe the exact source row and actual reader output before cleanup is lost."""
+    from witness_capture import _fingerprint
+    from witness_receipts import digest
+    if (not isinstance(row, dict) or len(row) > 128 or field not in ('content', 'vintos')
+            or not isinstance(row.get(field), str) or not 0 < len(row[field]) <= 65536
+            or not isinstance(normalized, str) or not 0 < len(normalized) <= 65536):
+        return None
+    if len(json.dumps(row, ensure_ascii=True, allow_nan=False)) > 262144:
+        return None
+    return {'schema': 'self-reply-source-v1', 'source_field': field,
+            'source_row_sha256': _fingerprint(row), 'source_reply_sha256': digest(row[field]),
+            'normalized_reply_sha256': digest(normalized),
+            'observed_turn_id': _text(row.get('turn_id')), 'observed_surface': _text(row.get('surface')),
+            'transform': 'self_reader_his_words', 'source_identity': 'unverified'}
+
+
+def bound_source(value, normalized, selected_id):
+    """No clock-based ID backfill; metadata must travel with the selected text/ID."""
+    from witness_receipts import digest
+    if (not isinstance(value, dict) or set(value) != {'schema', 'source_field', 'source_row_sha256',
+            'source_reply_sha256', 'normalized_reply_sha256', 'observed_turn_id', 'observed_surface',
+            'transform', 'source_identity'} or value['schema'] != 'self-reply-source-v1'
+            or value['source_field'] not in ('content', 'vintos')
+            or value['transform'] != 'self_reader_his_words' or value['source_identity'] != 'unverified'
+            or not isinstance(normalized, str) or value['normalized_reply_sha256'] != digest(normalized)):
+        return None
+    for key in ('source_row_sha256', 'source_reply_sha256', 'normalized_reply_sha256'):
+        v = value[key]
+        if not isinstance(v, str) or len(v) != 64 or any(c not in '0123456789abcdef' for c in v):
+            return None
+    for key in ('observed_turn_id', 'observed_surface'):
+        if value[key] is not None and _text(value[key]) != value[key]:
+            return None
+    # Legacy readers stringify IDs. Never upgrade a non-string original identifier.
+    if value['observed_turn_id'] is not None and value['observed_turn_id'] != _text(selected_id):
+        return None
+    return dict(value)
+
+
+def ledger_rows(exchanges, retain=False):
+    """Same three audit fields; optional private metadata only for the chosen source."""
+    result = []
+    for exchange in exchanges:
+        row = {'timestamp': exchange['ts'], 'gloria': exchange['her'], 'vintos': exchange['his']}
+        if retain:
+            try:
+                ref = bound_source(exchange.get('_witness_reply_source'), exchange['his'], exchange.get('turn_id'))
+                if ref is not None:
+                    row['_witness_reply_source'] = ref
+                    row['turn_id'] = ref['observed_turn_id']
+            except Exception:
+                pass
+        result.append(row)
+    return result

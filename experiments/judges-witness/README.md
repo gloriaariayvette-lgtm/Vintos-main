@@ -1314,8 +1314,10 @@ result and propagates its original errors; retention failures are swallowed. Eac
 packet declares `ledger_vintos_strip_first_400_codepoints`, includes all bounded
 matching source-row/full-text hashes, and never chooses a target from a prefix
 collision. It records `target_selection: unasserted`: these inputs include candidates
-and controls, not only realized targets. The current `realized_ledger` adapter drops
-turn IDs, so its missing IDs remain null rather than being inferred from timestamps.
+and controls, not only realized targets. The optional source-identity scope now carries original string turn IDs through
+`realized_ledger` when a bound source observation exists. Missing or non-string IDs
+remain null rather than being inferred from timestamps. Unscoped/disabled reads
+retain their original shape.
 The other head uses the original encoder directly and is not instrumented here.
 Duplicate inputs are retained once per audit invocation; later invocations can
 produce duplicates, subject to the sink's existing cap/expiry. No new schedule.
@@ -1329,3 +1331,37 @@ unknowns. The legacy scoring/reporting path is unchanged, including its existing
 mtime-based cutoff; that cutoff is not copied into the new provenance observation.
 No historical accuracy or complete retention claim is made. All packets/vectors and
 source IDs stay private; only synthetic fixtures and aggregate checks belong in Git.
+
+
+### Source identity before normalization and merge
+
+A scoped self forecast or enabled ranking-source read now observes the actual
+ledger `vintos` or assistant `content` field before the self reader's `his_words`
+cleanup is lost. The private `self-reply-source-v1` observation carries a complete
+source-row digest, raw reply digest, normalized reply digest, original string turn
+ID/surface when supplied, and explicit `self_reader_his_words` transform. It never
+copies message text, source filenames or timestamps. Invalid/oversized source rows
+produce no observation; observer failure cannot reject an exchange.
+
+The existing merger keeps its original text selection and chronology. The source
+observation travels with the selected text/ID, **not** an earlier timestamp borrowed
+from another duplicate. A preferred source with no ID cannot inherit a lower-priority
+copy's ID. Original non-string identifiers stay unknown even though the legacy
+exchange reader stringifies them. Neither the old deduplication nor its evidence
+admission rules change.
+
+`realized_ledger` opens a bounded optional scope around its existing single exchange
+read. It keeps the same timestamp/gloria/vintos values, and adds a source observation
+and observed turn ID only when the observation matches the selected normalized text
+and ID. Source metadata is reset even on exceptions. Existing ranking transforms
+ignore those extra fields; scores and model inputs are unchanged. Private forecast
+and audit-vector references retain this observation as optional `reply_source`.
+Older packets without it remain incomplete, not retroactively upgraded.
+
+This closes the adapter's ID-loss gap for newly observed sources. It does **not**
+attest that the source copy is authentic, final, delivered or eligible. Raw ledger
+text can include appended device marks; normalized hashes are not substituted for
+producer-attested final-text hashes. Joining these observations to independently
+admitted finalized replies, preserving conflicts and verifying encoder identity,
+remains separate from retention. No time-nearest identity join or scoring promotion
+has been introduced.
