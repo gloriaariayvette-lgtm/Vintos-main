@@ -5,6 +5,7 @@ Only explicitly supplied scratch snapshots are read. No backup discovery, live
 stores, fitting, feed writes, emotion verdicts, or identity verdicts.
 """
 import argparse
+import hashlib
 from collections import Counter, defaultdict
 import json
 import math
@@ -15,7 +16,325 @@ import statistics
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
-from witness_receipts import admission, digest, envelope_status, instant, row_receipt, joined_identity, final_response
+from witness_attribution import attribution
+from witness_artifact_join import join_artifacts
+from witness_receipts import admission, digest, envelope_status, instant, row_receipt, joined_identity, final_response, normalize_receipt, lineage_status, final_reply_status
+
+
+def forecast_clock_observations(forecasts, receipts, cutoff):
+    """Audit supplied clock sidecars without replacing any scoring clock.
+
+    A matching digest establishes supplied-record consistency, not source
+    authentication, reply finalization, complete capture or witness eligibility.
+    """
+    def fail():
+        raise ValueError("invalid forecast clock observation")
+
+    def encoded(value):
+        try:
+            return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
+        except (TypeError, ValueError):
+            fail()
+
+    def clock(value):
+        try:
+            return instant(value)
+        except (TypeError, ValueError, OverflowError):
+            fail()
+
+    def hashed(value):
+        return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) is not None
+
+    cutoff = clock(cutoff)
+    if not isinstance(forecasts, list) or not isinstance(receipts, list):
+        fail()
+    by_row, versions = {}, {}
+    for row in forecasts:
+        if not isinstance(row, dict):
+            fail()
+        by_row[digest(encoded(row))] = row
+    # Validate every supplied receipt before cutoff filtering. Identical copies
+    # count once; disagreeing observations for one immutable row abort the audit.
+    for receipt in receipts:
+        if (not isinstance(receipt, dict) or set(receipt) != {
+                "schema", "forecast_row_sha256", "forecast_at", "arrived_at",
+                "context_clock", "boundary", "durability", "source_identity"}
+                or receipt["schema"] != "self-forecast-clock-v1"
+                or receipt["boundary"] != "forecast_log_close"
+                or receipt["durability"] != "unconfirmed"
+                or receipt["source_identity"] != "unverified"
+                or not hashed(receipt["forecast_row_sha256"])):
+            fail()
+        value = receipt["context_clock"]
+        if (not isinstance(value, dict) or set(value) != {
+                "schema", "epoch", "raw_kind", "raw_clock_sha256", "rendered_clock_sha256", "meaning"}
+                or value["schema"] != "self-exchange-clock-v1"
+                or value["raw_kind"] not in ("numeric_epoch", "offset_iso")
+                or value["meaning"] != "source_exchange_time_not_reply_finalization"
+                or type(value["epoch"]) not in (int, float)
+                or not hashed(value["raw_clock_sha256"])
+                or not hashed(value["rendered_clock_sha256"])):
+            fail()
+        if not clock(value["epoch"]) < clock(receipt["arrived_at"]) <= clock(receipt["forecast_at"]):
+            fail()
+        key, version = receipt["forecast_row_sha256"], encoded(receipt)
+        if key in versions and versions[key] != version:
+            raise ValueError("conflicting forecast clock observations")
+        versions[key] = version
+    states = Counter()
+    for key, version in versions.items():
+        receipt = json.loads(version)
+        row = by_row.get(key)
+        if clock(receipt["forecast_at"]) >= cutoff:
+            state = "outside_cutoff"
+        elif row is None:
+            state = "forecast_row_unavailable"
+        else:
+            head = row.get("self")
+            if (row.get("mode") != "on_message" or not isinstance(head, dict)
+                    or head.get("mode") != "on_message"):
+                state = "forecast_mode_mismatch"
+            else:
+                try:
+                    same = (instant(row.get("ts")) == clock(receipt["forecast_at"])
+                            and instant(row.get("arrived_at")) == clock(receipt["arrived_at"]))
+                except (TypeError, ValueError, OverflowError):
+                    same = False
+                rendered = head.get("context_last_ts")
+                if not same:
+                    state = "forecast_clock_mismatch"
+                elif (not isinstance(rendered, str) or len(rendered) > 128
+                      or digest(rendered) != receipt["context_clock"]["rendered_clock_sha256"]):
+                    state = "rendered_clock_mismatch"
+                else:
+                    try:
+                        explicit = instant(rendered)
+                    except (TypeError, ValueError, OverflowError):
+                        state = "matching_record_unparsed_rendered_clock"
+                    else:
+                        state = ("matching_record_explicit_clock" if explicit == receipt["context_clock"]["epoch"]
+                                 else "explicit_clock_disagrees")
+        states[state] += 1
+    return {"scope": "supplied_clock_consistency_only", "admission_effect": "none", "scoring_effect": "none",
+            "unique_forecasts_supplied": len(by_row), "unique_receipts_supplied": len(versions),
+            "forecasts_without_receipt": len(set(by_row) - set(versions)),
+            "states": dict(sorted(states.items()))}
+
+
+def value_map_write_observations(nodes, builds, cutoff):
+    """Compare supplied write observations, never infer origin or add ancestry.
+
+    Locator plus full entry content is necessary for this comparison, but does
+    not identify a writer. Copies, missing writers and reused paths remain
+    possible. Keep every causal match; never prefer the nearest or latest one.
+    This does not validate model-call provenance or affect witness admission.
+    """
+    cutoff = instant(cutoff)
+    if not isinstance(builds, list):
+        raise ValueError("value-map builds must be a list")
+    versions, index = {}, defaultdict(list)
+    legacy = 0
+
+    def hashed(value):
+        return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) is not None
+
+    for build in builds:
+        if not isinstance(build, dict) or not isinstance(build.get("build_id"), str) or not build["build_id"]:
+            raise ValueError("invalid value-map build identity")
+        try:
+            version = json.dumps(build, sort_keys=True, separators=(",", ":"), allow_nan=False)
+        except (TypeError, ValueError):
+            raise ValueError("invalid value-map build record") from None
+        key = build["build_id"]
+        if key in versions:
+            if versions[key] != version:
+                raise ValueError("conflicting value-map build identity")
+            continue
+        versions[key] = version
+        write = build.get("write")
+        schema = build.get("schema")
+        try:
+            start, end = instant(build.get("started_at")), instant(build.get("ended_at"))
+        except (TypeError, ValueError, OverflowError):
+            raise ValueError("invalid value-map build clock") from None
+        if (schema not in ("value-map-build-v1", "value-map-build-v2") or start > end
+                or build.get("upstream_complete") is not False
+                or build.get("attempt_coverage_complete") is not False
+                or not isinstance(write, dict) or write.get("scope") != "entry_write_closed"
+                or write.get("mode") not in ("append", "replace")
+                or write.get("durability") != "unconfirmed" or write.get("whole_file") != "unverified"
+                or not hashed(write.get("entry_sha256")) or not hashed(write.get("stripped_entry_sha256"))
+                or type(write.get("entry_chars")) is not int or not 0 < write["entry_chars"] <= 4194304
+                or (schema == "value-map-build-v2" and not hashed(write.get("resource_sha256")))):
+            raise ValueError("invalid value-map write observation")
+        if schema == "value-map-build-v1":
+            legacy += 1
+        elif end < cutoff:
+            index[(write["resource_sha256"], write["stripped_entry_sha256"])].append((end, key))
+    states, details = Counter(), []
+    for key, node in sorted(nodes.items()):
+        if node.get("observation") != "value_map_read":
+            continue
+        candidates = []
+        try:
+            at = instant(node.get("at"))
+        except (TypeError, ValueError, OverflowError):
+            raise ValueError("invalid value-map read clock") from None
+        if at >= cutoff:
+            state = "outside_cutoff"
+        elif not all(hashed(node.get(field)) for field in ("resource_sha256", "stripped_entry_sha256")):
+            state = "read_identity_unavailable"
+        else:
+            candidates = sorted(build_id for ended, build_id in
+                index[(node["resource_sha256"], node["stripped_entry_sha256"])] if ended <= at)
+            state = ("no_matching_write" if not candidates else
+                     "one_matching_write" if len(candidates) == 1 else "multiple_matching_writes")
+        states[state] += 1
+        details.append({"read_node_id": key, "state": state, "candidate_build_ids": candidates})
+    return ({"scope": "matching_write_observations_not_origin", "admission_effect": "none",
+             "unique_builds": len(versions), "builds_without_resource_identity": legacy,
+             "reads": len(details), "states": dict(sorted(states.items()))}, details)
+
+
+def value_map_build_links(builds, calls, cutoff):
+    """Check explicit supplied IDs and hashes only; never grant clean ancestry."""
+    def clock(value):
+        try:
+            return instant(value)
+        except (TypeError, ValueError, OverflowError):
+            raise ValueError("invalid producer clock") from None
+
+    cutoff = clock(cutoff)
+    # Reuse write-receipt validation, including conflicting duplicate identities.
+    value_map_write_observations({}, builds, cutoff)
+
+    def index(records, field):
+        if not isinstance(records, list):
+            raise ValueError("producer records must be a list")
+        result, versions = {}, {}
+        for rec in records:
+            if not isinstance(rec, dict) or not isinstance(rec.get(field), str) or not 0 < len(rec[field]) <= 256:
+                raise ValueError("invalid producer identity")
+            try:
+                encoded = json.dumps(rec, sort_keys=True, separators=(",", ":"), allow_nan=False)
+            except (TypeError, ValueError):
+                raise ValueError("invalid producer record") from None
+            key = rec[field]
+            if key in versions and versions[key] != encoded:
+                raise ValueError("conflicting producer identity")
+            versions[key], result[key] = encoded, rec
+        return result
+
+    def hashed(value):
+        return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) is not None
+
+    stages = ("draft_a", "draft_b", "synthesis")
+    def reference(ref):
+        if (not isinstance(ref, dict) or set(ref) != {"stage", "state", "request_id", "returned_sha256"}
+                or ref.get("stage") not in stages or not hashed(ref.get("returned_sha256"))
+                or ref.get("state") not in ("bound", "unavailable")
+                or (ref["state"] == "unavailable" and ref.get("request_id") is not None)
+                or (ref["state"] == "bound" and (not isinstance(ref.get("request_id"), str) or not 0 < len(ref["request_id"]) <= 256))):
+            raise ValueError("invalid producer reference")
+
+    by_build, by_call = index(builds, "build_id"), index(calls, "request_id")
+    for call in by_call.values():
+        start, end = clock(call.get("started_at")), clock(call.get("ended_at"))
+        if (call.get("schema") != "value-map-call-v1" or start > end
+                or call.get("scope") != "one_http_invocation" or not hashed(call.get("input_sha256"))
+                or call.get("upstream_complete") is not False or call.get("internal_attempts_complete") is not False
+                or call.get("outcome") not in ("returned", "rejected", "failed")
+                or (call["outcome"] == "returned" and not hashed(call.get("returned_sha256")))
+                or (call["outcome"] != "returned" and call.get("returned_sha256") is not None)):
+            raise ValueError("invalid completed producer call")
+        if "build_id" in call:
+            deps = call.get("dependencies")
+            if (not isinstance(call["build_id"], str) or not call["build_id"] or call.get("stage") not in stages
+                    or not isinstance(deps, list) or len(deps) > 2):
+                raise ValueError("invalid producer call binding")
+            for dep in deps: reference(dep)
+            if sorted(d["stage"] for d in deps) != (["draft_a", "draft_b"] if call["stage"] == "synthesis" else []):
+                raise ValueError("invalid producer dependency stages")
+    for build in by_build.values():
+        reference(build.get("selection"))
+        records, entries = build.get("calls"), build.get("stage_entries")
+        if (type(build.get("calls_truncated")) is not bool or not isinstance(records, list) or len(records) > 8
+                or not isinstance(entries, dict) or any(k not in stages or type(v) is not int or v < 1 for k,v in entries.items())):
+            raise ValueError("invalid producer build observations")
+        ids = set()
+        for rec in records:
+            if (not isinstance(rec, dict) or not isinstance(rec.get("request_id"), str) or not rec["request_id"]
+                    or rec["request_id"] in ids or rec.get("stage") not in stages
+                    or type(rec.get("packet_published")) is not bool
+                    or rec.get("outcome") not in ("returned", "rejected", "failed", "unobserved")):
+                raise ValueError("invalid producer call observation")
+            ids.add(rec["request_id"])
+
+    stage_calls = defaultdict(list)
+    for call in by_call.values():
+        if "build_id" in call:
+            stage_calls[(call["build_id"], call["stage"])].append(call)
+
+    def check(build, ref, latest):
+        if ref["state"] != "bound":
+            return "unavailable"
+        call = by_call.get(ref["request_id"])
+        if call is None:
+            return "missing_call"
+        records = [r for r in build["calls"] if r["stage"] == ref["stage"]]
+        # Also inspect supplied calls omitted by the build's call summary. Never
+        # let an incomplete summary select one of several same-stage attempts.
+        supplied = stage_calls[(build["build_id"], ref["stage"])]
+        good = (not build["calls_truncated"] and build["stage_entries"].get(ref["stage"]) == 1
+                and len(records) == 1 and len(supplied) == 1
+                and records[0]["request_id"] == ref["request_id"]
+                and records[0]["packet_published"] is True and records[0]["outcome"] == "returned"
+                and call.get("build_id") == build["build_id"] and call.get("stage") == ref["stage"]
+                and call["outcome"] == "returned" and call["returned_sha256"] == ref["returned_sha256"]
+                and clock(build["started_at"]) <= clock(call["started_at"]) <= clock(call["ended_at"]) <= latest
+                and clock(call["ended_at"]) < cutoff)
+        return "consistent" if good else "inconsistent_call"
+
+    # Count the explicit response identity separately from link consistency.
+    # Configuration, text hashes and shared build IDs never supply identity.
+    identities = Counter()
+    for call in by_call.values():
+        if clock(call["ended_at"]) >= cutoff:
+            continue
+        if "served_model" not in call and "identity_evidence" not in call:
+            state = "missing"
+        elif "served_model" not in call or "identity_evidence" not in call:
+            state = "malformed"
+        elif call["identity_evidence"] == "unknown" and call["served_model"] is None:
+            state = "unknown"
+        elif (call["outcome"] == "returned" and call["identity_evidence"] == "response_metadata"
+              and isinstance(call["served_model"], str) and call["served_model"].strip()
+              and len(call["served_model"]) <= 256 and hashed(call.get("response_sha256"))):
+            state = "response_reported"
+        else:
+            state = "malformed"
+        identities[state] += 1
+
+    selections, dependencies, details = Counter(), Counter(), []
+    for key, build in sorted(by_build.items()):
+        if clock(build["ended_at"]) >= cutoff:
+            continue
+        ref = build["selection"]
+        state = check(build, ref, clock(build["ended_at"]))
+        selections[state] += 1
+        detail = {"build_id": key, "selected_request_id": ref["request_id"], "selection_state": state, "dependencies": []}
+        if state == "consistent":
+            call = by_call[ref["request_id"]]
+            for dep in call.get("dependencies", []):
+                status = check(build, dep, clock(call["started_at"]))
+                dependencies[status] += 1
+                detail["dependencies"].append({"stage": dep["stage"], "request_id": dep["request_id"], "state": status})
+        details.append(detail)
+    return ({"scope": "explicit_build_call_consistency_only", "admission_effect": "none",
+             "builds_before_cutoff": len(details),
+             "calls_before_cutoff": sum(clock(c["ended_at"]) < cutoff for c in by_call.values()),
+             "call_identity_coverage": dict(sorted(identities.items())),
+             "selection_states": dict(sorted(selections.items())), "dependency_states": dict(sorted(dependencies.items()))}, details)
 
 
 def adapt(rows, kind):
@@ -49,8 +368,15 @@ def snapshot_nodes(sources, lineage):
         if not isinstance(node, dict) or not isinstance(node.get("id"), str) or not node["id"]:
             raise ValueError("invalid lineage identity")
         key = node["id"]
-        if key in nodes and (not repeated or nodes[key] != node):
-            raise ValueError("duplicate or conflicting lineage identity")
+        if key in nodes:
+            # Dictionary equality aliases true/1 and false/0, although the
+            # lineage contract requires explicit booleans. Compare the complete
+            # JSON attestations without allowing the last copy to pick a type.
+            if (not repeated or
+                    json.dumps(nodes[key], sort_keys=True, separators=(",", ":"), allow_nan=False) !=
+                    json.dumps(node, sort_keys=True, separators=(",", ":"), allow_nan=False)):
+                raise ValueError("duplicate or conflicting lineage identity")
+            return
         nodes[key] = node
 
     if not isinstance(lineage, list):
@@ -73,9 +399,43 @@ def snapshot_nodes(sources, lineage):
     return nodes
 
 
+def evidence_coverage(row, nodes):
+    """Independent per-copy coverage, never an admission or completeness verdict.
+
+    An early delivery hold must not conceal missing ancestry or request binding.
+    Conflicting receipts contribute no selected facts. Recorded facts on excluded
+    acts remain coverage observations, not evidence eligible for learning.
+    """
+    candidates = [row["witness_receipt"]] if "witness_receipt" in row else []
+    candidates += [row[k]["witness_receipt"] for k in ("generation_provenance", "provenance")
+                   if isinstance(row.get(k), dict) and "witness_receipt" in row[k]]
+    receipts = [normalize_receipt(r) for r in candidates]
+    status = ("absent" if not receipts else "conflicting" if any(r != receipts[0] for r in receipts)
+              else "recorded" if receipts[0]["status"] == "recorded" else "unknown")
+    result = dict.fromkeys(("identity_binding", "served_identity", "request_binding",
+                           "delivery", "response_binding", "context_lineage", "final_reply_lineage"), "not_evaluated")
+    result["receipt"] = status
+    if status != "recorded":
+        return result
+    r = receipts[0]
+    selected = next(a for a in r["generation"]["attempts"] if a["outcome"] == "selected")
+    identity, _ = joined_identity(row)
+    text = final_response(row)
+    result.update(
+        identity_binding="matched" if identity == r["turn_id"] and row.get("surface") == r["surface"] else "mismatch",
+        served_identity="observed" if selected["served_model"] is not None else "unknown",
+        request_binding="recorded" if selected.get("request_id") and selected.get("input_sha256") else "unknown",
+        delivery=r["delivery"],
+        response_binding="matched" if isinstance(text, str) and digest(text) == r["response_sha256"] else "missing_or_changed",
+        context_lineage=lineage_status(r["context_receipt_id"], nodes, r["started_at"]),
+        final_reply_lineage=final_reply_status(row, nodes, r) if "reply_node" in row else "not_supplied")
+    return result
+
+
 def census(sources, nodes, cutoff):
     groups, reasons, envelopes = defaultdict(list), Counter(), Counter()
     source_counts, identity_joins, duplicate_reasons = {}, 0, Counter()
+    coverage, coverage_n = defaultdict(Counter), 0
     for kind, rows in sources:
         adapted = list(adapt(rows, kind))
         source_counts[kind] = source_counts.get(kind, 0) + len(adapted)
@@ -83,6 +443,9 @@ def census(sources, nodes, cutoff):
             if row.get("role") != "assistant":
                 reasons["not_reply"] += 1
                 continue
+            coverage_n += 1
+            for field, status in evidence_coverage(row, nodes).items():
+                coverage[field][status] += 1
             key, identity_status = joined_identity(row)
             if key is None:
                 envelopes[envelope_status(row)] += 1
@@ -113,7 +476,11 @@ def census(sources, nodes, cutoff):
     summary = {"source_rows": source_counts, "envelope_rows": dict(envelopes),
                "unique_identified_replies": len(groups), "eligible_replies": len(admitted),
                "held": dict(reasons), "duplicate_held_copy_reasons": dict(duplicate_reasons),
-               "envelope_id_joins": identity_joins, "behaviour": {
+               "envelope_id_joins": identity_joins,
+               "evidence_coverage": {"assistant_copies": coverage_n,
+                   "fields": {k: dict(v) for k, v in sorted(coverage.items())},
+                   "meaning": "per-copy independent coverage, including excluded acts; not eligibility or complete-stream proof"},
+               "behaviour": {
                    "mean_words": statistics.mean(lengths) if lengths else None,
                    "question_fraction": sum("?" in final_response(r) for r in admitted) / len(admitted)
                    if admitted else None},
@@ -207,7 +574,15 @@ def feedback_receipts(admitted, events, cutoff):
         copies[event["event_id"]].append(event)
     unique = {}
     for key, rows in copies.items():
-        if any(r != rows[0] for r in rows):
+        try:
+            # Numeric equality aliases explicit booleans and integer ratings.
+            # Select only identical JSON attestations, independent of input order.
+            versions = {json.dumps(r, sort_keys=True, separators=(",", ":"), allow_nan=False)
+                        for r in rows}
+        except (TypeError, ValueError, OverflowError):
+            held["invalid_feedback_evidence"] += 1
+            continue
+        if len(versions) != 1:
             held["conflicting_event_identity"] += 1
         else: unique[key] = rows[0]
     # Include every claimed position, even excluded/conflicting/unknown events.
@@ -367,8 +742,11 @@ def context_controls(forecast, target, actual, targets, embeddings, encoder):
                        and e.get("response_sha256") == r["response_sha256"]]
             if not matches or any(e.get("emb") != matches[0].get("emb") for e in matches):
                 return unavailable("missing_or_conflicting_context_embedding")
+            # Python numeric equality can hide booleans behind 0/1 in a later
+            # duplicate. Every matching copy must independently be a valid vector.
+            for match in matches:
+                cosine_error(match.get("emb"), actual)
             vector = matches[0]["emb"]
-            cosine_error(vector, actual)  # same dimension, finite and nonzero
             norm = math.hypot(*vector)
             vectors.append([x / norm for x in vector])
         mean = [sum(v[i] for v in vectors) / len(vectors) for i in range(len(actual))]
@@ -379,7 +757,10 @@ def context_controls(forecast, target, actual, targets, embeddings, encoder):
         return unavailable("invalid_context_evidence")
 
 
-def innovation(admitted, forecasts, embeddings, checkpoints, minimum_history=20):
+MINIMUM_INNOVATION_HISTORY = 20
+
+
+def innovation(admitted, forecasts, embeddings, checkpoints, minimum_history=MINIMUM_INNOVATION_HISTORY):
     """Match a pre-finalization on-message forecast to one finalized output.
 
     Checkpoint identities/encoder/training times must come from an independently
@@ -387,13 +768,35 @@ def innovation(admitted, forecasts, embeddings, checkpoints, minimum_history=20)
     Percentiles use outcomes finalized strictly before the forecast was made,
     within the same checkpoint and observed target-generator group.
     """
-    if minimum_history < 1:
-        raise ValueError("history minimum must be positive")
+    if type(minimum_history) is not int or minimum_history < 1:
+        raise ValueError("history minimum must be a positive integer")
     if not isinstance(forecasts, list) or not isinstance(embeddings, list) or not isinstance(checkpoints, dict):
         raise ValueError("forecast/embedding lists and checkpoint mapping required")
+    if (not isinstance(admitted, list) or any(
+            not isinstance(row, dict) or not isinstance(row.get("turn_id"), str) or not row["turn_id"]
+            for row in admitted)):
+        raise ValueError("innovation requires identified admitted reply records")
     targets = {r["turn_id"]: r for r in admitted}
+    if len(targets) != len(admitted):
+        raise ValueError("innovation requires unique admitted replies")
     cache = defaultdict(list)
-    held, candidates = Counter(), defaultdict(list)
+    held, candidates, declared = Counter(), defaultdict(list), defaultdict(list)
+    invalid_clocks = defaultdict(Counter)
+    def clock(value, field):
+        try:
+            return instant(value)
+        except (TypeError, ValueError, OverflowError):
+            state = "missing" if value is None else "invalid"
+            if isinstance(value, str):
+                try:
+                    from datetime import datetime
+                    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+                    if parsed.tzinfo is None:
+                        state = "missing_timezone"
+                except (TypeError, ValueError, OverflowError):
+                    pass
+            invalid_clocks[field][state] += 1
+            raise
     for e in embeddings:
         if not isinstance(e, dict) or not isinstance(e.get("turn_id"), str) or not e["turn_id"]:
             held["missing_embedding_identity"] += 1
@@ -431,11 +834,22 @@ def innovation(admitted, forecasts, embeddings, checkpoints, minimum_history=20)
             if manifest.get("source") != head["source"]:
                 held["checkpoint_source_mismatch"] += 1
                 continue
-            made = instant(f["ts"])
-            arrived = instant(f["arrived_at"])
-            if not (instant(manifest["trained_at"]) < made < r["finalized_at"]
+            selected = next(a for a in r["generation"]["attempts"] if a["outcome"] == "selected")
+            if not selected.get("served_model") or selected.get("identity_evidence") == "unknown":
+                held["unknown_target_generator"] += 1
+                continue
+            group = (checkpoint, encoder, r["surface"], "on_message", head["source"],
+                     selected["served_model"], selected.get("served_revision") or "")
+            # Establish ordering from identified producer records before any
+            # vector/causality filtering can discard the earliest prediction.
+            claim = {"at": None, "sha256": None}
+            declared[(row["turn_id"], group)].append(claim)
+            claim["at"] = made = clock(f.get("ts"), "forecast_at")
+            claim["sha256"] = digest(json.dumps(f, sort_keys=True, separators=(",", ":"), allow_nan=False))
+            arrived = clock(f.get("arrived_at"), "arrived_at")
+            if not (clock(manifest.get("trained_at"), "trained_at") < made < r["finalized_at"]
                     and arrived <= made and arrived <= r["started_at"]
-                    and instant(head["context_last_ts"]) < arrived):
+                    and clock(head.get("context_last_ts"), "context_last_at") < arrived):
                 held["noncausal_forecast"] += 1
                 continue
             matches = [e for e in cache[row["turn_id"]]
@@ -444,16 +858,13 @@ def innovation(admitted, forecasts, embeddings, checkpoints, minimum_history=20)
             if not matches or any(e.get("emb") != matches[0].get("emb") for e in matches):
                 held["missing_or_conflicting_embedding"] += 1
                 continue
-            error = cosine_error(head["emb"], matches[0]["emb"])
-            selected = next(a for a in r["generation"]["attempts"] if a["outcome"] == "selected")
-            if not selected.get("served_model") or selected.get("identity_evidence") == "unknown":
-                held["unknown_target_generator"] += 1
-                continue
-            group = (checkpoint, encoder, r["surface"], "on_message", head["source"],
-                     selected["served_model"], selected.get("served_revision") or "")
+            # Validate all copies before selecting one; equality alone does not
+            # establish numeric validity (True == 1 and False == 0).
+            errors = [cosine_error(head["emb"], match.get("emb")) for match in matches]
+            error = errors[0]
             # Equal errors are not equal forecasts. Retain a private digest of
             # the complete producer record, including vector and context claims.
-            forecast_sha = digest(json.dumps(f, sort_keys=True, separators=(",", ":"), allow_nan=False))
+            forecast_sha = claim["sha256"]
             candidates[(row["turn_id"], group)].append({
                 "turn_id": row["turn_id"], "response_sha256": r["response_sha256"],
                 "group": group, "forecast_at": made, "forecast_sha256": forecast_sha, "finalized_at": r["finalized_at"],
@@ -462,9 +873,23 @@ def innovation(admitted, forecasts, embeddings, checkpoints, minimum_history=20)
         except (KeyError, TypeError, ValueError, OverflowError):
             held["missing_or_invalid_forecast_evidence"] += 1
     scored = []
-    for choices in candidates.values():
-        earliest = min(c["forecast_at"] for c in choices)
+    for key, choices in candidates.items():
+        claims = declared[key]
+        if any(c["at"] is None for c in claims):
+            held["unknown_forecast_order"] += 1
+            continue
+        earliest = min(c["at"] for c in claims)
+        first_claims = [c for c in claims if c["at"] == earliest]
+        if any(c["sha256"] is None for c in first_claims):
+            held["unscorable_earliest_forecast"] += 1
+            continue
+        if len({c["sha256"] for c in first_claims}) != 1:
+            held["conflicting_forecast"] += 1
+            continue
         tied = [c for c in choices if c["forecast_at"] == earliest]
+        if not tied:
+            held["unscorable_earliest_forecast"] += 1
+            continue
         if any(c != tied[0] for c in tied):
             held["conflicting_forecast"] += 1
             continue
@@ -505,9 +930,251 @@ def innovation(admitted, forecasts, embeddings, checkpoints, minimum_history=20)
             **{key: statistics.mean(r["controls"][key] for r in rows) for key in (
                 "last_reply_error", "recent_mean_error", "last_reply_improvement", "recent_mean_improvement")}})
     return {"groups": aggregate, "held": dict(held),
+            "invalid_clocks": {field: dict(counts) for field, counts in invalid_clocks.items()},
             "baselines": {"paired_groups": comparisons, "unavailable": dict(control_held),
                           "meaning": "positive improvement favours head; descriptive paired errors, not a pass verdict"},
             "meaning": "prediction innovation, not authenticity or a pass verdict"}, scored
+
+
+def self_input_baselines(scored, admitted, forecasts, target_embeddings, config, cutoff):
+    """Optional descriptive controls for exact producer-observed excerpt inputs.
+
+    No admission changes or text/time-nearest joins. This first version accepts
+    only inputs whose normalized full text equals an already admitted final reply.
+    Source normalization that changed bytes requires separate evidence, not a guess.
+    """
+    cutoff = instant(cutoff)
+    invalid = lambda: ValueError("invalid self-input baseline evidence")
+    def canonical(value):
+        try:
+            return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
+        except (TypeError, ValueError, OverflowError):
+            raise invalid() from None
+    def hashed(value):
+        return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) is not None
+    def named(value):
+        return isinstance(value, str) and bool(value.strip()) and len(value) <= 256
+    if (not isinstance(config, dict) or set(config) != {"receipts", "embeddings", "blocks"}
+            or any(not isinstance(config[k], list) for k in config)):
+        raise invalid()
+    packets, versions = {}, {}
+    for packet in config["receipts"]:
+        try:
+            if (not isinstance(packet, dict) or set(packet) != {"schema", "forecast_row_sha256", "forecast_at",
+                    "arrived_at", "boundary", "durability", "observations", "state", "inputs", "complete_forecast_context"}
+                    or packet["schema"] != "self-forecast-inputs-v1" or not hashed(packet["forecast_row_sha256"])
+                    or packet["boundary"] != "forecast_log_close" or packet["durability"] != "unconfirmed"
+                    or packet["complete_forecast_context"] is not False
+                    or type(packet["observations"]) is not int or packet["observations"] < 0
+                    or packet["state"] not in ("observed", "unavailable")
+                    or instant(packet["arrived_at"]) > instant(packet["forecast_at"])):
+                raise invalid()
+            inputs = packet["inputs"]
+            if packet["state"] == "unavailable":
+                if inputs is not None: raise invalid()
+            else:
+                if (packet["observations"] != 1 or not isinstance(inputs, dict)
+                        or set(inputs) != {"scope", "as_of_exchange_at", "transform", "selection", "reply_refs",
+                                           "source_identity", "encoder_identity", "upstream_complete", "complete_forecast_context"}
+                        or inputs["scope"] != "recent_own_reply_feature_inputs"
+                        or inputs["transform"] != "normalized_exchange_his_first_400_codepoints"
+                        or inputs["selection"] != "last_six_nonempty_his_in_supplied_exchange_order"
+                        or inputs["source_identity"] != "unverified" or inputs["encoder_identity"] != "unobserved"
+                        or inputs["upstream_complete"] is not False or inputs["complete_forecast_context"] is not False
+                        or instant(inputs["as_of_exchange_at"]) >= instant(packet["arrived_at"])
+                        or not isinstance(inputs["reply_refs"], list) or not 1 <= len(inputs["reply_refs"]) <= 6):
+                    raise invalid()
+                for ref in inputs["reply_refs"]:
+                    if (not isinstance(ref, dict) or set(ref) != {"observed_turn_id", "exchange_at", "normalized_reply_sha256",
+                                                               "encoder_input_sha256", "encoder_input_chars"}
+                            or ref["observed_turn_id"] is not None and not named(ref["observed_turn_id"])
+                            or not hashed(ref["normalized_reply_sha256"]) or not hashed(ref["encoder_input_sha256"])
+                            or type(ref["encoder_input_chars"]) is not int or not 1 <= ref["encoder_input_chars"] <= 400
+                            or instant(ref["exchange_at"]) > instant(inputs["as_of_exchange_at"])):
+                        raise invalid()
+            key, version = packet["forecast_row_sha256"], canonical(packet)
+            if key in versions and versions[key] != version: raise invalid()
+            versions[key] = version
+            packets[key] = packet
+        except (KeyError, TypeError, ValueError, OverflowError):
+            raise invalid() from None
+    blocks, block_versions = [], {}
+    for block in config["blocks"]:
+        try:
+            if (not isinstance(block, dict) or set(block) != {"block_id", "declared_at", "start", "end"}
+                    or not named(block["block_id"])
+                    or not instant(block["declared_at"]) < instant(block["start"]) < instant(block["end"])):
+                raise invalid()
+            key, version = block["block_id"], canonical(block)
+            if key in block_versions:
+                if block_versions[key] != version: raise invalid()
+                continue
+            block_versions[key] = version
+            blocks.append(block)
+        except (KeyError, TypeError, ValueError, OverflowError):
+            raise invalid() from None
+    blocks.sort(key=lambda b: instant(b["start"]))
+    if any(instant(a["end"]) > instant(b["start"]) for a, b in zip(blocks, blocks[1:])):
+        raise invalid()
+    # Retain malformed identifiable cache copies so they cannot hide behind valid ones.
+    cache = defaultdict(list)
+    for entry in config["embeddings"]:
+        if not isinstance(entry, dict) or not named(entry.get("turn_id")):
+            raise invalid()
+        cache[entry["turn_id"]].append(entry)
+    originals = {digest(canonical(f)): f for f in forecasts}
+    targets = {r["turn_id"]: r for r in admitted}
+    held, paired, details = Counter(), defaultdict(list), []
+    for score in scored:
+        key = score["forecast_sha256"]
+        result = {"forecast_sha256": key, "turn_id": score["turn_id"], "status": "unavailable"}
+        def hold(reason):
+            result["reason"] = reason
+            held[reason] += 1
+            details.append(result)
+        if instant(score["finalized_at"]) >= cutoff:
+            hold("outside_cutoff"); continue
+        f, packet = originals.get(key), packets.get(key)
+        if f is None or packet is None:
+            hold("missing_exact_forecast_receipt"); continue
+        if (instant(packet["forecast_at"]) != instant(f["ts"])
+                or instant(packet["arrived_at"]) != instant(f["arrived_at"])):
+            hold("forecast_clock_mismatch"); continue
+        if packet["state"] != "observed":
+            hold("producer_inputs_unavailable"); continue
+        inputs = packet["inputs"]
+        as_of = instant(inputs["as_of_exchange_at"])
+        if as_of != instant(f["self"]["context_last_ts"]):
+            hold("context_clock_mismatch"); continue
+        matched_blocks = [b for b in blocks if instant(b["start"]) <= instant(f["arrived_at"])
+                          and instant(score["finalized_at"]) < instant(b["end"]) <= cutoff]
+        if len(matched_blocks) != 1:
+            hold("missing_complete_declared_block"); continue
+        block = matched_blocks[0]
+        vectors, seen, last_final = [], set(), -1.
+        reason = None
+        for ref in inputs["reply_refs"]:
+            prior_id = ref["observed_turn_id"]
+            if prior_id is None or prior_id in seen or prior_id == score["turn_id"]:
+                reason = "missing_duplicate_or_target_input_identity"; break
+            seen.add(prior_id)
+            previous = targets.get(prior_id)
+            if previous is None:
+                reason = "input_reply_not_admitted"; break
+            r, text = row_receipt(previous), final_response(previous)
+            if r["surface"] != score["group"][2]:
+                reason = "input_surface_mismatch"; break
+            # A matching normalized hash is accepted only when no normalization changed the final bytes.
+            if digest(text) != ref["normalized_reply_sha256"] or digest(text) != r["response_sha256"]:
+                reason = "unverified_normalized_reply_version"; break
+            prefix = text[:400]
+            if digest(prefix) != ref["encoder_input_sha256"] or len(prefix) != ref["encoder_input_chars"]:
+                reason = "input_transform_mismatch"; break
+            if not last_final < r["finalized_at"] <= as_of:
+                reason = "noncausal_or_ambiguous_input_order"; break
+            last_final = r["finalized_at"]
+            encoder = score["group"][1]
+            matches = [e for e in cache[prior_id] if e.get("encoder_id") == encoder
+                       and e.get("response_sha256") == r["response_sha256"]
+                       and e.get("encoder_input_sha256") == ref["encoder_input_sha256"]]
+            try:
+                if not matches or any(e.get("emb") != matches[0].get("emb") for e in matches):
+                    raise ValueError()
+                for entry in matches:
+                    if entry.get("transform") != "final_reply_first_400_codepoints": raise ValueError()
+                    cosine_error(entry.get("emb"), f["self"]["emb"])
+                vector = matches[0]["emb"]
+                norm = math.hypot(*vector)
+                vectors.append([x / norm for x in vector])
+            except (TypeError, ValueError, OverflowError):
+                reason = "missing_or_invalid_input_embedding"; break
+        if reason:
+            hold(reason); continue
+        # Reuse the same full-target cache supplied to innovation(), not a second
+        # vector inferred from an equal scalar error or the excerpt cache.
+        actual_entries = [e for e in target_embeddings if isinstance(e, dict)
+                          and e.get("turn_id") == score["turn_id"] and e.get("encoder_id") == score["group"][1]
+                          and e.get("response_sha256") == score["response_sha256"]]
+        try:
+            if not actual_entries or any(e.get("emb") != actual_entries[0].get("emb") for e in actual_entries):
+                raise ValueError()
+            for entry in actual_entries:
+                if cosine_error(f["self"]["emb"], entry.get("emb")) != score["error"]: raise ValueError()
+            actual = actual_entries[0]["emb"]
+        except (TypeError, ValueError, OverflowError):
+            hold("missing_or_conflicting_actual_embedding"); continue
+        try:
+            mean = [sum(v[i] for v in vectors) / len(vectors) for i in range(len(actual))]
+            last_error, mean_error = cosine_error(vectors[-1], actual), cosine_error(mean, actual)
+        except (TypeError, ValueError, OverflowError, IndexError):
+            hold("invalid_control_geometry"); continue
+        result.update(status="available", evaluation_block=block["block_id"], context_n=len(vectors),
+                      head_error=score["error"], last_reply_error=last_error, recent_mean_error=mean_error,
+                      last_reply_improvement=last_error-score["error"], recent_mean_improvement=mean_error-score["error"])
+        details.append(result)
+        paired[(tuple(score["group"]), block["block_id"])].append(result)
+    comparisons = []
+    group_numbers = {group: i + 1 for i, group in enumerate(dict.fromkeys(tuple(s["group"]) for s in scored))}
+    for (group, block), rows in paired.items():
+        comparisons.append({"comparison_group": len(comparisons)+1, "checkpoint_group": group_numbers[group], "n": len(rows),
+                            **{k: statistics.mean(r[k] for r in rows) for k in
+                               ("head_error", "last_reply_error", "recent_mean_error", "last_reply_improvement", "recent_mean_improvement")}})
+    coverage = self_input_coverage(admitted, scored, details, originals, blocks, group_numbers, cutoff)
+    return {"paired_groups": comparisons, "unavailable": dict(held), "coverage": coverage, "admission_effect": "none",
+            "meaning": "descriptive paired excerpt-input controls; supplied block declarations, not verified preregistration or a pass verdict"}, details
+
+
+def self_input_coverage(admitted, scored, details, forecasts, blocks, group_numbers, cutoff):
+    """Denominators for the validated optional control run; never a new selection.
+
+    Source counts use finalization windows; a pair additionally needs its arrival
+    in the block. Multiple checkpoint forecasts of one target are counted apart
+    from distinct targets. No missing forecast is assigned a score.
+    """
+    if (len(scored) != len(details) or any(s["forecast_sha256"] != d["forecast_sha256"]
+            or s["turn_id"] != d["turn_id"] for s, d in zip(scored, details))):
+        raise ValueError("inconsistent self-input coverage decisions")
+    targets = {r["turn_id"]: instant(row_receipt(r)["finalized_at"]) for r in admitted
+               if instant(row_receipt(r)["finalized_at"]) < cutoff}
+    eligible = [(s, d) for s, d in zip(scored, details) if instant(s["finalized_at"]) < cutoff]
+    paired = [(s, d) for s, d in eligible if d["status"] == "available"]
+    scoped, unscoped = defaultdict(list), []
+    for score, decision in eligible:
+        forecast = forecasts.get(score["forecast_sha256"])
+        match = next((i + 1 for i, block in enumerate(blocks)
+                      if forecast is not None and instant(block["start"]) <= instant(forecast["arrived_at"])
+                      and instant(score["finalized_at"]) < instant(block["end"]) <= cutoff), None)
+        if match is None:
+            unscoped.append((score, decision))
+        scoped[(tuple(score["group"]), match)].append((score, decision))
+    block_counts = []
+    for i, block in enumerate(blocks):
+        lower, upper = instant(block["start"]), min(instant(block["end"]), cutoff)
+        source_ids = {key for key, at in targets.items() if lower <= at < upper}
+        scored_ids = {s["turn_id"] for s, _ in eligible if s["turn_id"] in source_ids}
+        observed = [s for s, d in paired if d["evaluation_block"] == block["block_id"]]
+        block_counts.append({"block_group": i + 1, "complete_at_cutoff": instant(block["end"]) <= cutoff,
+            "admitted_replies_finalized": len(source_ids), "targets_with_scorable_forecast": len(scored_ids),
+            "targets_without_scorable_forecast": len(source_ids - scored_ids),
+            "paired_forecasts": len(observed), "paired_targets": len({s["turn_id"] for s in observed})})
+    group_counts = []
+    for (group, block_number), rows in scoped.items():
+        available = [(s, d) for s, d in rows if d["status"] == "available"]
+        group_counts.append({"checkpoint_group": group_numbers[group], "block_group": block_number,
+            "scorable_forecasts": len(rows), "scorable_targets": len({s["turn_id"] for s, _ in rows}),
+            "paired_forecasts": len(available), "paired_targets": len({s["turn_id"] for s, _ in available}),
+            "paired_fraction": len(available) / len(rows),
+            "unavailable": dict(Counter(d["reason"] for _, d in rows if d["status"] != "available"))})
+    scored_ids = {s["turn_id"] for s, _ in eligible}
+    return {"admitted_replies_before_cutoff": len(targets),
+            "targets_with_scorable_forecast": len(scored_ids),
+            "targets_without_scorable_forecast": len(set(targets) - scored_ids),
+            "scorable_forecasts_before_cutoff": len(eligible),
+            "paired_forecasts": len(paired), "paired_targets": len({s["turn_id"] for s, _ in paired}),
+            "scorable_forecasts_without_pair": len(eligible) - len(paired),
+            "scorable_forecasts_outside_complete_blocks": len(unscoped),
+            "blocks": block_counts, "groups": group_counts,
+            "meaning": "coverage of supplied admitted data only; missing or unscorable forecasts are not zero innovation; source windows use finalization"}
 
 
 def scratch_root(value):
@@ -555,6 +1222,52 @@ def install_guard(root, output):
     sys.addaudithook(hook)
 
 
+# The local scoring implementation, not provider dependencies or live stores.
+SCORING_FILES = ("scripts/witness_artifact_join.py", "scripts/witness_self_artifacts.py", "scripts/witness_attribution.py", "experiments/judges-witness/replay.py", "scripts/witness_receipts.py",
+                 "scripts/evidence_provenance.py", "scripts/evidence_view.py")
+
+
+def scoring_hashes():
+    repo = Path(__file__).resolve().parents[2]
+    return {name: hashlib.sha256((repo / name).read_bytes()).hexdigest() for name in SCORING_FILES}
+
+
+def run_manifest(source_bytes, code, options, outputs):
+    """Private reproducibility receipt; fingerprints do not authenticate a source."""
+    body = {"schema": "judges-replay-run-v1", "input_sha256": hashlib.sha256(source_bytes).hexdigest(),
+            "input_bytes": len(source_bytes), "scoring_files": code, "options": options,
+            "outputs": outputs, "python_version": list(sys.version_info[:3]),
+            "python_implementation": sys.implementation.name}
+    return dict(body, run_sha256=digest(json.dumps(body, sort_keys=True, separators=(",", ":"), allow_nan=False)))
+
+
+def decode_snapshot(raw):
+    """Reject contradictory JSON before a parser can discard an evidence field."""
+    def object_pairs(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                # Keys may themselves contain private data. Never echo one.
+                raise ValueError("duplicate JSON object key")
+            result[key] = value
+        return result
+
+    def nonfinite(_value):
+        raise ValueError("nonfinite JSON constant")
+
+    def finite_float(token):
+        value = float(token)
+        if not math.isfinite(value):
+            raise ValueError("nonfinite JSON constant")
+        return value
+
+    value = json.loads(raw, object_pairs_hook=object_pairs, parse_constant=nonfinite,
+                       parse_float=finite_float)
+    if not isinstance(value, dict):
+        raise ValueError("snapshot must be a JSON object")
+    return value
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--scratch", required=True)
@@ -571,8 +1284,9 @@ def main():
     if output.exists() or output in source.parents:
         raise ValueError("output must be new and cannot contain input")
     install_guard(root, output)
-    with source.open() as f:
-        bundle = json.load(f)
+    code_hashes = scoring_hashes()
+    source_bytes = source.read_bytes()
+    bundle = decode_snapshot(source_bytes)
     if bundle.get("input_kind") not in ("synthetic", "retained_snapshot"):
         raise ValueError("input_kind must explicitly distinguish synthetic from retained_snapshot")
     # No discovery or historical fallback. Missing components are explicit empty evidence.
@@ -589,16 +1303,70 @@ def main():
     feedback, private_feedback = feedback_receipts(admitted, bundle.get("feedback_events", []), args.cutoff)
     report = {"schema": "judges-shadow-v1", "input_kind": bundle.get("input_kind", "unspecified"),
               "census": summary, "innovation": scores, "behaviour_receipt":behaviour, "feedback":feedback}
+    if "self_forecast_clocks" in bundle:
+        report["forecast_clock_observations"] = forecast_clock_observations(
+            bundle.get("forecasts", []), bundle["self_forecast_clocks"], args.cutoff)
+    private_attribution = None
+    if "historical_attribution" in bundle:
+        config = bundle["historical_attribution"]
+        if not isinstance(config, dict) or "compute_ledger" not in config:
+            raise ValueError("historical attribution requires explicit compute ledger records")
+        config = dict(config)
+        ledger = config.pop("compute_ledger")
+        rows = [row for kind, records in sources for row in adapt(records, kind)]
+        report["historical_attribution"], private_attribution = attribution(rows, ledger, config, args.cutoff)
+    private_artifact_joins = None
+    if "self_artifact_packets" in bundle:
+        report["self_artifact_joins"], private_artifact_joins = join_artifacts(
+            admitted, sources, nodes, bundle["self_artifact_packets"], args.cutoff, bundle.get("forecasts", []))
+    private_self_inputs = None
+    if "self_input_controls" in bundle:
+        report["self_input_baselines"], private_self_inputs = self_input_baselines(
+            details, admitted, bundle.get("forecasts", []), bundle.get("embeddings", []),
+            bundle["self_input_controls"], args.cutoff)
+    private_map_writes = None
+    if "value_map_builds" in bundle:
+        report["value_map_write_observations"], private_map_writes = value_map_write_observations(
+            nodes, bundle["value_map_builds"], args.cutoff)
+    private_build_links = None
+    if "value_map_calls" in bundle:
+        if "value_map_builds" not in bundle:
+            raise ValueError("value_map_calls requires an explicit value_map_builds list")
+        report["value_map_build_links"], private_build_links = value_map_build_links(
+            bundle["value_map_builds"], bundle["value_map_calls"], args.cutoff)
+    if scoring_hashes() != code_hashes:
+        raise ValueError("scoring source changed during replay")
     output.mkdir(mode=0o700)
     outputs = [("aggregate.json", report), ("private-innovation.json", details),
                ("private-feedback.json", private_feedback)]
+    if private_attribution is not None:
+        outputs.append(("private-model-attribution.json", private_attribution))
+    if private_artifact_joins is not None:
+        outputs.append(("private-self-artifact-joins.json", private_artifact_joins))
+    if private_self_inputs is not None:
+        outputs.append(("private-self-input-controls.json", private_self_inputs))
     if private_behaviour is not None:
         outputs.append(("private-behaviour.json", private_behaviour))
+    if private_map_writes is not None:
+        outputs.append(("private-value-map-writes.json", private_map_writes))
+    if private_build_links is not None:
+        outputs.append(("private-value-map-links.json", private_build_links))
+    output_hashes = {}
     for name, value in outputs:
-        with (output / name).open("x") as f:
+        payload = (json.dumps(value, indent=2, allow_nan=False) + "\n").encode("utf-8")
+        with (output / name).open("xb") as f:
             os.chmod(f.name, 0o600)
-            json.dump(value, f, indent=2, allow_nan=False)
-            f.write("\n")
+            f.write(payload)
+        output_hashes[name] = {"sha256": hashlib.sha256(payload).hexdigest(), "bytes": len(payload)}
+    manifest = run_manifest(source_bytes, code_hashes,
+        {"input_kind": bundle["input_kind"], "cutoff": instant(args.cutoff),
+         "behaviour_start": instant(args.behaviour_start) if args.behaviour_start else None,
+         "behaviour_surfaces": sorted(set(args.behaviour_surface)), "minimum_innovation_history": MINIMUM_INNOVATION_HISTORY}, output_hashes)
+    # Written last. Missing, partial or mismatching receipts cannot establish a complete run.
+    with (output / "private-run.json").open("x") as f:
+        os.chmod(f.name, 0o600)
+        json.dump(manifest, f, indent=2, allow_nan=False)
+        f.write("\n")
     print(json.dumps({"eligible_replies": len(admitted), "forecast_groups": len(scores["groups"])}))
 
 

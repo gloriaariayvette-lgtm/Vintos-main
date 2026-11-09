@@ -195,11 +195,34 @@ def train_mode(rows, cache, mode, out, old=None, steps=200):
     return report
 
 
-def load(path):
-    with np.load(path,allow_pickle=False) as z:
+def load(path, retain=False):
+    raw = None
+    checkpoint_clock = None
+    source = path
+    if retain:
+        try:
+            import io
+            from witness_self_artifacts import MAX_CHECKPOINT, begin_checkpoint_read
+            checkpoint_clock = begin_checkpoint_read()
+            with open(path, 'rb') as stream:
+                raw = stream.read(MAX_CHECKPOINT + 1)
+            if len(raw) <= MAX_CHECKPOINT:
+                source = io.BytesIO(raw)
+            else:
+                raw = None
+        except Exception:
+            raw = None
+    with np.load(source,allow_pickle=False) as z:
         model={k:z[k] for k in z.files if k!='meta'}; meta=json.loads(str(z['meta']))
     if meta['schema']!=SCHEMA:raise ValueError('unsupported readout schema')
     model['meta']=meta
+    if raw is not None:
+        try:
+            from witness_self_artifacts import checkpoint, finish_checkpoint_read
+            availability = finish_checkpoint_read(checkpoint_clock) if checkpoint_clock is not None else None
+            model['_witness_checkpoint'] = checkpoint(raw, meta, availability)
+        except Exception:
+            pass
     return model
 
 
@@ -217,7 +240,22 @@ def forecast(enc, mode, exs=None, her='', now=None, model_dir=None):
     if not exs:return None
     r=context(exs,mode,her=her) # identical clock semantics at training and serving
     if not r['own']:return None
-    a=arrays([r],Embeddings(enc)); m=load(path)
+    retain = False
+    if mode == 'self_on_message' and (os.environ.get('JUDGES_CAPTURE_SCRATCH') or os.environ.get('JUDGES_CAPTURE_CONFIG')):
+        try:
+            retain = bool(sh._forecast_witness('self_artifact_capture_enabled'))
+        except Exception:
+            pass
+    feature_encoder = enc
+    if retain:
+        try:
+            from witness_self_artifacts import FeatureEncoder
+            feature_encoder = FeatureEncoder(enc)
+        except Exception:
+            pass
+    cache = Embeddings(feature_encoder)
+    a=arrays([r],cache)
+    m=load(path, retain=True) if retain else load(path)
     if m['meta']['mode'] != mode:raise ValueError('checkpoint is for a different head or mode')
     p=predict(m,a)
     from jepa_predictor import format_context
@@ -227,10 +265,18 @@ def forecast(enc, mode, exs=None, her='', now=None, model_dir=None):
         if e['his']:turns.append({'role':'assistant','content':e['his']})
     if mode=='self_on_message':turns.append({'role':'user','content':her})
     copied=units(enc.encode([format_context(turns[-6:])],show_progress_bar=False))[0]
-    return {'her_key':sh.her_key(her), 'context_emb':copied.tolist(),'emb':p[0].astype('float32'),'confidence':float(confidence(m,p,a)[0]),'qualification':'qualified',
+    result = {'her_key':sh.her_key(her), 'context_emb':copied.tolist(),'emb':p[0].astype('float32'),'confidence':float(confidence(m,p,a)[0]),'qualification':'qualified',
             'source':SCHEMA,'schema':SCHEMA,'mode':mode,'checkpoint_id':hashlib.sha256(path.read_bytes()).hexdigest(),
             'context_last_ts':exs[-1]['ts'],'context_last_turn_id':exs[-1].get('turn_id',''),
             'coherence':float(a[0][0]@a[1][0]),'confidence_evaluation':m['meta']['report']['confidence']}
+    if mode == 'self_on_message' and (os.environ.get('JUDGES_CAPTURE_SCRATCH') or os.environ.get('JUDGES_CAPTURE_CONFIG')):
+        try:
+            sh._forecast_witness('observe_self_forecast', exs, r['own'], r['at'], result)
+            sh._forecast_witness('observe_self_artifacts', exs, cache.bank, m, result,
+                                 getattr(feature_encoder, 'records', None) if feature_encoder is not enc else None)
+        except Exception:
+            pass
+    return result
 
 
 def presence_forecast(enc, exs=None, model_dir=None):
@@ -261,7 +307,15 @@ def audit(enc, memory=None):
     for mode in MODES:
         path=directory/(mode+'.npz')
         if not path.exists():continue
-        ck=hashlib.sha256(path.read_bytes()).hexdigest();head='gloria' if mode=='gloria' else 'self'; adapted=[]
+        checkpoint_clock = None
+        if mode != 'gloria' and (os.environ.get('JUDGES_CAPTURE_SCRATCH') or os.environ.get('JUDGES_CAPTURE_CONFIG')):
+            try:
+                from witness_self_artifacts import begin_checkpoint_read
+                checkpoint_clock = begin_checkpoint_read()
+            except Exception:
+                pass
+        checkpoint_raw=path.read_bytes()
+        ck=hashlib.sha256(checkpoint_raw).hexdigest();head='gloria' if mode=='gloria' else 'self'; adapted=[]
         for row in history:
             triple=row.get(head) or {}
             if triple.get('source')!=SCHEMA or triple.get('checkpoint_id')!=ck:continue
@@ -275,7 +329,20 @@ def audit(enc, memory=None):
             # The generic audit must see the actual source checkpoint, not a legacy override.
             triple=dict(triple);triple.pop('source',None)
             adapted.append(dict(row,checkpoint_id=ck,**{head:triple}))
-        measured=ra.evaluate(adapted,ledger,enc,checkpoint=ck,trained_before=path.stat().st_mtime)
+        audit_enc = enc
+        if head == 'self' and (os.environ.get('JUDGES_CAPTURE_SCRATCH') or os.environ.get('JUDGES_CAPTURE_CONFIG')):
+            try:
+                import io
+                from witness_self_artifacts import checkpoint, audit_encoder, MAX_CHECKPOINT, finish_checkpoint_read
+                if len(checkpoint_raw) <= MAX_CHECKPOINT:
+                    with np.load(io.BytesIO(checkpoint_raw), allow_pickle=False) as archive:
+                        meta = json.loads(str(archive['meta']))
+                    availability = finish_checkpoint_read(checkpoint_clock, stage='metadata_loaded') if checkpoint_clock is not None else None
+                    manifest = checkpoint(checkpoint_raw, meta, availability)
+                    audit_enc = audit_encoder(enc, ledger, manifest)
+            except Exception:
+                pass
+        measured=ra.evaluate(adapted,ledger,audit_enc,checkpoint=ck,trained_before=path.stat().st_mtime)
         report[mode]={'checkpoint':ck,'ranking':ra._summary(measured,head)}
     ra._atomic(str(mem/'jepa-readout-audit.json'),report)
     return report

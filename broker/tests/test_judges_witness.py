@@ -2,6 +2,7 @@
 """Synthetic-only witness contracts. No sender, model or live store imported."""
 import copy
 import importlib.util
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -338,6 +339,31 @@ assert ev.eligibility({"provenance":{"may_witness":True,"output_provenance":"ord
         nodes["earlier-parent"] = {"id": "earlier-parent", "at": 10, "kind": "context", "complete": True, "parents": ["57"]}
         self.assertEqual(W.lineage_status("59", nodes, 100), "unknown")
 
+    def test_shared_ancestry_depth_limit_does_not_depend_on_parent_order(self):
+        class Counted(dict):
+            calls=0
+            def get(self,*args):
+                self.calls+=1
+                return super().get(*args)
+        for depth,prefix_count,expected in ((120,20,'unknown'),(100,10,'clean')):
+            nodes=Counted({'leaf':W.source_node('leaf','sensor_observation',0,'Synthetic observation.')})
+            previous='leaf'
+            for i in range(depth):
+                key='chain-'+str(i)
+                nodes[key]=dict(id=key,kind='context',at=0,complete=True,parents=[previous])
+                previous=key
+            direct=previous
+            for i in range(prefix_count):
+                key='prefix-'+str(i)
+                nodes[key]=dict(id=key,kind='context',at=0,complete=True,parents=[previous])
+                previous=key
+            for parents in ([direct,previous],[previous,direct]):
+                with self.subTest(depth=depth,parents=parents):
+                    nodes['root']=dict(id='root',kind='context',at=0,complete=True,parents=parents)
+                    nodes.calls=0
+                    self.assertEqual(W.lineage_status('root',nodes,1),expected)
+                    self.assertLess(nodes.calls,400)
+
     def test_cutoff_and_naive_clock(self):
         self.assertEqual(W.admission(self.row, self.nodes, 110), "outside_cutoff")
         for v in (True, float("nan"), "2026-01-01T10:00:00"):
@@ -352,6 +378,106 @@ assert ev.eligibility({"provenance":{"may_witness":True,"output_provenance":"ord
         summary, rows = R.census(sources, self.nodes, 1000)
         self.assertEqual(rows, [])
         self.assertEqual(summary["held"]["duplicate_held"], 1)
+
+    def test_coverage_exposes_independent_gaps_behind_delivery_hold(self):
+        row = copy.deepcopy(self.row)
+        row["witness_receipt"]["delivery"] = "unknown"
+        row["witness_receipt"]["generation"]["attempts"][-1]["identity_evidence"] = "unknown"
+        summary, admitted = R.census([("canonical", [row])], {}, 1000)
+        self.assertEqual(admitted, [])
+        self.assertEqual(summary["held"], {"unconfirmed_delivery": 1})
+        coverage = summary["evidence_coverage"]
+        self.assertEqual(coverage["assistant_copies"], 1)
+        for field in ("served_identity", "request_binding", "delivery", "context_lineage"):
+            self.assertEqual(coverage["fields"][field], {"unknown": 1})
+        self.assertEqual(coverage["fields"]["response_binding"], {"matched": 1})
+
+    def test_coverage_counts_copies_and_does_not_admit_excluded_acts(self):
+        excluded = dict(self.row, tactical=True)
+        summary, admitted = R.census([("canonical", [self.row, excluded, {"role": "user"}])], self.nodes, 1000)
+        self.assertEqual(admitted, [])
+        self.assertEqual(summary["held"]["duplicate_held"], 1)
+        coverage = summary["evidence_coverage"]
+        self.assertEqual(coverage["assistant_copies"], 2)
+        self.assertEqual(coverage["fields"]["served_identity"], {"observed": 2})
+        for counts in coverage["fields"].values():
+            self.assertEqual(sum(counts.values()), 2)
+
+    def test_coverage_conflicts_never_select_a_receipt(self):
+        row = copy.deepcopy(self.row)
+        conflicting = copy.deepcopy(row["witness_receipt"])
+        conflicting["delivery"] = "unknown"
+        row["generation_provenance"]["witness_receipt"] = conflicting
+        for other in (conflicting, {"status": "unknown"}):
+            row["generation_provenance"]["witness_receipt"] = other
+            coverage = R.evidence_coverage(row, self.nodes)
+            self.assertEqual(coverage.pop("receipt"), "conflicting")
+            self.assertEqual(set(coverage.values()), {"not_evaluated"})
+        row.pop("witness_receipt")
+        row["generation_provenance"].pop("witness_receipt")
+        self.assertEqual(R.evidence_coverage(row, {})["receipt"], "absent")
+        row["witness_receipt"] = {"schema": "invalid"}
+        self.assertEqual(R.evidence_coverage(row, {})["receipt"], "unknown")
+
+    def test_coverage_binding_requires_matching_identity_and_response(self):
+        row = copy.deepcopy(self.row)
+        attempt = row["witness_receipt"]["generation"]["attempts"][-1]
+        attempt.update(request_id="fixture-request", input_sha256=W.digest("Synthetic request"))
+        coverage = R.evidence_coverage(row, self.nodes)
+        self.assertEqual(coverage["request_binding"], "recorded")
+        self.assertEqual(coverage["identity_binding"], "matched")
+        row.update(surface="different", content="Changed synthetic response")
+        coverage = R.evidence_coverage(row, self.nodes)
+        self.assertEqual(coverage["identity_binding"], "mismatch")
+        self.assertEqual(coverage["response_binding"], "missing_or_changed")
+        attempt.pop("input_sha256")
+        coverage = R.evidence_coverage(row, self.nodes)
+        self.assertEqual(coverage["receipt"], "unknown")
+        self.assertEqual(coverage["request_binding"], "not_evaluated")
+
+    def target_reply_node(self, influence="clean"):
+        node = {"id": "fixture-final-reply", "kind": "reply", "turn_id": self.row["turn_id"],
+                "context_receipt_id": "context-1", "at": 110, "complete": True,
+                "parents": ["context-1"], "influence": influence,
+                "response_sha256": self.row["witness_receipt"]["response_sha256"]}
+        self.row["reply_node"] = node
+        self.nodes[node["id"]] = node
+        return node
+
+    def test_explicit_final_reply_effect_cannot_hide_behind_clean_prompt(self):
+        node = self.target_reply_node()
+        self.assertEqual(W.admission(self.row, self.nodes, 1000), "eligible")
+        node["influence"] = "influenced"
+        self.assertEqual(W.admission(self.row, self.nodes, 1000), "influenced_reply_lineage")
+        node["influence"] = "unknown"
+        self.assertEqual(W.admission(self.row, self.nodes, 1000), "unknown_reply_lineage")
+        node["influence"] = "clean"
+        node["parents"].append("effect-final")
+        self.nodes["effect-final"] = {"id": "effect-final", "kind": "judge_effect", "at": 105,
+            "complete": False, "parents": []}
+        summary, rows = R.census([("canonical", [self.row])], self.nodes, 1000)
+        self.assertEqual(rows, [])
+        self.assertEqual(summary["held"], {"influenced_incomplete_reply_lineage": 1})
+        self.assertEqual(summary["evidence_coverage"]["fields"]["context_lineage"], {"clean": 1})
+        self.assertEqual(summary["evidence_coverage"]["fields"]["final_reply_lineage"], {"influenced_incomplete": 1})
+
+    def test_final_reply_node_requires_exact_target_and_graph_binding(self):
+        node = self.target_reply_node()
+        for key, value in (("turn_id", "other"), ("context_receipt_id", "other"),
+                           ("response_sha256", W.digest("other")), ("at", 109),
+                           ("kind", "ordinary_source")):
+            with self.subTest(key=key):
+                changed = dict(node, **{key: value})
+                row = dict(self.row, reply_node=changed)
+                nodes = dict(self.nodes, **{node["id"]: changed})
+                self.assertEqual(W.admission(row, nodes, 1000), "unknown_reply_lineage")
+        self.assertEqual(W.admission(self.row, {}, 1000), "unknown_lineage")
+        self.nodes.pop(node["id"])
+        self.assertEqual(W.admission(self.row, self.nodes, 1000), "unknown_reply_lineage")
+        self.nodes[node["id"]] = dict(node, influence="influenced")
+        self.assertEqual(W.admission(self.row, self.nodes, 1000), "unknown_reply_lineage")
+        for bad in (None, [], "unknown"):
+            self.assertEqual(W.admission(dict(self.row, reply_node=bad), self.nodes, 1000), "unknown_reply_lineage")
 
     def test_ledger_and_missing_sources(self):
         ledger = dict(self.row, vintos=self.row["content"])
@@ -397,11 +523,63 @@ assert ev.eligibility({"provenance":{"may_witness":True,"output_provenance":"ord
                     self.assertEqual(rows,[])
                     self.assertEqual(report['held']['missing_or_conflicting_embedding'],1)
 
+    def test_boolean_embedding_copy_never_hides_behind_numeric_equality(self):
+        valid = dict(self.e, emb=[1.0, 0.0])
+        for bad_vector in ([True, 0.0], [1.0, False], [True, False]):
+            bad = dict(valid, emb=bad_vector)
+            for copies in ([valid, bad], [bad, valid]):
+                with self.subTest(vector=bad_vector, bad_first=copies[0] is bad):
+                    _, rows = self.score(embeddings=copies)
+                    self.assertEqual(rows, [])
+        # Integers are numeric evidence, unlike booleans; equal valid copies remain usable.
+        _, rows = self.score(embeddings=[valid, dict(valid, emb=[1, 0])])
+        self.assertEqual(len(rows), 1)
+
+    def test_boolean_context_embedding_copy_holds_only_baselines(self):
+        for bad_first in (False, True):
+            data = self.controls_fixture()
+            bad = dict(data[2][0], emb=[True, False])
+            data[2].insert(0 if bad_first else len(data[2]), bad)
+            report, rows = self.control_score(data)
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["controls"]["status"], "unavailable")
+            self.assertEqual(report["baselines"]["paired_groups"], [])
+        data = self.controls_fixture()
+        data[2].append(dict(data[2][0], emb=[1, 0]))
+        _, rows = self.control_score(data)
+        self.assertEqual(rows[0]["controls"]["status"], "available")
+
     def test_innovation_container_shape_is_not_silently_empty(self):
         for forecasts,embeddings,checkpoints in (({},[],{}),([],{},{}),([],[],[])):
             with self.subTest(forecasts=forecasts,embeddings=embeddings,checkpoints=checkpoints):
                 with self.assertRaises(ValueError):
                     R.innovation([self.row],forecasts,embeddings,checkpoints)
+
+    def test_innovation_rejects_duplicate_admitted_targets_in_either_order(self):
+        changed = copy.deepcopy(self.row)
+        changed['content'] = 'Synthetic conflicting final version'
+        changed['witness_receipt']['response_sha256'] = W.digest(changed['content'])
+        for rows in ([self.row,copy.deepcopy(self.row)], [self.row,changed], [changed,self.row]):
+            with self.subTest(identical=rows[0] == rows[1]):
+                with self.assertRaisesRegex(ValueError, 'unique admitted'):
+                    R.innovation(rows,[self.f],[self.e],self.ck)
+
+    def test_innovation_rejects_invalid_admitted_container_or_identity(self):
+        for admitted in (None, {}, (), 'synthetic invalid container',
+                         [None], [[]], [{}], [dict(self.row,turn_id=[])],
+                         [dict(self.row,turn_id=True)], [dict(self.row,turn_id='')]):
+            with self.subTest(admitted=type(admitted).__name__):
+                with self.assertRaises(ValueError):
+                    R.innovation(admitted,[],[],{})
+
+    def test_innovation_history_minimum_requires_positive_integer(self):
+        for minimum in (True, False, 0, -1, 1.5, float('nan'), float('inf'), None, '20', []):
+            with self.subTest(minimum=type(minimum).__name__):
+                with self.assertRaisesRegex(ValueError, 'positive integer'):
+                    R.innovation([],[],[],{},minimum_history=minimum)
+        report, rows = R.innovation([],[],[],{},minimum_history=1)
+        self.assertEqual(rows,[])
+        self.assertEqual(report['groups'],[])
 
     def test_forecast_matches_final_once(self):
         summary, rows = self.score(forecasts=[self.f, copy.deepcopy(self.f)])
@@ -409,6 +587,50 @@ assert ev.eligibility({"provenance":{"may_witness":True,"output_provenance":"ord
         self.assertAlmostEqual(rows[0]["error"], .2)
         self.assertIsNone(rows[0]["innovation_percentile"])
         self.assertEqual(summary["held"]["duplicate_forecasts"], 1)
+
+    def test_invalid_first_forecast_cannot_be_replaced_by_later_valid_one(self):
+        for mutation in ({"emb": None}, {"emb": [True, 0]}, {"context_last_ts": 100}):
+            bad = copy.deepcopy(self.f)
+            bad["self"].update(mutation)
+            later = dict(self.f, ts=102)
+            for forecasts in ([bad, later], [later, bad]):
+                with self.subTest(mutation=mutation, reverse=forecasts[0] is later):
+                    report, rows = self.score(forecasts=forecasts)
+                    self.assertEqual(rows, [])
+                    self.assertEqual(report["held"]["unscorable_earliest_forecast"], 1)
+
+    def test_invalid_equal_time_copy_conflicts_with_valid_forecast(self):
+        bad = copy.deepcopy(self.f)
+        bad["self"]["emb"] = None
+        for forecasts in ([bad, self.f], [self.f, bad]):
+            report, rows = self.score(forecasts=forecasts)
+            self.assertEqual(rows, [])
+            self.assertEqual(report["held"]["conflicting_forecast"], 1)
+
+    def test_identified_forecast_with_unknown_clock_prevents_order_selection(self):
+        for clock in (None, True, "not a time"):
+            for forecasts in ([dict(self.f, ts=clock), self.f], [self.f, dict(self.f, ts=clock)]):
+                report, rows = self.score(forecasts=forecasts)
+                self.assertEqual(rows, [])
+                self.assertEqual(report["held"]["unknown_forecast_order"], 1)
+
+    def test_later_invalid_forecast_does_not_displace_valid_first(self):
+        bad = copy.deepcopy(self.f)
+        bad["ts"] = 102
+        bad["self"]["emb"] = None
+        for forecasts in ([bad, self.f], [self.f, bad]):
+            _, rows = self.score(forecasts=forecasts)
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["forecast_at"], self.f["ts"])
+
+    def test_invalid_forecast_order_is_local_to_identified_group(self):
+        bad = copy.deepcopy(self.f)
+        bad["self"].update(checkpoint_id="other-checkpoint", emb=None)
+        checkpoints = dict(self.ck, **{"other-checkpoint": dict(self.ck["fixture-checkpoint"])})
+        report, rows = self.score(forecasts=[bad, self.f], checkpoints=checkpoints)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["group"][0], "fixture-checkpoint")
+        self.assertEqual(report["held"]["missing_or_invalid_forecast_evidence"], 1)
 
     def test_forecast_identity_and_causality(self):
         for mutation in ({"ts": 110}, {"ts": 111}, {"mode": "ahead"},
@@ -784,6 +1006,32 @@ assert ev.eligibility({"provenance":{"may_witness":True,"output_provenance":"ord
         conflict=dict(events[0],turn_id='other')
         self.assertEqual(self.feedback(events+[conflict])[1],[])
 
+    def test_feedback_duplicate_types_cannot_hide_malformed_witness_or_sequence(self):
+        for index, field, value in ((0, "witnessed", 1), (1, "witnessed", 1),
+                                    (0, "sequence_complete", 1), (1, "sequence_complete", 1),
+                                    (0, "position", True), (1, "position", 2.0)):
+            events = self.reaction_events()
+            malformed = dict(events[index], **{field: value})
+            for copies in (events + [malformed], [malformed] + events):
+                with self.subTest(index=index, field=field, malformed_first=copies[0] is malformed):
+                    report, private = self.feedback(copies)
+                    self.assertEqual(private, [])
+                    self.assertEqual(report["positive_targets"], 0)
+                    self.assertEqual(report["held"]["conflicting_event_identity"], 1)
+
+    def test_feedback_duplicate_rating_types_never_choose_valid_copy(self):
+        row, event = self.practice_rating(4)
+        malformed = dict(event, stars=4.0)
+        for copies in ([event, malformed], [malformed, event]):
+            report, private = self.feedback(copies, [row])
+            self.assertEqual(private, [])
+            self.assertEqual(report["held"]["conflicting_event_identity"], 1)
+
+    def test_feedback_identical_json_copies_ignore_object_key_order(self):
+        events = self.reaction_events()
+        reordered = [dict(reversed(list(e.items()))) for e in events]
+        self.assertEqual(self.feedback(events + reordered), self.feedback(events))
+
     def practice_rating(self, stars=4):
         row=copy.deepcopy(self.row);row['witness_receipt']['surface']='humor_practice';row['surface']='humor_practice'
         event=dict(schema='witness-feedback-v1',event_id='fixture-rating',kind='practice_rating',
@@ -854,6 +1102,103 @@ assert ev.eligibility({"provenance":{"may_witness":True,"output_provenance":"ord
             self.assertEqual((root / "first/private-behaviour.json").stat().st_mode & 0o777, 0o600)
             self.assertEqual((root / "first/private-feedback.json").read_bytes(), (root / "restart/private-feedback.json").read_bytes())
             self.assertEqual((root / "first/private-feedback.json").stat().st_mode & 0o777, 0o600)
+
+            manifest_path = root / "first/private-run.json"
+            self.assertEqual(manifest_path.stat().st_mode & 0o777, 0o600)
+            self.assertEqual(manifest_path.read_bytes(), (root / "restart/private-run.json").read_bytes())
+            manifest = json.loads(manifest_path.read_bytes())
+            self.assertEqual(manifest["input_sha256"], hashlib.sha256(before).hexdigest())
+            self.assertEqual(manifest["input_bytes"], len(before))
+            self.assertEqual(manifest["options"], {"input_kind": "synthetic", "cutoff": 1000.0,
+                "behaviour_start": 100.0, "behaviour_surfaces": ["fixture-chat"], "minimum_innovation_history": 20})
+            self.assertEqual(manifest["scoring_files"], {name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest()
+                for name in R.SCORING_FILES})
+            self.assertEqual(set(manifest["outputs"]), {"aggregate.json", "private-innovation.json",
+                "private-feedback.json", "private-behaviour.json"})
+            for name, record in manifest["outputs"].items():
+                payload = (root / "first" / name).read_bytes()
+                self.assertEqual(record, {"sha256": hashlib.sha256(payload).hexdigest(), "bytes": len(payload)})
+            fingerprint = manifest.pop("run_sha256")
+            canonical = json.dumps(manifest, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+            self.assertEqual(fingerprint, hashlib.sha256(canonical).hexdigest())
+            # Altering a result cannot retain a matching output receipt.
+            target = root / "first/aggregate.json"
+            target.write_bytes(target.read_bytes() + b" ")
+            self.assertNotEqual(manifest["outputs"]["aggregate.json"]["sha256"],
+                                hashlib.sha256(target.read_bytes()).hexdigest())
+
+    def test_snapshot_json_requires_finite_unambiguous_objects(self):
+        for token in ("NaN", "Infinity", "-Infinity", "1e999", "-1e999"):
+            with self.subTest(token=token), self.assertRaisesRegex(ValueError, "nonfinite JSON constant"):
+                R.decode_snapshot('{"metadata":' + token + '}')
+        for value in ("[]", "null", "0", '"synthetic"'):
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, "snapshot must be a JSON object"):
+                R.decode_snapshot(value)
+        # Duplicate names are rejected even when their values agree.
+        with self.assertRaisesRegex(ValueError, "duplicate JSON object key"):
+            R.decode_snapshot('{"nested":{"flag":false,"flag":false}}')
+        good = {"sources": [{"kind": "canonical"}, {"kind": "ledger"}], "text": "NaN", "number": 1.5}
+        self.assertEqual(R.decode_snapshot(json.dumps(good).encode("utf-8")), good)
+
+    def test_cli_rejects_ambiguous_snapshot_fields_without_reports(self):
+        bundles = [
+            '{"input_kind":"retained_snapshot","input_kind":"synthetic","sources":[]}',
+            '{"input_kind":"synthetic","sources":[{"kind":"canonical","rows":[{"role":"assistant",'
+            '"generation_provenance":{"may_witness":false,"may_witness":true}}]}]}',
+            '{"input_kind":"synthetic","sources":[{"kind":"canonical","rows":[{"role":"assistant",'
+            '"generation_provenance":{"may_witness":true,"may_witness":false}}]}]}',
+            '{"input_kind":"synthetic","sources":[],"metadata":{"fixture-private-key":1,"fixture-private-key":2}}',
+        ]
+        with tempfile.TemporaryDirectory(prefix="witness-test-") as td:
+            root = Path(td).resolve()
+            for index, bundle in enumerate(bundles):
+                source = root / ("input-%d.json" % index)
+                source.write_text(bundle)
+                output = root / ("output-%d" % index)
+                result = subprocess.run([sys.executable, str(R.__file__), "--scratch", str(root),
+                    "--input", str(source), "--output", str(output), "--cutoff", "1970-01-01T00:16:40Z"],
+                    env=dict(os.environ, SPARK_WORKSPACE=str(root), PYTHONDONTWRITEBYTECODE="1"),
+                    capture_output=True, text=True)
+                with self.subTest(index=index):
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn("duplicate JSON object key", result.stderr)
+                    self.assertNotIn("fixture-private-key", result.stderr + result.stdout)
+                    self.assertFalse(output.exists())
+                    self.assertEqual(source.read_text(), bundle)
+
+    def test_cli_aborts_before_outputs_when_scoring_files_change(self):
+        with tempfile.TemporaryDirectory(prefix="witness-test-") as td:
+            root = Path(td).resolve()
+            source = root / "fixture.json"
+            source.write_text(json.dumps({"input_kind": "synthetic", "sources": []}))
+            code = """import importlib.util, sys
+s=importlib.util.spec_from_file_location('replay',sys.argv[1]); m=importlib.util.module_from_spec(s); s.loader.exec_module(m)
+values=iter([{'fixture.py':'before'},{'fixture.py':'after'}])
+m.scoring_hashes=lambda: next(values)
+sys.argv=sys.argv[1:]
+try: m.main()
+except ValueError as e:
+    assert str(e)=='scoring source changed during replay'
+else: raise AssertionError('changed code accepted')
+"""
+            result = subprocess.run([sys.executable, "-c", code, str(R.__file__), "--scratch", str(root),
+                "--input", str(source), "--output", str(root / "output"), "--cutoff", "1970-01-01T00:16:40Z"],
+                env=dict(os.environ, SPARK_WORKSPACE=str(root), PYTHONDONTWRITEBYTECODE="1"),
+                capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertFalse((root / "output").exists())
+
+    def test_run_identity_binds_each_replay_component(self):
+        args = [b'{"input_kind":"synthetic"}', {"fixture.py": "a" * 64},
+                {"cutoff": 100, "behaviour_surfaces": ["fixture-chat"]},
+                {"aggregate.json": {"sha256": "b" * 64, "bytes": 30}}]
+        original = R.run_manifest(*args)
+        for index, replacement in enumerate((b'{"input_kind":"retained_snapshot"}',
+                {"fixture.py": "c" * 64}, {"cutoff": 101, "behaviour_surfaces": ["fixture-chat"]},
+                {"aggregate.json": {"sha256": "d" * 64, "bytes": 30}})):
+            changed = copy.deepcopy(args)
+            changed[index] = replacement
+            self.assertNotEqual(original["run_sha256"], R.run_manifest(*changed)["run_sha256"])
 
     def test_guard_denies_subprocess_rename_and_external_write(self):
         with tempfile.TemporaryDirectory(prefix="witness-test-") as td:

@@ -1,6 +1,6 @@
 # Board 3: pressure strip + piezo vibration sensor + vibration motor (Gloria, 8 November).
 #   Piezo           GND, SIGNAL GPIO34 (analog in)
-#   Pressure strip  tail 1 3V3, tail 2 GPIO32 (INPUT_PULLDOWN)
+#   Pressure strip  tail 1 3V3, tail 2 GPIO32 (ADC with pull-down; calibrated body-weight thresholds)
 #   Motor module    VCC 5V, GND (a second GND pin), SIGNAL GPIO26
 # The motor shakes the piezo, so the piezo is not read while the motor runs and for 400 ms after.
 # Everything here only counts when her phone is within 1 m of the board (IRK, as the kitchen board; the key is
@@ -8,6 +8,8 @@
 esphome:
   name: house-touch
   friendly_name: House touch board
+  includes:
+    - pressure_gate.h
 
 esp32:
   board: esp32dev
@@ -23,6 +25,7 @@ wifi:
 captive_portal:
 
 api:
+  batch_delay: 0ms  # Do not coalesce the 80 ms knock pulse out of HA telemetry.
   encryption:
     key: !secret house_touch_api_key
 
@@ -30,6 +33,7 @@ ota:
   - platform: esphome
 
 logger:
+  baud_rate: 0  # Quiet physical UART; encrypted API logs remain available.
 
 mqtt:
   broker: 192.168.1.91
@@ -59,11 +63,36 @@ globals:
   - id: quiet_until      # piezo ignored until then (the motor's own shaking)
     type: uint32_t
     initial_value: '0'
+  - id: piezo_peak
+    type: float
+    initial_value: '0'
   - id: knock_until
     type: uint32_t
     initial_value: '0'
 
 number:
+  - platform: template
+    id: pressure_on_threshold
+    name: "Pressure occupied threshold"
+    entity_category: config
+    optimistic: true
+    min_value: 0
+    max_value: 100
+    step: 0.5
+    initial_value: 70
+    restore_value: true
+    unit_of_measurement: "%"
+  - platform: template
+    id: pressure_off_threshold
+    name: "Pressure release threshold"
+    entity_category: config
+    optimistic: true
+    min_value: 0
+    max_value: 100
+    step: 0.5
+    initial_value: 50
+    restore_value: true
+    unit_of_measurement: "%"
   - platform: template
     id: rssi_at_1m
     name: "Gloria phone signal at 1 m"
@@ -125,6 +154,39 @@ script:
             - delay: 600ms
 
 sensor:
+  - platform: template
+    id: pressure_level
+    name: "Pressure level"
+    entity_category: diagnostic
+    unit_of_measurement: "%"
+    accuracy_decimals: 2
+    update_interval: 250ms
+    lambda: |-
+      (void) analogRead(32);  // Initialize ADC before restoring its divider pull-down.
+      gpio_input_enable(GPIO_NUM_32);
+      gpio_pullup_dis(GPIO_NUM_32);
+      gpio_pulldown_en(GPIO_NUM_32);
+      uint32_t sum = 0;
+      for (int i = 0; i < 16; ++i) sum += analogRead(32);
+      return sum * 100.0f / (16.0f * 4095.0f);
+    filters:
+      - median:
+          window_size: 3
+          send_every: 1
+          send_first_at: 1
+
+  - platform: template
+    id: piezo_strength
+    name: "Vibration strength"
+    entity_category: diagnostic
+    unit_of_measurement: "%"
+    accuracy_decimals: 1
+    update_interval: 1s
+    lambda: |-
+      float peak = id(piezo_peak);
+      id(piezo_peak) = 0;
+      return peak;
+
   - platform: ble_rssi
     irk: !secret gloria_phone_irk
     id: gloria_phone_rssi
@@ -159,7 +221,9 @@ interval:
             if (v > hi) hi = v;
             delayMicroseconds(100);
           }
-          if ((hi - lo) * 100.0f / 4095.0f > id(knock_threshold).state) id(knock_until) = millis() + 80;
+          float strength = (hi - lo) * 100.0f / 4095.0f;
+          if (strength > id(piezo_peak)) id(piezo_peak) = strength;
+          if (strength > id(knock_threshold).state) id(knock_until) = millis() + 80;
 
 binary_sensor:
   - platform: template
@@ -203,17 +267,19 @@ binary_sensor:
               then:
                 - mqtt.publish: {topic: vintos/board/house-touch/event, payload: knock_3}
 
-  - platform: gpio
+  - platform: template
     id: pressed
     name: "Pressure"
-    pin:
-      number: GPIO32
-      mode:
-        input: true
-        pulldown: true
-    filters:
-      - delayed_on: 50ms
-      - delayed_off: 300ms
+    lambda: |-
+      static house_pressure::Gate gate(1000, 1500);
+      float level = id(pressure_level).state;
+      int state = gate.update(level, id(pressure_on_threshold).state,
+                              id(pressure_off_threshold).state, millis());
+      if (state < 0) {
+        id(pressed).invalidate_state();
+        return {};
+      }
+      return state != 0;
     on_press:
       then:
         - if:

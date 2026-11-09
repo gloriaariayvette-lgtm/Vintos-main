@@ -36,6 +36,21 @@ def policy(ws):
     return out
 
 
+def remaining(ws, request_id, now=None):
+    """{'used', 'left', 'per_want', 'today_left'} for one want's work; reads only."""
+    limits = policy(ws)
+    now = time.time() if now is None else now
+    day = datetime.fromtimestamp(now, ZoneInfo('America/Chicago')).date().isoformat()
+    path = Path(ws) / 'memory/want-work-control/calls.json'
+    try: calls = (json.loads(path.read_text()) if path.exists() and not path.is_symlink() else {}).get('calls') or {}
+    except (OSError, ValueError, AttributeError): calls = {}
+    rows = [c for c in calls.values() if isinstance(c, dict)]
+    used = sum(c.get('request_id') == request_id for c in rows)
+    today = sum(c.get('day') == day for c in rows)
+    return {'used': used, 'left': max(0, limits['per_want_calls'] - used), 'per_want': limits['per_want_calls'],
+            'today_left': max(0, limits['daily_calls'] - today)}
+
+
 def reserve(ws, request_id, attempt_id, lane, now=None):
     """Count every lane attempt, including failures; never expire an uncertain call."""
     from store_guard import transaction

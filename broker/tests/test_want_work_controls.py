@@ -160,7 +160,7 @@ class Tests(unittest.TestCase):
         self.assertEqual(len(calls),1)
 
     def test_context_continuation_preserves_original_events_and_resumes(self):
-        self.config(context_chars=2000)
+        self.config(context_chars=2600)   # room for the want and its turns left (9 November)
         W.append(self.want,self.work,self.ws,'agent:1','dot','Synthetic history. '*200)
         original=copy.deepcopy(W.load(self.want,self.work,self.ws)['events'])
         with self.assertRaisesRegex(B.WorkBlocked,'context_needs'):self.gen()

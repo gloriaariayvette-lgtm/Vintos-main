@@ -10486,10 +10486,19 @@ async def avatar_chat(msg: ChatMessage, request: Request):
                     discovery_ctx = "Your latest YouTube discovery:\n" + "\n---\n".join([d[:300] for d in _recent])
         except: pass
         value_map_ctx = ""
+        _value_map_observation = None
         try:
             with open(os.path.join(MEMORY, "value-map.md")) as f:
                 # the newest entry only, capped: the live map holds every entry made today (2026-10-13)
-                value_map_ctx = __import__('re').split(r'\n(?=## \d{4}-\d{2}-\d{2})', "\n" + f.read())[-1].strip()[:1500]
+                _value_map_decoded = f.read()
+                value_map_ctx = __import__('re').split(r'\n(?=## \d{4}-\d{2}-\d{2})', "\n" + _value_map_decoded)[-1].strip()[:1500]
+            try:
+                if os.environ.get("JUDGES_CAPTURE_SCRATCH") or os.environ.get("JUDGES_CAPTURE_CONFIG"):
+                    from witness_capture import value_map_read as _observe_value_map
+                    _value_map_observation = _observe_value_map(_value_map_decoded, value_map_ctx, time.time(), os.path.join(MEMORY, "value-map.md"))
+            except Exception:
+                pass
+            del _value_map_decoded
         except: pass
         ledger_ctx = ""
         try:
@@ -11001,6 +11010,11 @@ Your current self-model (excerpt):
                 original_text=msg.original_text, input_message=messages[-1], input_slot=len(messages) - 2)
         except Exception:
             print("[witness] scratch capture unavailable", flush=True)
+        try:
+            if _witness_capture is not None and _value_map_observation is not None:
+                _witness_capture.bind_value_map(_value_map_observation, _value_map_block)
+        except Exception:
+            pass
         def _prepare_witness(system, history, parameters, reason):
             # Partial installs and older observation modules must never affect routing.
             if _witness_capture is None:
@@ -11019,7 +11033,18 @@ Your current self-model (excerpt):
                 print("[witness] request capture unavailable", flush=True)
                 return None, {}
 
+        def _prepare_history_join(options):
+            try:
+                import inspect
+                from request_trace import prepare_reply_join
+                if "observer" in inspect.signature(_mr.route_reply).parameters:
+                    return prepare_reply_join(options)
+            except Exception:
+                pass
+            return None, options
+
         _witness_selected = None
+        _history_join_selected = None
         # No thinking before an avatar reply (Gloria, 2026-10-01: "Off"). It had been on since before this
         # repository's history, and its shared budget cut one reply off at "[SCENE:".
         _reason = False
@@ -11030,11 +11055,13 @@ Your current self-model (excerpt):
             except Exception:
                 pass
             _witness_request, _witness_kwargs = _prepare_witness(messages[0]["content"], messages[1:], params, _reason)
+            _history_join_candidate, _witness_kwargs = _prepare_history_join(_witness_kwargs)
             reply, _claude_reasoning, _model_used = await _mr.route_reply(
                 "avatar", messages[0]["content"], messages[1:], params,
                 f"{LM_STUDIO_API}/chat/completions", LLM_AUTH_HEADERS,
                 "grok-4.20-0309-non-reasoning", reason=_reason, **_witness_kwargs)
             _witness_selected = _witness_request
+            _history_join_selected = _history_join_candidate
         except Exception as _rte:
             print("[router] fatal:", _rte, flush=True)
             reply, _claude_reasoning, _model_used = "", "", "error"
@@ -11045,6 +11072,7 @@ Your current self-model (excerpt):
                     "[You have just sent that exact message. It does not answer what she said this time. Answer "
                     "THIS message, in your own words, and do not repeat your previous reply.]"}]
                 _witness_request, _witness_kwargs = _prepare_witness(messages[0]["content"], _again, params, _reason)
+                _history_join_candidate, _witness_kwargs = _prepare_history_join(_witness_kwargs)
                 _r2, _cr2, _mu2 = await _mr.route_reply(
                     "avatar", messages[0]["content"], _again, params,
                     f"{LM_STUDIO_API}/chat/completions", LLM_AUTH_HEADERS,
@@ -11052,9 +11080,11 @@ Your current self-model (excerpt):
                 if _r2 and not _same_as_last_reply(_r2, av_history):
                     reply, _claude_reasoning, _model_used = _r2, _cr2, str(_mu2) + "(after repeat)"
                     _witness_selected = _witness_request
+                    _history_join_selected = _history_join_candidate
                 else:
                     reply, _model_used = "", str(_model_used) + "(repeat)"
                     _witness_selected = None
+                    _history_join_selected = None
         except Exception as _dup:
             print("[router] repeat check skipped:", _dup, flush=True)
         print(f"[router] avatar served by {_model_used}", flush=True)
@@ -11090,11 +11120,13 @@ Your current self-model (excerpt):
                             str(_model_used).split(":")[0].split("(")[0].lower(), "Claude")
                         _mr.arm_grok_turns(1)
                         _witness_request, _witness_kwargs = _prepare_witness(messages[0]["content"], messages[1:], params, _reason)
+                        _history_join_candidate, _witness_kwargs = _prepare_history_join(_witness_kwargs)
                         reply, _claude_reasoning, _model_used = await _mr.route_reply(
                             "avatar", messages[0]["content"], messages[1:], params,
                             f"{LM_STUDIO_API}/chat/completions", LLM_AUTH_HEADERS,
                             "grok-4.20-0309-non-reasoning", reason=_reason, **_witness_kwargs)
                         _witness_selected = _witness_request
+                        _history_join_selected = _history_join_candidate
                         try:
                             _mr.update_mode(lambda _gm: _gm.update(mode="grok"))
                         except Exception: pass
@@ -11122,6 +11154,7 @@ Your current self-model (excerpt):
         except Exception as _ge:
             print("[guard] check skipped:", _ge, flush=True)
 
+        _history_join_raw = reply
         # Generation is its own lifecycle axis. Build one typed provenance
         # envelope now; every evidence writer receives this exact object.
         if _witness_capture is not None:
@@ -11270,8 +11303,15 @@ Your current self-model (excerpt):
                     _turn_marks = _dc_tm.turn_marks(_fx_t0)
             except Exception as _tm_e:
                 print("[device marks]", _tm_e, flush=True)
+            _history_join_fields = {}
+            try:
+                if _history_join_selected is not None:
+                    _history_join_fields = _history_join_selected.fields(_history_join_raw, reply + _turn_marks)
+            except Exception:
+                pass
             av_history.append({"role": "assistant", "content": reply + _turn_marks,
                                "ts": __import__("time").time(), "served_by": str(_model_used),
+                               **_history_join_fields,
                                "generation_provenance": _prov_envelope,
                                **({"device_marks": _turn_marks.strip()} if _turn_marks else {})})
             nudge_emotions_from_text(
@@ -11527,7 +11567,7 @@ Your current self-model (excerpt):
         if _witness_capture is not None:
             try:
                 _witness_module.finish_shadow(_witness_capture, reply, time.time(), _prov_envelope,
-                                              test_mode=_test_turn)
+                                              test_mode=_test_turn, defer=True)
             except Exception:
                 print("[witness] final capture unavailable", flush=True)
         return {"reply": reply, "model": _model_used, "reasoning": ("" if _turn is not None and _turn.carries_capsule else (_claude_reasoning or "")),

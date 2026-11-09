@@ -84,6 +84,15 @@ def realized_ledger():
     No raw backup recovery and no write to the live interaction ledger.
     """
     from jepa_self_head import exchanges
+    if os.environ.get('JUDGES_CAPTURE_SCRATCH') or os.environ.get('JUDGES_CAPTURE_CONFIG'):
+        try:
+            from witness_self_artifacts import audit_source_scope, ledger_rows
+        except Exception:
+            pass
+        else:
+            with audit_source_scope() as root:
+                selected = exchanges()
+            return ledger_rows(selected, retain=root is not None)
     return [{"timestamp": x["ts"], "gloria": x["her"], "vintos": x["his"]} for x in exchanges()]
 
 

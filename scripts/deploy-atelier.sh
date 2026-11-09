@@ -115,7 +115,7 @@ causality_engine.py value_map.py repair_case.py encounter.py
 jepa_predictor.py drift_head.py relational_head.py world_model.py
 gloria_prediction.py withheld_head.py self_pressure.py resonance_felt.py inner_context.py
 value-map.py relational-mismatch.py causality-engine.py self-prediction.py
-effect_gate.py toy_link.py device_patterns.py evidence_provenance.py witness_receipts.py witness_capture.py heart_rate.py
+effect_gate.py toy_link.py device_patterns.py evidence_provenance.py witness_receipts.py witness_attribution.py witness_artifact_join.py witness_capture.py witness_sink.py witness_self_artifacts.py heart_rate.py
 stratagem.py stratagem_turn.py stratagem_realtime.py turn_record.py formation_observatory.py thruster_link.py
 concurrency-canary.py
 atelier-door.sh atelier-canary.sh atelier-broker-watch.sh atelier-status.sh
@@ -248,6 +248,7 @@ SCRIPTS="$SCRIPTS lab_token_measure.py"   # sets the Lab checker's size limit fr
 SCRIPTS="$SCRIPTS press_hold_bench.py"   # his press-vs-hold word trials, built by dot (2026-10-17)
 SCRIPTS="$SCRIPTS bedroom_arrival.py"   # the bedroom ESP32: his newest song to her Watch when she comes in (2026-10-17)
 SCRIPTS="$SCRIPTS kitchen_presence.py"   # the coffee maker ESP32: her phone within 1 m = she is in the kitchen (2026-11-03)
+SCRIPTS="$SCRIPTS house_boards.py"   # the shower, sofa and office-chair boards (2026-11-08)
 SCRIPTS="$SCRIPTS intimate_stream.py"   # every session kept in order, for his continuous arousal state (2026-11-04)
 SCRIPTS="$SCRIPTS memory_surfacing.py embed_cache.py"   # one exact past line surfaces when what she says is truly near it (2026-11-04)
 SCRIPTS="$SCRIPTS health_sleep_import.py"   # her Apple Health export: only the sleep entries, run by her (2026-11-02)

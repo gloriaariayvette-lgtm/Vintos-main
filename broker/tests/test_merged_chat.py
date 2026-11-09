@@ -46,6 +46,7 @@ with open(os.path.join(MEM, "chat-canonical.jsonl"), "w") as f:
          "context_receipt_id": "fixture-context", "character_influenced": True, "test_mode": True,
          "generated_output_witness_eligible": False, "source": "ghost_branch",
          "witness_final_text": "synthetic final", "witness_final_sha256": "synthetic-digest",
+         "reply_node": {"id": "fixture-output", "kind": "reply", "influence": "influenced"},
          "derived_from": ["synthetic-parent"], "evidence_standing": "HELD", "deleted": True,
          "forgotten": True, "imported": True, "transplanted": True, "dream_only": True},
         {"role": "user", "content": "shared turn her words", "ts": 1792710000, "turn_id": "t-shared",
@@ -115,6 +116,8 @@ check("explicit generated-output denial survives", by["a tactical reply"].get("g
 check("original tactical source survives projection source", by["a tactical reply"].get("witness_origin_source") == "ghost_branch")
 check("exact final text fields survive projection", by["a tactical reply"].get("witness_final_text") == "synthetic final"
       and by["a tactical reply"].get("witness_final_sha256") == "synthetic-digest")
+check("final reply ancestry survives projection", by["a tactical reply"].get("reply_node") ==
+      {"id": "fixture-output", "kind": "reply", "influence": "influenced"})
 check("existing evidence ancestry and exclusion flags survive", by["a tactical reply"].get("derived_from") == ["synthetic-parent"]
       and by["a tactical reply"].get("evidence_standing") == "HELD"
       and all(by["a tactical reply"].get(k) is True for k in ("deleted", "forgotten", "imported", "transplanted", "dream_only")))

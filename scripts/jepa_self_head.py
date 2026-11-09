@@ -242,8 +242,13 @@ def _from_ledger(rows, floor, origin):
         if key in seen:
             continue
         seen.add(key)
-        out.append({"ts": ts, "at": at, "her": her, "his": his, "turn_id": str(e.get("turn_id") or ""),
-                    "withheld": bool(e.get("vintos_withheld")), "origin": origin})
+        exchange = {"ts": ts, "at": at, "her": her, "his": his, "turn_id": str(e.get("turn_id") or ""),
+                    "withheld": bool(e.get("vintos_withheld")), "origin": origin}
+        _attach_forecast_clock(exchange, e.get("timestamp"))
+        source_ref = _forecast_witness("self_reply_source", e, "vintos", his)
+        if source_ref is not None:
+            exchange["_witness_reply_source"] = source_ref
+        out.append(exchange)
     return out
 
 
@@ -272,10 +277,11 @@ def _from_chat(rows, floor, origin, test_times=()):
         ts = raw if (isinstance(raw, str) and "T" in raw) else _iso(at)
         if floor and ts < floor:
             continue
-        clean.append((at, ts, e))
+        clock = _forecast_witness("self_exchange_clock", raw, at, ts) if e["role"] == "assistant" else None
+        clean.append((at, ts, e, clock))
     clean.sort(key=lambda r: r[0])
     out, pending = [], None
-    for at, ts, e in clean:
+    for at, ts, e, clock in clean:
         if e["role"] == "user":
             pending = (at, ts, e)
             continue
@@ -289,8 +295,14 @@ def _from_chat(rows, floor, origin, test_times=()):
             i = bisect.bisect_left(test_times, at - 5)
             if i < len(test_times) and test_times[i] <= at + 180:
                 continue
-        out.append({"ts": ts, "at": at, "her": her, "his": his, "turn_id": str(e.get("turn_id") or ""),
-                    "withheld": False, "origin": origin})
+        exchange = {"ts": ts, "at": at, "her": her, "his": his, "turn_id": str(e.get("turn_id") or ""),
+                    "withheld": False, "origin": origin}
+        if clock is not None:
+            exchange["_witness_clock"] = clock
+        source_ref = _forecast_witness("self_reply_source", e, "content", his)
+        if source_ref is not None:
+            exchange["_witness_reply_source"] = source_ref
+        out.append(exchange)
     return out
 
 
@@ -376,6 +388,10 @@ def _merge(groups):
                 st["duplicate"] += 1
                 if x["at"] < dup["at"]:
                     dup["at"], dup["ts"] = x["at"], x["ts"]
+                    # The clock observation follows the selected timestamp, not the preferred text source.
+                    dup.pop("_witness_clock", None)
+                    if x.get("_witness_clock") is not None:
+                        dup["_witness_clock"] = x["_witness_clock"]
                 continue
             y = dict(x); y["_vk"] = vk
             kept.append(y); st["added"] += 1
@@ -1009,6 +1025,23 @@ def launch_on_message(her, surface="", turn_id="", now=None):
         return None
 
 
+def _attach_forecast_clock(exchange, raw):
+    clock = _forecast_witness("self_exchange_clock", raw, exchange["at"], exchange["ts"])
+    if clock is not None:
+        exchange["_witness_clock"] = clock
+
+
+def _forecast_witness(name, *args):
+    """Optional scratch observer; its failure cannot change the forecast/feed."""
+    if name != "end_self_forecast" and not (os.environ.get("JUDGES_CAPTURE_SCRATCH") or os.environ.get("JUDGES_CAPTURE_CONFIG")):
+        return None
+    try:
+        import witness_capture
+        return getattr(witness_capture, name)(*args)
+    except Exception:
+        return None
+
+
 def on_message_job(pending_path, enc=None, model_path=SELF_MODEL, out_path=None, now=None):
     """The background job: one on-message forecast from one pending row, appended to jepa-self-forecasts.jsonl.
     Serialized by a lock so two of her messages never load two encoders at once."""
@@ -1037,7 +1070,11 @@ def on_message_job(pending_path, enc=None, model_path=SELF_MODEL, out_path=None,
         if load_model(model_path) is None and not os.path.exists(os.path.join(MEMORY, "jepa-readouts", "self_on_message.npz")):
             log("no self checkpoint; no on-message forecast"); return None
         enc = enc or _jp().encoder()
-        fc = forecast(enc, model_path=model_path, mode="on_message", her=p.get("her"), arrived_at=arrived)
+        token = _forecast_witness("begin_self_forecast")
+        try:
+            fc = forecast(enc, model_path=model_path, mode="on_message", her=p.get("her"), arrived_at=arrived)
+        finally:
+            observed_inputs = _forecast_witness("end_self_forecast", token) if token is not None else None
         if fc is None:
             return None
         made = time.time() if given_now is None else given_now
@@ -1050,6 +1087,7 @@ def on_message_job(pending_path, enc=None, model_path=SELF_MODEL, out_path=None,
             row["context_emb"] = fc["context_emb"]
         with open(out_path, "a") as f:
             f.write(json.dumps(row) + "\n")
+        _forecast_witness("publish_self_forecast", observed_inputs, row)
         log("on-message forecast written (%.1fs after her message)" % (made - arrived))
         return row
     finally:

@@ -73,6 +73,49 @@ class Tests(unittest.TestCase):
         self.root.chmod(0o700)
         self.assertEqual(list(self.root.iterdir()), [])
 
+    def test_shadow_provenance_never_upgrades_truthy_nonbooleans(self):
+        for raw in (1, 0, "false", "true", [], {"synthetic": True}, None):
+            with self.subTest(raw=raw):
+                c = W.begin_shadow("fixture-turn", "fixture-chat", 100)
+                provenance = {"turn_id": "fixture-turn", "output_provenance": "ordinary_generation", "may_witness": raw}
+                W.finish_shadow(c, "synthetic", 110, provenance)
+        packets = list(self.root.glob("capture-*.json"))
+        self.assertEqual(len(packets), 7)
+        for path in packets:
+            p = json.loads(path.read_text())["generation_provenance"]
+            self.assertIs(p["may_witness"], False)
+            self.assertEqual(p["envelope_state"], "malformed")
+
+    def test_shadow_provenance_requires_explicit_matching_identity(self):
+        for change in ({"turn_id": True}, {"turn_id": "other"}, {"envelope_state": True},
+                       {"output_provenance": []}):
+            with self.subTest(change=change):
+                c = W.begin_shadow("fixture-turn", "fixture-chat", 100)
+                p = dict({"turn_id": "fixture-turn", "output_provenance": "ordinary_generation", "may_witness": True}, **change)
+                self.assertTrue(W.finish_shadow(c, "synthetic", 110, p))
+        packets = list(self.root.glob("capture-*.json"))
+        self.assertEqual(len(packets), 4)
+        for path in packets:
+            p = json.loads(path.read_text())["generation_provenance"]
+            self.assertIs(p["may_witness"], False)
+            self.assertEqual(p["envelope_state"], "malformed")
+
+    def test_valid_shadow_flags_and_malformed_tactical_marker_are_preserved(self):
+        for value in (True, False):
+            p = W._shadow_provenance({"turn_id": "fixture-turn", "output_provenance": "ordinary_generation",
+                                     "may_witness": value}, "fixture-turn")
+            self.assertIs(p["may_witness"], value)
+            self.assertEqual(p["envelope_state"], "present")
+        c = W.begin_shadow("fixture-turn", "fixture-chat", 100)
+        W.finish_shadow(c, "synthetic", 110,
+            {"turn_id": "fixture-turn", "output_provenance": "stratagem_influenced", "may_witness": "false",
+             "capsule_commitment": ["malformed"]})
+        packet = json.loads(next(self.root.glob("capture-*.json")).read_text())
+        self.assertFalse(packet["generation_provenance"]["may_witness"])
+        self.assertEqual(packet["generation_provenance"]["envelope_state"], "malformed")
+        self.assertEqual(packet["reply_node"]["influence"], "influenced")
+        self.assertTrue(packet["reply_node"]["tactical"])
+
     def test_tactical_provenance_is_retained(self):
         c = W.begin_shadow("fixture-turn", "fixture-chat", 100)
         p = {"turn_id": "fixture-turn", "output_provenance": "stratagem_influenced", "may_witness": False}
@@ -127,6 +170,10 @@ class Tests(unittest.TestCase):
         self.assertLess(boundary.lineno, guard.lineno)
         final = next(n for n in outer.body if isinstance(n, ast.If) and any(
             isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute) and c.func.attr == "finish_shadow" for c in ast.walk(n)))
+        finish = next(c for c in ast.walk(final) if isinstance(c, ast.Call) and
+                      isinstance(c.func, ast.Attribute) and c.func.attr == "finish_shadow")
+        self.assertTrue(any(k.arg == "defer" and isinstance(k.value, ast.Constant)
+                            and k.value.value is True for k in finish.keywords))
         ret = next(n for n in outer.body if isinstance(n, ast.Return) and n.lineno > final.lineno)
         self.assertLess(routed[-1].lineno, select.lineno)
         self.assertLess(select.lineno, guard.lineno)

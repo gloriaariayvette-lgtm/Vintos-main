@@ -1,4 +1,4 @@
-"""Request-local shadow capture with an explicit private scratch sink; no sends.
+"""Request-local shadow capture with explicit private storage configuration; no sends.
 
 Provider hooks must explicitly label observed identity; configured names alone
 are unknown. A handler selects the raw result before postprocessing, then binds
@@ -8,14 +8,70 @@ from copy import deepcopy
 import json
 import os
 import sys
+import time
 from pathlib import Path
+from contextvars import ContextVar
 import uuid
 from witness_receipts import digest, instant, receipt, source_node
 _UNSPECIFIED = object()
+_value_map_stage = ContextVar("value_map_generation_stage", default=None)
+_value_map_context = ContextVar("value_map_context_reads", default=None)
+_self_forecast_scope = ContextVar("self_forecast_inputs", default=None)
 
 
 def _fingerprint(value):
     return digest(json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False))
+
+
+def _resource_digest(resource):
+    # Locator identity only: no stat, reopen, symlink resolution or origin claim.
+    return digest(os.fsdecode(os.path.abspath(os.fspath(resource))))
+
+
+def value_map_read(decoded, selected, at, resource=None):
+    """Observe the existing newest-entry transform without reopening the source."""
+    location = _capture_location()
+    if not location:
+        return None
+    _private_root(location)
+    if not isinstance(decoded, str) or len(decoded) > 4194304 or not isinstance(selected, str) or not selected:
+        return None
+    import re
+    entry = re.split(r'\n(?=## \d{4}-\d{2}-\d{2})', "\n" + decoded)[-1].strip()
+    if selected != entry[:1500]:
+        return None
+    observation = {"schema": "value-map-read-v1", "at": instant(at), "decoded_sha256": digest(decoded),
+            "selected_sha256": digest(selected), "transform": "newest_entry_strip_first_1500_codepoints"}
+    if resource is not None:
+        observation.update(schema="value-map-read-v2", resource_sha256=_resource_digest(resource),
+                           stripped_entry_sha256=digest(entry))
+    return observation
+
+
+def _guarded_reads(value):
+    """Validate optional read metadata without admitting paths, text or origin claims."""
+    if (not isinstance(value, dict) or set(value) != {"schema", "coverage", "reads", "truncated"}
+            or value.get("schema") != "guarded-reads-v1" or value.get("coverage") != "guarded_json_only"
+            or type(value.get("truncated")) is not bool or not isinstance(value.get("reads"), list)
+            or len(value["reads"]) > 64):
+        return None
+    for item in value["reads"]:
+        if (not isinstance(item, dict) or not {"resource_sha256", "state"} <= set(item)
+                or set(item) - {"resource_sha256", "state", "decoded_sha256", "version_state"}
+                or item["state"] not in ("loaded", "missing", "empty", "invalid", "unreadable")):
+            return None
+        for field in ("resource_sha256", "decoded_sha256"):
+            if field not in item and field == "decoded_sha256":
+                continue
+            h = item.get(field)
+            if not isinstance(h, str) or len(h) != 64 or any(c not in "0123456789abcdef" for c in h):
+                return None
+        if ("version_state" in item and item["version_state"] != "over_limit"
+                or "version_state" in item and "decoded_sha256" in item
+                or item["state"] in ("missing", "unreadable") and len(item) != 2
+                or item["state"] in ("loaded", "empty") and not ("decoded_sha256" in item or "version_state" in item)):
+            return None
+    return deepcopy(value)
 
 
 class Invocation:
@@ -66,6 +122,41 @@ class Capture:
         self._nodes = []
         self._input_bindings = []
         self._finalization_nodes = []
+        self._rendered_fragments = []
+
+    def bind_value_map(self, observation, fragment):
+        """Bind the exact current-handler read to its offered block; ancestry stays unknown."""
+        if self._closed or self._requests or any(n.get("observation") == "value_map_read" for n in self._nodes):
+            raise ValueError("invalid value-map binding lifecycle")
+        extra = {"resource_sha256", "stripped_entry_sha256"} if isinstance(observation, dict) and observation.get("schema") == "value-map-read-v2" else set()
+        if (not isinstance(observation, dict)
+                or set(observation) != {"schema", "at", "decoded_sha256", "selected_sha256", "transform"} | extra
+                or observation.get("schema") not in ("value-map-read-v1", "value-map-read-v2")
+                or observation.get("transform") != "newest_entry_strip_first_1500_codepoints"):
+            return False
+        prefix = "Your value map:\n"
+        if (not isinstance(fragment, str) or not fragment.startswith(prefix)
+                or not 0 < len(fragment) - len(prefix) <= 1500):
+            return False
+        for field in {"decoded_sha256", "selected_sha256"} | extra:
+            h = observation.get(field)
+            if not isinstance(h, str) or len(h) != 64 or any(c not in "0123456789abcdef" for c in h):
+                return False
+        at = instant(observation.get("at"))
+        if at > self.started_at or digest(fragment[len(prefix):]) != observation["selected_sha256"]:
+            return False
+        key = self.context_id + ":value-map"
+        read_key = key + ":read"
+        self._nodes.append({"id": read_key, "kind": "context", "at": at, "complete": False,
+                            "parents": [], "origin": "stored_unknown_ancestry", "observation": "value_map_read",
+                            "decoded_sha256": observation["decoded_sha256"], "clock_basis": "read_completed",
+                            **{field: observation[field] for field in extra}})
+        self._nodes.append({"id": key, "kind": "value_map", "at": at, "complete": False,
+                            "parents": [read_key], "origin": "generated_unknown_ancestry", "organ": "value_map",
+                            "rendered_sha256": digest(fragment), "selected_sha256": observation["selected_sha256"],
+                            "transform": observation["transform"]})
+        self._rendered_fragments.append((key, "value_map", fragment))
+        return True
 
     def bind_counterpart_input(self, original_text, message, slot):
         """Bind an explicitly marked original fragment to one exact input version.
@@ -131,6 +222,48 @@ class Capture:
                             "scope": "offers_not_admission", "selection_id": value["selection_id"],
                             "selection_version": value.get("selection_version"), "offers": deepcopy(observed)})
 
+    def rendered_selection(self, value):
+        """Retain bounded ephemeral fragments from the exact observed selection."""
+        if self._closed or self._requests or self._rendered_fragments or not isinstance(value, dict):
+            raise ValueError("invalid rendered selection lifecycle")
+        selections = [n for n in self._nodes if n.get("observation") == "context_selection"]
+        if (len(selections) != 1 or value.get("schema") != "rendered-selection-v1"
+                or value.get("selection_id") != selections[0]["selection_id"]
+                or instant(value.get("ts")) != selections[0]["at"]):
+            raise ValueError("rendered selection identity mismatch")
+        fragments = value.get("fragments")
+        if (not isinstance(fragments, dict) or len(fragments) > 64
+                or any(not isinstance(k, str) or not k or not isinstance(v, str) or not v for k, v in fragments.items())
+                or sum(len(v) for v in fragments.values()) > 262144):
+            raise ValueError("invalid rendered selection fragments")
+        offered = {o["organ"] for o in selections[0]["offers"] if o["state"] == "offered"}
+        if not set(fragments) <= offered:
+            raise ValueError("fragment lacks matching offer")
+        nodes, retained = [], []
+        read_manifests = value.get("reads", {})
+        read_count = 0
+        for i, (organ, text) in enumerate(sorted(fragments.items())):
+            key = self.context_id + ":rendered-%d" % i
+            node = {"id": key, "kind": "context", "at": selections[0]["at"],
+                          "complete": False, "parents": [], "origin": "generated_unknown_ancestry",
+                          "selection_id": value["selection_id"], "organ": organ,
+                          "rendered_sha256": digest(text), "read_observation": "unavailable"}
+            reads = _guarded_reads(read_manifests.get(organ)) if isinstance(read_manifests, dict) else None
+            if reads is not None and read_count + len(reads["reads"]) <= 256:
+                node.update(read_observation="partial", read_coverage=reads["coverage"],
+                            reads_truncated=reads["truncated"])
+                for j, observation in enumerate(reads["reads"]):
+                    read_key = key + ":read-%d" % j
+                    node["parents"].append(read_key)
+                    nodes.append(dict(observation, id=read_key, kind="context", at=selections[0]["at"],
+                                      complete=False, parents=[], origin="stored_unknown_ancestry",
+                                      observation="guarded_json_read", clock_basis="selection_completed"))
+                read_count += len(reads["reads"])
+            nodes.append(node)
+            retained.append((key, organ, text))
+        self._nodes.extend(nodes)
+        self._rendered_fragments = retained
+
     def request(self, system, messages, params, reason, at):
         """Bind exact handler arguments and their ordered dependencies before routing.
 
@@ -148,7 +281,20 @@ class Capture:
         body = {"system": system, "messages": messages, "params": params, "reason": reason}
         fingerprint = _fingerprint(body)
         inputs = [{"role": "system", "content": system}] + messages
-        nodes, parents = [], []
+        nodes, parents, fragment_observations = [], [], []
+        rendered_bindings = []
+        for key, organ, text in self._rendered_fragments:
+            start = system.find(text)
+            duplicate_offer = sum(other_text == text for _, _, other_text in self._rendered_fragments) > 1
+            state = "not_found" if start < 0 else "ambiguous" if duplicate_offer or system.find(text, start + 1) >= 0 else "matched"
+            observation = {"source_id": key, "organ": organ, "rendered_sha256": digest(text), "state": state}
+            if state == "matched":
+                binding = dict(observation, slot=0, input_sha256=_fingerprint(inputs[0]),
+                               span={"start": start, "end": start + len(text), "unit": "unicode_codepoints"},
+                               basis="exact_rendered_fragment")
+                rendered_bindings.append(binding)
+                observation = binding
+            fragment_observations.append(observation)
         for index, item in enumerate(inputs):
             key = node_id + ":input-%d" % index
             parents.append(key)
@@ -156,7 +302,8 @@ class Capture:
             bindings = [b for b in self._input_bindings if index == b["slot"] + 1
                         and version == b["message_sha256"]]
             nodes.append({"id": key, "kind": "context", "at": at, "complete": False,
-                          "parents": [b["source_id"] for b in bindings],
+                          "parents": [b["source_id"] for b in bindings] + ([b["source_id"] for b in rendered_bindings] if index == 0 else []),
+                          "rendered_bindings": deepcopy(rendered_bindings) if index == 0 else [],
                           "source_bindings": deepcopy(bindings), "origin": "unknown", "input_sha256": version,
                           "slot": index, "role": item.get("role", "unknown") if isinstance(item, dict) else "unknown"})
         # A retry is conditional on earlier calls and their results. Retain those
@@ -167,7 +314,8 @@ class Capture:
                       "parents": parents, "input_sha256": fingerprint, "request_id": request_id})
         record = {"request_id": request_id, "at": at, "context_receipt_id": node_id,
                   "input_sha256": fingerprint, "scope": "handler_arguments",
-                  "input_count": len(inputs), "provider_attempts_complete": False}
+                  "input_count": len(inputs), "provider_attempts_complete": False,
+                  "rendered_fragments": fragment_observations}
         self._nodes.extend(nodes)
         self._requests.append(record)
         return Invocation(self, request_id)
@@ -210,6 +358,10 @@ class Capture:
                 "identity_evidence": evidence if actual else "unknown",
                 "_claimed_model": stage.get("claimed_model") if evidence == "claimed" else None,
                 "_raw_sha256": digest(stage["text"]) if usable and isinstance(stage["text"], str) else None}
+            provider_id = stage.get("request_id")
+            if (isinstance(provider_id, str) and 0 < len(provider_id) <= 256
+                    and provider_id.strip() == provider_id and provider_id.isprintable()):
+                attempt["provider_request_id"] = provider_id
             if request is not None:
                 attempt.update(request_id=request_id, input_sha256=request["input_sha256"])
             self._attempts.append(attempt)
@@ -277,6 +429,7 @@ class Capture:
             raise ValueError("invalid finalization")
         self._record_finalization("handler_return", final_text, finalized_at)
         self._closed = True
+        self._rendered_fragments = []
         attempts = [{k: v for k, v in a.items() if not k.startswith("_")} for a in self._attempts]
         for attempt in attempts:
             if attempt["attempt_id"] == self._selected:
@@ -303,12 +456,36 @@ class Capture:
                                           ("router_result", "context_selection", "finalization_boundary")]}] + self._nodes,
                          "reply_node": {"id": "reply:" + self.turn_id, "kind": "reply",
                              "turn_id": self.turn_id, "at": instant(finalized_at), "complete": False,
+                             "response_sha256": digest(final_text),
                              "context_receipt_id": self.context_id,
                              "parents": [self.context_id, self._finalization_nodes[-1]["id"]],
                              "influence": "unknown"}})
 
 
+def _capture_location():
+    location = os.environ.get("JUDGES_CAPTURE_SCRATCH")
+    if location:
+        return location
+    from witness_sink import configuration
+    config = configuration()
+    return config["directory"] if config is not None else None
+
+
+def capture_enabled():
+    try:
+        location = _capture_location()
+        return location is not None and _private_root(location) is not None
+    except Exception:
+        return False
+
+
 def _private_root(value):
+    if not os.environ.get("JUDGES_CAPTURE_SCRATCH"):
+        from witness_sink import configuration
+        config = configuration(value)
+        if config is None:
+            raise ValueError("production shadow capture disabled or changed")
+        return config["directory"]
     raw = Path(value).absolute()
     root = raw.resolve(strict=True)
     repo = Path(__file__).resolve().parents[1]
@@ -322,8 +499,8 @@ def _private_root(value):
 
 
 def begin_shadow(turn_id, surface, started_at, *, original_text=None, input_message=None, input_slot=None):
-    """Disabled unless scratch and workspace explicitly name the same private root."""
-    location = os.environ.get("JUDGES_CAPTURE_SCRATCH")
+    """Disabled unless explicit scratch or dedicated production configuration permits capture."""
+    location = _capture_location()
     if not location:
         return None
     root = _private_root(location)
@@ -341,24 +518,49 @@ def begin_shadow(turn_id, surface, started_at, *, original_text=None, input_mess
         value = module.current_selection() if module is not None else None
         if value is not None:
             capture.context_selection(value)
+            getter = getattr(module, "current_rendered_selection", None)
+            if callable(getter):
+                rendered = getter()
+                if rendered is not None:
+                    capture.rendered_selection(rendered)
     except Exception:
         pass
     return capture
 
 
-def finish_shadow(capture, final_text, finalized_at, provenance=None, test_mode=False):
+def _shadow_provenance(value, turn_id):
+    """Do not let legacy coercions manufacture explicit shadow evidence."""
+    from evidence_provenance import normalize
+    unknown = {"turn_id": turn_id, "output_provenance": "unknown", "may_witness": False,
+               "envelope_state": "malformed"}
+    try:
+        result = normalize(value if isinstance(value, dict) else unknown)
+    except (TypeError, ValueError, KeyError, OverflowError):
+        result = normalize(unknown)
+    explicit = (isinstance(value, dict) and isinstance(value.get("turn_id"), str)
+                and value["turn_id"] == turn_id and type(value.get("may_witness")) is bool
+                and value.get("envelope_state", "present") == "present")
+    if not explicit:
+        result.update(may_witness=False, envelope_state="malformed")
+    # A malformed envelope does not erase a separately explicit influence marker.
+    if isinstance(value, dict) and value.get("output_provenance") == "stratagem_influenced":
+        result.update(output_provenance="stratagem_influenced", may_witness=False)
+    return result
+
+
+def finish_shadow(capture, final_text, finalized_at, provenance=None, test_mode=False, *, defer=False):
     """Write one private packet after the final guard, never to a live store.
 
     The handler still has no transport receipt: attempted return to the framework
     is recorded separately from delivery. Caller catches observation failures.
+    defer=True queues only the production final packet; True then means accepted
+    in volatile memory, not published. Scratch remains synchronous.
     """
     if capture is None:
         return False
     root = _private_root(capture._scratch_root)
     packet = capture.finalize(final_text, finalized_at, "handed_to_framework")
-    from evidence_provenance import normalize
-    p = normalize(provenance if isinstance(provenance, dict) else {
-        "turn_id": capture.turn_id, "output_provenance": "unknown", "may_witness": False})
+    p = _shadow_provenance(provenance, capture.turn_id)
     packet["generation_provenance"] = p
     packet["content"] = final_text
     packet["role"] = "assistant"
@@ -370,6 +572,332 @@ def finish_shadow(capture, final_text, finalized_at, provenance=None, test_mode=
         packet["lineage"].append({"id": effect_id, "kind": "tactical", "at": instant(finalized_at),
                                   "complete": False, "parents": [], "origin": "generation_provenance"})
         packet["reply_node"]["parents"].append(effect_id)
+    if defer and not os.environ.get("JUDGES_CAPTURE_SCRATCH"):
+        from witness_sink import enqueue_capture
+        return enqueue_capture(root, packet)
+    return _publish_private(root, packet, "capture-")
+
+
+def begin_value_map_context(build):
+    """Observe only instrumented direct reads during one existing assembly."""
+    if build is None:
+        return _value_map_context.set(None)
+    if build["closed"]:
+        raise ValueError("closed value-map build")
+    build["context_entries"] = build.get("context_entries", 0) + 1
+    build.pop("assembled_context", None)
+    return _value_map_context.set((build, instant(time.time()), (), 0, False))
+
+
+def observe_value_map_read(resource, decoded):
+    current = _value_map_context.get()
+    if current is None:
+        return
+    build, started, reads, chars, truncated = current
+    if len(reads) >= 64:
+        _value_map_context.set((build, started, reads, chars, True))
+        return
+    try:
+        if not isinstance(decoded, str) or len(decoded) + chars > 4194304:
+            _value_map_context.set((build, started, reads, chars, True))
+            return
+        record = {"resource_sha256": _resource_digest(resource), "decoded_sha256": digest(decoded),
+                  "at": instant(time.time()), "complete": False, "origin": "stored_unknown_ancestry"}
+        _value_map_context.set((build, started, reads + (record,), chars + len(decoded), truncated))
+    except Exception:
+        _value_map_context.set((build, started, reads, chars, True))
+
+
+def observe_value_map_view(resource, lane, rows):
+    """Observe the returned view, not raw bytes or a new eligibility decision."""
+    current = _value_map_context.get()
+    if current is None:
+        return
+    build, started, reads, chars, truncated = current
+    if len(reads) >= 64:
+        _value_map_context.set((build, started, reads, chars, True))
+        return
+    encoded_chars = 0
+    try:
+        if lane not in ("ledger_view", "history_view", "raw_fallback", "empty_fallback"):
+            raise ValueError("invalid view lane")
+        record = {"observation": "returned_view", "resource_sha256": _resource_digest(resource),
+                  "lane": lane, "at": instant(time.time()), "complete": False,
+                  "origin": "view_unknown_ancestry", "state": "unavailable"}
+        if not isinstance(rows, list) or len(rows) > 4096:
+            raise ValueError("unsupported view shape")
+        import hashlib
+        encoded_chars, version = 0, hashlib.sha256()
+        for chunk in json.JSONEncoder(sort_keys=True, separators=(",", ":"), allow_nan=False).iterencode(rows):
+            encoded_chars += len(chunk)
+            if chars + encoded_chars > 4194304:
+                raise ValueError("view over limit")
+            version.update(chunk.encode("utf-8"))
+        # Preserve explicit returned markers as counts; never normalize a missing
+        # envelope into permission or relabel the existing consumer's decision.
+        standing = {key: 0 for key in ("eligible", "ineligible", "HELD", "unknown")}
+        permission = {key: 0 for key in ("true", "false", "missing", "malformed")}
+        withheld, influence_markers = 0, 0
+        for row in rows:
+            if not isinstance(row, dict):
+                standing["unknown"] += 1; permission["malformed"] += 1
+                continue
+            status = row.get("evidence_standing")
+            standing[status if isinstance(status, str) and status in standing else "unknown"] += 1
+            env = row.get("generation_provenance", row.get("provenance"))
+            influence_markers += (row.get("character_influenced") is True or row.get("tactical") is True
+                                  or (isinstance(env, dict) and env.get("output_provenance") == "stratagem_influenced"))
+            if "generation_provenance" not in row and "provenance" not in row:
+                permission["missing"] += 1
+            else:
+                marker = env.get("may_witness") if isinstance(env, dict) else None
+                permission["true" if marker is True else "false" if marker is False else "malformed"] += 1
+            withheld += row.get("vintos_withheld") is True
+        record.update(state="observed", view_sha256=version.hexdigest(), rows=len(rows),
+                      standing_counts=standing, permission_counts=permission, withheld_rows=withheld,
+                      known_influence_marker_rows=influence_markers,
+                      hash_basis="canonical_returned_json", source_version="unobserved")
+        _value_map_context.set((build, started, reads + (record,), chars + encoded_chars, truncated))
+    except Exception:
+        # Unsupported/malformed/oversized evidence must not change the caller's
+        # result or erase already observed reads. No exception contents retained.
+        if "record" in locals():
+            _value_map_context.set((build, started, reads + (record,), min(4194304, chars + encoded_chars), True))
+        else:
+            _value_map_context.set((build, started, reads, chars, True))
+
+
+def finish_value_map_context(token, build, rendered):
+    if token is None:
+        return
+    current = _value_map_context.get()
+    _value_map_context.reset(token)
+    if current is None or build is None:
+        return
+    observed_build, started, reads, chars, truncated = current
+    if observed_build is not build or build["closed"]:
+        raise ValueError("invalid context assembly owner")
+    if build.get("context_entries") != 1 or not isinstance(rendered, str) or not 0 < len(rendered) <= 60000:
+        return
+    ended = instant(time.time())
+    if not build["started_at"] <= started <= ended or any(not started <= r["at"] <= ended for r in reads):
+        return
+    metadata = {"schema": "value-map-context-v1", "started_at": started, "ended_at": ended,
+                "rendered_sha256": digest(rendered), "rendered_chars": len(rendered),
+                "scope": "instrumented_reads_and_views_during_assembly", "contribution": "not_established",
+                "upstream_complete": False, "reads": list(reads), "truncated": truncated}
+    # Only this bounded string lives until the build returns; packets contain hashes.
+    build["assembled_context"] = (rendered, metadata)
+
+
+def begin_value_map_material(build, label):
+    """A separate read scope for the existing identity or temporal reader."""
+    if label not in ("system_identity", "temporal"):
+        raise ValueError("invalid value-map material")
+    if build is None:
+        return (None, begin_value_map_context(None), None, label)
+    if build["closed"]:
+        raise ValueError("closed value-map build")
+    counts = build.setdefault("material_entries", {})
+    counts[label] = counts.get(label, 0) + 1
+    build.setdefault("materials", {}).pop(label, None)
+    scope = {"started_at": build["started_at"], "closed": False}
+    return (scope, begin_value_map_context(scope), build, label)
+
+
+def finish_value_map_material(observation, rendered):
+    if observation is None:
+        return
+    scope, token, build, label = observation
+    finish_value_map_context(token, scope, rendered)
+    if build is None or build["closed"] or build["material_entries"][label] != 1:
+        return
+    assembly = scope.get("assembled_context")
+    if assembly is not None:
+        text, metadata = assembly
+        metadata.update(scope="direct_reads_during_material", material=label,
+                        read_state="observed" if metadata["reads"] else "unavailable")
+        build["materials"][label] = (text, metadata)
+
+
+def _value_map_context_binding(build, payload, at, slot=1):
+    assembly = build.get("assembled_context")
+    if build.get("context_entries") != 1 or assembly is None:
+        return {"state": "unavailable"}
+    rendered, metadata = assembly
+    if metadata["ended_at"] > at:
+        return {"state": "unavailable"}
+    text = payload["messages"][slot]["content"]
+    start = text.find(rendered)
+    state = "not_found" if start < 0 else "ambiguous" if text.find(rendered, start + 1) >= 0 else "matched"
+    result = {"state": state, "assembly": deepcopy(metadata)}
+    if state == "matched":
+        result.update(slot=slot, input_sha256=_fingerprint(payload["messages"][slot]),
+                      span={"start": start, "end": start + len(rendered), "unit": "unicode_codepoints"})
+    return result
+
+
+def _value_map_material_bindings(build, payload, at):
+    bindings = {}
+    for label, slot in (("system_identity", 0), ("temporal", 1)):
+        assembly = build.get("materials", {}).get(label)
+        proxy = {"context_entries": build.get("material_entries", {}).get(label, 0), "assembled_context": assembly}
+        bindings[label] = _value_map_context_binding(proxy, payload, at, slot)
+    return bindings
+
+
+def begin_value_map_call(payload):
+    """Observe one existing HTTP invocation; this is not a chat witness or a build."""
+    location = _capture_location()
+    if not location:
+        return None
+    root = _private_root(location)
+    if (not isinstance(payload, dict) or set(payload) != {"model", "messages", "temperature", "max_tokens"}
+            or not isinstance(payload["messages"], list) or len(payload["messages"]) != 2):
+        raise ValueError("invalid value-map call")
+    inputs = []
+    for i, item in enumerate(payload["messages"]):
+        if (not isinstance(item, dict) or set(item) != {"role", "content"}
+                or item["role"] != ("system" if i == 0 else "user")
+                or not isinstance(item["content"], str) or len(item["content"]) > 4194304):
+            raise ValueError("invalid value-map input")
+        inputs.append({"slot": i, "role": item["role"], "input_sha256": _fingerprint(item),
+                       "complete": False, "origin": "generated_or_unknown"})
+    configured = payload["model"]
+    if not isinstance(configured, str) or not 0 < len(configured) <= 256:
+        configured = None
+    observation = {"root": root, "closed": False, "packet": {
+        "schema": "value-map-call-v1", "request_id": uuid.uuid4().hex,
+        "started_at": instant(time.time()), "input_sha256": _fingerprint(payload), "inputs": inputs,
+        "configured_model": configured, "scope": "one_http_invocation",
+        "upstream_complete": False, "internal_attempts_complete": False,
+        "build_selection": "not_recorded", "stored_output_binding": "not_recorded"}}
+    active = _value_map_stage.get()
+    if active is not None:
+        build, stage, parents = active
+        if not build["closed"] and build["root"] == root and len(build["calls"]) < 8:
+            observation["packet"].update(build_id=build["build_id"], stage=stage,
+                                         assembled_context=_value_map_context_binding(build, payload, observation["packet"]["started_at"]),
+                                         auxiliary_inputs=_value_map_material_bindings(build, payload, observation["packet"]["started_at"]),
+                                         dependencies=[_map_dependency(build, k, v, observation["packet"]["started_at"])
+                                                       for k, v in parents.items()])
+            build["calls"].append(observation)
+        elif not build["closed"] and build["root"] == root and len(build["calls"]) >= 8:
+            build["calls_truncated"] = True
+    return observation
+
+
+def finish_value_map_call(observation, response, http_status, returned_text, outcome):
+    """Publish hashes and direct response metadata only; failure text is never retained."""
+    if observation is None:
+        return False
+    if observation["closed"]:
+        return False
+    observation["closed"] = True
+    if outcome not in ("returned", "rejected", "failed"):
+        raise ValueError("invalid value-map outcome")
+    if outcome == "returned" and not isinstance(returned_text, str):
+        raise ValueError("missing returned text")
+    if outcome != "returned" and returned_text is not None:
+        raise ValueError("unexpected returned text")
+    packet = deepcopy(observation["packet"])
+    ended = instant(time.time())
+    if ended < packet["started_at"]:
+        raise ValueError("invalid call clock")
+    observed = response.get("model") if isinstance(response, dict) and outcome == "returned" else None
+    if not isinstance(observed, str) or not observed.strip() or len(observed) > 256:
+        observed = None
+    packet.update(ended_at=ended, outcome=outcome,
+                  served_model=observed, identity_evidence="response_metadata" if observed else "unknown",
+                  http_status=http_status if type(http_status) is int and 100 <= http_status <= 599 else None,
+                  response_sha256=_fingerprint(response) if response is not None else None,
+                  returned_sha256=digest(returned_text) if returned_text is not None else None)
+    observation["completed_packet"] = deepcopy(packet)
+    published = _publish_private(_private_root(observation["root"]), packet, "value-map-call-")
+    observation["published"] = published is True
+    return published
+
+
+def begin_value_map_build():
+    location = _capture_location()
+    if not location:
+        return None
+    return {"root": _private_root(location), "build_id": uuid.uuid4().hex,
+            "started_at": instant(time.time()), "closed": False, "calls": [],
+            "stage_entries": {}, "calls_truncated": False}
+
+
+def enter_value_map_stage(build, stage, parents=None):
+    if build is None:
+        return _value_map_stage.set(None)
+    if build["closed"] or stage not in ("draft_a", "draft_b", "synthesis"):
+        raise ValueError("invalid build stage")
+    if parents is None:
+        parents = {}
+    if (not isinstance(parents, dict) or set(parents) != ({"draft_a", "draft_b"} if stage == "synthesis" else set())
+            or any(not isinstance(v, str) or len(v) > 4194304 for v in parents.values())):
+        raise ValueError("invalid stage dependencies")
+    build["stage_entries"][stage] = build["stage_entries"].get(stage, 0) + 1
+    return _value_map_stage.set((build, stage, {k: digest(v) for k, v in parents.items()}))
+
+
+def leave_value_map_stage(token):
+    if token is not None:
+        _value_map_stage.reset(token)
+
+
+def _map_dependency(build, stage, version, latest):
+    calls = [c for c in build["calls"] if c["packet"].get("stage") == stage]
+    matched = (not build["calls_truncated"] and build["stage_entries"].get(stage) == 1
+               and len(calls) == 1 and calls[0].get("published") is True
+               and calls[0].get("completed_packet", {}).get("outcome") == "returned"
+               and build["started_at"] <= calls[0]["completed_packet"]["started_at"]
+               and calls[0]["completed_packet"]["ended_at"] <= latest
+               and calls[0]["completed_packet"].get("returned_sha256") == version)
+    return {"stage": stage, "returned_sha256": version,
+            "state": "bound" if matched else "unavailable",
+            "request_id": calls[0]["packet"]["request_id"] if matched else None}
+
+
+def finish_value_map_build(build, selected_stage, result, entry, mode, resource=None):
+    """Observe the existing close boundary; never claim transactional or durable storage."""
+    if build is None or build["closed"]:
+        return False
+    build["closed"] = True
+    if (selected_stage not in ("draft_a", "draft_b", "synthesis") or mode not in ("a", "w")
+            or not isinstance(result, str) or not result or not isinstance(entry, str)
+            or len(entry) > 4194304 or not entry.endswith(result + "\n\n---\n")):
+        raise ValueError("invalid written entry")
+    prefix = entry[:len(entry) - len(result + "\n\n---\n")]
+    import re
+    if re.fullmatch(r"\n## \d{4}-\d{2}-\d{2} \d{2}:\d{2} — Value Map\n\n", prefix) is None:
+        raise ValueError("invalid entry prefix")
+    ended = instant(time.time())
+    if ended < build["started_at"]:
+        raise ValueError("invalid build clock")
+    selection = _map_dependency(build, selected_stage, digest(result), ended)
+    calls = [{"request_id": c["packet"]["request_id"], "stage": c["packet"]["stage"],
+              "packet_published": c.get("published") is True,
+              "outcome": c.get("completed_packet", {}).get("outcome", "unobserved")}
+             for c in build["calls"]]
+    packet = {"schema": "value-map-build-v1", "build_id": build["build_id"],
+              "started_at": build["started_at"], "ended_at": ended, "calls": calls,
+              "selection": selection, "stage_entries": dict(build["stage_entries"]),
+              "calls_truncated": build["calls_truncated"],
+              "upstream_complete": False, "attempt_coverage_complete": False,
+              "write": {"scope": "entry_write_closed", "mode": "append" if mode == "a" else "replace",
+                        "entry_sha256": digest(entry), "stripped_entry_sha256": digest(entry.strip()),
+                        "entry_chars": len(entry), "durability": "unconfirmed", "whole_file": "unverified"}}
+    if resource is not None:
+        packet["schema"] = "value-map-build-v2"
+        packet["write"]["resource_sha256"] = _resource_digest(resource)
+    return _publish_private(_private_root(build["root"]), packet, "value-map-build-")
+
+
+def _publish_private(root, packet, prefix):
+    if not os.environ.get("JUDGES_CAPTURE_SCRATCH"):
+        from witness_sink import publish
+        return publish(root, packet, prefix)
     # Write an invisible temporary name, then atomically publish a complete file.
     # link (rather than replacing rename) also refuses an existing final name.
     directory = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
@@ -378,7 +906,7 @@ def finish_shadow(capture, final_text, finalized_at, provenance=None, test_mode=
         info = os.fstat(directory)
         if info.st_mode & 0o077 or info.st_uid != os.getuid():
             raise ValueError("scratch permissions changed")
-        name = "capture-" + uuid.uuid4().hex + ".json"
+        name = prefix + uuid.uuid4().hex + ".json"
         candidate = "." + name + ".tmp"
         fd = os.open(candidate, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=directory)
         temporary = candidate
@@ -395,3 +923,171 @@ def finish_shadow(capture, final_text, finalized_at, provenance=None, test_mode=
         finally:
             os.close(directory)
     return True
+
+
+def begin_self_forecast():
+    """Scope one existing self forecast; no encoder/model/store work here."""
+    location = _capture_location()
+    if not location:
+        return None
+    root = _private_root(location)
+    return _self_forecast_scope.set({"root": str(root), "observations": 0, "inputs": None})
+
+
+def self_exchange_clock(raw, parsed, rendered):
+    """Retain explicit source time before legacy formatting, only in a scoped forecast."""
+    if _self_forecast_scope.get() is None:
+        return None
+    try:
+        epoch = instant(raw)
+        if epoch != instant(parsed) or not isinstance(rendered, str) or len(rendered) > 128:
+            return None
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return {"schema": "self-exchange-clock-v1", "epoch": epoch,
+            "raw_kind": "offset_iso" if isinstance(raw, str) else "numeric_epoch",
+            "raw_clock_sha256": _fingerprint(raw), "rendered_clock_sha256": digest(rendered),
+            "meaning": "source_exchange_time_not_reply_finalization"}
+
+
+def _self_context_clock(exchange, at):
+    value = exchange.get("_witness_clock")
+    if (not isinstance(exchange.get("ts"), str) or not isinstance(value, dict)
+            or set(value) != {"schema", "epoch", "raw_kind", "raw_clock_sha256",
+                                                    "rendered_clock_sha256", "meaning"}
+            or value["schema"] != "self-exchange-clock-v1"
+            or value["raw_kind"] not in ("offset_iso", "numeric_epoch")
+            or value["meaning"] != "source_exchange_time_not_reply_finalization"):
+        return None
+    try:
+        if (instant(value["epoch"]) != instant(at) or instant(exchange["at"]) != instant(at)
+                or value["rendered_clock_sha256"] != digest(exchange["ts"])):
+            return None
+        raw_hash = value["raw_clock_sha256"]
+        if not isinstance(raw_hash, str) or len(raw_hash) != 64 or any(c not in "0123456789abcdef" for c in raw_hash):
+            return None
+    except (KeyError, TypeError, ValueError, OverflowError):
+        return None
+    return deepcopy(value)
+
+
+def observe_self_forecast(exchanges, own, as_of, forecast):
+    """Record the actual readout's recent-own inputs, not its complete context.
+
+    Exchange text has already been normalized/merged by the existing reader.
+    Its IDs and clocks are observations, not finalized-reply origin evidence.
+    """
+    scope = _self_forecast_scope.get()
+    if scope is None:
+        return
+    count = scope["observations"] + 1
+    _self_forecast_scope.set(dict(scope, observations=count, inputs=None))
+    if count != 1 or not isinstance(exchanges, list) or not isinstance(own, list):
+        return
+    selected = []
+    for exchange in reversed(exchanges):
+        if not isinstance(exchange, dict):
+            return
+        if exchange.get("his"):
+            selected.append(exchange)
+        if len(selected) == 6:
+            break
+    selected.reverse()
+    if not selected or any(not isinstance(x["his"], str) or len(x["his"]) > 65536 for x in selected):
+        return
+    if own != [x["his"][:400] for x in selected]:
+        return
+    # Numeric exchange clocks are kept as such; never relabel them finalization.
+    observed_at = instant(as_of)
+    refs = []
+    for x, text in zip(selected, own):
+        at = instant(x["at"])
+        if at > observed_at:
+            return
+        key = x.get("turn_id")
+        key = key if isinstance(key, str) and key.strip() and len(key) <= 256 else None
+        refs.append({"observed_turn_id": key, "exchange_at": at,
+                     "normalized_reply_sha256": digest(x["his"]),
+                     "encoder_input_sha256": digest(text), "encoder_input_chars": len(text)})
+    inputs = {"scope": "recent_own_reply_feature_inputs", "as_of_exchange_at": observed_at,
+              "transform": "normalized_exchange_his_first_400_codepoints",
+              "selection": "last_six_nonempty_his_in_supplied_exchange_order", "reply_refs": refs,
+              "source_identity": "unverified", "encoder_identity": "unobserved",
+              "upstream_complete": False, "complete_forecast_context": False}
+    payload = {"her_key": forecast["her_key"], "self": {k: forecast[k] for k in
+               ("source", "checkpoint_id", "context_last_ts", "confidence", "qualification", "coherence")}}
+    payload["self"].update(mode="on_message", emb=[round(float(x), 4) for x in forecast["emb"]])
+    if forecast.get("context_emb") is not None:
+        payload["context_emb"] = forecast["context_emb"]
+    _self_forecast_scope.set(dict(scope, observations=count, inputs=inputs,
+                                 payload_sha256=_fingerprint(payload),
+                                 context_clock=_self_context_clock(exchanges[-1], observed_at)))
+
+
+def end_self_forecast(token):
+    if token is None:
+        return None
+    scope = _self_forecast_scope.get()
+    _self_forecast_scope.reset(token)
+    return scope
+
+
+def publish_self_forecast(scope, row):
+    """Sidecar after the existing forecast-log close; leaves its row unchanged."""
+    if scope is None:
+        return None
+    root = _private_root(scope["root"])
+    if row.get("mode") != "on_message" or row.get("self", {}).get("mode") != "on_message":
+        return None
+    made, arrived = instant(row["ts"]), instant(row["arrived_at"])
+    if made < arrived:
+        return None
+    payload = {"her_key": row["her_key"], "self": row["self"]}
+    if "context_emb" in row:
+        payload["context_emb"] = row["context_emb"]
+    matched = (scope["observations"] == 1 and scope["inputs"] is not None
+               and scope.get("payload_sha256") == _fingerprint(payload)
+               and scope["inputs"]["as_of_exchange_at"] < arrived)
+    # Exact row hash includes the already rounded prediction and all metadata.
+    # No vectors, messages or private identifiers are copied into this hash field.
+    packet = {"schema": "self-forecast-inputs-v1", "forecast_row_sha256": _fingerprint(row),
+              "forecast_at": made, "arrived_at": arrived, "boundary": "forecast_log_close",
+              "durability": "unconfirmed", "observations": scope["observations"],
+              "state": "observed" if matched else "unavailable",
+              "inputs": scope["inputs"] if matched else None, "complete_forecast_context": False}
+    published = _publish_private(root, packet, "self-forecast-inputs-")
+    if (matched and scope.get("context_clock") is not None
+            and isinstance(row["self"].get("context_last_ts"), str)
+            and digest(row["self"]["context_last_ts"]) == scope["context_clock"]["rendered_clock_sha256"]):
+        clock_packet = {"schema": "self-forecast-clock-v1", "forecast_row_sha256": packet["forecast_row_sha256"],
+                        "forecast_at": made, "arrived_at": arrived,
+                        "context_clock": scope["context_clock"], "boundary": "forecast_log_close",
+                        "durability": "unconfirmed", "source_identity": "unverified"}
+        _publish_private(root, clock_packet, "self-forecast-clock-")
+    if matched and scope.get("artifacts") is not None:
+        artifact_packet = {"schema": "self-forecast-artifacts-v1", "forecast_row_sha256": packet["forecast_row_sha256"],
+                           "forecast_at": made, "arrived_at": arrived, "boundary": "forecast_log_close",
+                           "durability": "unconfirmed", "artifacts": scope["artifacts"]}
+        _publish_private(root, artifact_packet, "self-forecast-artifacts-")
+    return published
+
+
+def self_artifact_capture_enabled():
+    scope = _self_forecast_scope.get()
+    return scope is not None and _private_root(scope["root"]) is not None
+
+
+def observe_self_artifacts(exchanges, bank, model, forecast, encoding_records=None):
+    scope = _self_forecast_scope.get()
+    if scope is None or scope.get("observations") != 1 or scope.get("inputs") is None:
+        return
+    from witness_self_artifacts import forecast_artifacts
+    artifacts = forecast_artifacts(exchanges, bank, model, forecast, encoding_records)
+    _self_forecast_scope.set(dict(scope, artifacts=artifacts))
+
+
+def self_reply_source(row, field, normalized):
+    from witness_self_artifacts import _source_scope, reply_source
+    if _self_forecast_scope.get() is None and _source_scope.get() is None:
+        return None
+    return reply_source(row, field, normalized)

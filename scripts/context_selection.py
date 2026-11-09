@@ -5,6 +5,51 @@ import os
 import sys
 
 _active = ContextVar("context_selection_readonly", default=False)
+_reads = ContextVar("context_selection_reads", default=None)
+
+
+def observe_store_read(path, state, raw=None):
+    """Hash an already completed guarded read; never reopen or classify its origin."""
+    current = _reads.get()
+    if current is None:
+        return
+    try:
+        if len(current[0]) >= 64:
+            _reads.set((current[0], True, current[2]))
+            return
+        import hashlib
+        name = os.fsencode(os.fspath(path))
+        record = {"resource_sha256": hashlib.sha256(name).hexdigest(), "state": state}
+        hashed_chars = current[2]
+        if isinstance(raw, str):
+            if len(raw) + hashed_chars > 4194304:
+                record["version_state"] = "over_limit"
+            else:
+                record["decoded_sha256"] = hashlib.sha256(raw.encode()).hexdigest()
+                hashed_chars += len(raw)
+        _reads.set((current[0] + (record,), current[1], hashed_chars))
+    except Exception:
+        _reads.set((current[0], True, current[2]))
+
+
+@contextmanager
+def observe_reads():
+    """Bounded context-local metadata, opt-in by the caller; no text or paths retained."""
+    parent = _reads.get()
+    token = _reads.set(((), False, parent[2] if parent is not None else 0))
+    def snapshot():
+        records, truncated, hashed_chars = _reads.get()
+        return {"schema": "guarded-reads-v1", "coverage": "guarded_json_only",
+                "reads": [dict(r) for r in records], "truncated": truncated}
+    try:
+        yield snapshot
+    finally:
+        records, truncated, hashed_chars = _reads.get()
+        _reads.reset(token)
+        parent = _reads.get()
+        if parent is not None:
+            combined = parent[0] + records
+            _reads.set((combined[:64], parent[1] or truncated or len(combined) > 64, hashed_chars))
 
 def _audit(event, args):
     if not _active.get(): return
