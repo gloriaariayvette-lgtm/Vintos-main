@@ -88,9 +88,10 @@ states its incomplete coverage. A successful packet followed by status/fsync
 failure may exist despite a false return. None of these states proves no activity.
 Capture failure is caught at existing producer boundaries and leaves serving intact.
 
-Only the existing reviewed private packet schemas are admitted by the sink's
-producer prefix allowlist. Final replies can be private packet content; incoming
-text, credentials and provider reasoning are not newly captured. Packets and status
+Existing producers write their reviewed private packet schemas. The sink validates
+filename prefixes and storage limits, not packet semantics; strict replay remains
+the semantic validator. Final replies can be private packet content; incoming text,
+credentials and provider reasoning are not newly captured by these hooks. Packets and status
 never enter Git. Exact target embeddings and checkpoint manifests are separate
 retention work, not claimed implemented by this storage increment.
 

@@ -1,4 +1,4 @@
-"""Request-local shadow capture with an explicit private scratch sink; no sends.
+"""Request-local shadow capture with explicit private storage configuration; no sends.
 
 Provider hooks must explicitly label observed identity; configured names alone
 are unknown. A handler selects the raw result before postprocessing, then binds
