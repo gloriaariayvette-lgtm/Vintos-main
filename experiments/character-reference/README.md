@@ -161,14 +161,15 @@ existing authorized records and cached vectors; unavailable controls stay unknow
 
 Each candidate adds `candidate_id` (nonempty, at most 256 characters), `timestamp`
 (the source text's offset-aware creation time, strictly before cutoff), `surface`,
-`author`, and `review` to the fields in the table. Known surfaces use the same
-fixed vocabulary as replies. `foreign` requires `author: "non_subject"` and the
+`author`, and `review` to the fields in the table. Known control surfaces use the reply surface vocabulary plus `slack`, `moltbook`
+and `journal`. These extra labels apply only to controls; they do not expand the
+engagement/reference surface scope. `foreign` requires `author: "non_subject"` and the
 same surface as the target. `other_surface` requires `author: "subject"` and a
 *different* known surface. This second comparison measures his surface change;
 it is not a negative authenticity label. Both need the same explicit known mode.
 Do not derive authorship or mode from the serving provider, words, or filenames.
 
-The `review` object requires `reviewed: true`, `reviewer: "owner"` or `"reviewer"`,
+The `review` object requires `reviewed: true`, `reviewer: "owner"`, `"reviewer"` or `"store_authorship"`,
 `link: "exact_control"`, `evidence_sha256` (64 lowercase hex identifying the locally
 retained source evidence), and `binding_sha256`. Compute the last using
 `control_review_binding(candidate)` after reviewing the source: it hashes the
@@ -177,6 +178,12 @@ canonical JSON of `candidate_id`, `content`, `context`, `timestamp`, `kind`,
 review. The review source and any intimate text stay local; never paste them into
 a cloud prompt. This is a supplied reviewer claim with an exact binding, **not**
 an authenticated author/source assertion. A hash alone cannot verify the claim.
+`store_authorship` means the private importer/reviewer supplied retained store
+metadata as its authorship evidence. It is not a human review, independently
+verified authorship, or a mode label. It needs the same exact binding, evidence
+hash, explicit author and mode as other classes. Unknown classes remain excluded.
+Selected source surfaces and reviewer classes are reported separately as counts;
+private pair records retain those labels. No source paths or store IDs are exported.
 Cache contract and prefix/context hashes are checked separately.
 
 Pool selection is deterministic greedy matching: primary-attributed targets first,

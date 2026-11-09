@@ -498,6 +498,48 @@ class Tests(unittest.TestCase):
         pool[-1]['context_vector']=[-1.,0.]
         with self.assertRaisesRegex(ValueError,'conflicting control candidate'):P.prepare(self.bundle,self.cutoff)
 
+    def test_control_only_surfaces_accept_explicit_store_authorship(self):
+        pool=self.pool();pool[:]=pool[:3]
+        for item,surface in zip(pool,('slack','moltbook','journal')):
+            item.update(kind='other_surface',author='subject',surface=surface)
+            review_control(item);item['review']['reviewer']='store_authorship'
+        report,private=P.run(self.bundle,self.cutoff)
+        selection=report['coverage']['control_selection']
+        self.assertEqual(report['coverage']['matched_controls'],3)
+        self.assertFalse(selection['source_authorship_independently_verified'])
+        self.assertEqual({(c['surface'],c['reviewer_class'],c['kind'],c['pairs']) for c in selection['selected_source_counts']},
+            {(s,'store_authorship','other_surface',1) for s in ('slack','moltbook','journal')})
+        matches=[c for r in private for c in r['control_matches']]
+        self.assertEqual({c['source_surface'] for c in matches},{'slack','moltbook','journal'})
+        self.assertTrue(all(c['reviewer_class']=='store_authorship' for c in matches))
+        self.assertIn('not a human review',P.render_summary(report))
+        # These source names do not expand engagement/reference surface admission.
+        self.assertEqual(P.surface_label('journal'),'unknown')
+        self.assertNotIn('journal',report['coverage']['engagement_surfaces'])
+
+    def test_store_authorship_does_not_supply_missing_mode_author_or_provenance(self):
+        pool=self.pool();pool[:]=pool[:3]
+        for item in pool:
+            item.update(kind='other_surface',author='subject',surface='journal')
+            review_control(item);item['review']['reviewer']='store_authorship'
+        pool[0]['mode']='unknown';review_control(pool[0]);pool[0]['review']['reviewer']='store_authorship'
+        pool[1]['author']='non_subject';review_control(pool[1]);pool[1]['review']['reviewer']='store_authorship'
+        pool[2]['review'].pop('evidence_sha256')
+        result=P.prepare(self.bundle,self.cutoff)
+        self.assertEqual(result[1],[])
+        self.assertEqual(result[4]['control_selection']['excluded']['unreviewed_or_invalid_provenance'],3)
+        self.assertNotIn('store_authorship',P.ANNOTATORS)
+
+    def test_control_sources_keep_unknown_classes_and_wrong_surface_foreign_unmatched(self):
+        pool=self.pool();pool[:]=pool[:3]
+        pool[0]['surface']='unknown';review_control(pool[0])
+        pool[1]['review']['reviewer']='unrecognized_source'
+        pool[2]['surface']='journal';review_control(pool[2]);pool[2]['review']['reviewer']='store_authorship'
+        result=P.prepare(self.bundle,self.cutoff)
+        self.assertEqual(result[1],[])
+        self.assertEqual(result[4]['control_selection']['excluded']['unreviewed_or_invalid_provenance'],2)
+        self.assertEqual(result[4]['control_selection']['unused_reviewed_candidates'],1)
+
     def test_pool_prefers_context_and_preserves_primary_matches_with_sensitivity_rows(self):
         pool=self.pool();pool[:]=pool[:1]
         # A closer context wins independently of the response vector.

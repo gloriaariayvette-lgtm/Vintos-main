@@ -29,6 +29,8 @@ EVALUATION_GROUPS=('benign_novelty','refusal','opposite_stance','humor','surface
 ANNOTATORS=('owner','reviewer')
 MODES=('opening_everyday','intimate','unknown')
 SURFACES=('avatar','reelroom','chat','phone','voice','vintos-eve','unknown')
+CONTROL_SURFACES=SURFACES[:-1]+('slack','moltbook','journal')
+CONTROL_REVIEWERS=ANNOTATORS+('store_authorship',)
 MODE_SOURCES=('router_decision','intimate_state','conversation_transition')
 STYLE=('log_chars','log_words','mean_word_chars','question_per_word','exclaim_per_word',
        'comma_per_word','uppercase_fraction','first_person_per_word','newline_per_word')
@@ -240,13 +242,13 @@ def control_reviewed(item,cutoff):
     try:at=instant(item.get('timestamp'))
     except (ValueError,TypeError):return False
     return (isinstance(review,dict) and review.get('reviewed') is True
-        and review.get('reviewer') in ANNOTATORS and review.get('link')=='exact_control'
+        and review.get('reviewer') in CONTROL_REVIEWERS and review.get('link')=='exact_control'
         and review.get('binding_sha256')==control_review_binding(item)
         and isinstance(review.get('evidence_sha256'),str)
         and re.fullmatch(r'[0-9a-f]{64}',review['evidence_sha256']) is not None
         and isinstance(item.get('candidate_id'),str) and 0<len(item['candidate_id'])<=256
         and item.get('author')==('non_subject' if item.get('kind')=='foreign' else 'subject')
-        and item.get('mode') in MODES[:2] and surface_label(item.get('surface'))!='unknown'
+        and item.get('mode') in MODES[:2] and item.get('surface') in CONTROL_SURFACES
         and at<cutoff)
 
 
@@ -447,12 +449,18 @@ def prepare(bundle,cutoff):
         used_control_text.add(digest(text));used_pairs.add(pair)
         controls.append({'id':item['matched_reply_id'],'kind':item['kind'],'vector':v,'style':style(text),'mode':item['mode'],
             'candidate_id':item['candidate_id'],'sha':digest(text),'review_binding':control_review_binding(item),
-            'context_cosine':float(c@row['context_vector'])})
+            'context_cosine':float(c@row['context_vector']),'source_surface':item['surface'],
+            'reviewer_class':item['review']['reviewer']})
     selection['by_mode_surface']=[{'mode':mode,'surface':surface,'kind':kind,
         'admitted_replies':sum(r['mode']==mode and r['surface']==surface for r in unique),
         'matched_replies':sum(c['kind']==kind and by_id[c['id']]['mode']==mode and by_id[c['id']]['surface']==surface for c in controls)}
         for mode in MODES[:2] for surface in SURFACES[:-1] for kind in ('foreign','other_surface')]
     for cell in selection['by_mode_surface']:cell['unmatched_replies']=cell['admitted_replies']-cell['matched_replies']
+    selection['selected_source_counts']=[{'surface':surface,'reviewer_class':reviewer,'kind':kind,
+        'pairs':sum(c['source_surface']==surface and c['reviewer_class']==reviewer and c['kind']==kind for c in controls)}
+        for surface in CONTROL_SURFACES for reviewer in CONTROL_REVIEWERS for kind in ('foreign','other_surface')
+        if any(c['source_surface']==surface and c['reviewer_class']==reviewer and c['kind']==kind for c in controls)]
+    selection['source_authorship_independently_verified']=False
     return unique,controls,candidates,positive,{'excluded':dict(excluded),'attribution':attribution_report,
         'feedback':dict(feedback_counts),'positive_reply_links':len(positive),
         'admission_bases':dict(Counter(r['basis'] for r in unique)),
@@ -515,7 +523,7 @@ def evaluate(rows,controls,candidates,positive):
                             metrics[control['kind']+'_'+k+'_paired_win'].append((day,float(s[k]>cs[k])+.5*(s[k]==cs[k])))
             private.append({'turn_id':r['id'],'day':day,'family':r['family'],'mode':mode,'surface':surface,'percentiles':pct,
                             'reference_days':reference_days,'reference_turns':len(ref),
-                            'control_matches':[{k:c[k] for k in ('kind','candidate_id','sha','review_binding','context_cosine')}
+                            'control_matches':[{k:c[k] for k in ('kind','candidate_id','sha','review_binding','context_cosine','source_surface','reviewer_class')}
                                 for c in by_reply_controls[r['id']]]})
             fold.append((r,s));status['scored']+=1
         if len(fold)>=2:
@@ -547,7 +555,7 @@ def evaluate(rows,controls,candidates,positive):
 def run(bundle,cutoff,private_control_matches=None):
     rows,controls,days,positive,coverage=prepare(bundle,cutoff)
     if private_control_matches is not None:
-        private_control_matches.extend({k:c[k] for k in ('id','kind','candidate_id','sha','review_binding','context_cosine')} for c in controls)
+        private_control_matches.extend({k:c[k] for k in ('id','kind','candidate_id','sha','review_binding','context_cosine','source_surface','reviewer_class')} for c in controls)
     primary,details=evaluate([r for r in rows if r['primary']],controls,days,positive)
     sensitivity,_=evaluate(rows,controls,days,positive)
     for view,selected in ((primary,[r for r in rows if r['primary']]),(sensitivity,rows)):
@@ -628,6 +636,7 @@ def render_summary(report):
             lines.append('| '+' | '.join((day,count(entry['replies']),*(count(entry['families'][f]) for f in FAMILIES)))+' |')
         lines+=['', '### Mode-specific familiarity and comparisons', '',
                 'Controls require an exact bound supplied provenance review; reviewer claims are not independently authenticated.',
+                'Store-authorship evidence is a separate supplied class, not a human review or verified authorship.',
                 'Foreign controls match surface; other-surface controls are his own text elsewhere, not non-him negatives.',
                 'References and controls must match mode; reference replies also match surface. Unknown mode is unscored.',
                 'Pooled family differences are confounded with mode and are omitted here.', '',

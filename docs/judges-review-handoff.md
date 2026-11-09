@@ -1,7 +1,7 @@
 # Judges observation and character-reference handoff
 
-Current candidate: **codex/judges-character-reviewed-controls**, based on
-**dd811da0**, whose prototype stack is rebased onto **34b662e9** per note #30. Its final published hash is recorded in
+Current candidate: **codex/judges-character-control-sources**, based on
+**80486b4b**, whose prototype stack is rebased onto **34b662e9** per note #30. Its final published hash is recorded in
 the dated local coordination reply. The reviewer reports integration through
 c779cbf0 (deploy 650/650, live 653/653; note #32); this is not an independent
 live verification. Prior review branch tips stay fixed. The original dependency
@@ -927,3 +927,21 @@ collected here; private data collection and rerun remain with the reviewer.
 53 isolated checks pass (prototype 42, owners 11), using synthetic non-intimate
 fixtures. Generated reports refreshed unchanged. No encoder/model calls, network
 collection, live writes, merge or deployment. Prior review branch tips stay fixed.
+
+
+## 9 November — source contract aligned with the private control collection
+
+`codex/judges-character-control-sources` follows 80486b4b. Note #35 identifies
+Slack, MoltBook and journal controls and store-authorship evidence; the prior
+validator would reject those fixed source labels. Controls now admit `slack`,
+`moltbook`, `journal` and a separate `store_authorship` reviewer class. This does
+not expand engagement/reference surfaces or owner/reviewer evaluation annotations.
+The same exact source binding, evidence hash, explicit author/mode, timestamp and
+matching constraints remain required. No provider/filename/missing-mode inference.
+Selected counts retain source surface and evidence class; private pair records do
+too. Source authorship remains explicitly unverified, and store evidence is not
+represented as a human review. Private collection/rerun belongs to the reviewer.
+The short plain-language results page requested in #35 remains pending actual
+mode-by-surface coverage; no new real-data results are asserted here.
+Validation: 45 isolated prototype tests; ownership checks recorded in the dated
+coordination handoff. No live writes, calls, merge or deployment.
