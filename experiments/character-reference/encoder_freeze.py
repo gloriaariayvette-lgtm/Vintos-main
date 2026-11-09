@@ -37,7 +37,10 @@ def validate_registry(registry):
     pins={}
     fields={'id','publisher','repo','filename','revision','revision_at','artifact_sha256','artifact_kind','trained_on_subject_data','reviewed'}
     for pin in registry['pins']:
-        if not isinstance(pin,dict) or set(pin)!=fields:raise ValueError('invalid published pin')
+        if not isinstance(pin,dict) or not fields<=set(pin) or set(pin)-fields-{'reviewer','size_bytes'}:raise ValueError('invalid published pin')
+        if 'size_bytes' in pin and (type(pin['size_bytes']) is not int or not 4<=pin['size_bytes']<=4*1024**3):raise ValueError('invalid published size')
+        if 'reviewer' in pin and (not isinstance(pin['reviewer'],str) or not pin['reviewer'].strip() or len(pin['reviewer'])>512
+                or any(ord(c)<32 for c in pin['reviewer'])):raise ValueError('invalid reviewer attribution')
         for field in ('id','publisher','repo','filename','revision','revision_at'):
             value=pin[field]
             if not isinstance(value,str) or not value.strip() or len(value)>512 or any(ord(c)<32 for c in value):raise ValueError('invalid pin identity')

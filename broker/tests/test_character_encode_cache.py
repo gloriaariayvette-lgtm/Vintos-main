@@ -191,6 +191,21 @@ class Tests(unittest.TestCase):
         built['numerical_evidence']['encoder_freeze_source']='published_artifact'
         with self.assertRaises(ValueError):F.B.R.evaluate(built,None,F.CUTOFF)
 
+    def test_checked_in_reviewed_pin_parses(self):
+        pins=E.Q.load_pins()
+        pin=pins['nomic-embed-text-v1.5-Q4_K_M']
+        self.assertRegex(pin['artifact_sha256'],r'^[0-9a-f]{64}$')
+        self.assertEqual(pin['size_bytes'],84106624)
+        self.assertEqual(pin['revision'],'0188c9bf409793f810680a5a431e7b899c46104c')
+        self.assertEqual(pin['revision_at'],'2025-04-28T20:14:53+00:00')
+        self.assertTrue(pin['reviewed']);self.assertFalse(pin['trained_on_subject_data'])
+        self.assertIn('local sha256',pin['reviewer'])
+        receipt=E.Q.qualify(pin['artifact_sha256'],1800000000,'published_artifact','external_pretrained',pin['id'])
+        self.assertEqual(receipt['published_pin'],pin)
+        for field,value in [('size_bytes',True),('size_bytes',-1),('reviewer',''),('reviewer',None)]:
+            bad=copy.deepcopy(pin);bad[field]=value
+            with self.assertRaises(ValueError):E.Q.validate_registry({'schema':'published-encoder-pins-v1','pins':[bad]})
+
     def test_registry_validation_and_receipt_tampering(self):
         pin=self.published();registry=copy.deepcopy(self.pins)
         for field,value in [('reviewed',1),('trained_on_subject_data',0),('artifact_kind','local_trained'),

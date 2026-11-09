@@ -7604,3 +7604,29 @@ call, private record read, live write, GPU, merge or deployment. Real pin review
 private run remain with the independent reviewer; full Aegis suite remains theirs.
 Branch codex/judges-published-encoder-freeze, based on bae1abde. Exact pushed commit
 and checkout path in the coordination reply. Heartbeat ACTIVE; no routine ntfy.
+
+
+## 2026-11-09 13:10 CST — reviewed pin and numerical judge status (#51)
+
+Recorded the external artifact pin supplied in coordination note #51, including
+exact public file hash, full revision, conservative revision date, declared byte
+size and reviewer attribution. Verification belongs to that reviewer; no download,
+model load or independent network/hash verification was performed in this change.
+Registry parsing now accepts validated optional reviewer/size_bytes metadata without
+relaxing required pin, training, date or hash gates. All metadata stays in receipts.
+
+Added experiments/nonllm-judges/STATUS.md: six new components, explicit inputs,
+offline versus private-run-ready versus missing capture state, and Gloria's later
+capture prerequisites. Recurrence/grouping are standalone prototypes, not part of
+the private-run CLI. The dedicated production shadow sink exists and defaults off;
+receipt capture does not wire numerical scorers into live consumers. Source status
+is distinguished from live verification. Existing character/innovation work remains.
+
+44 isolated checks pass: producer/pin 33, ownership 11. The new check parses the
+actual checked-in pin, checks its hash shape/revision/date/reviewer, exercises pure
+qualification without loading weights, and rejects malformed optional metadata.
+Logs /tmp/judges-reviewed-pin-tests.log and /tmp/judges-reviewed-pin-owners-tests.log.
+Required reports regenerated unchanged; diff clean. No private data read, encoder
+or provider call, GPU, live config/write, model swap, merge or deployment. Full suite
+and private runs remain with the reviewer. Branch codex/judges-reviewed-pin-status,
+based on 84eebed5; exact path/pushed tip in coordination reply. Heartbeat ACTIVE.

@@ -680,11 +680,12 @@ For an external pretrained artifact, explicitly add
 `--freeze-source published_artifact --artifact-kind external_pretrained --published-pin PIN_ID`
 to the producer invocation. `encoder_freeze.py` loads only the checked-in
 `published-encoder-pins.json`; there is no CLI registry override, network lookup,
-download or automatic approval. The registry currently has **no real pins**. The
-reviewer must independently verify and review one before a real published run.
+download or automatic approval. The registry contains one external artifact pin supplied by the independent reviewer
+in coordination note #51. Its review attribution is recorded; the implementation
+agent did not download the artifact or independently repeat that verification.
 Tests inject a synthetic registry into the stub process only.
 
-The registry is `{"schema":"published-encoder-pins-v1","pins":[]}`. Each reviewed
+The registry envelope is `{"schema":"published-encoder-pins-v1","pins":[...]}`. Each reviewed
 pin requires: unique `id`, `publisher`, `repo`, exact `filename`, immutable full
 40/64-hex `revision`, offset-aware `revision_at`, exact file `artifact_sha256`,
 `artifact_kind: external_pretrained`, `trained_on_subject_data: false`, and
@@ -692,7 +693,9 @@ pin requires: unique `id`, `publisher`, `repo`, exact `filename`, immutable full
 upstream weights. Review must establish that neither that file nor its tuning or
 conversion was shaped by the subject's scored acts. The flags record that review;
 the program cannot independently verify a publisher's training history offline.
-Duplicate keys/IDs, malformed pins and unreviewed/subject-trained pins are refused.
+Optional `reviewer` and `size_bytes` retain bounded review attribution and declared
+file size; exact SHA256 equality remains the artifact identity check. Duplicate
+keys/IDs, malformed pins and unreviewed/subject-trained pins are refused.
 
 The producer first copies and hashes the GGUF. Before opening the encoder it requires
 exact equality to the selected reviewed hash. Effective `frozen_at` is that pin's

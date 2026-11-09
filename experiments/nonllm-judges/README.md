@@ -644,8 +644,9 @@ older replies reports `missing_invalid_or_late_freeze`, without historical backf
 The explicit `published_artifact` qualifier permits an external pretrained encoder's
 reviewed exact-file revision date as effective freeze. The actual copy timestamp
 remains in its receipt. See the character-reference README for the checked-in pin
-registry schema, review requirements and producer flags. The registry ships empty;
-real pins require independent review. No network or historical cache relabelling.
+registry schema, review requirements and producer flags. The registry contains the
+external artifact pin supplied by the independent reviewer in note #51; its review
+attribution is retained. New pins require independent review. No network or historical cache relabelling.
 
 Builder accepts per-cache `freeze_source` and `freeze_receipt`, rechecks the pinned
 hash/date/subject-training qualification, then carries coherent receipts as
