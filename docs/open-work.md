@@ -6346,3 +6346,13 @@ malformed raw shadow provenance into explicit witness permission. Invalid
 identity/flag shapes stay ineligible; known tactical influence survives malformed
 envelopes. Shared normalization/live evidence readers are unchanged. 208 affected
 isolated checks pass; independent review/full Aegis validation remain pending.
+
+
+## 8 November — earliest-forecast selection integrity
+
+`codex/judges-earliest-forecast-evidence` fixes offline selection occurring after
+invalid forecast filtering. Identified earliest/equal-time/unknown-clock evidence
+now survives into the selection decision; no later forecast silently replaces
+an unscorable first one. New fixtures verify both input orders and independent
+groups. 171 affected isolated checks pass. Independent review/full isolated
+Aegis validation remain pending.

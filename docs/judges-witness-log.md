@@ -721,3 +721,24 @@ nonboolean/mismatched inputs, valid true/false controls and retained tactical
 influence. Reports regenerated and whitespace checked. No private inputs, model
 calls, real test sends, live writes, merge or deployment. Independent review and
 full isolated Aegis validation remain pending.
+
+
+## 8 November — select earliest forecast before filtering invalid evidence
+
+`codex/judges-earliest-forecast-evidence` continues from 2ee4053f. Five new
+synthetic regression methods exposed eight failed assertions: invalid earliest
+predictions were discarded before earliest-selection, permitting later predictions
+or valid equal-time copies to be scored instead.
+
+The offline reader now retains ordering claims for each identified group before
+causality/vector validation. An invalid earliest forecast holds that selection;
+conflicting earliest copies remain conflicted; a missing/invalid clock makes
+selection order unknown. Later invalid records do not erase an earlier valid
+forecast, and separate checkpoint groups remain independent. No live consumer,
+producer, feed or historical record changes.
+
+171 isolated checks pass: witness 103, capture 27, replay adapter 9, hooks 21,
+ownership 11. Reports regenerated and whitespace checked. Tests use synthetic
+records in both input orders. No private-data accuracy claim, model call, real
+test send, live-store write, merge or deploy. Independent Aegis review remains
+pending.

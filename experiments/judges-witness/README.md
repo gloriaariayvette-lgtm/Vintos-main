@@ -674,3 +674,20 @@ not become permission. Malformed inputs produce an ineligible packet rather
 than losing the capture; explicit tactical influence is retained even when
 other fields are malformed. This guard is local to scratch capture. It neither
 changes the shared legacy normalizer nor certifies complete ancestry or delivery.
+
+
+### Forecast ordering precedes validity filtering
+
+For an identified target/checkpoint/encoder/surface/source group, the reader
+retains the declared forecast clock and complete-record digest before checking
+vectors and causal validity. An invalid earliest record cannot be discarded to
+score a later prediction. Distinct equal-time earliest copies conflict even if
+one is unscorable. An identified record with an invalid/missing clock leaves the
+group's order unknown; it does not get guessed after the valid records. A later
+invalid record does not displace a valid earliest one. Records without enough
+identity to join this group remain separately counted; other groups are unaffected.
+
+`unscorable_earliest_forecast` and `unknown_forecast_order` are selection holds
+counted per group that otherwise had a scorable candidate. Raw invalid-record
+counts remain separate, so these counters are not additive populations. No
+historical scores or private snapshots were recomputed for this synthetic repair.

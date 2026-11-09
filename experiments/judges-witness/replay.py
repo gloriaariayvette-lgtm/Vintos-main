@@ -448,7 +448,7 @@ def innovation(admitted, forecasts, embeddings, checkpoints, minimum_history=MIN
         raise ValueError("forecast/embedding lists and checkpoint mapping required")
     targets = {r["turn_id"]: r for r in admitted}
     cache = defaultdict(list)
-    held, candidates = Counter(), defaultdict(list)
+    held, candidates, declared = Counter(), defaultdict(list), defaultdict(list)
     for e in embeddings:
         if not isinstance(e, dict) or not isinstance(e.get("turn_id"), str) or not e["turn_id"]:
             held["missing_embedding_identity"] += 1
@@ -486,7 +486,18 @@ def innovation(admitted, forecasts, embeddings, checkpoints, minimum_history=MIN
             if manifest.get("source") != head["source"]:
                 held["checkpoint_source_mismatch"] += 1
                 continue
-            made = instant(f["ts"])
+            selected = next(a for a in r["generation"]["attempts"] if a["outcome"] == "selected")
+            if not selected.get("served_model") or selected.get("identity_evidence") == "unknown":
+                held["unknown_target_generator"] += 1
+                continue
+            group = (checkpoint, encoder, r["surface"], "on_message", head["source"],
+                     selected["served_model"], selected.get("served_revision") or "")
+            # Establish ordering from identified producer records before any
+            # vector/causality filtering can discard the earliest prediction.
+            claim = {"at": None, "sha256": None}
+            declared[(row["turn_id"], group)].append(claim)
+            claim["at"] = made = instant(f["ts"])
+            claim["sha256"] = digest(json.dumps(f, sort_keys=True, separators=(",", ":"), allow_nan=False))
             arrived = instant(f["arrived_at"])
             if not (instant(manifest["trained_at"]) < made < r["finalized_at"]
                     and arrived <= made and arrived <= r["started_at"]
@@ -503,15 +514,9 @@ def innovation(admitted, forecasts, embeddings, checkpoints, minimum_history=MIN
             # establish numeric validity (True == 1 and False == 0).
             errors = [cosine_error(head["emb"], match.get("emb")) for match in matches]
             error = errors[0]
-            selected = next(a for a in r["generation"]["attempts"] if a["outcome"] == "selected")
-            if not selected.get("served_model") or selected.get("identity_evidence") == "unknown":
-                held["unknown_target_generator"] += 1
-                continue
-            group = (checkpoint, encoder, r["surface"], "on_message", head["source"],
-                     selected["served_model"], selected.get("served_revision") or "")
             # Equal errors are not equal forecasts. Retain a private digest of
             # the complete producer record, including vector and context claims.
-            forecast_sha = digest(json.dumps(f, sort_keys=True, separators=(",", ":"), allow_nan=False))
+            forecast_sha = claim["sha256"]
             candidates[(row["turn_id"], group)].append({
                 "turn_id": row["turn_id"], "response_sha256": r["response_sha256"],
                 "group": group, "forecast_at": made, "forecast_sha256": forecast_sha, "finalized_at": r["finalized_at"],
@@ -520,9 +525,23 @@ def innovation(admitted, forecasts, embeddings, checkpoints, minimum_history=MIN
         except (KeyError, TypeError, ValueError, OverflowError):
             held["missing_or_invalid_forecast_evidence"] += 1
     scored = []
-    for choices in candidates.values():
-        earliest = min(c["forecast_at"] for c in choices)
+    for key, choices in candidates.items():
+        claims = declared[key]
+        if any(c["at"] is None for c in claims):
+            held["unknown_forecast_order"] += 1
+            continue
+        earliest = min(c["at"] for c in claims)
+        first_claims = [c for c in claims if c["at"] == earliest]
+        if any(c["sha256"] is None for c in first_claims):
+            held["unscorable_earliest_forecast"] += 1
+            continue
+        if len({c["sha256"] for c in first_claims}) != 1:
+            held["conflicting_forecast"] += 1
+            continue
         tied = [c for c in choices if c["forecast_at"] == earliest]
+        if not tied:
+            held["unscorable_earliest_forecast"] += 1
+            continue
         if any(c != tied[0] for c in tied):
             held["conflicting_forecast"] += 1
             continue

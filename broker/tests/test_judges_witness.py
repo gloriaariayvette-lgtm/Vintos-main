@@ -562,6 +562,50 @@ assert ev.eligibility({"provenance":{"may_witness":True,"output_provenance":"ord
         self.assertIsNone(rows[0]["innovation_percentile"])
         self.assertEqual(summary["held"]["duplicate_forecasts"], 1)
 
+    def test_invalid_first_forecast_cannot_be_replaced_by_later_valid_one(self):
+        for mutation in ({"emb": None}, {"emb": [True, 0]}, {"context_last_ts": 100}):
+            bad = copy.deepcopy(self.f)
+            bad["self"].update(mutation)
+            later = dict(self.f, ts=102)
+            for forecasts in ([bad, later], [later, bad]):
+                with self.subTest(mutation=mutation, reverse=forecasts[0] is later):
+                    report, rows = self.score(forecasts=forecasts)
+                    self.assertEqual(rows, [])
+                    self.assertEqual(report["held"]["unscorable_earliest_forecast"], 1)
+
+    def test_invalid_equal_time_copy_conflicts_with_valid_forecast(self):
+        bad = copy.deepcopy(self.f)
+        bad["self"]["emb"] = None
+        for forecasts in ([bad, self.f], [self.f, bad]):
+            report, rows = self.score(forecasts=forecasts)
+            self.assertEqual(rows, [])
+            self.assertEqual(report["held"]["conflicting_forecast"], 1)
+
+    def test_identified_forecast_with_unknown_clock_prevents_order_selection(self):
+        for clock in (None, True, "not a time"):
+            for forecasts in ([dict(self.f, ts=clock), self.f], [self.f, dict(self.f, ts=clock)]):
+                report, rows = self.score(forecasts=forecasts)
+                self.assertEqual(rows, [])
+                self.assertEqual(report["held"]["unknown_forecast_order"], 1)
+
+    def test_later_invalid_forecast_does_not_displace_valid_first(self):
+        bad = copy.deepcopy(self.f)
+        bad["ts"] = 102
+        bad["self"]["emb"] = None
+        for forecasts in ([bad, self.f], [self.f, bad]):
+            _, rows = self.score(forecasts=forecasts)
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["forecast_at"], self.f["ts"])
+
+    def test_invalid_forecast_order_is_local_to_identified_group(self):
+        bad = copy.deepcopy(self.f)
+        bad["self"].update(checkpoint_id="other-checkpoint", emb=None)
+        checkpoints = dict(self.ck, **{"other-checkpoint": dict(self.ck["fixture-checkpoint"])})
+        report, rows = self.score(forecasts=[bad, self.f], checkpoints=checkpoints)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["group"][0], "fixture-checkpoint")
+        self.assertEqual(report["held"]["missing_or_invalid_forecast_evidence"], 1)
+
     def test_forecast_identity_and_causality(self):
         for mutation in ({"ts": 110}, {"ts": 111}, {"mode": "ahead"},
                          {"surface": "other"}, {"turn_id": "other"}):
