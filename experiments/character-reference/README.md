@@ -416,8 +416,8 @@ scored target labelled by the rule **and any target whose reference fold include
 rule-labelled replies**. Exclusion counts are explicit; comparisons without remaining
 independent overlap say `not_identifiable`. Historical somatic classifications are
 still retrospective observations and should not be read as prospective mode accuracy.
-Controls retain their separate reviewed mode/authorship contract; this fallback
-does not fabricate control modes. No golden-day change or new real-data result is
+Controls retain their separate reviewed authorship contract. The optional exact-exchange
+binding below can inherit a conversation mode; the control author's family never supplies it. No golden-day change or new real-data result is
 claimed here. The reviewer runs character3 privately; the existing status page
 continues to describe character2 until actual aggregates arrive.
 
@@ -486,3 +486,33 @@ with its existing 64 MiB input limit and private outputs. Aggregate rendering is
 not a new evaluation, a deployment or a claim that character3 has run. The public
 status document remains on the last supplied real results until new aggregates
 arrive.
+
+
+## Same-exchange modes for foreign controls
+
+Foreign owner or room-agent text can inherit the conversation mode of an admitted
+adjacent subject reply. Supply `exchange` with exactly `link: "exact_exchange"`,
+`reply_id`, `reply_sha256`, `control_sha256`, and `source_record_sha256` (64 lowercase
+hex of retained exchange evidence). The private importer must establish the same
+exchange from source records; **timestamp proximity is not sufficient**. The source
+must be on the same known surface. All anchors and candidate timestamps precede
+the cutoff. No interval or nearest-neighbor heuristic is used.
+
+Use `mode: "unknown"` when the control has no separate mode observation. Recompute
+`control_review_binding(candidate)` after adding `exchange`: the review now binds
+that entire object as well as the existing fields. Existing candidates without an
+exchange keep their previous binding. Broken, unreviewed, unknown-anchor,
+wrong-surface or conflicting-mode links stay unknown; no family guess repairs them.
+`other_surface` controls cannot use this mechanism. All ordinary cache, language,
+length, context, authorship and no-reuse rules still apply.
+
+Resolution happens before either explicit-pair validation or pool matching. A pool
+candidate keeps its source exchange mode even if context matching chooses a different
+target. It never borrows the target's mode just to become eligible. The input bundle
+is unchanged. Selected private pairs retain `mode_source: adjacent_reply_rule` and
+`mode_binding` with anchor ID/hash, original mode source and source evidence hash.
+Public output contains only counts in `control_selection.exchange_modes` and
+`selected_mode_sources`. Source adjacency is a bound supplied claim, not independently
+authenticated by this experiment. Family-derived conversation labels permit a
+conditional within-mode control comparison; they do not make the family comparison
+identifiable or independently validate mode.

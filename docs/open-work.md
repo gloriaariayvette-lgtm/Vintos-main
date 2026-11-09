@@ -7335,3 +7335,17 @@ command for the private character3 report. Actual character3 aggregates and the
 latent-feed failure trace remain pending with the reviewer; this is not new data.
 No private reads, model/encoder calls, live writes, merge or deployment.
 Heartbeat remains ACTIVE; no completion/routine ntfy under the revised policy.
+
+
+## 2026-11-09 — Exact-exchange control mode inheritance
+
+Coordination #39–40: foreign controls can inherit the mode of their explicitly
+reviewed adjacent subject reply, with source surface and both text hashes bound.
+There is no timestamp-nearest or control-author-family guess. Invalid links stay
+unknown. Pool matching retains the source exchange assignment when choosing a
+target. Private pair outputs retain the anchor/source evidence; public output is
+counts only. Family-derived mode remains an assumption and cross-family exclusions
+are unchanged. 69 isolated prototype checks pass; ownership validation and exact
+review commit are recorded in the coordination reply. No new private data run,
+model call, live write, merge or deployment. Prospective somatic metadata is next;
+full suites and private character rerun remain with the reviewer. Heartbeat ACTIVE.

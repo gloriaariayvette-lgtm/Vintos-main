@@ -319,7 +319,52 @@ def scores(row,reference):
 def control_review_binding(item):
     """Bind a supplied review to text, source classification and matching metadata."""
     fields=('candidate_id','content','context','timestamp','kind','author','mode','surface','language')
-    return digest(json.dumps({k:item.get(k) for k in fields},sort_keys=True,allow_nan=False))
+    bound={k:item.get(k) for k in fields}
+    if 'exchange' in item:bound['exchange']=item['exchange']
+    return digest(json.dumps(bound,sort_keys=True,allow_nan=False))
+
+
+def control_mode(item):
+    return item.get('_exchange_mode',{}).get('mode',item.get('mode','unknown'))
+
+
+def bind_control_exchanges(items,rows,cutoff):
+    """Resolve reviewed exact exchanges before matching; never infer adjacency from time."""
+    by_id={r['id']:r for r in rows};result=[];counts=Counter()
+    for supplied in items:
+        if not isinstance(supplied,dict) or '_exchange_mode' in supplied:
+            raise ValueError('invalid control candidate')
+        item=dict(supplied);exchange=item.get('exchange')
+        if 'exchange' in item:
+            # Supplying a broken exchange must not fall back to a claimed mode.
+            assignment={'mode':'unknown','mode_source':'unknown','adjacent_reply_id':None,
+                        'adjacent_reply_sha256':None,'adjacent_mode_source':None,
+                        'exchange_sha256':None}
+            item['_exchange_mode']=assignment
+            row=by_id.get(exchange.get('reply_id')) if isinstance(exchange,dict) else None
+            valid=(isinstance(exchange,dict) and set(exchange)=={
+                'link','reply_id','reply_sha256','control_sha256','source_record_sha256'}
+                and exchange['link']=='exact_exchange' and row is not None
+                and exchange['reply_sha256']==row['sha']
+                and exchange['control_sha256']==digest(item.get('content',''))
+                and isinstance(exchange['source_record_sha256'],str)
+                and re.fullmatch('[0-9a-f]{64}',exchange['source_record_sha256']) is not None
+                and item.get('kind')=='foreign' and item.get('author')=='non_subject'
+                and item.get('surface')==row['surface'] and row['surface']!='unknown'
+                and row['mode'] in MODES[:2]
+                and item.get('mode','unknown') in ('unknown',row['mode']))
+            if valid:
+                assignment.update(mode=row['mode'],mode_source='adjacent_reply_rule',
+                    adjacent_reply_id=row['id'],adjacent_reply_sha256=row['sha'],
+                    adjacent_mode_source=row['mode_source'],exchange_sha256=exchange['source_record_sha256'])
+                # The existing review binds candidate text AND the complete exchange.
+                valid=control_reviewed(item,cutoff)
+            if not valid:
+                assignment.update(mode='unknown',mode_source='unknown',adjacent_reply_id=None,
+                    adjacent_reply_sha256=None,adjacent_mode_source=None,exchange_sha256=None)
+            counts['linked' if valid else 'unlinked_or_unknown']+=1
+        result.append(item)
+    return result,dict(counts)
 
 
 def control_reviewed(item,cutoff):
@@ -333,7 +378,7 @@ def control_reviewed(item,cutoff):
         and re.fullmatch(r'[0-9a-f]{64}',review['evidence_sha256']) is not None
         and isinstance(item.get('candidate_id'),str) and 0<len(item['candidate_id'])<=256
         and item.get('author')==('non_subject' if item.get('kind')=='foreign' else 'subject')
-        and item.get('mode') in MODES[:2] and item.get('surface') in CONTROL_SURFACES
+        and control_mode(item) in MODES[:2] and item.get('surface') in CONTROL_SURFACES
         and at<cutoff)
 
 
@@ -348,7 +393,7 @@ def control_cache(item,encoder,dimension):
 
 
 def control_match(item,row,context):
-    return (row['mode']!='unknown' and item.get('mode')==row['mode']
+    return (row['mode']!='unknown' and control_mode(item)==row['mode']
         and row['surface']!='unknown'
         and (item['surface']==row['surface'] if item['kind']=='foreign' else item['surface']!=row['surface'])
         and bool(row['language']) and item.get('language')==row['language']
@@ -504,6 +549,8 @@ def prepare(bundle,cutoff):
         row.setdefault('evaluation_annotations',set()).add((event['annotator'],event['category']))
     supplied=bundle.get('controls',[]);pool=bundle.get('control_pool',[])
     if supplied and pool:raise ValueError('supply paired controls or a control pool, not both')
+    supplied,exchange_counts=bind_control_exchanges(supplied or pool,unique,cutoff)
+    if pool:pool=supplied;supplied=[]
     own_hashes={digest(final_response(r)) for r in rows if r.get('role')=='assistant'}
     selection={'input_candidates':len(supplied),'matching':'explicit_pairs'}
     if pool:supplied,selection=select_control_pool(pool,unique,encoder,dimension,own_hashes,cutoff)
@@ -527,7 +574,7 @@ def prepare(bundle,cutoff):
         v,c=control_cache(item,encoder,dimension)
         if digest(text) in own_hashes:excluded['control_reuses_reply_text']+=1;continue
         if item.get('mode','unknown') not in MODES:raise ValueError('invalid control mode')
-        if row['mode']=='unknown' or item.get('mode','unknown')!=row['mode']:
+        if row['mode']=='unknown' or control_mode(item)!=row['mode']:
             excluded['control_mode_unknown_or_mismatched']+=1;continue
         if (not row['language'] or item.get('language')!=row['language']
                 or not .5<=max(1,len(text))/max(1,len(row['text']))<=2
@@ -538,7 +585,9 @@ def prepare(bundle,cutoff):
         if digest(text) in used_control_text or pair in used_pairs:
             excluded['control_reused_text_or_pair']+=1;continue
         used_control_text.add(digest(text));used_pairs.add(pair)
-        controls.append({'id':item['matched_reply_id'],'kind':item['kind'],'vector':v,'style':style(text),'mode':item['mode'],
+        controls.append({'id':item['matched_reply_id'],'kind':item['kind'],'vector':v,'style':style(text),'mode':control_mode(item),
+            'mode_source':item.get('_exchange_mode',{}).get('mode_source','supplied_review'),
+            'mode_binding':item.get('_exchange_mode'),
             'candidate_id':item['candidate_id'],'sha':digest(text),'review_binding':control_review_binding(item),
             'context_cosine':float(c@row['context_vector']),'source_surface':item['surface'],
             'reviewer_class':item['review']['reviewer']})
@@ -551,6 +600,9 @@ def prepare(bundle,cutoff):
         'pairs':sum(c['source_surface']==surface and c['reviewer_class']==reviewer and c['kind']==kind for c in controls)}
         for surface in CONTROL_SURFACES for reviewer in CONTROL_REVIEWERS for kind in ('foreign','other_surface')
         if any(c['source_surface']==surface and c['reviewer_class']==reviewer and c['kind']==kind for c in controls)]
+    selection['exchange_modes']=exchange_counts
+    selection['selected_mode_sources']=dict(Counter(c['mode_source'] for c in controls))
+    selection['exchange_adjacency_independently_verified']=False
     selection['source_authorship_independently_verified']=False
     return unique,controls,candidates,positive,{'excluded':dict(excluded),'attribution':attribution_report,
         'feedback':dict(feedback_counts),'positive_reply_links':len(positive),
@@ -619,7 +671,7 @@ def evaluate(rows,controls,candidates,positive):
                             'mode_evidence_sha256':r.get('mode_evidence_sha256',[]),
                             'family_comparison_eligible':r['family_comparison_eligible'],'surface':surface,'percentiles':pct,
                             'reference_days':reference_days,'reference_turns':len(ref),
-                            'control_matches':[{k:c[k] for k in ('kind','candidate_id','sha','review_binding','context_cosine','source_surface','reviewer_class')}
+                            'control_matches':[{k:c[k] for k in ('kind','candidate_id','sha','review_binding','context_cosine','source_surface','reviewer_class','mode_source','mode_binding')}
                                 for c in by_reply_controls[r['id']]]})
             fold.append((r,s));status['scored']+=1
         if len(fold)>=2:
@@ -658,7 +710,7 @@ def run(bundle,cutoff,private_control_matches=None,private_mode_assignments=None
             'mode':r['mode'],'mode_source':r['mode_source'],
             'mode_evidence_sha256':list(r['mode_evidence_sha256'])} for r in rows)
     if private_control_matches is not None:
-        private_control_matches.extend({k:c[k] for k in ('id','kind','candidate_id','sha','review_binding','context_cosine','source_surface','reviewer_class')} for c in controls)
+        private_control_matches.extend({k:c[k] for k in ('id','kind','candidate_id','sha','review_binding','context_cosine','source_surface','reviewer_class','mode_source','mode_binding')} for c in controls)
     primary,details=evaluate([r for r in rows if r['primary']],controls,days,positive)
     sensitivity,_=evaluate(rows,controls,days,positive)
     for view,selected in ((primary,[r for r in rows if r['primary']]),(sensitivity,rows)):
@@ -761,6 +813,7 @@ def render_summary(report):
         lines+=['', '### Mode-specific familiarity and comparisons', '',
                 'Controls require an exact bound supplied provenance review; reviewer claims are not independently authenticated.',
                 'Store-authorship evidence is a separate supplied class, not a human review or verified authorship.',
+                'Exchange-linked controls inherit their adjacent reply mode; family-derived modes remain assumptions, not independent mode evidence.',
                 'Foreign controls match surface; other-surface controls are his own text elsewhere, not non-him negatives.',
                 'References and controls must match mode; reference replies also match surface. Unknown mode is unscored.',
                 'Pooled family differences are confounded with mode and are omitted here.', '',
@@ -854,7 +907,7 @@ def render_reader_summary(report):
         'High engagement does not certify every reply on those days.',
         '- Mode uses decision receipts first, then independent evidence or reviewed somatic intervals. Explicit owner family fallback is labelled; unknown stays unscored. '
         'Cross-family comparisons exclude family-labelled targets and any fold with family-labelled references. No independent overlap means not identifiable, not invariant.',
-        '- Control authorship and source reviews are supplied claims. Store metadata is kept separate from human review. '
+        '- Control authorship and exact-exchange reviews are supplied claims. An exchange-linked control inherits the mode of its adjacent reply; a family-derived label remains an assumption. Store metadata is kept separate from human review. '
         'Even a verified artifact hash does not establish the revision label or how cached vectors were produced.', '',
         'The detailed summary contains style, surface coverage, source classes and within-mode comparisons. '
         'Private text, individual reply records and vectors remain in local scratch. '

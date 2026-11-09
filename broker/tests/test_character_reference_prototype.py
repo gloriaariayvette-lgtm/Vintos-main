@@ -441,6 +441,92 @@ class Tests(unittest.TestCase):
         self.assertEqual(report['coverage']['excluded']['control_mode_unknown_or_mismatched'],2)
         self.assertEqual(report['primary_10s']['metrics']['foreign_semantic_paired_win']['observations'],30)
 
+    def exchange_controls(self):
+        self.bundle['mode_observations']=[]
+        self.bundle['historical_family_fallback']=True
+        replies={r['turn_id']:r for r in self.bundle['rows'] if r['role']=='assistant'}
+        for item in self.bundle['controls']:
+            row=replies[item['matched_reply_id']]
+            item['mode']='unknown'
+            item['exchange']=dict(link='exact_exchange',reply_id=row['turn_id'],
+                reply_sha256=P.digest(row['content']),control_sha256=P.digest(item['content']),
+                source_record_sha256=P.digest('synthetic exchange '+row['turn_id']))
+            review_control(item)
+        return self.bundle['controls']
+
+    def test_exchange_control_modes_use_adjacent_reply_and_stay_private(self):
+        self.exchange_controls();original=copy.deepcopy(self.bundle);matches=[]
+        report,private=P.run(self.bundle,self.cutoff,matches)
+        self.assertEqual(self.bundle,original)
+        self.assertEqual(report['coverage']['matched_controls'],32)
+        selection=report['coverage']['control_selection']
+        self.assertEqual(selection['selected_mode_sources'],{'adjacent_reply_rule':32})
+        self.assertEqual(selection['exchange_modes'],{'linked':32})
+        self.assertFalse(selection['exchange_adjacency_independently_verified'])
+        for item in matches:
+            binding=item['mode_binding']
+            self.assertEqual(binding['adjacent_mode_source'],'gloria_family_rule')
+            self.assertEqual(binding['adjacent_reply_id'],item['id'])
+            expected='intimate' if item['id'].endswith('-1') else 'opening_everyday'
+            self.assertEqual(binding['mode'],expected)
+        self.assertTrue(private)
+        for mode in P.MODES[:2]:
+            view=report['primary_10s']['per_mode'][mode]
+            self.assertIn('foreign_semantic_paired_win',view['metrics'])
+            self.assertEqual(view['shared_day_family_differences'],[])
+        public=json.dumps(report)
+        self.assertNotIn('reply-0-0',public)
+        self.assertNotIn(original['controls'][0]['exchange']['source_record_sha256'],public)
+
+    def test_exchange_pool_keeps_source_mode_when_matching_another_reply(self):
+        self.exchange_controls();pool=self.pool();before=copy.deepcopy(pool)
+        _,controls,_,_,coverage=P.prepare(self.bundle,self.cutoff)
+        self.assertEqual(len(controls),32);self.assertEqual(pool,before)
+        for c in controls:
+            self.assertEqual(c['mode'],c['mode_binding']['mode'])
+        self.assertEqual(coverage['control_selection']['exchange_modes'],{'linked':32})
+
+    def test_exchange_binding_changes_or_wrong_reply_never_guess(self):
+        for field,value in (('reply_id','absent'),('reply_sha256','0'*64),
+                            ('control_sha256','0'*64),('source_record_sha256','bad'),
+                            ('link','nearest_time')):
+            self.bundle=fixture();items=self.exchange_controls()
+            items[0]['exchange'][field]=value;review_control(items[0])
+            report,_=P.run(self.bundle,self.cutoff)
+            self.assertEqual(report['coverage']['matched_controls'],31)
+        self.bundle=fixture();items=self.exchange_controls()
+        items[0]['exchange']['source_record_sha256']='0'*64
+        report,_=P.run(self.bundle,self.cutoff)
+        self.assertEqual(report['coverage']['matched_controls'],31)
+        self.assertEqual(report['coverage']['control_selection']['exchange_modes']['unlinked_or_unknown'],1)
+
+    def test_exchange_unknown_conflict_surface_and_authorship_fail_closed(self):
+        for change in ({'mode':'intimate'},{'surface':'reelroom'},
+                       {'kind':'other_surface','author':'subject'},
+                       {'timestamp':'2021-01-01T00:00:00Z'}):
+            self.bundle=fixture();items=self.exchange_controls();items[0].update(change)
+            review_control(items[0])
+            report,_=P.run(self.bundle,self.cutoff)
+            self.assertEqual(report['coverage']['matched_controls'],31)
+        self.bundle=fixture();self.exchange_controls()
+        self.bundle['historical_family_fallback']=False
+        report,_=P.run(self.bundle,self.cutoff)
+        self.assertEqual(report['coverage']['matched_controls'],0)
+        self.assertEqual(report['coverage']['control_selection']['exchange_modes'],{'unlinked_or_unknown':32})
+
+    def test_exchange_respects_independent_mode_and_rejects_internal_injection(self):
+        self.exchange_controls()
+        row=next(r for r in self.bundle['rows'] if r.get('turn_id')=='reply-0-0')
+        self.bundle['mode_observations']=[dict(reply_id=row['turn_id'],reply_sha256=P.digest(row['content']),
+            timestamp=row['timestamp']-1,mode='intimate',source='router_decision',
+            evidence_sha256=P.digest('synthetic observation'),link='exact_reply')]
+        _,controls,_,_,_=P.prepare(self.bundle,self.cutoff)
+        c=next(c for c in controls if c['id']=='reply-0-0')
+        self.assertEqual(c['mode_binding']['adjacent_mode_source'],'router_decision')
+        self.assertEqual(c['mode'],'intimate')
+        self.bundle['controls'][0]['_exchange_mode']={'mode':'opening_everyday'}
+        with self.assertRaisesRegex(ValueError,'invalid control candidate'):P.prepare(self.bundle,self.cutoff)
+
     def pool(self):
         self.bundle['control_pool']=self.bundle.pop('controls')
         for item in self.bundle['control_pool']:item.pop('matched_reply_id')
