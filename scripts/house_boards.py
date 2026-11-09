@@ -402,7 +402,8 @@ def to_wav(src_path, seconds=None):
     """A 16 kHz mono WAV (what the shower board plays) of any audio file; its path."""
     fd, out = tempfile.mkstemp(suffix=".wav"); os.close(fd)
     cmd = ["ffmpeg", "-y", "-loglevel", "error", "-i", src_path] + (["-t", str(int(seconds))] if seconds else []) + \
-          ["-ac", "1", "-ar", "16000", "-sample_fmt", "s16", out]
+          ["-af", "highpass=f=180,lowpass=f=6500,acompressor=threshold=0.08:ratio=3:attack=5:release=100:makeup=2,alimiter=limit=0.6:level=false",
+           "-ac", "1", "-ar", "16000", "-sample_fmt", "s16", out]
     r = _run(cmd, timeout=180)
     if r.returncode != 0: raise RuntimeError("ffmpeg: %s" % r.stderr.decode()[-160:])
     return out
