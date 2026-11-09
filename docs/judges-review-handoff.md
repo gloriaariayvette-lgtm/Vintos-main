@@ -1667,3 +1667,35 @@ test-merge and host stress validation; Gloria retains host-clock correction and
 deployment. Historical flake root cause remains candidate until corresponding
 numeric host evidence proves it. No live changes, actual provider/model calls,
 GPU, full-suite duplication, merge or deployment. Heartbeat remains ACTIVE.
+
+
+## 2026-11-09 — review #59: align latent consumer test clocks
+
+Reviewer reports integration through 6363f5a1 at be0cd015, with 661/661 deploy
+and 664/664 live checks, capture 20/20 and latent 19/20 on the host stress run.
+The retained failing test_09 diagnostic is future_packet. Source inspection
+confirms its fixture explicitly supplied now to refresh, selecting the legacy wall
+path, while real consumer adapters omitted now. A backwards wall step therefore
+correctly refused that replay packet. This identifies the retained test failure;
+it does not establish the cause of unrelated historical flakes. No host inspection
+or production gate change was made here.
+
+The three consumer-path tests (05, 08, 09) now call refresh with now omitted and
+assert the resulting freshness receipt. Explicit replay/causality tests keep their
+paired timestamps. The negative control still constructs a legacy packet and
+proves that a 2.8-second backward consumer clock refuses with future_packet while
+preserving the original feed. No gate or assertion weakened.
+
+A regression repeats each of the three consumer paths 50 times, with fresh scratch
+fixtures and a synthetic shared domain. It applies the 2.8-second step immediately
+after the actual refresh returns, asserts the producer recorded the pre-step wall
+clock, and requires stepped consumer reads plus forward monotonic reads. This
+avoids accidentally consuming the step in a pre-refresh baseline read. Existing
+content preservation and call-count assertions remain active; providers/senders
+are stubs. All 22 suite tests pass, including 150 injected consumer-path subruns.
+Log: /tmp/judges-s59-latent-50.log. This is 50 repetitions per consumer path, not a
+claim of 50 independent full-suite or host runs. Review remains Claude's.
+
+The test-only follow-up is on codex/judges-clock-followups above 32bda7e4 for
+inclusion with the three #58 commits. No live/service changes, new real provider
+or model calls, GPU, full-suite duplication, merge or deployment. Heartbeat ACTIVE.

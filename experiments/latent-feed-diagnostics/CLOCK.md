@@ -106,3 +106,17 @@ recover_spool now catches configuration/clock acquisition exceptions within its
 existing recovery boundary, counts spool_replay_unconfirmed, and keeps the writer
 alive for volatile work and subsequent recovery. Durable ingress remains intact.
 The separate persisted spool-retention wall-clock gates remain unchanged.
+
+
+## Review #59: retained latent consumer-test failure
+
+The reviewer retained future_packet from test_09 during a real-host 20-run stress
+check (latent 19/20, capture 20/20). That fixture used explicit refresh(now=...),
+which intentionally creates a legacy replay packet without a freshness clock,
+then invoked real consumer paths with their default wall clock. A backward step
+correctly refuses that combination. Consumer tests 05/08/09 now use default
+refresh and assert a monotonic freshness receipt. Replay tests retain explicit
+clocks, including a 2.8-second negative control that still refuses future_packet.
+Each consumer path passes 50 injected post-publication backward steps in isolated
+synthetic fixtures. Production gates are unchanged. This establishes the retained
+fixture mismatch, not a general explanation for every historical clock failure.
