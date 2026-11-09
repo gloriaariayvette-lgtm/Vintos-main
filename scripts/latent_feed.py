@@ -349,16 +349,21 @@ def refresh(enc=None, memory=None, events=None, exs=None, now=None):
         return {'status':'updated','frame_id':packet['frame_id'],'events':len(events),'outcomes':len(outcomes)}
 
 
-def evidence(consumer, memory=None, now=None, frame_id=None):
+def evidence(consumer, memory=None, now=None, frame_id=None, diagnostics=False):
     """Return bounded text plus a content-free receipt; failures only omit this addition."""
     mem=memory_path(memory);now=time.time() if now is None else now
+    def unavailable(reason):
+        return '',{'status':'unavailable','reason':reason} if diagnostics else {}
     try:
         p=load(mem/'latent-feed.json',{}) or {}
-        if p.get('schema')!=SCHEMA or not 0<=now-float(p['generated_at'])<=TTL:return '',{}
-        if frame_id and p['frame_id']!=frame_id:return '',{}
-        if epoch(p['cutoff'])>now:return '',{}
+        if p.get('schema')!=SCHEMA:return unavailable('missing_or_invalid_packet')
+        age=now-float(p['generated_at'])
+        if age<0:return unavailable('future_packet')
+        if not age<=TTL:return unavailable('stale_or_invalid_packet')
+        if frame_id and p['frame_id']!=frame_id:return unavailable('frame_mismatch')
+        if epoch(p['cutoff'])>now:return unavailable('future_cutoff')
         from jepa_predictor import EMB_MODEL
-        if p.get('encoder')!=EMB_MODEL:return '',{}
+        if p.get('encoder')!=EMB_MODEL:return unavailable('encoder_mismatch')
         channels={};refs=[]
         for name,c in p['channels'].items():
             if name not in ('stream', 'gloria'):continue
@@ -370,8 +375,10 @@ def evidence(consumer, memory=None, now=None, frame_id=None):
             if identity!=c['checkpoint_id']:continue
             channels[name]=c
             refs += c.get('anchors',[])[:2]+c.get('basis_refs',[])
+        if not channels:return unavailable('checkpoint_unavailable_or_changed')
         live={e['id']:e for e in text_events(mem,refs=refs)}
         channels={name:c for name,c in channels.items() if all(r['id'] in live and (name!='gloria' or r.get('gloria_content_hash')==live[r['id']]['ref'].get('gloria_content_hash')) for r in c.get('basis_refs',[]))}
+        if not channels:return unavailable('source_basis_changed_or_missing')
         lines=[];used=[];seen=set()
         for name,c in channels.items():
             for ref in c.get('anchors',[])[:2]:
@@ -389,7 +396,7 @@ def evidence(consumer, memory=None, now=None, frame_id=None):
         g=channels.get('gloria',{})
         if g.get('expected_cosine_error') is not None:
             lines.append('Next-Gloria-turn expected semantic error %.3f; lower is closer, not certainty about intent.'%g['expected_cosine_error'])
-        if not lines:return '',{}
+        if not lines:return unavailable('no_supported_evidence')
         text='\n\nTRAINED CONTEXT (past evidence and next-event estimates; interpretation remains yours):\n'+'\n'.join(lines)
         receipt={'frame_id':p['frame_id'],'consumer':consumer,'included':used,
                  'targets':{k:v.get('target') for k,v in channels.items()}}
@@ -400,7 +407,7 @@ def evidence(consumer, memory=None, now=None, frame_id=None):
         except OSError:pass
         return text,receipt
     except Exception:
-        return '',{}
+        return unavailable('evidence_read_failed')
 
 
 def append_context(original, consumer, memory=None):

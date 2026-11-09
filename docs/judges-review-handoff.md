@@ -1298,3 +1298,151 @@ regenerated unchanged; diff clean. Full Aegis suite, test merge and private-copy
 remain with the reviewer. No private data, new model/provider call, GPU, model swap,
 live write, merge or deployment. Exact branch/path/pushed tip in coordination reply.
 Heartbeat ACTIVE; no completion/routine notification.
+
+
+## 2026-11-09 12:44 CST — private cache producer (#49)
+
+Note #49 resolves the producer-location question: character caches were made in
+the reviewer's private run, not by any live cache. Added the separately invoked
+experiments/character-reference/encode_cache.py on codex/judges-private-cache-producer
+above b998be9d. No shared HTTP/self-head/present-moment cache or reply path changed.
+
+Explicit GGUF is copied exclusively to a new 0700 scratch output directory, fsynced,
+made 0400, hashed there and stamped with actual copy-completion time. Only the copy
+is loaded by the installed in-process local embedding runtime. Full hash checks
+around load and after encoding, plus file identity/change-time checks around every
+call, refuse mutated/replaced/restored-but-touched copies. CPU offload disabled; no
+download or subprocess fallback. Exact full reply/context strings, no prefix or token
+truncation; flat finite nonzero vectors normalized to L2. Pooling is caller-explicit.
+Runtime package version/settings and exact per-input encoding clocks are private.
+Native backend version stays unknown; Python audit is not a native-code OS sandbox.
+
+Produces fresh character-input.json, cache.json, directly consumable
+encoder-cache-metadata-v1 cache-metadata.json and counts-only counts.json (0600).
+New encoder ID binds artifact/runtime/settings. All source rows/provenance/merge
+fields retained, original inputs/cache untouched. Existing outputs/copies, symlinks,
+repository/live paths, old numerical evidence and nonempty control caches refused.
+Errors and native output cannot expose private paths through ordinary CLI output.
+
+Migration: no metadata backfill or vector relabelling. Real copy time may follow
+historical reply times; builder/numerical freeze-before-act gates stay intact.
+Fresh historical encoding therefore remains unscored under that prospective gate.
+README explicitly separates that limitation from a retrospective-policy decision.
+
+135 isolated synthetic checks pass: producer 19, builder 15, character 72, runner 18,
+ownership 11. Logs /tmp/judges-cache-{producer,builder,character,runner,owners}-tests.log.
+Required reports regenerated unchanged; diff clean. Stub encoders/tiny synthetic file
+bytes only; no actual model, real GGUF, package install, private record, GPU, provider
+call, live write, merge or deployment. Real runtime compatibility/private execution
+belongs to the reviewer. Exact pushed commit/path/branch in coordination reply.
+Heartbeat ACTIVE; no resumed/completion notification.
+
+
+## 2026-11-09 13:05 CST — reviewed published-artifact freeze (#50)
+
+Added encoder_freeze.py and an empty reviewed published-encoder-pins.json registry.
+Producer defaults to actual copy-time freeze; explicit published_artifact requires
+external_pretrained plus a reviewed exact-file hash/revision/date pin, with no
+subject training. Missing/mismatched/unreviewed pins, local-trained qualification,
+future revision relative to copy, and malformed registries refuse before encoding.
+Actual copy completion and encoding clocks remain recorded; effective freeze alone
+uses the reviewed publication date. No network or production registry override.
+
+Builder and numerical runner revalidate qualified receipts against their checked-in
+registry and preserve them privately. Summaries separate copy_time,
+published_artifact, legacy_unknown and unknown; mixed sources cannot form a global
+encoder. Legacy supplied timestamps retain their prior semantics and explicit
+unknown source. Published revisions after scored acts remain unscored. Existing
+strict lineage, indirect influence, mode, anchor and calibration gates are intact.
+Policy/pin-file hashes join private manifests. READMEs explain review, schema,
+private invocation and differing source-count denominators. No actual pin invented.
+
+148 isolated synthetic checks pass: producer 32, builder 15, runner 18, character 72,
+ownership 11. End-to-end stub producer -> builder -> runner scores synthetic acts
+with a reviewed placeholder pin; refusals include missing pin at downstream stages,
+hash mismatch, subject/local training, missing/tampered receipts and mixed sources.
+Logs: /tmp/judges-published-{producer,builder,runner,character,owners}-tests.log.
+Required reports regenerated unchanged; diff clean. No real encoder/model/provider
+call, private record read, live write, GPU, merge or deployment. Real pin review and
+private run remain with the independent reviewer; full Aegis suite remains theirs.
+Branch codex/judges-published-encoder-freeze, based on bae1abde. Exact pushed commit
+and checkout path in the coordination reply. Heartbeat ACTIVE; no routine ntfy.
+
+
+## 2026-11-09 13:10 CST — reviewed pin and numerical judge status (#51)
+
+Recorded the external artifact pin supplied in coordination note #51, including
+exact public file hash, full revision, conservative revision date, declared byte
+size and reviewer attribution. Verification belongs to that reviewer; no download,
+model load or independent network/hash verification was performed in this change.
+Registry parsing now accepts validated optional reviewer/size_bytes metadata without
+relaxing required pin, training, date or hash gates. All metadata stays in receipts.
+
+Added experiments/nonllm-judges/STATUS.md: six new components, explicit inputs,
+offline versus private-run-ready versus missing capture state, and Gloria's later
+capture prerequisites. Recurrence/grouping are standalone prototypes, not part of
+the private-run CLI. The dedicated production shadow sink exists and defaults off;
+receipt capture does not wire numerical scorers into live consumers. Source status
+is distinguished from live verification. Existing character/innovation work remains.
+
+44 isolated checks pass: producer/pin 33, ownership 11. The new check parses the
+actual checked-in pin, checks its hash shape/revision/date/reviewer, exercises pure
+qualification without loading weights, and rejects malformed optional metadata.
+Logs /tmp/judges-reviewed-pin-tests.log and /tmp/judges-reviewed-pin-owners-tests.log.
+Required reports regenerated unchanged; diff clean. No private data read, encoder
+or provider call, GPU, live config/write, model swap, merge or deployment. Full suite
+and private runs remain with the reviewer. Branch codex/judges-reviewed-pin-status,
+based on 84eebed5; exact path/pushed tip in coordination reply. Heartbeat ACTIVE.
+
+
+## 2026-11-09 13:26 CST — review fixes and remaining flake diagnosis (#52/#53)
+
+Raised the existing narrator response ceiling from 220 to 284 to reserve 64 tokens
+for interval metadata. One existing generation call/model chain remains; synthetic
+backend regression retains 220 narration token units plus the interval suffix.
+This is a contract fixture, not a provider-tokenizer or live narration measurement.
+Private cache producer now gives typed encoder_runtime_unavailable with a fixed
+approved-install hint on ImportError, never installation or private path disclosure.
+Note #53 reports the owner's install approval is being handled by the reviewer.
+
+Deterministic before/after failure evidence:
+- Followthrough: a writer-induced backwards clock reproduces the exact invalid
+  finalization stack. A valid parsed decision now continues with an explicit
+  unavailable capture record, real start/final clocks and no witness_receipt.
+  Persisted observations stay intact; duplicate invocation uses the decision once.
+  Strict Capture clock checks are unchanged; no timestamp clamp or invented receipt.
+- Spool: startup waited for a queue timeout, and continuous volatile work could starve
+  durable ingress indefinitely. Added bounded recovery before the first queue wait
+  and every 250 ms by monotonic scheduling even while busy. Tests exercise real
+  scratch spool publication before the first get and 9 records across the 8-record
+  recovery bound with busy queue traffic. Original recovery deadline/assertions stay.
+  This proves/fixes scheduling gaps; the retained idle-startup timeout alone does
+  not establish why its particular run exceeded two seconds.
+
+Latent original omission remains unresolved: there are no concurrent heading and
+trained-context writers in test_09's synchronous call path. A backwards clock
+reproduces the same missing-context symptom through the correct future-packet gate,
+but the old log has no rejected-gate/timestamp evidence to attribute that run.
+Added optional content-free rejection diagnostics and exact-call test assertion
+context. Default callers still get empty text/empty receipt on refusal, so no
+false latent grounding is propagated. No causality gate or assertion was weakened.
+100 repeated test_09 runs passed; deterministic backwards-clock regression preserves
+the heading, refuses future evidence, and includes context once the clock catches up.
+Reviewer input needed: retain the new reason from the next isolated failing run.
+One needs-input ntfy delivered; deduplicate this unchanged issue. Do not claim the
+original latent or idle-spool flake root cause established by these tests.
+
+209 targeted checks pass (producer 34, latent 16, intervals 12, followthrough 55,
+spool 27, capture 27, sink 26, owners 11, coarse-clock wrapper 1 with 68 nested
+followthrough/completion checks), plus 100 diagnostic integration repetitions.
+Before logs /tmp/judges-review-followthrough-before.log and
+/tmp/judges-review-spool-before.log retain deterministic failing evidence.
+After logs /tmp/judges-review-{producer,latent,somatic,followthrough,spool}-after.log,
+/tmp/judges-review-test_{witness_capture,witness_sink,want_coarse_clock}.log,
+/tmp/judges-review-owners.log and /tmp/judges-review-latent-diagnostic-stress.log.
+Reports regenerated unchanged; diff clean. Original coarse-clock and Lab flake
+causes are not declared solved; coarse-clock passed this targeted rerun.
+No real provider/model call, private input read, GPU, live change, merge or deployment.
+Branch codex/judges-review-fixes above 3fb175ce; exact tip/path in coordination reply.
+Heartbeat ACTIVE; independent full suite/test merge and private runs remain with
+Claude Code. Owner deploy/capture decisions in #53 were not executed by this agent.

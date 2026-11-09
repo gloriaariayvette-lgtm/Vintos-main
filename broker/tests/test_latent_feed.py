@@ -195,11 +195,30 @@ class Tests(unittest.TestCase):
         F.atomic(MEM/'living-trajectory.json',{'self_trajectory':{'declared':['Finish the garden sketch']}})
         original=[dream.gather_present(),RH.get_relational_hint(),EU._novelty_directive()]
         self.refresh()
-        extra=[dream.gather_present(),RH.get_relational_hint(),EU._novelty_directive()]
-        for a,b in zip(original,extra):
-            self.assertTrue(a);self.assertTrue(b.startswith(a));self.assertIn('TRAINED CONTEXT',b)
+        reads=[];read=F.evidence
+        def observed(*args,**kwargs):
+            text,receipt=read(*args,diagnostics=True,**kwargs);reads.append(receipt);return text,receipt
+        with patch.object(F,'evidence',side_effect=observed):
+            extra=[dream.gather_present(),RH.get_relational_hint(),EU._novelty_directive()]
+        for index,(a,b) in enumerate(zip(original,extra)):
+            self.assertTrue(a);self.assertTrue(b.startswith(a));self.assertIn('TRAINED CONTEXT',b,reads[index])
         with patch.object(F,'append_context',side_effect=RuntimeError('offline')):
             self.assertEqual(original,[dream.gather_present(),RH.get_relational_hint(),EU._novelty_directive()])
+
+    def test_future_packet_diagnostic_preserves_existing_heading(self):
+        import types
+        spec=importlib.util.spec_from_file_location('dream_clock_test',REPO/'scripts/premonition-dreamer.py')
+        dream=importlib.util.module_from_spec(spec);spec.loader.exec_module(dream)
+        F.atomic(MEM/'gloria-prediction.json',{'predicted':'Synthetic next row.'})
+        original=dream.gather_present();self.assertTrue(original)
+        self.assertEqual(self.refresh()['status'],'updated')
+        with patch.object(F,'time',types.SimpleNamespace(time=lambda:self.now-1)):
+            self.assertEqual(dream.gather_present(),original)
+            self.assertEqual(F.evidence('premonition',MEM),('',{}))
+            self.assertEqual(F.evidence('premonition',MEM,diagnostics=True)[1],{'status':'unavailable','reason':'future_packet'})
+        with patch.object(F,'time',types.SimpleNamespace(time=lambda:self.now)):
+            combined=dream.gather_present()
+            self.assertTrue(combined.startswith(original));self.assertIn('TRAINED CONTEXT',combined)
 
     def test_10_reading_keeps_call_count_and_original_words(self):
         import reading as R

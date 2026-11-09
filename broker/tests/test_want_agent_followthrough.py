@@ -627,6 +627,26 @@ class Tests(unittest.TestCase):
         self.assertEqual(generation['attempts'][0]['served_model'],'fixture-observed')
         self.assertEqual(rec['capture']['witness_receipt']['delivery'],'unknown')
 
+    def test_capture_clock_regression_does_not_repeat_or_block_valid_work(self):
+        import want_working_thread as W
+        import types
+        self.intake(); w=self.current()[0]; work=W.binding(w,self.state); calls=[]
+        clock=[2000000000.0]
+        def writer(system,user):
+            calls.append(1);clock[0]-=1
+            return self.writer(system,user)
+        with patch.object(W,'time',types.SimpleNamespace(time=lambda:clock[0])):
+            first=W.generate(w,work,self.ws,'opening','clock-regression','Plan',writer,identity='Synthetic identity')
+            second=W.generate(w,work,self.ws,'opening','clock-regression','Plan',writer)
+        self.assertEqual(first,second);self.assertEqual(len(calls),1)
+        record=next(iter(W.load(w,work,self.ws)['generations'].values()))
+        self.assertEqual(record['state'],'done')
+        self.assertEqual(record['capture']['status'],'unavailable')
+        self.assertEqual(record['capture']['reason'],'invalid_finalization_clock')
+        self.assertNotIn('witness_receipt',record['capture'])
+        self.assertLess(record['capture']['finalized_at'],record['at'])
+        self.assertEqual(record['result']['observations'][0]['observed_model'],'fixture-observed')
+
     def test_unknown_served_model_is_not_requested_model(self):
         import want_working_thread as W
         self.intake(); w=self.current()[0]; work=W.binding(w,self.state)

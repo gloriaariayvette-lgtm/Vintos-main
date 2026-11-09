@@ -146,7 +146,7 @@ def gather_turns(start, end):
         kept.append(tup)
     return list(reversed(kept))
 
-def call_llm(prompt, system, model, api, max_tokens=220, temp=0.7):
+def call_llm(prompt, system, model, api, max_tokens=284, temp=0.7):
     key = os.environ.get("XAI_API_KEY", "")
     payload = json.dumps({"model": model,
                           "messages": [{"role": "system", "content": system},

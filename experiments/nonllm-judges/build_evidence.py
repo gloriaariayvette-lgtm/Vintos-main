@@ -10,7 +10,7 @@ sys.dont_write_bytecode=True
 HERE=Path(__file__).resolve().parent
 spec=importlib.util.spec_from_file_location('numerical_runner',HERE/'run_private.py')
 R=importlib.util.module_from_spec(spec);spec.loader.exec_module(R)
-C=R.C;P=R.P
+C=R.C;P=R.P;Q=R.Q
 import witness_receipts as W
 
 
@@ -81,7 +81,7 @@ def build(bundle,lineage,cache,humor,cutoff):
     evidence['nodes']=list(converted.values());P.bounded(evidence['nodes'])
     # Cache metadata must be bound to the exact cached input/context, not a nearby model label.
     cache_rows=unique(cache,'reply_sha256');embedding={r['reply_sha256']:r for r in bundle['embeddings']}
-    pins=[];freezes=[]
+    pins=[];freezes=[];qualifiers=[];freeze_receipts=[];source_counts=Counter()
     for row in prepared:
         meta=cache_rows.get(row['sha']);old=embedding[row['sha']]
         linked=bool(meta and all(meta.get(k)==old.get(k) for k in ('reply_sha256','input_sha256','context_sha256','encoder_id')))
@@ -93,13 +93,24 @@ def build(bundle,lineage,cache,humor,cutoff):
         if linked and meta.get('frozen_at') is not None:
             try:frozen=P.stamp(meta['frozen_at'])
             except (ValueError,TypeError,OverflowError):pass
+        source='legacy_unknown';freeze_receipt=None
+        if linked:
+            source=meta.get('freeze_source','legacy_unknown');freeze_receipt=meta.get('freeze_receipt')
+            if source in ('copy_time','published_artifact'):
+                Q.verify(freeze_receipt,pin,meta.get('frozen_at'),source)
+            elif source!='legacy_unknown' or freeze_receipt is not None:raise ValueError('invalid freeze qualifier')
+        source_counts[source if linked and frozen is not None else 'unknown']+=1
+        qualifiers.append(source);freeze_receipts.append(freeze_receipt)
         freeze_reason='recorded' if frozen is not None and 0<=frozen<row['at'] else ('missing_metadata' if meta is None else 'missing_invalid_or_late_freeze')
         reasons['encoder_pin'][pin_reason]+=1;reasons['encoder_freeze'][freeze_reason]+=1
         pins.append(pin if pin_reason=='recorded' else None);freezes.append(frozen if freeze_reason=='recorded' else None)
     output=copy.deepcopy(bundle)
-    coherent=bool(prepared and None not in pins and None not in freezes and len(set(pins))==len(set(freezes))==1)
+    coherent=bool(prepared and None not in pins and None not in freezes and len(set(pins))==len(set(freezes))==len(set(qualifiers))==1
+                  and len({P.canonical(r) for r in freeze_receipts})==1)
     if coherent:
         output['encoder']['artifact_sha256']=pins[0];evidence['encoder_frozen_at']=freezes[0]
+        evidence['encoder_freeze_source']=qualifiers[0]
+        if freeze_receipts[0] is not None:evidence['encoder_freeze_receipt']=freeze_receipts[0]
     elif prepared and None not in pins and None not in freezes:
         reasons['encoder_pin']['inconsistent_cache_metadata']+=len(prepared)
         reasons['encoder_freeze']['inconsistent_cache_metadata']+=len(prepared)
@@ -120,7 +131,7 @@ def build(bundle,lineage,cache,humor,cutoff):
         'source_claims_independently_verified':False,'cutoff':cutoff}
     summary={'schema':'evidence-builder-counts-v1','character_replies':len(prepared),
         'original_act_bindings':len(evidence['bindings']),'normalized_ancestry_nodes':len(evidence['nodes']),
-        'encoder_metadata_available':coherent,'humor_attempts':len(evidence['humor_attempt_ids']),
+        'encoder_metadata_available':coherent,'encoder_freeze_sources':{s:source_counts[s] for s in Q.SOURCES},'humor_attempts':len(evidence['humor_attempt_ids']),
         'unjoined_humor_drafts':len(drafts)-len(used),'per_field_reason_counts':{k:dict(sorted(v.items())) for k,v in reasons.items()},
         'source_claims_independently_verified':False,'model_calls':0}
     return output,summary
@@ -146,7 +157,7 @@ def main(argv=None):
             inputs[key]=value[field]
     private,public=build(inputs['input'],inputs.get('lineage',[]),inputs.get('cache',[]),inputs.get('humor',[]),args.cutoff)
     private['evidence_builder']['manifest']={'input_sha256':hashes,'code_sha256':{str(path.relative_to(R.REPO)):W.digest(path.read_text()) for path in
-        (Path(__file__),HERE/'run_private.py',HERE/'prototype.py',HERE/'voice_drift.py',HERE/'witnessed_facets.py',
+        (Path(__file__),Path(Q.__file__),Q.PIN_FILE,HERE/'run_private.py',HERE/'prototype.py',HERE/'voice_drift.py',HERE/'witnessed_facets.py',
          HERE.parent/'character-reference/prototype.py',HERE.parent/'judges-witness/replay.py',
          R.REPO/'scripts/witness_attribution.py',R.REPO/'scripts/witness_receipts.py',R.REPO/'scripts/evidence_view.py',R.REPO/'scripts/evidence_provenance.py')},
         'served_model':None,'fallback':None,'model_calls':0}

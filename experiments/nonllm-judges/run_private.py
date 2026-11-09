@@ -17,6 +17,8 @@ HERE=Path(__file__).resolve().parent;REPO=HERE.parents[1]
 spec=importlib.util.spec_from_file_location('positive_facets',HERE/'witnessed_facets.py')
 F=importlib.util.module_from_spec(spec);spec.loader.exec_module(F)
 V=F.V;P=V.P;C=V.C
+spec=importlib.util.spec_from_file_location('encoder_freeze',HERE.parent/'character-reference/encoder_freeze.py')
+Q=importlib.util.module_from_spec(spec);spec.loader.exec_module(Q)
 
 
 class Parser(argparse.ArgumentParser):
@@ -38,7 +40,7 @@ def adapt(bundle,cutoff):
     if len(prepared)>P.LIMIT:raise ValueError('numerical projection exceeds 512 admitted replies')
     supplied=bundle.get('numerical_evidence',{})
     if not isinstance(supplied,dict):raise ValueError('invalid numerical evidence')
-    allowed={'schema','nodes','bindings','encoder_frozen_at','items','anchors','humor_attempt_ids','taste_attempt_ids','reference_ids'}
+    allowed={'schema','nodes','bindings','encoder_frozen_at','encoder_freeze_source','encoder_freeze_receipt','items','anchors','humor_attempt_ids','taste_attempt_ids','reference_ids'}
     if supplied and (supplied.get('schema')!='numerical-evidence-v1' or set(supplied)-allowed):
         raise ValueError('unknown numerical evidence schema')
     nodes=supplied.get('nodes',[]);bindings={}
@@ -55,6 +57,11 @@ def adapt(bundle,cutoff):
     # A missing pin/time is unknown, never a zero timestamp or an invented artifact.
     if artifact is not None and not P.hashed(artifact):raise ValueError('invalid artifact pin')
     if frozen is not None:frozen=P.stamp(frozen)
+    source=supplied.get('encoder_freeze_source','legacy_unknown')
+    receipt=supplied.get('encoder_freeze_receipt')
+    if source in ('copy_time','published_artifact'):
+        Q.verify(receipt,artifact,frozen,source)
+    elif source!='legacy_unknown' or receipt is not None:raise ValueError('invalid freeze qualifier')
     if artifact is not None and frozen is not None:
         dimensions={len(r['vector']) for r in prepared}
         if dimensions:encoder=dict(id=old['id'],artifact_sha256=artifact,frozen_at=frozen,frozen=True,dimension=next(iter(dimensions)))
@@ -130,9 +137,12 @@ def evaluate(bundle,landings,cutoff,view='both'):
              'source_receipts':[{'turn_id':r.get('turn_id'),**{k:r[k] for k in
                 ('served_by','model','served_model','fallback','provenance','witness_receipt','generation_receipt','generation_join','mode_receipt') if k in r}}
                 for r in bundle['rows'] if r.get('role')=='assistant' and C.instant(r['timestamp'])<cutoff],
-             'encoder_claim':bundle['encoder'],'encoder_frozen_at':supplied.get('encoder_frozen_at'),'views':{}}
+             'encoder_claim':bundle['encoder'],'encoder_frozen_at':supplied.get('encoder_frozen_at'),
+             'encoder_freeze_source':supplied.get('encoder_freeze_source','legacy_unknown') if encoder else 'unknown',
+             'encoder_freeze_receipt':supplied.get('encoder_freeze_receipt'),'views':{}}
     public={'schema':'numerical-counts-v1','character_admitted_replies':len(rows),'character_days':len({r['day'] for r in rows}),
             'adapter_unavailable':adapter_counts,'encoder_metadata_available':encoder is not None,
+            'encoder_freeze_sources':Q.counts(private['encoder_freeze_source'],len(rows)),
             'legacy_feedback_not_promoted':len(bundle.get('feedback',[])),
             'views':{},'strict_admission_invented':False,'source_claims_independently_verified':False}
     for name in ('primary_10s','window30'):
@@ -185,7 +195,7 @@ def main(argv=None):
     private,public=evaluate(bundle,landings,args.cutoff,args.view)
     private['manifest']={'input_sha256':input_hash,'landings_sha256':land_hash,'cutoff':P.stamp(args.cutoff),'view':args.view,
         'code_sha256':{str(path.relative_to(REPO)):hashlib.sha256(path.read_bytes()).hexdigest() for path in
-            (Path(__file__),HERE/'witnessed_facets.py',HERE/'voice_drift.py',HERE/'prototype.py',HERE.parent/'character-reference/prototype.py',
+            (Path(__file__),Path(Q.__file__),Q.PIN_FILE,HERE/'witnessed_facets.py',HERE/'voice_drift.py',HERE/'prototype.py',HERE.parent/'character-reference/prototype.py',
              REPO/'scripts/witness_attribution.py',REPO/'scripts/witness_receipts.py',REPO/'scripts/request_trace.py',REPO/'experiments/judges-witness/replay.py')},
         'python':list(sys.version_info[:3]),'numpy':V.np.__version__,
         'model_calls':0,'served_model':None,'fallback':None}

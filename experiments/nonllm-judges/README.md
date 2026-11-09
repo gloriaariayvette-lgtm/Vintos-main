@@ -632,3 +632,35 @@ need not sum to the reply count. Private output retains input/code fingerprints 
 original serving evidence; the importer itself records no served model/fallback
 because it makes no such call. Neither missing evidence nor unjoined attempts are
 negative outcomes. Synthetic validation is not evidence of historical coverage.
+
+The repository-owned producer `../character-reference/encode_cache.py` now writes
+`encoder-cache-metadata-v1` directly, with exact full strings, a copied GGUF hash,
+copy-time freeze, runtime/settings and per-input clocks. Use its freshly generated
+`character-input.json` alongside `cache-metadata.json`; do not attach fresh metadata
+to old vectors. See the character-reference README for private execution and migration.
+The default copy-time policy keeps the freeze-before-reply gate: fresh encoding of
+older replies reports `missing_invalid_or_late_freeze`, without historical backfill.
+
+The explicit `published_artifact` qualifier permits an external pretrained encoder's
+reviewed exact-file revision date as effective freeze. The actual copy timestamp
+remains in its receipt. See the character-reference README for the checked-in pin
+registry schema, review requirements and producer flags. The registry contains the
+external artifact pin supplied by the independent reviewer in note #51; its review
+attribution is retained. New pins require independent review. No network or historical cache relabelling.
+
+Builder accepts per-cache `freeze_source` and `freeze_receipt`, rechecks the pinned
+hash/date/subject-training qualification, then carries coherent receipts as
+`numerical_evidence.encoder_freeze_source` / `encoder_freeze_receipt` alongside
+`encoder_frozen_at`. Runner rechecks them again against its own registry. Explicit
+qualifiers with missing or mismatched receipts are errors. Local-trained artifacts
+cannot use published qualification. Published revision still must precede each act.
+Mixed sources/receipts cannot form the single global encoder. Supplied legacy freeze
+metadata remains labelled `legacy_unknown`, never implicitly published.
+
+All three summaries separate `copy_time`, `published_artifact`, `legacy_unknown`
+and `unknown` under `encoder_freeze_sources`. Builder counts recorded source
+qualifications even for late freezes; runner counts usable global qualification, or
+unknown when absent. The private report retains the receipt, while public counts
+contain no publisher/repository/file/hash/IDs. Pin-file and policy hashes stay private.
+Original lineage, indirect-influence exclusions, mode provenance, unknown serving
+identity/fallback, calibration and facet-anchor rules are unchanged.
