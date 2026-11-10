@@ -1427,7 +1427,8 @@ _WORKS_NEAR=$(JRN_ENTRY="$ENTRY" timeout 40 python3 - <<'WORKSNEAREOF' 2>/dev/nu
 import os, sys
 sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
 import media_embed
-hits = media_embed.near(os.environ.get("JRN_ENTRY", "")[-2000:], 2, timeout=30)
+# two more than shown: a song's second take (same title, same day) is named once, not twice in a row
+hits = media_embed.distinct(media_embed.near(os.environ.get("JRN_ENTRY", "")[-2000:], 4, timeout=30), 2)
 # under each work, its recorded origin and later readings (work_episodes.py, design 03); free here, no model reads it
 per, _ = media_embed.episodes_for(hits, surface="journal")
 print(media_embed.describe(hits, per))
