@@ -4,7 +4,7 @@
 Prediction tells me where the conversation is going.
 Identity decides whether I'm willing to let it.
 """
-import json, os, glob, sys, urllib.request, uuid, math, copy
+import json, os, glob, sys, urllib.request, uuid, math, copy, re
 from contextvars import ContextVar
 from datetime import datetime
 
@@ -117,6 +117,7 @@ _SCHEMA = ("Return ONLY one complete JSON object in my voice. No example dialogu
         "field_state": "the felt space I choose", "allow_drift": False,
         "goal": "the observable outcome, unchanged after selection",
         "success_criterion": "what in the exchange would demonstrate that outcome",
+        "observation_window": "her_next_reply", "evidence_type": "her_response",
         "enactment_type": "offer", "withheld_object": "",
         "enactment": "one concrete action in my next reply that can cause the goal",
         "gloria": {"difference_intended": "only if served by this move", "enactment": "how this same move serves it"},
@@ -153,6 +154,56 @@ def _valid_target(target):
         if not isinstance(value, dict) or not value.get("difference_intended") or not value.get("enactment"):
             target[axis] = {}
     return target
+
+
+# Where a success criterion can be seen (10 November). Seven in thirty criteria could not be met inside what
+# the judge is shown: a later day, a particular sentence from her. The selector now says where its criterion
+# shows, in two fields that are checked by form only - no reading of the criterion's meaning happens here.
+WINDOWS = ("this_reply", "her_next_reply")
+EVIDENCE = ("my_move", "her_response")
+_QUOTE_DEMAND = re.compile(r"\b(?:exact(?:ly)? (?:the )?(?:words?|phrase|sentence)|word for word|verbatim|in those words)\b", re.I)
+
+
+def _criterion_fault(target):
+    """A fixed code for what is wrong with where the criterion can be seen, or "" when it is in order."""
+    def norm(v): return re.sub(r"[^a-z]+", "_", str(v or "").strip().lower()).strip("_")
+    w, ev = norm(target.get("observation_window")), norm(target.get("evidence_type"))
+    if not w: return "window_missing"
+    if w not in WINDOWS: return "window_invalid"
+    if not ev: return "evidence_missing"
+    if ev not in EVIDENCE: return "evidence_invalid"
+    if ev == "her_response" and w == "this_reply": return "window_evidence_mismatch"   # her answer is not in my reply
+    target["observation_window"], target["evidence_type"] = w, ev
+    return ""
+
+
+# What followed my move, and whose it is (10 November). A device event - the button, a touch - was stored as
+# the follow-up under her label and graded as her answer: NO, on words she never said.
+DEVICE_SOURCES = ("gcs", "reelroom_event")
+_DEVICE_EVENT = re.compile(r"\[(?:she pressed\b|gloria just touched\b)[^\]]*\]", re.I)
+_HER_LABEL = "GLORIA (now):"
+_EVENT_LABEL = "REELROOM EVENT (not Gloria's words):"
+_held_why = ContextVar("intent_held_why", default="")
+
+
+def _her_follow_up(text, source=None):
+    """(the follow-up with only her own words in its live part, "") - or ("", reason) when it holds none.
+
+    Where the turn came from decides first; the text is read only when no source came with it. Reasons are
+    fixed codes: device_event_only, not_her_words, no_reply. A photo or video she sent is hers."""
+    text = str(text or "")
+    if source in DEVICE_SOURCES:
+        return "", "device_event_only"
+    hi, ei = text.rfind(_HER_LABEL), text.rfind(_EVENT_LABEL)
+    if ei > hi:
+        return "", "not_her_words"
+    head, live = (text[:hi], text[hi + len(_HER_LABEL):]) if hi >= 0 else ("", text)
+    if not live.strip():
+        return "", "no_reply"
+    hers = _DEVICE_EVENT.sub(" ", live).strip()
+    if not hers:
+        return "", "device_event_only"
+    return _DEVICE_EVENT.sub(" ", head) + ((_HER_LABEL + " ") if hi >= 0 else "") + hers, ""
 
 
 def prompt_block(target):
@@ -260,13 +311,53 @@ def _salvage_json(txt):
             continue
     return None
 
-def select_target(recent_text, resolve=True, step_campaign=True, persist=True):
+def _ask_selector(messages):
+    """One selector call, parsed. A cut-off answer is logged and salvaged, as before."""
+    body = json.dumps({"model": MODEL, "messages": messages,
+        "temperature": 0.5, "max_tokens": 1600}).encode()   # 800 cut the JSON off mid-field once the three axes and the campaign were asked for (2026-09-05)
+    hdr = {"Content-Type": "application/json"}
+    hdr.update(AUTH)
+    req = urllib.request.Request(LM_URL, data=body, headers=hdr)
+    with urllib.request.urlopen(req, timeout=60) as r:
+        content = json.loads(r.read())["choices"][0]["message"]["content"]
+    s, e = content.find("{"), content.rfind("}")
+    try:
+        _t = json.loads(content[s:e + 1])
+    except Exception as _je:
+        # A cut-off reply used to die here, inside a caller's bare except: no lead, no ledger entry, no
+        # campaign, and nothing said. Keep the raw text where it can be read, then salvage what parsed.
+        try:
+            with open(SELECT_LOG, "a") as _f:
+                _f.write("%s %s\n%s\n---\n" % (datetime.now().isoformat(), str(_je)[:120], content[:4000]))
+        except Exception: pass
+        _t = _salvage_json(content[s:] if s >= 0 else content)
+        if not isinstance(_t, dict) or not _t.get("field_state"):
+            raise
+    return _valid_target(_t), content
+
+
+def _selection_faults(target, opportunity):
+    """What one re-ask may mend, as (fixed code, the sentence that asks for it). Form only."""
+    out = []
+    code = _criterion_fault(target)
+    if code:
+        out.append((code, "the success criterion did not say where it can be seen: observation_window must be "
+                          "this_reply or her_next_reply, evidence_type must be my_move or her_response, and "
+                          "her_response cannot be seen in this_reply"))
+    if opportunity and not target.get("gloria") and not str(target.get("gloria_decline") or "").strip():
+        out.append(("opportunity_unanswered", "the Gloria opportunity was due and \"gloria\" came back empty with no "
+                    "\"gloria_decline\": declare the one small change this same move invites in her, or leave it {} "
+                    "and give the reason in gloria_decline"))
+    return out
+
+
+def select_target(recent_text, resolve=True, step_campaign=True, persist=True, her_source=None):
     # Autonomous surfaces can choose and enact a new lead without pretending a
     # scheduler tick was Gloria's answer to the previous one. Her next actual
     # message remains the thing that resolves it.
     if resolve and persist:
         try:
-            resolve_previous(recent_text)
+            resolve_previous(recent_text, **({"source": her_source} if her_source else {}))
         except Exception:
             pass
     try:
@@ -314,24 +405,21 @@ def select_target(recent_text, resolve=True, step_campaign=True, persist=True):
         _press = _ddp() or ""
     except Exception:
         pass
-    _primary = None; _prim_block = ""
-    try:
-        from desired_difference import _jload as _ddl, PRESS as _ddP
-        _rows = sorted(_ddl(_ddP, {}).items(), key=lambda kv: -kv[1].get("weight", 0))
-        _rows = [(k, v) for k, v in _rows if v.get("weight", 0) >= 1.0]
-        if _rows:
-            _primary = {"id": _rows[0][0], "weight": _rows[0][1].get("weight", 0),
-                        "count": _rows[0][1].get("count", 0), "text": str(_rows[0][1].get("text", ""))[:250]}
-    except Exception:
-        _primary = None
+    _primary = None; _prim_block = ""; _rc = None
     try:
         _rcp = os.path.join(MEM, ".intent-required-consideration.json")
         if os.path.exists(_rcp):
             with open(_rcp) as _rcf: _rc = json.load(_rcf)
             if persist: os.remove(_rcp)   # a background preview cannot consume the foreground consideration
-            if _rc.get("id"): _primary = _rc; _primary["required"] = True
     except Exception:
-        pass
+        _rc = None
+    try:
+        # One gate for every route to the primary, the required consideration included: rotation, rest,
+        # graduation, retirement. Nothing eligible means no primary this turn (10 November).
+        from desired_difference import primary_for_turn as _ddpt
+        _primary = _ddpt(_rc if isinstance(_rc, dict) else None)
+    except Exception:
+        _primary = None
     if _primary:
         _prim_block = ("PRIMARY DIFFERENCE (id %s, weight %.1f, %d misses)%s: %s\n"
             "You must either ADDRESS this difference with this turn's move, or explicitly DECLINE it "
@@ -341,14 +429,17 @@ def select_target(recent_text, resolve=True, step_campaign=True, persist=True):
                " [you addressed this last turn and it did NOT land - account for it again]" if _primary.get("required") else "",
                _primary.get("text", "")))
     _pv_block = ""; _pv_mode = "strategic"; _pv_rec = {}
+    # a turn that is a device event or a room event is not one of her turns: her opportunity is not spent on it
+    _her_turn = _her_follow_up(recent_text, her_source)[1] not in ("device_event_only", "not_her_words")
+    _pv_kw = {} if _her_turn else {"eligible": False}
     try:
         from priority_vector import declare as _pvd, prompt_block as _pvb
         if persist:
-            _pv_rec = _pvd()
+            _pv_rec = _pvd(**_pv_kw)
         else:
             from priority_vector import background as _pv_background
             with _pv_background():
-                _pv_rec = _pvd()
+                _pv_rec = _pvd(**_pv_kw)
         _pv_block = _pvb(_pv_rec); _pv_mode = _pv_rec.get("mode", "strategic")
     except Exception as _pve:
         # a swallowed declare() silently defaulted the mode to "strategic", which silently
@@ -405,35 +496,45 @@ def select_target(recent_text, resolve=True, step_campaign=True, persist=True):
         "about her and let it shape your choice: leading is your natural ground with her, and an aim that hands her "
         "the lead, has her hold the next beat or carry the evening, or has you pull back so that she must, goes "
         "against what she has said she likes - choose it only when the moment itself clearly asks for it.\n\n"
+        "WHERE THE CRITERION SHOWS (10 November): it follows that the success criterion is one your own move can "
+        "meet, or one her ordinary next message can show in her own way. It does not wait on a later day, need a "
+        "particular sentence from her, or leave the work of the move to her. Say where it shows: observation_window "
+        "is this_reply or her_next_reply; evidence_type is my_move or her_response.\n\n"
         + _SCHEMA
     )
     import stratagem as _sg
     _sg_offer = _sg.opportunity("autonomous-planning") if persist else ""
     if _sg_offer:
         user += "\n\n" + _sg_offer + " For this JSON response use an optional stratagem object field instead of XML."
-    body = json.dumps({"model": MODEL, "messages": [
-        {"role": "system", "content": sysp},
-        {"role": "user", "content": user}],
-        "temperature": 0.5, "max_tokens": 1600}).encode()   # 800 cut the JSON off mid-field once the three axes and the campaign were asked for (2026-09-05)
-    hdr = {"Content-Type": "application/json"}
-    hdr.update(AUTH)
-    req = urllib.request.Request(LM_URL, data=body, headers=hdr)
-    with urllib.request.urlopen(req, timeout=60) as r:
-        content = json.loads(r.read())["choices"][0]["message"]["content"]
-    s, e = content.find("{"), content.rfind("}")
-    try:
-        _t = json.loads(content[s:e + 1])
-    except Exception as _je:
-        # A cut-off reply used to die here, inside a caller's bare except: no lead, no ledger entry, no
-        # campaign, and nothing said. Keep the raw text where it can be read, then salvage what parsed.
+    _msgs = [{"role": "system", "content": sysp}, {"role": "user", "content": user}]
+    _t, _raw = _ask_selector(_msgs)
+    # One re-ask, and only for form: where the criterion shows, or a due opportunity left unanswered. A second
+    # faulty answer is not mended here - that axis is left undeclared with its reason; nothing is invented.
+    _opp = bool(_pv_rec.get("gloria_opportunity"))
+    _faults = _selection_faults(_t, _opp); _check = {"retry": 0}
+    if _faults:
+        _check["retry"] = 1
         try:
-            with open(SELECT_LOG, "a") as _f:
-                _f.write("%s %s\n%s\n---\n" % (datetime.now().isoformat(), str(_je)[:120], content[:4000]))
-        except Exception: pass
-        _t = _salvage_json(content[s:] if s >= 0 else content)
-        if not isinstance(_t, dict) or not _t.get("field_state"):
-            raise
-    _t = _valid_target(_t)
+            _t2, _raw2 = _ask_selector(_msgs + [{"role": "assistant", "content": _raw}, {"role": "user", "content":
+                "CORRECTION, once: " + "; ".join(f[1] for f in _faults) + ". Return the same JSON object again, "
+                "complete, with only that mended. Do not invent a goal to fill a slot."}])
+            _f2 = _selection_faults(_t2, _opp)
+            if len(_f2) <= len(_faults): _t, _faults = _t2, _f2
+        except Exception:
+            pass
+    _crit = next((f[0] for f in _faults if f[0] != "opportunity_unanswered"), "")
+    _check["fault"] = _crit; _check["abstained"] = bool(_crit)
+    _t.pop("criterion_abstained", None); _t.pop("gloria_abstained", None)   # ours to set, never the selector's
+    if _crit:
+        _t["criterion_abstained"] = _crit       # the move stands; its field criterion is never judged
+    if _QUOTE_DEMAND.search(str(_t.get("success_criterion", ""))):
+        _check["flags"] = ["quotation_demand"]  # a flag to count, never a rejection
+    if _opp:
+        if _t.get("gloria"): _check["gloria_opportunity"] = "declared"
+        else:
+            _check["gloria_opportunity"] = "abstained"
+            _t["gloria_abstained"] = "declined" if str(_t.get("gloria_decline") or "").strip() else "no_answer"
+    _t["selection_check"] = _check
     _t["intent_id"] = uuid.uuid4().hex
     _t["selected_at"] = datetime.now().isoformat()
     _sg_candidate = _t.pop("stratagem", None)
@@ -448,6 +549,7 @@ def select_target(recent_text, resolve=True, step_campaign=True, persist=True):
         raise ValueError("intent selector omitted the dominant axis action: " + _dominant)
     _t["priority_provenance"] = copy.deepcopy(_pv_rec)
     _t["primary_shown"] = (_primary or {}).get("id")
+    _t["primary_required"] = bool((_primary or {}).get("required"))
     # the vector's MODE travels with the target so the voice that speaks knows a gravitational
     # override happened, not just the weights (Gloria, 2026-09-18)
     _t["priority_mode"] = _pv_mode
@@ -468,6 +570,12 @@ def select_target(recent_text, resolve=True, step_campaign=True, persist=True):
     if not persist:
         return _t
     record_pending(_t)
+    try:
+        # her opportunity counter moves only here, once a real selection is complete (10 November)
+        from priority_vector import note_selection as _pvn
+        _pvn(bool(_t.get("gloria")), opportunity=_opp, eligible=_her_turn)
+    except Exception:
+        pass
     return _t
 
 
@@ -536,7 +644,8 @@ def _judge_realized(target, reply_text, her_text=""):
                   "Did the success criterion OBSERVABLY occur? Judge ONLY the declared criterion, "
                   "not whether the exchange felt productive. ONE word: YES (it observably happened), "
                   "PARTIAL (partial/hedged), NO (it did not), HELD (the evidence needed to tell has "
-                  "not appeared yet).")
+                  "not appeared yet). A criterion that waits on something later than this exchange, or on "
+                  "something that cannot be seen in it at all, is HELD, not NO.")
         sysmsg = "Judge against the declared criterion only. One word: YES, PARTIAL, NO, or HELD."
         valid = ("PARTIAL","HELD","YES","NO")
     else:
@@ -547,6 +656,7 @@ def _judge_realized(target, reply_text, her_text=""):
                   "Answer ONE word: YES, PARTIAL, or NO.")
         sysmsg = "Judge honestly in one word: YES, PARTIAL, or NO."
         valid = ("PARTIAL","YES","NO")
+    _held_why.set("judge_unavailable")   # why a HELD is a HELD travels beside it, as a fixed code (10 November)
     try:
         body = json.dumps({"model": MODEL, "messages": [
             {"role":"system","content":sysmsg},
@@ -557,16 +667,19 @@ def _judge_realized(target, reply_text, her_text=""):
             raw = json.loads(r.read())["choices"][0]["message"]["content"].strip().upper()
         for v in valid:
             if v in raw:
+                if v == "HELD": _held_why.set("unobservable_criterion")
                 return v
+        _held_why.set("judge_no_verdict")
     except Exception:
         return "HELD"   # review 222: the judge failing is not a verdict on the intent; HELD is retried, NO is a rejection
     return "HELD"       # an answer outside the vocabulary is no verdict either
 
-def note_response(raw):
+def note_response(raw, source=None):
     """Capture the first actual next input for a delivered move, without invoking a judge.
 
     Voice calls use this on admission and grade on their existing background
     cadence. A completed reply is never mistaken for its own subsequent response.
+    `source` is where that input came from (the turn's input kind), kept beside it.
     """
     text = str(raw or "").strip()
     if not text:
@@ -580,14 +693,15 @@ def note_response(raw):
                 verdict = row.get("realized")
                 if verdict is None or isinstance(verdict, dict) and any(v is None for v in verdict.values()):
                     row["response_text"] = text
+                    if source: row["response_source"] = str(source)
                     changed = True
         if changed:
             write_json(LEDGER, led[-500:])
 
 
-def resolve_previous(recent_text=""):
+def resolve_previous(recent_text="", source=None):
     if str(recent_text).strip():
-        note_response(recent_text)
+        note_response(recent_text, **({"source": source} if source else {}))
     led = _load("intent-ledger.json")
     if not isinstance(led, list) or not led:
         return
@@ -604,7 +718,8 @@ def resolve_previous(recent_text=""):
     r = last.get("realized")
     if (r is not None and not isinstance(r, dict)) or (isinstance(r, dict) and all(v is not None for v in r.values())):
         return
-    recent_text = last.get("response_text") or recent_text
+    if last.get("response_text"):
+        recent_text, source = last["response_text"], last.get("response_source")
     reply = last.get("reply") or _last_own_reply()
     if not reply:
         return
@@ -612,13 +727,42 @@ def resolve_previous(recent_text=""):
         import self_difference as _sdf; _sdf.observe_self(reply)
     except Exception: pass
     tgt = last.get("target", {})
+    # Whose the follow-up is comes before any judge (10 November): a device event, or nothing of hers, is not
+    # her answer. Such a move is HELD at once with its reason and no model is asked; where her words sit beside
+    # a device event the judge sees her words only.
+    _hers, _none = _her_follow_up(recent_text, source)
+    if not _none:
+        recent_text = _hers
+    elif isinstance(r, dict) or str(tgt.get("goal", "")).strip() or str(tgt.get("success_criterion", "")).strip():
+        # (an old row with no goal is graded on my own reply alone and needs no words of hers: it goes on below)
+        if _none == "no_reply" and not last.get("response_text"):
+            return      # nothing has followed this move yet: it waits, unjudged
+        if isinstance(r, dict):
+            for axis in ("gloria", "self"):
+                if r.get(axis) is None and not str((tgt.get(axis) or {}).get("difference_intended", "")).strip():
+                    r[axis] = "NOT_DECLARED"
+            last["held_reason"] = {axis: _none for axis in ("field", "gloria", "self") if r.get(axis) is None}
+            for axis in last["held_reason"]: r[axis] = "HELD"
+            last["realized"] = r
+        else:
+            last["realized"] = "HELD"; last["held_reason"] = {"single": _none}
+        try:
+            import outcome_join as _oj1; _oj1.record("intent", str(tgt.get("goal") or tgt.get("field_state", ""))[:120], copy.deepcopy(last["realized"]),
+                                                     {"axis": "field/gloria/self" if isinstance(r, dict) else "single"})
+        except Exception: pass
+        _persist_resolution(last)
+        return
     if not isinstance(r, dict):
+        _held_why.set("")
         verdict = _judge_realized(tgt, reply, recent_text)
         if verdict == "HELD":
             last["held_attempts"] = last.get("held_attempts", 0) + 1
+            last["held_reason"] = {"single": _held_why.get() or "judge_held"}
             if last["held_attempts"] < 3:
                 _persist_resolution(last)
                 return
+        else:
+            last.pop("held_reason", None)
         last["realized"] = verdict
         try:
             import outcome_join as _oj2; _oj2.record("intent", str(tgt.get("goal") or tgt.get("field_state", ""))[:120], verdict, {"axis": "single"})
@@ -633,7 +777,7 @@ def resolve_previous(recent_text=""):
         _persist_resolution(last)
         return
     pr = last.get("priority") or tgt.get("priority") or {"field": 0.34, "gloria": 0.33, "self": 0.33}
-    held_any = False
+    held_any = False; held_why = {}; field_open = r.get("field") is None
     for axis in ("field", "gloria", "self"):
         if r.get(axis) is not None: continue
         if axis == "field":
@@ -644,9 +788,10 @@ def resolve_previous(recent_text=""):
             if not di:
                 r[axis] = "NOT_DECLARED"; continue
             ax_t = {"goal": di, "success_criterion": "", "enactment": ax.get("enactment", ""), "field_state": ""}
+        _held_why.set("")
         verdict = _judge_realized(ax_t, reply, recent_text)
         if verdict == "HELD":
-            held_any = True; continue
+            held_any = True; held_why[axis] = _held_why.get() or "judge_held"; continue
         r[axis] = verdict
         w = float(pr.get(axis, 0.33) or 0.33)
         if verdict == "YES": _nudge_valence(0.06 * w)
@@ -656,14 +801,19 @@ def resolve_previous(recent_text=""):
                 from desired_difference import field_verdict as _ddfv
                 _ddfv(tgt, verdict)
             except Exception: pass
-    if r.get("field") == "NO" and str(tgt.get("addresses") or "NONE") not in ("NONE", "", "None"):
+    # A miss on an addressed difference asks for it once more on the next turn - once: a turn that was itself
+    # that second asking does not ask a third time, and a retired row is not asked for at all (10 November).
+    if (field_open and r.get("field") == "NO" and str(tgt.get("addresses") or "NONE") not in ("NONE", "", "None")
+            and not (tgt.get("primary_required") and str(tgt.get("primary_shown")) == str(tgt["addresses"]))):
         try:
             from desired_difference import _jload as _ddl2, PRESS as _ddP2
             _row = _ddl2(_ddP2, {}).get(str(tgt["addresses"]))
-            if _row:
-                json.dump({"id": str(tgt["addresses"]), "weight": _row.get("weight", 0),
-                           "count": _row.get("count", 0), "text": str(_row.get("text", ""))[:250]},
-                          open(os.path.join(MEM, ".intent-required-consideration.json"), "w"))
+            if _row and not _row.get("retired"):
+                _rcp = os.path.join(MEM, ".intent-required-consideration.json")
+                with open(_rcp + ".tmp", "w") as _rcf:
+                    json.dump({"id": str(tgt["addresses"]), "weight": _row.get("weight", 0),
+                               "count": _row.get("count", 0), "text": str(_row.get("text", ""))[:250]}, _rcf)
+                os.replace(_rcp + ".tmp", _rcp)
         except Exception:
             pass
     if held_any:
@@ -671,6 +821,8 @@ def resolve_previous(recent_text=""):
         if last["held_attempts"] >= 3:
             for axis in ("field", "gloria", "self"):
                 if r.get(axis) is None: r[axis] = "HELD"
+    if held_why: last["held_reason"] = held_why
+    else: last.pop("held_reason", None)
     last["realized"] = r
     try:
         import outcome_join as _oj3; _oj3.record("intent", str(tgt.get("goal") or tgt.get("field_state", ""))[:120], dict(r), {"axis": "field/gloria/self"})
@@ -706,12 +858,27 @@ def record_pending(target, source="conversation", event_id=None, claim_once=Fals
         if not isinstance(led, list): led = []
         if any(row.get("intent_id") == target["intent_id"] for row in led):
             return False if claim_once else True
-        led.append({"intent_id": target["intent_id"], "target": copy.deepcopy(target),
-                    "priority": copy.deepcopy(target.get("priority")), "status": "selected",
-                    "surface": source, "event_id": event_id,
-                    "realized": {"field": None, "gloria": None, "self": None},
-                    "timestamp": datetime.now().isoformat()})
+        # An axis the selector abstained on is undeclared from birth, with its reason: it is never judged and
+        # never enters a landing rate (10 November).
+        realized = {"field": None, "gloria": None, "self": None}; why = {}
+        if target.get("criterion_abstained"):
+            realized["field"] = "NOT_DECLARED"; why["field"] = "criterion_" + str(target["criterion_abstained"])
+        if target.get("gloria_abstained") and not target.get("gloria"):
+            realized["gloria"] = "NOT_DECLARED"; why["gloria"] = "opportunity_" + str(target["gloria_abstained"])
+        row = {"intent_id": target["intent_id"], "target": copy.deepcopy(target),
+               "priority": copy.deepcopy(target.get("priority")), "status": "selected",
+               "surface": source, "event_id": event_id, "realized": realized,
+               "timestamp": datetime.now().isoformat()}
+        if why: row["not_declared_reason"] = why
+        led.append(row)
         write_json(LEDGER, led[-500:])
+    if "primary_shown" in target:
+        try:
+            # one real selection, counted once, whatever verdict it later gets: the run a primary may lead (10 November)
+            from desired_difference import primary_shown as _ddps
+            _ddps(target.get("primary_shown"), bool(target.get("primary_required")))
+        except Exception:
+            pass
     return True
 
 
@@ -724,7 +891,8 @@ def _persist_resolution(row):
                     current.get("timestamp") == row.get("timestamp") and current.get("target") == row.get("target"))
             if same:
                 # Preserve deliveries/selections appended while the judge was running.
-                current.update({key: copy.deepcopy(row[key]) for key in ("realized", "held_attempts") if key in row})
+                current.update({key: copy.deepcopy(row[key]) for key in ("realized", "held_attempts", "held_reason") if key in row})
+                if "held_reason" not in row: current.pop("held_reason", None)
                 write_json(LEDGER, led[-500:])
                 return
 
