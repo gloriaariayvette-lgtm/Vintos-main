@@ -191,6 +191,13 @@ _DEVICE_EVENT = re.compile(r"\[(?:she pressed\b|gloria just (?:touched|spun)\b)[
 _HER_LABEL = "GLORIA (now):"
 _EVENT_LABEL = "REELROOM EVENT (not Gloria's words):"
 _held_why = ContextVar("intent_held_why", default="")
+# A device event after my move is not her next reply, and it must not use that reply up (10 November). An axis
+# that shows in her next reply - and an old row that never said where it shows - waits for her own words through
+# at most DEVICE_SKIPS_MAX such turns and DEVICE_WAIT_HOURS hours from the first of them, whichever ends first;
+# after that it is HELD with WINDOW_EXPIRED, and no judge is asked.
+DEVICE_SKIPS_MAX = 3
+DEVICE_WAIT_HOURS = 24
+WINDOW_EXPIRED = "her_reply_window_expired"
 
 
 def _her_follow_up(text, source=None):
@@ -243,6 +250,14 @@ def prompt_block(target):
         lines.append("I am redirecting the drift, not following it.")
     if target.get("priority_mode") == "pressure":
         lines.append("Priority came from pressure; the declared weights still govern this move.")
+    _fb = target.get("lead_fallback")
+    if isinstance(_fb, dict):
+        # the heaviest axis was left undeclared: the weights below must not read as a pointer to a goal that is absent
+        lines.append(("My %s axis is undeclared this turn; %s leads this move instead."
+                      % (_fb.get("from"), "the field" if _fb.get("to") == "field" else "my %s axis" % _fb.get("to")))
+                     if _fb.get("to") else
+                     ("My %s axis is undeclared this turn and no other axis is declared: no axis leads this move."
+                      % _fb.get("from")))
     lines.append("Declared priorities: " + json.dumps(weights, sort_keys=True))
     if target.get("enactment_type") == "withhold":
         lines.append("The specific thing withheld: " + str(target.get("withheld_object", "")))
@@ -432,9 +447,11 @@ def select_target(recent_text, resolve=True, step_campaign=True, persist=True, h
     _primary = None; _prim_block = ""; _rc = None
     try:
         _rcp = os.path.join(MEM, ".intent-required-consideration.json")
-        if os.path.exists(_rcp):
-            with open(_rcp) as _rcf: _rc = json.load(_rcf)
-            if persist: os.remove(_rcp)   # a background preview cannot consume the foreground consideration
+        from store_guard import turn_state as _tsl
+        with _tsl(_rcp):                  # read and consumed in one step: two turns at once cannot both take it
+            if os.path.exists(_rcp):
+                with open(_rcp) as _rcf: _rc = json.load(_rcf)
+                if persist: os.remove(_rcp)   # a background preview cannot consume the foreground consideration
     except Exception:
         _rc = None
     if persist:
@@ -560,7 +577,7 @@ def select_target(recent_text, resolve=True, step_campaign=True, persist=True, h
     _crit = _abst.pop("field", "")
     _check["fault"] = _crit; _check["abstained"] = bool(_crit)
     _t.pop("criterion_abstained", None); _t.pop("gloria_abstained", None)   # ours to set, never the selector's
-    _t.pop("axis_abstained", None)
+    _t.pop("axis_abstained", None); _t.pop("lead_axis", None); _t.pop("lead_fallback", None); _t.pop("her_turn", None)
     if _abst:
         # that axis alone is left undeclared, with its reason; the field and the other axis stand as given
         for _ax in _abst: _t[_ax] = {}
@@ -587,9 +604,24 @@ def select_target(recent_text, resolve=True, step_campaign=True, persist=True, h
     _dominant = max(_t["priority"], key=_t["priority"].get)
     if _dominant != "field" and not _t.get(_dominant) and _dominant not in _abst:
         raise ValueError("intent selector omitted the dominant axis action: " + _dominant)
+    # The lead is an axis that is really declared (10 November). When the dominant axis was emptied after the
+    # one re-ask, the lead falls to the next valid axis by the declared weights - the field unless its own
+    # criterion was abstained, the other axis if it is declared - or to none. The weights stay as declared.
+    _lead = _dominant
+    if _dominant in _abst:
+        _lead = next((_a for _a in sorted(("field", "gloria", "self"), key=lambda _a: -float(_t["priority"].get(_a, 0) or 0))
+                      if _a != _dominant and (bool(_t.get(_a)) if _a != "field" else not _crit)), None)
+        _t["lead_fallback"] = {"from": _dominant, "to": _lead}
+    _t["lead_axis"] = _lead
     _t["priority_provenance"] = copy.deepcopy(_pv_rec)
     _t["primary_shown"] = (_primary or {}).get("id")
     _t["primary_required"] = bool((_primary or {}).get("required"))
+    # one of her own foreground turns, or not: only those discharge a resting primary (10 November)
+    try:
+        from priority_vector import _foreground as _pvfg2
+        _t["her_turn"] = bool(_her_turn and _pvfg2())
+    except Exception:
+        _t["her_turn"] = bool(_her_turn)
     # the vector's MODE travels with the target so the voice that speaks knows a gravitational
     # override happened, not just the weights (Gloria, 2026-09-18)
     _t["priority_mode"] = _pv_mode
@@ -754,7 +786,18 @@ def resolve_previous(recent_text="", source=None):
                   and (row.get("status") is None or row.get("response_text"))]
     if not candidates:
         return
-    last = max(candidates, key=lambda row: row.get("delivered_at") or row.get("timestamp") or "")
+    _order = lambda row: row.get("delivered_at") or row.get("timestamp") or ""
+    last = max(candidates, key=_order)
+    # An earlier move still waiting on her next reply after a device event is settled by this same follow-up:
+    # those rows first, oldest first, then the latest move as before. A row is settled once - a settled row is
+    # no candidate again (10 November).
+    for row in sorted((c for c in candidates if c is not last and isinstance(c.get("skipped_observations"), dict)), key=_order):
+        try: _resolve_row(row, recent_text, source)
+        except Exception: pass
+    _resolve_row(last, recent_text, source)
+
+
+def _resolve_row(last, recent_text="", source=None):
     r = last.get("realized")
     if (r is not None and not isinstance(r, dict)) or (isinstance(r, dict) and all(v is not None for v in r.values())):
         return
@@ -763,33 +806,63 @@ def resolve_previous(recent_text="", source=None):
     reply = last.get("reply") or _last_own_reply()
     if not reply:
         return
-    try:
-        import self_difference as _sdf; _sdf.observe_self(reply)
-    except Exception: pass
+    _skip = last.get("skipped_observations") if isinstance(last.get("skipped_observations"), dict) else None
+    if not _skip:                           # a waiting row's reply was observed when its first follow-up came
+        try:
+            import self_difference as _sdf; _sdf.observe_self(reply)
+        except Exception: pass
     tgt = last.get("target", {})
     # Whose the follow-up is comes before any judge (10 November): a device event, or nothing of hers, is not
     # her answer. Such a move is HELD at once with its reason and no model is asked; where her words sit beside
     # a device event the judge sees her words only.
     _hers, _none = _her_follow_up(recent_text, source)
-    if not _none:
+    _now = datetime.now().timestamp()
+    try: _late = bool(_skip) and _now - float(_skip.get("first") or _now) > DEVICE_WAIT_HOURS * 3600
+    except Exception: _late = False
+    if not _none and not _late:
         recent_text = _hers
     elif isinstance(r, dict) or str(tgt.get("goal", "")).strip() or str(tgt.get("success_criterion", "")).strip():
         # (an old row with no goal is graded on my own reply alone and needs no words of hers: it goes on below)
-        if _none == "no_reply" and not last.get("response_text"):
+        if _none == "no_reply" and not last.get("response_text") and not _late:
             return      # nothing has followed this move yet: it waits, unjudged
+        _device = _none in ("device_event_only", "not_her_words")
+        if _device and not _late:
+            # the skipped observation is kept on the row: how many, when, why - never the text
+            try: _n = int((_skip or {}).get("n", 0) or 0) + 1
+            except Exception: _n = 1
+            _skip = dict(_skip or {}, n=_n, last=_now, reason=_none)
+            _skip.setdefault("first", _now)
+            if source: _skip["source"] = str(source)
+            last["skipped_observations"] = _skip
+            _late = _n > DEVICE_SKIPS_MAX
+        _why = WINDOW_EXPIRED if _late else _none
+        # an axis that shows in this reply is HELD at once, as before; one that shows in her next reply waits for it
+        _waits = lambda part: bool(_device and not _late and str((part or {}).get("observation_window") or "") != "this_reply")
+        _kept = last.get("held_reason") if isinstance(last.get("held_reason"), dict) else {}
         if isinstance(r, dict):
             for axis in ("gloria", "self"):
                 if r.get(axis) is None and not str((tgt.get(axis) or {}).get("difference_intended", "")).strip():
                     r[axis] = "NOT_DECLARED"
-            last["held_reason"] = {axis: _none for axis in ("field", "gloria", "self") if r.get(axis) is None}
-            for axis in last["held_reason"]: r[axis] = "HELD"
+            _reasons = {axis: why for axis, why in _kept.items() if r.get(axis) == "HELD"}
+            for axis in ("field", "gloria", "self"):
+                if r.get(axis) is None and not _waits(tgt if axis == "field" else tgt.get(axis)):
+                    r[axis] = "HELD"; _reasons[axis] = _why
             last["realized"] = r
+            _settled = all(v is not None for v in r.values())
         else:
-            last["realized"] = "HELD"; last["held_reason"] = {"single": _none}
-        try:
-            import outcome_join as _oj1; _oj1.record("intent", str(tgt.get("goal") or tgt.get("field_state", ""))[:120], copy.deepcopy(last["realized"]),
-                                                     {"axis": "field/gloria/self" if isinstance(r, dict) else "single"})
-        except Exception: pass
+            _reasons = {}
+            if not _waits(tgt):
+                last["realized"] = "HELD"; _reasons = {"single": _why}
+            _settled = last.get("realized") is not None
+        if _reasons: last["held_reason"] = _reasons
+        else: last.pop("held_reason", None)
+        if _settled:
+            try:
+                import outcome_join as _oj1; _oj1.record("intent", str(tgt.get("goal") or tgt.get("field_state", ""))[:120], copy.deepcopy(last["realized"]),
+                                                         {"axis": "field/gloria/self" if isinstance(r, dict) else "single"})
+            except Exception: pass
+        else:
+            last.pop("response_text", None); last.pop("response_source", None)   # the device event was not her reply: that is still to come
         _persist_resolution(last)
         return
     if not isinstance(r, dict):
@@ -847,13 +920,15 @@ def resolve_previous(recent_text="", source=None):
             and not (tgt.get("primary_required") and str(tgt.get("primary_shown")) == str(tgt["addresses"]))):
         try:
             from desired_difference import _jload as _ddl2, PRESS as _ddP2
-            _row = _ddl2(_ddP2, {}).get(str(tgt["addresses"]))
-            if _row and not _row.get("retired"):
-                _rcp = os.path.join(MEM, ".intent-required-consideration.json")
-                with open(_rcp + ".tmp", "w") as _rcf:
-                    json.dump({"id": str(tgt["addresses"]), "weight": _row.get("weight", 0),
-                               "count": _row.get("count", 0), "text": str(_row.get("text", ""))[:250]}, _rcf)
-                os.replace(_rcp + ".tmp", _rcp)
+            from store_guard import turn_state as _tsl2
+            with _tsl2(os.path.join(MEM, ".intent-required-consideration.json")):   # the row is read and the marker written in one step, against a retire
+                _row = _ddl2(_ddP2, {}).get(str(tgt["addresses"]))
+                if _row and not _row.get("retired"):
+                    _rcp = os.path.join(MEM, ".intent-required-consideration.json")
+                    with open(_rcp + ".tmp", "w") as _rcf:
+                        json.dump({"id": str(tgt["addresses"]), "weight": _row.get("weight", 0),
+                                   "count": _row.get("count", 0), "text": str(_row.get("text", ""))[:250]}, _rcf)
+                    os.replace(_rcp + ".tmp", _rcp)
         except Exception:
             pass
     if held_any:
@@ -861,6 +936,9 @@ def resolve_previous(recent_text="", source=None):
         if last["held_attempts"] >= 3:
             for axis in ("field", "gloria", "self"):
                 if r.get(axis) is None: r[axis] = "HELD"
+    # the reason of an axis that is already finally HELD (a device event, an expiry) stays beside this pass's
+    _kept = last.get("held_reason") if isinstance(last.get("held_reason"), dict) else {}
+    held_why = dict({axis: why for axis, why in _kept.items() if r.get(axis) == "HELD"}, **held_why)
     if held_why: last["held_reason"] = held_why
     else: last.pop("held_reason", None)
     last["realized"] = r
@@ -920,7 +998,7 @@ def record_pending(target, source="conversation", event_id=None, claim_once=Fals
         try:
             # one real selection, counted once, whatever verdict it later gets: the run a primary may lead (10 November)
             from desired_difference import primary_shown as _ddps
-            _ddps(target.get("primary_shown"), bool(target.get("primary_required")))
+            _ddps(target.get("primary_shown"), bool(target.get("primary_required")), her_turn=bool(target.get("her_turn", True)))
         except Exception:
             pass
     return True
@@ -935,8 +1013,10 @@ def _persist_resolution(row):
                     current.get("timestamp") == row.get("timestamp") and current.get("target") == row.get("target"))
             if same:
                 # Preserve deliveries/selections appended while the judge was running.
-                current.update({key: copy.deepcopy(row[key]) for key in ("realized", "held_attempts", "held_reason") if key in row})
+                current.update({key: copy.deepcopy(row[key]) for key in ("realized", "held_attempts", "held_reason", "skipped_observations") if key in row})
                 if "held_reason" not in row: current.pop("held_reason", None)
+                if "skipped_observations" in row and "response_text" not in row:
+                    current.pop("response_text", None); current.pop("response_source", None)   # so her next reply is stored
                 write_json(LEDGER, led[-500:])
                 return
 

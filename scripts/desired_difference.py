@@ -72,6 +72,25 @@ def _jsave(p,d):
     if _sg_write(p, d, "desired_difference"): return
     try: json.dump(d,open(p,"w"),indent=2,ensure_ascii=False)
     except Exception: pass
+def _turn_state(path):
+    """The one cross-process lock for the turn state (store_guard.turn_state, 10 November). A store_guard that
+    cannot be imported leaves the writer unlocked, as _sg_write leaves it unguarded; a lock that cannot be
+    taken raises, and the write does not happen."""
+    try:
+        try: from store_guard import turn_state as _ts
+        except ImportError:
+            import sys as _s; _s.path.insert(0,os.path.dirname(os.path.abspath(__file__)))
+            from store_guard import turn_state as _ts
+        return _ts(path)
+    except Exception:
+        import contextlib; return contextlib.nullcontext()
+def _locked(fn):
+    """A writer of the pressure store or the rotation: its whole read-modify-write runs under that lock."""
+    import functools
+    @functools.wraps(fn)
+    def call(*a,**k):
+        with _turn_state(PRESS): return fn(*a,**k)
+    return call
 def _extract(t):
     s,e=t.find("{"),t.rfind("}")
     if s<0: return {}
@@ -298,6 +317,7 @@ def _key(db, text, kind=None, addresses=None):
     return best if (best is not None and bs >= SAME_INTENTION) else k
 
 
+@_locked
 def bump(text,amount,kind="field",addresses=None):
     text=(text or "").strip()
     if len(text)<8: return
@@ -339,6 +359,7 @@ def field_verdict(target,verdict):
     elif verdict in ("CORRECTED","WRONG_READING"): override(fs,"her correction: "+verdict,source="correction",addresses=ad,kind="field")
     elif verdict in ("KEEP_PRIVATE","PRIVATE"): override(fs,"legitimate privacy: "+verdict,source="privacy",addresses=ad,kind="field")
 
+@_locked
 def override(text,reason,source="correction",addresses=None,kind=None):
     """review 188: her correction, or a legitimate privacy mark (KEEP_PRIVATE / WRONG_READING) on the
     same intention, sets its standing pressure to zero with the reason kept - it no longer stands in
@@ -352,6 +373,7 @@ def override(text,reason,source="correction",addresses=None,kind=None):
                                        "reason":str(reason)[:200],"source":source})
     e["weight"]=0.0; e["overridden"]={"at":time.time(),"reason":str(reason)[:200],"source":source}
     db[k]=e; _jsave(PRESS,db); return e
+@_locked
 def relieve(text,addresses=None,kind=None):
     """A landed intent takes weight off - earned relief, lineage kept, never silent."""
     text=(text or "").strip()
@@ -369,7 +391,11 @@ def relieve(text,addresses=None,kind=None):
 # on it re-required it on the next turn. Every route to the primary now passes primary_eligible, the
 # required-consideration route included; when nothing passes, no primary is shown.
 PRIMARY_RUN=3            # real selections in a row one primary may lead
-PRIMARY_REST_DAYS=3      # then it rests until a different primary has been shown, or this long
+PRIMARY_REST_TURNS=3     # then it rests until this many of her turns have been led by another primary, or by none
+PRIMARY_REST_DAYS=3      # ... or this long, whichever comes first
+# The rest used to end as soon as one other primary had been shown: A A A B A A A B, three turns in four to one
+# row. A turn that is not hers (a device event, a background run) discharges nothing, and nothing is put up as
+# a primary just to use the count up: a turn with no primary counts.
 
 
 def _rotation_path():
@@ -388,8 +414,13 @@ def _rotation():
         except Exception: pass
     try: run=max(0,int(st.get("run",0) or 0))
     except Exception: run=0
+    turns={}
+    for k,v in (st.get("rest_turns").items() if isinstance(st.get("rest_turns"),dict) else ()):
+        try:
+            if str(k) in rest: turns[str(k)]=max(0,int(v))
+        except Exception: pass
     pid=st.get("id") if isinstance(st.get("id"),str) else None
-    return dict(st,id=pid,run=run if pid else 0,required=bool(st.get("required")),resting=rest)
+    return dict(st,id=pid,run=run if pid else 0,required=bool(st.get("required")),resting=rest,rest_turns=turns)
 
 
 def _graduated_closed(r):
@@ -402,6 +433,7 @@ def _graduated_closed(r):
     return g>=0 and not any("reopened_by_her" in l for l in lin[g+1:])
 
 
+@_locked
 def her_words_reopen(her_text,now=None):
     """Her own words in a real turn may raise a graduated intention again. `her_text` is the live part of this
     turn's input and hers alone - the caller passes nothing for a device event, a background run, or earlier
@@ -434,8 +466,17 @@ def primary_eligible(k,r,st=None,now=None):
     if not isinstance(r,dict) or r.get("retired") or r.get("overridden"): return False
     if float(r.get("weight",0) or 0)<1.0 or not _live(r,now) or asks_her_to_lead(r.get("text")): return False
     if _graduated_closed(r): return False
-    since=((st or {}).get("resting") or {}).get(k)
-    return not (since and now-float(since)<PRIMARY_REST_DAYS*86400)
+    return not _resting(k,st,now)
+
+
+def _resting(k,st,now):
+    """Is this row inside its rest: put there by the run cap, fewer than PRIMARY_REST_TURNS of her turns and
+    fewer than PRIMARY_REST_DAYS days ago."""
+    try:
+        since=((st or {}).get("resting") or {}).get(k)
+        if not since or now-float(since)>=PRIMARY_REST_DAYS*86400: return False
+        return int(((st or {}).get("rest_turns") or {}).get(k,0) or 0)<PRIMARY_REST_TURNS
+    except Exception: return False
 
 
 def primary_for_turn(required=None,now=None):
@@ -460,24 +501,27 @@ def primary_for_turn(required=None,now=None):
     return out
 
 
-def primary_shown(pid,required=False,now=None):
+@_locked
+def primary_shown(pid,required=False,now=None,her_turn=True):
     """One real selection showed this primary (or none): move the run and the rests. Called once per ledger
-    row, whatever its verdict turns out to be; the state is a file, so the run survives a restart."""
+    row, whatever its verdict turns out to be; the state is a file, so the run and a rest part-served survive a
+    restart. `her_turn` is False for a turn that is not hers (a device event, a background run): the run moves
+    as on any real selection, and no rest is discharged by it."""
     now=now or time.time(); st=_rotation(); pid=_addr(pid)
-    rest={}
+    rest={}; turns={}
     for k,v in (st.get("resting") or {}).items():
-        try:
-            if now-float(v)<PRIMARY_REST_DAYS*86400: rest[k]=v
-        except Exception: pass
+        if not _resting(k,st,now): continue
+        n=int((st.get("rest_turns") or {}).get(k,0) or 0)+(1 if (her_turn and k!=pid) else 0)
+        if n>=PRIMARY_REST_TURNS: continue      # her turns led by another primary, or by none: rested
+        rest[k]=v; turns[k]=n
     if not pid:
         st.update(id=None,run=0,required=False)
     else:
         prev=int(st.get("run",0) or 0)
         run=prev+1 if (st.get("id")==pid and prev<PRIMARY_RUN) else 1
-        if st.get("id")!=pid: rest={k:v for k,v in rest.items() if k==pid}   # a different primary has been shown: the others' rest is over
-        if run>=PRIMARY_RUN: rest[pid]=now
+        if run>=PRIMARY_RUN: rest[pid]=now; turns[pid]=0
         st.update(id=pid,run=run,required=bool(required))
-    st["resting"]=rest; st["updated"]=now
+    st["resting"]=rest; st["rest_turns"]=turns; st["updated"]=now
     _jsave(_rotation_path(),st)
     return st
 
@@ -498,6 +542,7 @@ def primary_report(n=30):
             "top_primary_turns":top,"top_primary_share":round(top/float(len(ids)),2) if ids else 0.0,"max_run":best}
 
 
+@_locked
 def retire(key):
     """Take one pressure row out for good, by hand. The store is copied beside itself first; the row keeps its
     record and is never selected, shown or weighed again. A required-consideration marker naming it is cleared.
@@ -536,10 +581,11 @@ def asks_her_to_lead(text):
 
 
 def pressure_block():
-    db=_jload(PRESS,{})
-    rows=sorted(db.values(),key=lambda r:-r.get("weight",0))
-    rows=[r for r in rows if r.get("weight",0)>=1.0 and not r.get("overridden") and not r.get("retired") and _live(r)
-          and not asks_her_to_lead(r.get("text"))][:3]
+    # What stands in front of him as pressure to act on passes the gate the primary passes (10 November): a row
+    # that is retired, graduated with nothing new from her, or resting is not an instruction for this turn.
+    db=_jload(PRESS,{}); st=_rotation(); now=time.time()
+    rows=[r for k,r in (db.items() if isinstance(db,dict) else ()) if primary_eligible(k,r,st,now)]
+    rows=sorted(rows,key=lambda r:-float(r.get("weight",0) or 0))[:3]
     if not rows: return ""
     _ago=lambda r: max(0,int((time.time()-r.get("last",time.time()))/86400))
     # "keep failing" is said only of what has missed more than once; a first miss is named as one
