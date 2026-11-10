@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Fitting receipts use synthetic arrays, a private scratch store and stubbed encoders."""
 import hashlib
+import io
+from contextlib import redirect_stderr
 import json
 import os
 from pathlib import Path
@@ -195,6 +197,27 @@ class Tests(unittest.TestCase):
                 for key in ('projection','W','bias','beta','gamma','confidence_W'):
                     np.testing.assert_array_equal(actual[key],saved[key])
                 self.assertEqual(self.packets(),[])
+
+    def test_swallowed_completion_failure_emits_only_one_count_and_logging_is_passive(self):
+        scope=self.prepared();self.save()
+        self.clock.time.return_value=1799999997.2
+        output=io.StringIO()
+        with redirect_stderr(output):
+            self.assertIsNone(R._self_fit_witness('self_ahead','publish_fit',scope,self.path))
+        self.assertEqual(output.getvalue(),'{"self_fit_completion_dropped":1}\n')
+        self.assertEqual(self.packets(),[])
+        with patch.object(A,'publish_fit',side_effect=RuntimeError('synthetic private sentinel')):
+            output=io.StringIO()
+            with redirect_stderr(output):
+                self.assertIsNone(R._self_fit_witness('self_ahead','publish_fit',scope,self.path))
+            self.assertEqual(output.getvalue(),'{"self_fit_completion_dropped":1}\n')
+            with patch.object(R.sys,'stderr',Mock(write=Mock(side_effect=OSError('synthetic closed log')))):
+                self.assertIsNone(R._self_fit_witness('self_ahead','publish_fit',scope,self.path))
+        self.clock.time.return_value=1800000000.
+        output=io.StringIO()
+        with redirect_stderr(output):
+            self.assertTrue(R._self_fit_witness('self_ahead','publish_fit',scope,self.path))
+        self.assertEqual(output.getvalue(),'')
 
     def test_save_failure_preserves_exception_and_cannot_publish_completion(self):
         error=OSError('synthetic save failure')
