@@ -8314,3 +8314,21 @@ One synthetic test covers actual rollback, private exception suppression, broken
 logging and silent success. Fit completion 17/17 and owners 11/11 pass; reports
 unchanged. Logs /tmp/judges-s72-fit.log and /tmp/judges-s72-owners.log. No new
 private-store counts, live actions or calls. Await independent review, then idle.
+
+## 10 November — intent verdict evidence boundaries; review branch, not deployed
+
+`codex/intent-independent-review` rejects substring verdicts, supplies only the
+current human input as follow-up evidence, and keeps later responses out of
+`my_move` judgments while preserving each axis's evidence metadata. Selection,
+priority logic, provider configuration and call sites are unchanged.
+
+Seven new cases pass; all twelve affected/ownership test files pass. Full local
+sweep: 674 files, 658 pass and 16 fail; all sixteen failures also reproduce on the
+untouched published baseline in the same environment. Five deliberately broken
+variants are caught. The complete host suite and Claude review remain pending.
+
+`docs/intent-evidence-boundary-review.md` records scope and validation. Its isolated
+known-failure reproduction shows a separate unresolved concurrent-resolution race:
+a stale result can replace settled verdicts and repeat pressure feedback. That
+repair must protect result ownership and effects together; no partial concurrency
+repair, deploy-branch merge, installation or deployment is included here.

@@ -256,13 +256,14 @@ def _her_follow_up(text, source=None):
     hi, ei = text.rfind(_HER_LABEL), text.rfind(_EVENT_LABEL)
     if ei > hi:
         return "", "not_her_words"
-    head, live = (text[:hi], text[hi + len(_HER_LABEL):]) if hi >= 0 else ("", text)
+    live = text[hi + len(_HER_LABEL):] if hi >= 0 else text
     if not live.strip():
         return "", "no_reply"
     hers = _DEVICE_EVENT.sub(" ", live).strip()
     if not hers:
         return "", "device_event_only"
-    return _DEVICE_EVENT.sub(" ", head) + ((_HER_LABEL + " ") if hi >= 0 else "") + hers, ""
+    # Earlier conversation is selector context, not evidence observed after this move.
+    return ((_HER_LABEL + " ") if hi >= 0 else "") + hers, ""
 
 
 def _her_live_words(text, source=None):
@@ -874,11 +875,15 @@ def _judge_realized(target, reply_text, her_text=""):
     goal = str(target.get("goal","")).strip()
     crit = str(target.get("success_criterion","")).strip()
     if goal or crit:
+        observation = ("Evidence source: my_move. Judge the delivered reply alone; a later response is not "
+                       "evidence of an action in that reply.\n"
+                       if target.get("evidence_type") == "my_move" else
+                       "What happened in the conversation right after (her response, the exchange):\n"
+                       + str(her_text)[-800:] + "\n")
         prompt = ("My declared GOAL (do NOT reinterpret it to fit what happened): " + goal + "\n"
                   "It counts as landed ONLY if: " + (crit or goal) + "\n\n"
                   "The move I made:\n" + reply_text[:1000] + "\n\n"
-                  "What happened in the conversation right after (her response, the exchange):\n"
-                  + str(her_text)[-800:] + "\n\n"
+                  + observation + "\n"
                   "Did the success criterion OBSERVABLY occur? Judge ONLY the declared criterion, "
                   "not whether the exchange felt productive. ONE word: YES (it observably happened), "
                   "PARTIAL (partial/hedged), NO (it did not), HELD (the evidence needed to tell has "
@@ -903,10 +908,10 @@ def _judge_realized(target, reply_text, her_text=""):
         req = urllib.request.Request(LM_URL, data=body, headers=hdr)
         with urllib.request.urlopen(req, timeout=30) as r:
             raw = json.loads(r.read())["choices"][0]["message"]["content"].strip().upper()
-        for v in valid:
-            if v in raw:
-                if v == "HELD": _held_why.set("unobservable_criterion")
-                return v
+        token = re.fullmatch(r"(PARTIAL|HELD|YES|NO)[.!]?", raw)
+        if token and token[1] in valid:
+            if token[1] == "HELD": _held_why.set("unobservable_criterion")
+            return token[1]
         _held_why.set("judge_no_verdict")
     except Exception:
         return "HELD"   # review 222: the judge failing is not a verdict on the intent; HELD is retried, NO is a rejection
@@ -1067,7 +1072,8 @@ def _resolve_row(last, recent_text="", source=None):
             di = str(ax.get("difference_intended", "")).strip()
             if not di:
                 r[axis] = "NOT_DECLARED"; continue
-            ax_t = {"goal": di, "success_criterion": "", "enactment": ax.get("enactment", ""), "field_state": ""}
+            ax_t = {"goal": di, "success_criterion": "", "enactment": ax.get("enactment", ""), "field_state": "",
+                    "observation_window": ax.get("observation_window"), "evidence_type": ax.get("evidence_type")}
         _held_why.set("")
         verdict = _judge_realized(ax_t, reply, recent_text)
         if verdict == "HELD":
