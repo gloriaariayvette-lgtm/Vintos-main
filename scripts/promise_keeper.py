@@ -27,6 +27,7 @@ STORE = os.path.join(MEMORY, "promises.json")
 ARCHIVE = os.path.join(MEMORY, "promises-archive")
 RESULTS_FILE = os.path.expanduser(os.environ.get("VINTOS_RESULTS_CHANNEL_FILE", "~/.vintos/slack-results-channel"))
 PER_ENTRY = 3
+WINDOW_DAYS = 7      # an unposted promise is carried over this long, then ages out, counted (10 November)
 ENDED = re.compile(r"^\s*(DONE|RESHAPED|DROPPED):\s*(.+?)\s*$", re.I | re.M)
 ENTRY = re.compile(r"^#{1,3}\s+(\d\d:\d\d)\b.*$", re.M)   # "# 20:01 - Idle thoughts" as well as "## 20:01"
 
@@ -74,8 +75,13 @@ def load():
         json.dump(d, open(os.path.join(ARCHIVE, d["day"] + ".json"), "w"), indent=1, ensure_ascii=False)
         prev = {"day": d["day"], "scanned": list(d.get("scanned") or [])} if d["day"] == _yesterday() else None
         # a promise opened yesterday but never posted (the day was paused) is still owed: it is carried over
-        carried = [i for i in d.get("items", []) if i.get("state") == "open" and not i.get("thread")]
+        waiting = [i for i in d.get("items", []) if i.get("state") == "open" and not i.get("thread")]
+        carried = [i for i in waiting if _within(i)]
+        aged = [{"id": i.get("id"), "opened": i.get("opened")} for i in waiting if not _within(i)]
+        n_aged, said = int(d.get("aged_out_n") or 0) + len(aged), int(d.get("aged_out_said") or 0)
+        kept_ids = (list(d.get("aged_out") or []) + aged)[-200:]
         d = {"items": carried}
+        if n_aged: d.update(aged_out=kept_ids, aged_out_n=n_aged, aged_out_said=said)
         if prev: d["previous"] = prev
     if "previous" not in d and d.get("day", today()) == today():
         try:   # rolled over before this rule: yesterday's archive says what was read
@@ -85,6 +91,45 @@ def load():
             pass
     d.setdefault("day", today()); d.setdefault("scanned", []); d.setdefault("items", [])
     return d
+
+
+def _within(item):
+    """A promise opened inside the window (one with no date is kept)."""
+    try:
+        from datetime import timedelta
+        return datetime.fromisoformat(str(item.get("opened"))[:19]) >= _now() - timedelta(days=WINDOW_DAYS)
+    except ValueError:
+        return True
+
+
+def aged_out_unsaid():
+    """How many promises aged out of the window since this was last asked; they are then said."""
+    d = load()
+    n = int(d.get("aged_out_n") or 0) - int(d.get("aged_out_said") or 0)
+    if n > 0:
+        d["aged_out_said"] = int(d["aged_out_n"]); save(d)
+    return max(0, n)
+
+
+def adopted(pid, want_id):
+    """This promise is literal work and became a want: the want lane works it, and no thread is opened for it."""
+    d = load()
+    for i in d["items"]:
+        if i.get("id") == pid:
+            i["want_id"] = want_id
+    save(d)
+
+
+def close_ids(ids, result):
+    """Promises kept by a finished want (want_agent.close_sources): done, with what came of it, to be brought to her."""
+    d = load(); closed = []
+    for i in d["items"]:
+        if i.get("id") in set(ids) and i.get("state") == "open":
+            i.update(state="done", result=str(result)[:1500], ended=_now().isoformat(timespec="seconds"), posted=False)
+            closed.append(i)
+    if closed:
+        save(d)
+    return closed
 
 
 def save(d):
@@ -189,8 +234,8 @@ def scan(ask, post):
                                    "state": "open", "opened": _now().isoformat(timespec="seconds"), "thread": None})
             save(d)
     opened = []
-    for item in d["items"]:
-        if item["state"] == "open" and not item.get("thread"):
+    for item in d["items"] if post is not None else []:     # no post: read only (a paused day, 10 November)
+        if item["state"] == "open" and not item.get("thread") and not item.get("want_id"):
             try:
                 item["thread"] = post(opening(item)) or None
             except Exception:

@@ -8426,3 +8426,21 @@ Review: an effect that does not happen is said on every miss (`effect NOT DONE`;
 outcome's used to fail without a word), counted on the effect (`tries`), and given up
 aloud at `EFFECT_TRIES_MAX` (20) into `effects_given_up` (`effect GIVEN UP`,
 `EFFECTS_GIVEN_UP`) instead of being retried on every turn for ever; one new case.
+
+## 10 November — wants and promises lane: past the pause, on a rolling window; review branch, not deployed
+
+`claude/wants-promises-window` (on 14694e3d). Gloria: "Email and journal wants skip the slack
+!start/!stop limit"; "he should work on the newest wants and promises. That's supposed to be on a
+rolling window." While the room is paused, journal entries are still read for promises (their
+threads open when she starts the day), owed email promises are synced with the room's work and
+aged, and the newest promises that are literal work become source-bound wants, three open at a
+time, which the bound want lane works and closes; promise results still go to the results channel,
+where her own words wait. The room's conversation stays paused. Wants are taken newest first; a
+bound want or promise more than seven days older than the newest ages out, marked, counted and
+said, never trimmed; the 200-row cap of email-commitments.json lets go only rows no longer owed,
+and says how many. An email want's source receipt is now taken on the words it is kept as.
+Thirteen cases in `broker/tests/test_wants_promises_window.py`. ACTIVE review.
+Review: every load-change-save of `email-commitments.json` now holds the store's own lock (the one
+`want_agent.close_sources` already took): sync runs on every pass, beside the mail reader's `record` in
+another process, and an unlocked save of a stale copy could drop the other's rows. The cap never lets an
+`aged out` promise go either (it can still be kept). Two new cases.

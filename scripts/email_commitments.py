@@ -32,6 +32,14 @@ STORE = os.path.join(MEMORY, "email-commitments.json")
 REPLIES = os.path.join(MEMORY, "email-letter-replies.json")
 DAYS = 3
 SHOWN = 6
+# The rolling window (Gloria, 10 November: "he should work on the newest wants and promises. That's supposed to be on
+# a rolling window"). Owed promises are shown and worked newest first; one still open WINDOW_DAYS before the newest
+# owed one ages out: its state becomes "aged out", with when, counted and said - kept in the store, never trimmed in
+# silence. A promise already in work keeps going.
+WINDOW_DAYS = 7
+CAP = 200
+OWED = ("open", "in work", "aged out")   # what the cap never lets go (review, 10 November: an aged-out promise is still his)
+COUNTS = {"aged_out": 0, "trimmed": 0, "said_trimmed": 0}
 SAME = 0.7
 TAKES_UP = 0.4
 
@@ -46,6 +54,14 @@ READ = ("You are reading a reply you wrote to a letter. List each thing the repl
 _PROMISE = re.compile(r"[^.!?\n]*\b(?:I'll|I will|First build|Then (?:I|pydssp|run|the)|I'm going to)\b[^.!?\n]*[.!?]?", re.I)
 
 
+def _guard():
+    """The store's own lock (store_guard, <store>.lock) - the one want_agent.close_sources takes. Every load-change-save
+    here holds it (review, 10 November): sync now runs on every room pass, paused or not, beside the mail reader's
+    record() in another process, and an unlocked save of a stale copy dropped the other's new or closed rows."""
+    from store_guard import transaction
+    return transaction(STORE)
+
+
 def _load():
     try:
         with open(STORE) as f:
@@ -56,11 +72,43 @@ def _load():
 
 
 def _save(rows):
+    """The store, at most CAP rows. An owed row is never let go (10 November: rows[-200:] dropped owed promises with no
+    word); past the cap the oldest rows no longer owed go first, counted in COUNTS["trimmed"] and said by sync()."""
+    over = len(rows) - CAP
+    if over > 0:
+        gone = set()
+        for i, r in enumerate(rows):
+            if len(gone) >= over: break
+            if r.get("state") not in OWED: gone.add(i)       # an aged-out promise can still be kept: never let go (review)
+        rows = [r for i, r in enumerate(rows) if i not in gone]
+        COUNTS["trimmed"] += len(gone)
     os.makedirs(os.path.dirname(STORE), exist_ok=True)
     tmp = STORE + ".tmp"
     with open(tmp, "w") as f:
-        json.dump(rows[-200:], f, indent=2)
+        json.dump(rows, f, indent=2)
     os.replace(tmp, STORE)
+
+
+def _at(r):
+    try:
+        return datetime.fromisoformat(str(r.get("at"))[:19])
+    except ValueError:
+        return None
+
+
+def age_out(rows):
+    """Open promises from before the window - WINDOW_DAYS before the newest owed one - age out, marked; how many now."""
+    dates = [a for a in (_at(r) for r in rows if r.get("state") in ("open", "in work")) if a]
+    if not dates:
+        return 0
+    edge, n = max(dates) - timedelta(days=WINDOW_DAYS), 0
+    for r in rows:
+        a = _at(r) if r.get("state") == "open" else None
+        if a and a < edge:
+            r.update(state="aged out", aged_out_at=datetime.now().isoformat(timespec="seconds"), window_days=WINDOW_DAYS)
+            n += 1
+    COUNTS["aged_out"] += n
+    return n
 
 
 def _words(text):
@@ -109,16 +157,18 @@ def extract(reply, letter="", think=None):
 def record(letter_id, reply_body, letter_body="", subject="", agent="", reply_id="", think=None, now=None):
     """Keep one reply's promises; returns the new rows (a promise already kept, open, is not kept twice)."""
     now = now or datetime.now()
-    rows = _load()
-    new = []
-    for f in extract(reply_body, letter_body, think):
-        if any(r.get("state") in ("open", "in work") and _like(r["what"], f["what"]) >= SAME for r in rows + new):
-            continue
-        new.append(dict(f, id="EC-" + hashlib.sha256(("%s %s" % (letter_id, f["quote"])).encode()).hexdigest()[:8],
-                        letter_id=str(letter_id), reply_id=str(reply_id or ""), subject=str(subject)[:200],
-                        agent=str(agent)[:60], at=now.isoformat(timespec="seconds"), state="open"))
-    if new:
-        _save(rows + new)
+    found = extract(reply_body, letter_body, think)          # the model is asked before the store is locked
+    with _guard():
+        rows = _load()
+        new = []
+        for f in found:
+            if any(r.get("state") in ("open", "in work") and _like(r["what"], f["what"]) >= SAME for r in rows + new):
+                continue
+            new.append(dict(f, id="EC-" + hashlib.sha256(("%s %s" % (letter_id, f["quote"])).encode()).hexdigest()[:8],
+                            letter_id=str(letter_id), reply_id=str(reply_id or ""), subject=str(subject)[:200],
+                            agent=str(agent)[:60], at=now.isoformat(timespec="seconds"), state="open"))
+        if new:
+            _save(rows + new)
     return new
 
 
@@ -168,20 +218,33 @@ WORK_PROMISE = re.compile(r"\b(?:build|make|run|fold|measure|test|compare|render
 
 
 def open_rows():
-    """Owed promises, oldest first (they are owed in the order he made them). A sentence that is not his own action
-    is set aside as not his, once; one that makes nothing is kept in his letter, not owed here."""
+    with _guard():
+        return _open_rows()
+
+
+def _open_rows():
+    """Owed promises, newest first, inside the window (10 November; they were oldest first, and the six shown were the
+    oldest, from 22 October). A sentence that is not his own action is set aside as not his, once; one that makes
+    nothing is kept in his letter, not owed here."""
     rows, changed = _load(), False
     for r in rows:
         if r.get("state") == "open" and not MINE.search(r.get("quote", "")):
             r["state"] = "not his"; changed = True
         elif r.get("state") == "open" and not WORK_PROMISE.search("%s %s" % (r.get("what", ""), r.get("quote", ""))):
             r["state"] = "not work"; changed = True
+    if age_out(rows):
+        changed = True
     if changed:
         _save(rows)
-    return [r for r in rows if r.get("state") in ("open", "in work")]
+    return sorted((r for r in rows if r.get("state") in ("open", "in work")), key=lambda r: str(r.get("at") or ""), reverse=True)
 
 
 def close_lines(text, now=None, proved=None, waiting_work_ids=()):
+    with _guard():
+        return _close_lines(text, now, proved, waiting_work_ids)
+
+
+def _close_lines(text, now=None, proved=None, waiting_work_ids=()):
     """His PROMISE DONE EC-id: proof / PROMISE DROPPED EC-id: why lines: done, and shown as what happened.
     A promise done needs something anyone could check (proved(), from room_work). Returns (text, log lines)."""
     rows = _load()
@@ -189,7 +252,7 @@ def close_lines(text, now=None, proved=None, waiting_work_ids=()):
     def one(m):
         word, pid, said = m.group(1).lower(), m.group(2), m.group(3)
         r = next((x for x in rows if x.get("id") == pid), None)
-        if not r or r.get("state") not in ("open", "in work"):
+        if not r or r.get("state") not in ("open", "in work", "aged out"):   # one aged out may still be kept
             return "\U0001F4E7 (no promise %s still owed)" % pid
         import awaiting_evidence
         wait = awaiting_evidence.store().safe_read().get(r.get("work_id"), {})
@@ -218,8 +281,10 @@ def block():
         return ""
     import awaiting_evidence
     waits = awaiting_evidence.store().safe_read()
-    out = ["== PROMISED BY EMAIL, STILL OWED (%d; oldest first. Each becomes work here, is kept, or is dropped with "
-           "why. A result that answers a different question does not keep a promise) ==" % len(owed)]
+    aged = sum(1 for r in _load() if r.get("state") == "aged out")
+    out = ["== PROMISED BY EMAIL, STILL OWED (%d; newest first, within %d days of the newest%s. Each becomes work here, "
+           "is kept, or is dropped with why. A result that answers a different question does not keep a promise) =="
+           % (len(owed), WINDOW_DAYS, ("; %d older ones aged out, kept as aged out" % aged) if aged else "")]
     for r in rows:
         if waits.get(r.get("work_id"), {}).get("status") in ("awaiting_evidence", "evidence_changed", "evidence_relevant"):
             out.append("- %s: retained as %s, awaiting evidence; unresolved. Do not open a replacement, close, or chase it. Status answers to the owner remain allowed." % (r["id"], r["work_id"]))
@@ -242,14 +307,26 @@ def block():
 
 
 def sync(state, now):
+    with _guard():
+        return _sync(state, now)
+
+
+def _sync(state, now):
     """Link promises to the room's work, and close them with it. Returns lines for the log."""
     import room_work
     rows = _load()
     if not rows:
         return []
+    lines, changed = [], False
+    aged = age_out(rows)
+    if aged:
+        changed = True
+        lines.append("email promises aged out of the %d-day window: %d (kept, marked aged out)" % (WINDOW_DAYS, aged))
+    if COUNTS["trimmed"] > COUNTS["said_trimmed"]:
+        lines.append("email promises: %d row(s) no longer owed let go at the %d-row cap" % (COUNTS["trimmed"] - COUNTS["said_trimmed"], CAP))
+        COUNTS["said_trimmed"] = COUNTS["trimmed"]
     items = room_work.open_items(state)
     history = room_work.board(state).get("history", [])
-    lines, changed = [], False
     for r in rows:
         if r.get("state") == "open":
             hit = next((w for w in items if r["id"] in (w.get("goal", "") + " " + w.get("done_when", ""))
