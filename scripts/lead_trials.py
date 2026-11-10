@@ -123,23 +123,32 @@ def grade():
             save(SEEDS, seeds[-40:])
             print("[lead] evolution seed planted: %s" % p["ground"])
 SEEDSTATE = os.path.join(MEM, ".lead-seed-state.json")
+PENDING_MAX = 200     # unsettled rows kept beside the cursor
 def seed_from_intents():
     """The feeder (Gloria's design): his intent plans that LANDED (realized YES on field or gloria
     axis) become evolution seeds - unless extremely particular. Runs before each journal window."""
+    # The cursor only says which rows have been MET. A row met while an axis was still unsettled used to be
+    # passed for good, and a YES that came later was never seeded (10 November, round four). Such rows are now
+    # kept apart in "pending", by their own key, and looked at again on every run until they are decided; each
+    # row is decided once - seeded or not - and then leaves both. A row whose window closed unobserved is
+    # dropped: it can no longer land, and it never seeds.
     st = load(SEEDSTATE, {"last_ts": ""})
+    if not isinstance(st, dict): st = {}
+    last = str(st.get("last_ts") or "")
+    waiting = set(str(k) for k in (st.get("pending") if isinstance(st.get("pending"), list) else []))
     intents = load(os.path.join(MEM, "intent-ledger.json"), [])
     seeds = load(SEEDS, [])
-    new_last = st["last_ts"]
+    new_last = last; keep = []
     for e in (intents if isinstance(intents, list) else []):
-        ts = str(e.get("timestamp", ""))
-        if ts <= st["last_ts"]: continue
-        r_ = e.get("realized")
-        if not isinstance(r_, dict): continue
-        if r_.get("field") != "YES" and r_.get("gloria") != "YES": 
-            new_last = max(new_last, ts); continue
+        if not isinstance(e, dict): continue
+        ts = str(e.get("timestamp", "")); key = str(e.get("intent_id") or ts)
+        if not key or (ts <= last and key not in waiting): continue
+        new_last = max(new_last, ts)
+        how, won = _seed_state(e)
+        if how == "wait":
+            keep.append(key); continue
+        if how != "seed": continue
         tgt = e.get("target", {})
-        won = tgt.get("goal", "") if r_.get("field") == "YES" else (tgt.get("gloria") or {}).get("difference_intended", "")
-        if not won: new_last = max(new_last, ts); continue
         d = jparse(ask("He led a conversation and it LANDED: goal was [%s], his move was [%s]. "
             "Is this a GENERALIZABLE ground he could lead on again (a topic, a mode, a kind of moment) "
             "- or EXTREMELY PARTICULAR (one specific object or one-off, like boba)? "
@@ -149,9 +158,31 @@ def seed_from_intents():
             seeds.append({"id": "le_" + uuid.uuid4().hex[:6], "ground": str(d["ground"])[:120],
                           "led": str(won)[:150], "status": "awaiting_statement", "created": datetime.now().isoformat()})
             print("[lead] seed from landed intent: %s" % d["ground"])
-        new_last = max(new_last, ts)
-    st["last_ts"] = new_last
+    if len(keep) > PENDING_MAX:
+        # the list is bounded; what it lets go can no longer be seeded, so it is counted and said (review, round four)
+        st["pending_dropped"] = int(st.get("pending_dropped", 0) or 0) + len(keep) - PENDING_MAX
+        print("[lead] %d unsettled rows left the bounded pending list unseeded (%d so far)" % (len(keep) - PENDING_MAX, st["pending_dropped"]))
+    st["last_ts"] = new_last; st["pending"] = keep[-PENDING_MAX:]
     save(SEEDSTATE, st); save(SEEDS, seeds[-40:])
+def _seed_state(e):
+    """What one ledger row is to the feeder: ("seed", what landed) - the field's goal on a field YES, else her
+    difference on a gloria YES, as before; ("wait", "") while an axis that could still decide that is unsettled
+    inside its window; ("done", "") otherwise. The window is intent_engine's one rule."""
+    r_ = e.get("realized"); tgt = e.get("target") if isinstance(e.get("target"), dict) else {}
+    try:
+        from intent_engine import _window_overdue
+        late = bool(_window_overdue(e))
+    except Exception:
+        late = False
+    if e.get("status") not in (None, "delivered"): return "done", ""   # never became a turn
+    if not isinstance(r_, dict):
+        return ("wait" if (r_ is None and not late) else "done"), ""
+    if r_.get("field") == "YES": won = tgt.get("goal", "")
+    elif r_.get("field") is None and not late: return "wait", ""
+    elif r_.get("gloria") == "YES": won = (tgt.get("gloria") or {}).get("difference_intended", "")
+    elif r_.get("gloria") is None and not late: return "wait", ""
+    else: return "done", ""
+    return ("seed", won) if won else ("done", "")
 def journal_seeds():
     seeds = [s for s in load(SEEDS, []) if s.get("status") == "awaiting_statement"][-2:]
     if not seeds: return
