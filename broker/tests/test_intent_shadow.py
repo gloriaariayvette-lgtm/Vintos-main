@@ -181,6 +181,53 @@ class Tests(unittest.TestCase):
             self.assertEqual(self.assess()['axes']['field']['verdicts'],baseline)
         self.assertEqual(self.assess()['axes']['field']['old_vs_shadow']['INVALID']['YES'],1)
 
+    def test_expired_axis_excludes_even_complete_terminal_evidence(self):
+        for old in ('HELD', 'YES', 'NO', None):
+            self.setUp()
+            self.rows[0].update(realized={'field':old}, held_reason={'field':'her_reply_window_expired'})
+            report=self.reason('her_reply_window_expired')
+            field=report['axes']['field']
+            self.assertEqual(field['verdicts']['HELD'],1)
+            self.assertEqual(sum(field['verdicts'][v] for v in ('YES','PARTIAL','NO')),0)
+            self.assertEqual(field['agreement_denominator'],0)
+            self.assertIsNone(field['agreement_rate'])
+            self.assertEqual(report['rule_version'],2)
+        self.rows[0]['target']['criterion_abstained']='synthetic-abstention'
+        self.reason('not_declared')
+
+    def test_expiry_is_axis_local_and_single_maps_only_to_single_field(self):
+        row=self.rows[0]
+        row['target']['self']=dict(difference_intended='synthetic move',enactment='synthetic enactment',
+                                  observation_window='this_reply',evidence_type='my_move')
+        self.contracts['items'][0]['target_sha256']=S.digest(row['target'])
+        self.contracts['items'].append(dict(self.contracts['items'][0],id='synthetic-self-contract',axis='self'))
+        row.update(realized={'field':'YES','self':'HELD'},held_reason={'self':'her_reply_window_expired'})
+        report=self.reason('her_reply_window_expired','self')
+        self.assertEqual(report['axes']['field']['verdicts']['YES'],1)
+        row['held_reason']={'single':'her_reply_window_expired'}
+        self.reason('observed')  # Single reason cannot leak into per-axis records.
+        self.reason('observed','self')
+        row['realized']='HELD'
+        self.reason('her_reply_window_expired')
+        self.reason('observed','self')
+        for reasons in (None, [], 'her_reply_window_expired', {'field':'unknown_reason'}):
+            row['held_reason']=reasons;self.reason('observed')
+
+    def test_response_expiry_and_waiting_are_distinct_coverage_reasons(self):
+        self.response_fixture();row=self.rows[0]
+        row['target']['gloria']=dict(difference_intended='synthetic response',enactment='synthetic enactment',
+                                    observation_window='her_next_reply',evidence_type='her_response')
+        self.contracts['items'][0]['target_sha256']=S.digest(row['target'])
+        self.contracts['items'].append(dict(self.contracts['items'][0],id='synthetic-gloria-contract',axis='gloria'))
+        row.update(realized={'field':'HELD','gloria':'HELD'},
+                   held_reason={'field':'her_reply_window_expired','gloria':'her_reply_window_expired'})
+        self.reason('her_reply_window_expired');self.reason('her_reply_window_expired','gloria')
+        row.pop('held_reason');row.pop('response_text');row['realized']={'field':None,'gloria':None}
+        row['skipped_observations']={'n':999,'first':0,'last':1,'reason':'device_event_only'}
+        report=self.reason('no_reply');self.reason('no_reply','gloria')
+        self.assertEqual(report['axes']['field']['old_vs_shadow']['MISSING']['HELD'],1)
+        self.assertIsNone(report['axes']['field']['agreement_rate'])
+
     def test_no_output_text_ids_hashes_dynamic_keys_or_false_accuracy_claim(self):
         self.rows[0]['synthetic-private-key']='synthetic-private-value'
         report=self.assess();raw=json.dumps(report)

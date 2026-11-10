@@ -18,7 +18,7 @@ FAMILIES = ('mechanical', 'semantic', 'internal_state', 'unspecified')
 REASONS = ('not_declared', 'legacy_shape', 'invalid_declaration', 'not_delivered', 'missing_identity',
            'ambiguous_identity', 'unknown_time', 'time_order', 'after_cutoff',
            'missing_delivery', 'delivery_mismatch', 'device_event_only', 'not_her_words',
-           'no_reply', 'missing_response_join', 'ambiguous_response', 'response_mismatch',
+           'no_reply', 'her_reply_window_expired', 'missing_response_join', 'ambiguous_response', 'response_mismatch',
            'invalid_window', 'missing_contract', 'contract_mismatch', 'contract_not_prior',
            'unsupported_criterion', 'missing_receipt', 'conflicting_receipt',
            'receipt_time_order', 'incomplete_observation', 'partial_not_defined', 'observed')
@@ -93,6 +93,11 @@ def grade(row, axis, turns, receipts, contracts, ambiguous, cutoff, zone=None):
     def held(reason): return 'HELD', reason
     target, why = declaration(row, axis)
     if why: return ('NOT_DECLARED' if why == 'not_declared' else 'HELD'), why
+    reasons = row.get('held_reason')
+    if isinstance(reasons, dict) and (reasons.get(axis) == 'her_reply_window_expired'
+            or axis == 'field' and not isinstance(row.get('realized'), dict)
+            and reasons.get('single') == 'her_reply_window_expired'):
+        return held('her_reply_window_expired')
     if row.get('status') != 'delivered': return held('not_delivered')
     iid, tid = row.get('intent_id'), row.get('turn_id')
     if not L.identifier(iid) or not L.identifier(tid): return held('missing_identity')
@@ -207,7 +212,7 @@ def assess(ledger, evidence, contracts, cutoff, source_zone=None):
                 a['agreement_denominator'] += 1; a['agreement_count'] += int(old == verdict)
     for a in result.values():
         if a['agreement_denominator']: a['agreement_rate'] = a['agreement_count']/a['agreement_denominator']
-    return dict(schema='intent-shadow-counts-v1', rule_version=1, input_rows=len(ledger),
+    return dict(schema='intent-shadow-counts-v1', rule_version=2, input_rows=len(ledger),
                 distinct_rows=len(unique), duplicate_records=duplicates, ambiguous_intents=len(ambiguous), axes=result,
                 shadow_only=True, source_claims_verified=False, conditional_on_supplied_contracts=True, semantic_accuracy_measured=False,
                 selector_served_identity_inferred=False, grader_kind='deterministic', inference_calls=0,

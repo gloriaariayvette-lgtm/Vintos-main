@@ -20,7 +20,8 @@ free-text intentions may have no admissible mechanical contracts; that is an
 explicit coverage limit, not evidence that the intentions failed.
 
 The report is blind to `realized`, priority, pressure, selection_check and old
-held reasons while grading. Original verdicts are used only afterward for a
+held reasons while grading, except the explicit observation-window expiry exclusion
+below. Original verdicts are used only afterward for a
 fixed per-axis confusion table. The agreement denominator includes only rows
 with YES/PARTIAL/NO on both sides; HELD, NOT_DECLARED, missing and malformed
 original verdicts remain separate. An empty denominator returns null. Agreement
@@ -61,6 +62,22 @@ ledger timestamps need an explicit source timezone. Sidecar times require explic
 UTC offsets. This-reply/my-move evidence does not require a later user response;
 her-next-reply/her-response evidence does. Self supports only the former; gloria
 only the latter. This is a shadow distinction, not a change to the live input gate.
+
+Rule version 2 honors `held_reason[axis] = her_reply_window_expired` as a
+coverage exclusion: a declared axis remains HELD with that fixed reason even when
+later sidecars supply exact joins and complete terminal receipts. It never becomes
+YES, PARTIAL or NO and never enters the agreement denominator. Declaration checks
+still come first, so explicit abstention and absent axes stay NOT_DECLARED. For
+single-verdict records only, `held_reason.single` maps to field; it cannot exclude
+secondary axes or a per-axis record. Explicit axis expiry is conservative even if
+its stored verdict is contradictory. This is a supplied coverage marker, not an
+independent verification of the engine's clock or source claims.
+
+Waiting axes without an expiry marker retain the existing evidence checks (for
+example, missing response is `no_reply`). Skip counts/times, lead-axis metadata and
+other held reasons never synthesize expiry. No live expiry policy is duplicated or
+changed, and original verdicts, reasons and skipped-observation metadata are retained
+without mutation. The report schema and sidecar schemas remain version 1.
 
 ## Private sidecars, version 1
 

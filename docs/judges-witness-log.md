@@ -3537,3 +3537,20 @@ malformed fields and explicit abstentions. All 22 shadow tests pass; log
 /tmp/judges-s75-shadow.log. Future observation fields alone do not establish
 coverage: exact source joins and prior reviewed contracts are also necessary.
 Independent review remains pending. No live writes, inference, merge or deployment.
+
+
+## 2026-11-10 05:32 CST — expired observation axes excluded from shadow coverage; ACTIVE
+
+Branch codex/judges-shadow-expiry, based on reviewed 4c49ca5f. Rule version 2
+keeps an explicitly engine-expired declared axis HELD with fixed reason
+her_reply_window_expired, even with complete joined evidence and prior contracts.
+It cannot enter decisive verdict counts or agreement denominators. Single reasons
+map only to field on single-verdict records; secondary axes remain independent.
+Declaration abstention retains precedence. Waiting rows and other held reasons
+keep existing evidence checks; skip metadata never synthesizes expiry. Original
+fields remain untouched. This is a supplied coverage marker, not source proof.
+Three synthetic regressions cover complete evidence, contradictory old verdicts,
+axis/single scoping, declaration precedence and waiting versus expired responses.
+All 25 isolated shadow tests pass; log /tmp/judges-s76-shadow.log. No runtime,
+manifest or new-file changes; no live writes, inference, merge or deployment.
+Claude owns independent review, full isolated suite and integration. ACTIVE.
