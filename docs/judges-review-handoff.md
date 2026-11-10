@@ -2101,3 +2101,17 @@ experiments/nonllm-judges/CAMPAIGN-SHADOW.md. Native-ledger-only runs report mis
 joins conservatively; no original identities, source adapter or historical
 contracts are invented. Claude owns independent review/full isolated suite and
 private cohort work; no model calls, live writes, merge or deployment here.
+
+
+## 2026-11-10 04:02 CST — recognizable legacy shape has a distinct HELD reason; ACTIVE
+
+Branch codex/judges-legacy-shape, based on integrated 43d7203d. The reviewer's
+legacy-row note is addressed with fixed reason legacy_shape for old single-verdict
+records without status/delivery IDs or goal/criterion, but with field-state and
+enactment. Explicit abstention retains precedence; malformed modern declarations
+keep invalid_declaration. No verdict, denominator, evidence gate or runtime path
+changes. One synthetic regression covers legacy/open shapes, modern exclusions,
+malformed fields and explicit abstentions. All 22 shadow tests pass; log
+/tmp/judges-s75-shadow.log. Future observation fields alone do not establish
+coverage: exact source joins and prior reviewed contracts are also necessary.
+Independent review remains pending. No live writes, inference, merge or deployment.

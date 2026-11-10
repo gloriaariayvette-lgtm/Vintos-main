@@ -29,7 +29,11 @@ counts describe supplied annotations, including rejected contracts; they are not
 counts of independently verified or eligible criteria.
 
 Field, gloria and self remain separate. An explicitly abstained field and absent
-secondary axes are NOT_DECLARED. Malformed declarations are HELD. Unsupported
+secondary axes are NOT_DECLARED. Recognizable legacy single-verdict rows (no status
+or delivery IDs, field-state/enactment present, neither goal nor success criterion)
+are HELD with `legacy_shape`. Modern or otherwise malformed declarations remain
+HELD with `invalid_declaration`; the legacy distinction supplies no missing evidence
+and changes no verdict or agreement denominator. Unsupported
 semantic/internal-state criteria are HELD, not guessed from words, punctuation,
 reply length, positivity, device events or the selector's confidence. This version
 has no mechanical her-response predicate. It can audit an exact response join,
