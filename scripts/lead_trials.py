@@ -148,6 +148,7 @@ def seed_from_intents():
         if how == "wait":
             keep.append(key); continue
         if how != "seed": continue
+        if any(isinstance(s, dict) and s.get("intent") == key for s in seeds): continue   # seeded already (round five)
         tgt = e.get("target", {})
         d = jparse(ask("He led a conversation and it LANDED: goal was [%s], his move was [%s]. "
             "Is this a GENERALIZABLE ground he could lead on again (a topic, a mode, a kind of moment) "
@@ -156,14 +157,17 @@ def seed_from_intents():
             % (str(won)[:200], str(tgt.get("enactment", ""))[:150])))
         if d and d.get("kind") == "GENERAL" and d.get("ground"):
             seeds.append({"id": "le_" + uuid.uuid4().hex[:6], "ground": str(d["ground"])[:120],
-                          "led": str(won)[:150], "status": "awaiting_statement", "created": datetime.now().isoformat()})
+                          "led": str(won)[:150], "status": "awaiting_statement", "created": datetime.now().isoformat(),
+                          "intent": key})
             print("[lead] seed from landed intent: %s" % d["ground"])
     if len(keep) > PENDING_MAX:
         # the list is bounded; what it lets go can no longer be seeded, so it is counted and said (review, round four)
         st["pending_dropped"] = int(st.get("pending_dropped", 0) or 0) + len(keep) - PENDING_MAX
         print("[lead] %d unsettled rows left the bounded pending list unseeded (%d so far)" % (len(keep) - PENDING_MAX, st["pending_dropped"]))
     st["last_ts"] = new_last; st["pending"] = keep[-PENDING_MAX:]
-    save(SEEDSTATE, st); save(SEEDS, seeds[-40:])
+    # the seeds first (round five): each names the row it came from, so a run that dies before the cursor is
+    # written finds its seed there and seeds nothing twice
+    save(SEEDS, seeds[-40:]); save(SEEDSTATE, st)
 def _seed_state(e):
     """What one ledger row is to the feeder: ("seed", what landed) - the field's goal on a field YES, else her
     difference on a gloria YES, as before; ("wait", "") while an axis that could still decide that is unsettled

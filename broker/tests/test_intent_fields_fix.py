@@ -479,9 +479,13 @@ class IntentFieldsFix(unittest.TestCase):
         E.resolve_previous("GLORIA: [she pressed it — the light is on.] Earlier topic.\nVINTOS: Earlier answer.\n"
                            "GLORIA (now): [Gloria just touched Vintos's cheek] I would pick the second one.")
         self.assertEqual(len(self.judge_calls), 3)
-        for call in self.judge_calls:
+        for axis, call in zip(('field', 'gloria', 'self'), self.judge_calls):
             seen = call['messages'][1]['content']
-            self.assertIn('I would pick the second one.', seen); self.assertIn('Earlier topic.', seen)
+            if axis == 'gloria':
+                self.assertIn('I would pick the second one.', seen)
+            else:
+                self.assertNotIn('I would pick the second one.', seen)
+            self.assertNotIn('Earlier topic.', seen)
             self.assertNotIn('touched', seen); self.assertNotIn('pressed', seen)
         row = self.rows()[-1]
         self.assertEqual(row['realized'], {'field': 'YES', 'gloria': 'YES', 'self': 'YES'}); self.assertNotIn('held_reason', row)
