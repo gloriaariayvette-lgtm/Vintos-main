@@ -3,13 +3,13 @@
 Status: offline design and pure synthetic acceptance prototype, not a deployed judge.
 `media_taste.py:assess` accepts supplied objects, performs no I/O and calls no encoder.
 It is not connected to the runner, UI, Landings, a cron, or his context. No calibration
-claim or taste-profile comparison is implemented. That comparison awaits Gloria.
+claim is made. The separately approved, unwired literal taste-profile comparison
+is documented in TASTE-COMPARISON.md; it supplies no judge inputs.
 
 ## Evidence contract
 
-The independent private run reported 10 Landings items: four videos, three songs,
-three text items, zero text anchors. This establishes a coverage gap, not a measured
-media preference model. The existing media index (`scripts/media_embed.py:index`,
+Media coverage requires its own evidence contract; text bindings do not establish
+media preference. The existing media index (`scripts/media_embed.py:index`,
 `_hit`) supplies kind, full file SHA-256, model, dimension, encoding time and vector.
 Its displayed `art:` handle is a truncated digest; titles and paths are mutable.
 Use `sha256:<full 64-character file digest>` plus kind as revision identity. Never
@@ -83,7 +83,8 @@ to the eligible positive reference set, with reference/day counts. These describ
 similarity to previously landed media; they do not predict whether a new piece
 lands, establish personal identity, prove quality, or supply a binary verdict.
 No learned weights or threshold, cross-modal averaging, negative extrapolation,
-automatic anchors, feedback writes or preference-profile comparison is added.
+automatic anchors or feedback writes are added by this prototype. The separate
+profile comparison measures literal overlap only; it does not assess media content.
 Malformed, sparse, mixed-encoder, late-freeze or ambiguous evidence abstains.
 
 ## Prospective text binding delivered with this design

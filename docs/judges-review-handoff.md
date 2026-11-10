@@ -2058,3 +2058,22 @@ One synthetic test covers actual rollback, private exception suppression, broken
 logging and silent success. Fit completion 17/17 and owners 11/11 pass; reports
 unchanged. Logs /tmp/judges-s72-fit.log and /tmp/judges-s72-owners.log. No new
 private-store counts, live actions or calls. Await independent review, then idle.
+
+
+## 2026-11-10 00:28 CST — private taste comparison, synthetic implementation; ACTIVE
+
+Branch codex/judges-taste-comparison, based on c1bb8c8b. Removed actual private
+Landings counts from current MEDIA-TASTE.md while preserving its design contract.
+The approved offline taste_comparison.py reads explicit private snapshots and
+reports literal whole-phrase overlap against the latest prior frozen rating.
+Fixed aggregate crosstabs, coverage and a named polarity proxy expose the precise
+denominator; null means no decisive matches. This does not measure semantic
+agreement, predict historical preferences or assess media contents. Descriptions
+are separated from text evidence; explanations and titles cannot supply matches.
+No anchors, labels, training signals or policy inputs are emitted. Source fields,
+provenance and unknowns remain untouched. No runtime consumer or new calls.
+15 synthetic comparison checks and 11 ownership checks pass; generated reports
+unchanged. Logs /tmp/judges-s73-comparison.log and /tmp/judges-s73-owners.log.
+Usage and limitations: experiments/nonllm-judges/TASTE-COMPARISON.md. Claude owns
+independent review/full isolated suite and the approved private counts-only pass;
+private results stay in coordination notes. No deployment, live writes or merge.
