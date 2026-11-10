@@ -750,11 +750,13 @@ class Tests(unittest.TestCase):
         def forbidden(*a,**kw):raise AssertionError('provider or room send must not run')
         with patch.object(D,'STATE',str(self.mem/'test-room-state.json')):
             for _ in range(2):
-                with self.assertRaises(WorkBlocked):
-                    D.agent_wants_pass(forbidden,'fixture-channel','fixture-dot',self.state,self.now+2,
-                        rows=[row],writer=forbidden,identity='Fixture',notify=lambda *a:None,complete=lambda *a:None,
-                        block_notify=lambda key,msg:notices.append(key) or {'state':'sent'})
+                # the block holds this want only: the pass returns, says so, and makes no call or post
+                lines=D.agent_wants_pass(forbidden,'fixture-channel','fixture-dot',self.state,self.now+2,
+                    rows=[row],writer=forbidden,identity='Fixture',notify=lambda *a:None,complete=lambda *a:None,
+                    block_notify=lambda key,msg:notices.append(key) or {'state':'sent'})
+                self.assertTrue(any('held: context_needs_continuation' in l for l in lines), lines)
         self.assertEqual(len(notices),1)
+        self.assertEqual(self.current()[0]['agent_work']['blocked']['reason'],'context_needs_continuation')
         self.assertIn('Synthetic next report',str(W.load(w,work,self.ws)['events']))
 
     def test_dedicated_stop_retains_agent_input_without_room_or_owner_sends(self):
