@@ -107,5 +107,20 @@ check("an unrelated journal want does not swallow the promise",
       not any(r.get("kind") == "commitment" for r in rows[0].get("source_refs", []))
       and any(r.get("adopted_from") == "EC-fixture01" for r in rows), [(r.get("id"), r.get("adopted_from")) for r in rows])
 
+# review: a journal want that matches its own owed promise more closely than a looser letter want carries the promise;
+# it is not folded into the other letter want (the live copy had one such case, 5/1.0 against 4/0.8)
+LOOSE = dict(id="em-2", want="I want to check the lattice column at 0.5000 next to the reference table for Grok Bot.", source="email",
+             intensity=3, fulfilled=False, timestamp="2026-11-10T08:00:00",
+             **source_receipt("email", "fixture-mail-3", "I want to check the lattice column at 0.5000 next to the reference table for Grok Bot."))
+CLOSE = "I want to run the lattice script and check the column at 0.5000 tonight."
+put("email-commitments.json", [promise]); put("current-wants.json", [LOOSE])
+check("(both are twins of the journal want; the promise is the closer)",
+      twin(CLOSE, [LOOSE]) is not None and A.promise_twin(CLOSE) == "EC-fixture01"
+      and A._twin_score(CLOSE, promise["what"]) > A._twin_score(CLOSE, LOOSE["want"]))
+check("the closer promise wins: nothing is folded into the looser letter want", A.fold_journal(CLOSE, {}) is None
+      and not get("current-wants.json")[0].get("journal_context"))
+put("email-commitments.json", [])
+check("with no closer promise the same journal want is folded into that letter want as before", A.fold_journal(CLOSE, {}) == "em-2")
+
 print("\n%d/%d passed" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

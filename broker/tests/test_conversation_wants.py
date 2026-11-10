@@ -70,6 +70,12 @@ check("'ask nothing' inside another want is not a question",
 check("nothing waiting gives an empty section", C.block(OTHER, NOW) == "")
 check("bad rows are ignored", C.block([None, {"want": None}, {"want": "I want to ask you x?", "timestamp": "nope"}], NOW) == "")
 
+# review: only his own wants for her - none read out of his letters or other people's posts
+for s in ("email", "letter-promise", "moltbook"):
+    check("a want from %s is not carried into her conversation" % s, not C.for_her(dict(TELL, source=s)))
+check("a want adopted from an email promise is not carried either", not C.for_her(dict(TELL, adopted_from="EC-0000abcd")))
+check("his journal's own want for her still is", C.for_her(TELL))
+
 src = open(os.path.join(REPO, "bin", "server.py")).read()
 seg = src[src.index("# 10b. Current wants"):src.index("# 11. Silence contracts")]
 check("the chat context adds the wants-for-her section", "conversation_wants" in seg and "_cw.block(" in seg, seg[:300])

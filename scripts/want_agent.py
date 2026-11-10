@@ -455,10 +455,21 @@ def fold_journal(text, receipt=None, *, ws=None, now=None):
     from store_guard import locked_update
     ws = Path(ws or workspace()); receipt = receipt or {}; hit = []
     stamp = datetime.fromtimestamp(now or time.time()).isoformat(timespec='seconds')
+    # an owed email promise that says the same more closely wins (review, 10 November: on the live copy a journal want
+    # matched its own promise at 5 shared words and all of the shorter, and a different letter want at 4 and 0.8; it
+    # was folded into the looser one and the promise it repeated was left to become a second want)
+    try:
+        pid = promise_twin(text)
+        import email_commitments
+        p = next((r for r in email_commitments._load() if isinstance(r, dict) and r.get('id') == pid), None) if pid else None
+    except Exception:
+        p = None
     def mutate(rows):
         w = twin(text, [r for r in rows if _live(r) and _from_letters(r)])
         if w is None:
             return None
+        if p is not None and _twin_score(text, p.get('what', '')) > _twin_score(text, w.get('want', '')):
+            return None                                 # the promise is the closer twin: express_want carries it
         hit.append(w.get('id'))
         ctx = w.setdefault('journal_context', [])
         sid = receipt.get('source_event_id')
@@ -470,6 +481,13 @@ def fold_journal(text, receipt=None, *, ws=None, now=None):
         return rows
     locked_update(str(ws / 'memory/current-wants.json'), mutate, default=[], reader='want_agent.fold_journal')
     return hit[0] if hit else None
+
+
+def _twin_score(a, b):
+    """(share of the shorter, shared content words) - the order journal_wants.twin ranks twins by."""
+    from journal_wants import _content
+    x, y = _content(a), _content(b)
+    return (len(x & y) / max(1, min(len(x), len(y))), len(x & y))
 
 
 def promise_twin(text):

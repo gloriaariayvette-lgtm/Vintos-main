@@ -17,6 +17,9 @@ WINDOW_DAYS = 14
 LIMIT = 6              # wants for her in his context at once
 LIMIT_QUESTIONS = 4    # of which questions, the longest waiting first; then things to tell her, the newest first
 HER_CAPABILITIES = ("gloria", "you")
+# Wants read out of someone else's words are not carried into her conversation as his (review, 10 November): his
+# letters (and the promises adopted from them) and the posts he reads on Moltbook.
+NOT_HIS_OWN = ("email", "letter-promise", "moltbook")
 _FOR_HER = re.compile(r"^\s*I want to\s+(?:[\w']+[ ,]+){0,3}?(?P<verb>ask|tell|say|show|play|read|give|bring)\b"
                       r"[^.?!]{0,40}?\b(?:you|her|gloria)\b", re.I)
 
@@ -39,6 +42,8 @@ def for_her(w):
     if not isinstance(w, dict) or not isinstance(w.get("want"), str):
         return False
     if any(w.get(k) for k in ("fulfilled", "dismissed", "aged_out", "_delete")):
+        return False
+    if w.get("source") in NOT_HIS_OWN or str(w.get("adopted_from") or "").startswith("EC-"):
         return False
     return bool(_her_step(w) or w.get("gloria_routed") or _FOR_HER.search(w["want"]))
 
