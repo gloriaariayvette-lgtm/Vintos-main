@@ -189,6 +189,22 @@ class Tests(unittest.TestCase):
         self.assertTrue(report['conditional_on_supplied_contracts'])
         for key in ('runtime_writes','inference_calls','anchors_emitted','labels_emitted','training_signals_emitted','policy_inputs_emitted'):self.assertEqual(report[key],0)
 
+    def test_recognized_legacy_shape_is_held_not_malformed_or_regraded(self):
+        legacy=dict(target=dict(field_state='synthetic field',enactment='synthetic move'),realized='NO')
+        self.rows=[legacy]
+        result=self.reason('legacy_shape')
+        self.assertEqual(result['axes']['field']['verdicts']['HELD'],1)
+        self.assertEqual(result['axes']['field']['old_vs_shadow']['NO']['HELD'],1)
+        legacy['target']['criterion_abstained']='window_missing';self.reason('not_declared')
+        legacy['target'].pop('criterion_abstained')
+        legacy['target']['goal']=False;self.reason('invalid_declaration')
+        legacy['target'].pop('goal')
+        legacy['realized']=None;self.reason('legacy_shape')
+        for key,value in [('status','delivered'),('intent_id','synthetic-modern'),('turn_id','synthetic-modern'),('realized',{'field':'NO'})]:
+            self.rows=[dict(legacy,**{key:value})];self.reason('invalid_declaration')
+        self.rows=[legacy];legacy['target'].pop('enactment');self.reason('invalid_declaration')
+        self.setUp();self.rows[0]['target'].pop('success_criterion');self.reason('invalid_declaration')
+
     def test_empty_and_legacy_snapshots_have_no_invented_support(self):
         self.rows=[];report=self.assess();self.assertEqual(report['distinct_rows'],0)
         self.assertIsNone(report['axes']['field']['agreement_rate'])

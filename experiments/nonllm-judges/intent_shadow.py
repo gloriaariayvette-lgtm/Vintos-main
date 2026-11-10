@@ -15,7 +15,7 @@ AXES = ('field', 'gloria', 'self')
 VERDICTS = ('YES', 'PARTIAL', 'NO', 'HELD', 'NOT_DECLARED')
 OLD = VERDICTS + ('MISSING', 'INVALID')
 FAMILIES = ('mechanical', 'semantic', 'internal_state', 'unspecified')
-REASONS = ('not_declared', 'invalid_declaration', 'not_delivered', 'missing_identity',
+REASONS = ('not_declared', 'legacy_shape', 'invalid_declaration', 'not_delivered', 'missing_identity',
            'ambiguous_identity', 'unknown_time', 'time_order', 'after_cutoff',
            'missing_delivery', 'delivery_mismatch', 'device_event_only', 'not_her_words',
            'no_reply', 'missing_response_join', 'ambiguous_response', 'response_mismatch',
@@ -74,6 +74,12 @@ def declaration(row, axis):
     if not isinstance(target, dict): return None, 'invalid_declaration'
     if axis == 'field':
         if target.get('criterion_abstained'): return None, 'not_declared'
+        legacy_verdict = row.get('realized')
+        if (row.get('status') is None and not row.get('intent_id') and not row.get('turn_id')
+                and target.get('goal') in (None, '') and target.get('success_criterion') in (None, '')
+                and text(target.get('field_state')) and text(target.get('enactment'))
+                and (legacy_verdict is None or isinstance(legacy_verdict, str) and legacy_verdict in VERDICTS)):
+            return None, 'legacy_shape'
         if not text(target.get('goal')) or not text(target.get('success_criterion')): return None, 'invalid_declaration'
         return target, ''
     value = target.get(axis)
