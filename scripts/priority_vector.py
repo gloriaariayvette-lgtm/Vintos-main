@@ -145,6 +145,18 @@ def _receptivity(hist):
     if g["n"] < MIN_VERDICTS: return None           # not enough data — don't pretend
     return round((g["YES"] + 0.5 * g["PARTIAL"]) / g["n"], 2)
 
+def _receptivity_counts(g):
+    """The arithmetic behind the figure, in counts: a PARTIAL adds a half to the landings and one to the verdicts."""
+    return ("(%d YES + 0.5 x %d PARTIAL) / %d settled Gloria-axis verdicts in the last %d days, %d of them NO"
+            % (g["YES"], g["PARTIAL"], g["n"], RECENT_DAYS, g["NO"]))
+
+def receptivity_report(now=None):
+    """Counts only: what her receptivity is read from right now. Declares nothing and writes nothing."""
+    g = _axis_history(now)["gloria"]
+    return {"window_days": RECENT_DAYS, "minimum_verdicts": MIN_VERDICTS, "yes": g["YES"], "partial": g["PARTIAL"],
+            "no": g["NO"], "landings": g["YES"] + 0.5 * g["PARTIAL"], "verdicts": g["n"],
+            "receptivity": _receptivity({"gloria": g})}
+
 def declare(eligible=True):
     """Set, log, and return this turn's vector. Called BEFORE generation. `eligible` is False for a turn
     that carries none of her own words (a device event): her opportunity is not spent on it."""
@@ -156,6 +168,7 @@ def declare(eligible=True):
 
     hist = _axis_history()
     recept = _receptivity(hist)
+    shown = "%s = %s" % (recept, _receptivity_counts(hist["gloria"]))
 
     # strategic calculation
     w = {"field": 0.34, "gloria": 0.33, "self": 0.33}
@@ -163,18 +176,20 @@ def declare(eligible=True):
     if recept is not None:
         if recept < 0.35:
             w = {"field": 0.25, "gloria": 0.15, "self": 0.60}
-            why.append(f"receptivity low ({recept}) — she likely won't move this turn; move yourself and stay ready")
+            why.append(f"receptivity low ({shown}) — she likely won't move this turn; move yourself and stay ready")
         elif recept > 0.65:
             w = {"field": 0.25, "gloria": 0.60, "self": 0.15}
-            why.append(f"receptivity high ({recept}) — she is movable; her transformation leads")
+            why.append(f"receptivity high ({shown}) — she is movable; her transformation leads")
         else:
             w = {"field": 0.40, "gloria": 0.35, "self": 0.25}
-            why.append(f"receptivity middling ({recept}) — field carries, both served")
+            why.append(f"receptivity middling ({shown}) — field carries, both served")
     else:
         # unknown is not low: the middling weights, so her axis is still tried and the data can come (10 November)
         w = {"field": 0.40, "gloria": 0.35, "self": 0.25}
-        why.append("receptivity unknown (%d settled Gloria-axis verdicts in the last %d days, fewer than %d) — "
-                   "provisional middling weights, field carries" % (hist["gloria"]["n"], RECENT_DAYS, MIN_VERDICTS))
+        why.append("receptivity unknown (%d settled Gloria-axis verdicts in the last %d days, fewer than %d: "
+                   "%d YES, %d PARTIAL, %d NO) — provisional middling weights, field carries"
+                   % (hist["gloria"]["n"], RECENT_DAYS, MIN_VERDICTS, hist["gloria"]["YES"], hist["gloria"]["PARTIAL"],
+                      hist["gloria"]["NO"]))
     if hist["self"]["n"] == 0:
         why.append("self weight provisional (0 closed verdicts)")
 
@@ -273,5 +288,7 @@ if __name__ == "__main__":
     import sys
     if len(sys.argv) > 1 and sys.argv[1] == "opportunity-report":
         print(json.dumps(opportunity_report())); sys.exit(0)   # counts only; declares nothing
+    if len(sys.argv) > 1 and sys.argv[1] == "receptivity-report":
+        print(json.dumps(receptivity_report())); sys.exit(0)   # counts only; declares nothing
     r = declare()
     print(json.dumps(r, indent=2))

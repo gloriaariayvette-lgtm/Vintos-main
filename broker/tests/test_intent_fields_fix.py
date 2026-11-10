@@ -590,6 +590,67 @@ class IntentFieldsFix(unittest.TestCase):
         self.assertEqual(Path(DD.PRESS).read_text(), before)
         self.assertEqual(list(self.mem.glob('intent-pressure.json.bak-*')), [])
 
+    # ---- review, 10 November (second pass): the way back for a graduated row, and the receptivity arithmetic ----
+    REWORDED = 'name the weekend plan outright, plainly'      # the same intention as TEXT_A, in a later turn's own words
+
+    def closed_row_beside_an_open_one(self):
+        self.graduated = time.time() - 7200
+        closed = self.prow(TEXT_A, 2.6, count=6, lineage=[{'graduated': self.graduated, 'at_weight': 5.0}])
+        self.press(**{A: closed, B: self.prow(TEXT_B, 1.2)})
+        self.assertEqual(DD.primary_for_turn()['id'], B)                       # A is heavier, and closed
+        self.answer = self.target(field_state=self.REWORDED)
+
+    def test_graduated_row_reopens_when_a_later_turn_of_its_own_lands(self):
+        """A closed row is never the primary, so its news cannot come from being selected. It comes from a later
+        turn that reaches for the same intention in its own words - no id named - and lands."""
+        self.closed_row_beside_an_open_one()
+        t = self.turn(resolve=False)
+        self.assertEqual((t['primary_shown'], t['addresses'], t['field_state']), (B, 'NONE', self.REWORDED))
+        self.verdict = 'YES'; E.resolve_previous(HER)
+        self.assertEqual(self.rows()[-1]['realized']['field'], 'YES')
+        row = self.pressure(A)
+        self.assertEqual([l['from_weight'] for l in row['lineage'] if 'relieved' in l and l['relieved'] > self.graduated], [2.6])
+        self.assertEqual((row['weight'], self.pressure(B)['weight']), (1.3, 1.2))   # written on A, and only on A
+        self.assertTrue(DD.primary_eligible(A, row, DD._rotation()))
+        self.assertEqual(DD.primary_for_turn()['id'], A)                       # open again on the main route
+        self.assertEqual(DD.primary_for_turn({'id': A}), dict(DD.primary_for_turn(), required=True))   # ... and the required one
+
+    def test_graduated_row_stays_closed_on_a_miss_a_later_time_or_a_showing(self):
+        """The control: the same later turn reaches the same row, and nothing short of a landing opens it."""
+        self.closed_row_beside_an_open_one()
+        for verdict, weight, count in (('NO', 3.6, 7), ('PARTIAL', 4.1, 8)):
+            self.turn(resolve=False); self.verdict = verdict; E.resolve_previous(HER)
+            row = self.pressure(A)
+            self.assertEqual((row['weight'], row['count']), (weight, count))   # the miss did reach the row
+            self.assertGreater(row['last'], time.time() - 60)                  # ... and stamped it now
+            self.assertEqual([l for l in row['lineage'] if 'relieved' in l], [])
+        self.assertIn(TEXT_A, DD.pressure_block())                             # still shown among what keeps failing
+        self.select(resolve=False); self.assertIn(TEXT_A, self.prompt())       # ... to the selector too
+        row = self.pressure(A)
+        self.assertFalse(DD.primary_eligible(A, row, {}))
+        self.assertNotEqual((DD.primary_for_turn() or {}).get('id'), A)
+        self.assertNotEqual((DD.primary_for_turn({'id': A}) or {}).get('id'), A)
+        self.assertTrue(all(p != A for p, _ in self.shown()))
+
+    def test_receptivity_reason_and_report_state_the_counts(self):
+        self.ledger([(1, 'NO')] * 5 + [(1, 'PARTIAL')])
+        rec = PV.declare()
+        self.assertEqual((rec['receptivity'], rec['weights']), (0.08, LOW))
+        self.assertIn('receptivity low (0.08 = (0 YES + 0.5 x 1 PARTIAL) / 6 settled Gloria-axis verdicts in the last 14 days, '
+                      '5 of them NO)', rec['why'])
+        self.assertEqual(PV.receptivity_report(), {'window_days': 14, 'minimum_verdicts': 5, 'yes': 0, 'partial': 1, 'no': 5,
+                                                   'landings': 0.5, 'verdicts': 6, 'receptivity': 0.08})
+        self.ledger([(1, 'YES')] * 2 + [(1, 'PARTIAL')] * 2 + [(1, 'NO')] * 2 + [(20, 'NO')] * 9)
+        rec = PV.declare()
+        self.assertIn('receptivity middling (0.5 = (2 YES + 0.5 x 2 PARTIAL) / 6 settled', rec['why'])
+        self.ledger([(1, 'PARTIAL')] * 3)
+        rec = PV.declare()
+        self.assertIn('receptivity unknown (3 settled', rec['why']); self.assertIn('fewer than 5: 0 YES, 3 PARTIAL, 0 NO)', rec['why'])
+        self.assertIsNone(PV.receptivity_report()['receptivity']); self.assertEqual(PV.receptivity_report()['landings'], 1.5)
+        before = {p.name: p.read_bytes() for p in self.mem.iterdir() if p.is_file()}
+        PV.receptivity_report()
+        self.assertEqual({p.name: p.read_bytes() for p in self.mem.iterdir() if p.is_file()}, before)   # the report writes nothing
+
 
 if __name__ == '__main__':
     unittest.main()
