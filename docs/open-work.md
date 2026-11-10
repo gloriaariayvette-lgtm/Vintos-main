@@ -8444,3 +8444,9 @@ Review: every load-change-save of `email-commitments.json` now holds the store's
 `want_agent.close_sources` already took): sync runs on every pass, beside the mail reader's `record` in
 another process, and an unlocked save of a stale copy could drop the other's rows. The cap never lets an
 `aged out` promise go either (it can still be kept). Two new cases.
+
+Follow-up (same day): while paused, an email promise linked to room work is adopted too, the link
+kept and the promise closed once by whichever ends first; a promise of his own work with the evidence
+that would show it done is adoptable; an adopted want whose agent is silent 48 h gives its place back,
+counted; a journal promise its want is working outlives the 7-day carry-over and its result still
+reaches the results channel. Eight more cases in the same test file. ACTIVE review.

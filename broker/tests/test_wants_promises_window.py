@@ -300,5 +300,116 @@ class PausedTick(Base):
         self.assertEqual(NET, [])
 
 
+class PausedLinkedAndSlots(Base):
+    """Follow-up, 10 November: a promise linked to room work is still worked while the room is paused; a promised piece
+    of work that is not worded as a literal task is adopted with its evidence; a silent agent gives its place back;
+    a journal promise past its carry-over is still kept by its want and brought to her."""
+    def board(self, *open_items, history=()):
+        return {"room_work": {"open": [dict(id=i, goal="an unrelated synthetic goal", opened=self.now, touched=self.now,
+                                            asks=[], returns=[], steps=[]) for i in open_items], "history": list(history)}}
+
+    def linked(self):
+        row = ec(1, 0); row.update(state="in work", work_id="RW-0000aaaa")
+        self.write("email-commitments.json", [row])
+        return row
+
+    def test_linked_promise_is_adopted_only_while_paused_and_keeps_its_link(self):
+        self.linked()
+        self.assertEqual(A.adopt_promises(now=self.now, paused=False), [])
+        self.assertEqual(A.adopt_promises(now=self.now, paused=True), ["promise EC-00000001 became a want for the work lane"])
+        row = EC._load()[0]
+        self.assertEqual((row["state"], row["work_id"]), ("in work", "RW-0000aaaa"))   # the link is kept
+
+    def test_want_first_then_room_work_closes_the_promise_once(self):
+        self.linked(); A.adopt_promises(now=self.now, paused=True)
+        self.intake(self.board("RW-0000aaaa"))
+        w = next(w for w in self.read("current-wants.json") if w.get("agent_work"))
+        A.close_sources(w, "Synthetic run, numbers attached.", "https://example.invalid/r", A.workspace())
+        A.close_sources(w, "a second ending", "https://example.invalid/r2", A.workspace())
+        state = self.board(history=[dict(id="RW-0000aaaa", state="dropped", closed_said="room dropped it", closed_at=self.now)])
+        EC.sync(state, self.now)
+        row = EC._load()[0]
+        self.assertEqual((row["state"], row["closed_said"], row["fulfilled_want_id"]), ("done", "Synthetic run, numbers attached.", w["id"]))
+
+    def test_room_work_first_then_the_want_does_not_close_it_again_and_its_place_is_freed(self):
+        self.linked(); A.adopt_promises(now=self.now, paused=True)
+        EC.sync(self.board(history=[dict(id="RW-0000aaaa", state="done", closed_said="room kept it", closed_at=self.now)]), self.now)
+        self.assertEqual(EC._load()[0]["state"], "done")
+        w = self.read("current-wants.json")[0]; w["agent_work"] = {"commitment_ids": ["EC-00000001"]}
+        A.close_sources(w, "the want's ending", "", A.workspace())
+        self.assertEqual(EC._load()[0]["closed_said"], "room kept it")
+        self.write("email-commitments.json", EC._load() + [ec(i, 0) for i in (2, 3, 4)])
+        self.assertEqual(len(A.adopt_promises(now=self.now, paused=True)), 3)          # the kept one holds no place
+
+    def test_promised_work_with_its_evidence_is_adopted_and_told_its_acceptance(self):
+        plain = ec(1, 0, what="Write up the synthetic comparison for the letter"); plain["evidence"] = "a table of the synthetic numbers"
+        bare = ec(2, 0, what="Write up the other synthetic comparison")
+        self.write("email-commitments.json", [plain, bare])
+        self.assertFalse(operational(plain["what"]))
+        self.assertEqual(A.adopt_promises(now=self.now), ["promise EC-00000001 became a want for the work lane"])
+        w = self.read("current-wants.json")[0]
+        self.assertTrue(A.specific(w)); self.assertEqual(w["done_when"], "a table of the synthetic numbers")
+        self.intake()
+        self.assertIn('Done when this exists (what he promised would show it): "a table of the synthetic numbers"', self.posts[0])
+        self.assertFalse(A.specific(dict(w, done_when="")))                             # without its evidence it is not work
+
+    def silent(self, hours, answered=False):
+        self.write("email-commitments.json", [ec(i, 0) for i in range(1, 6)])
+        A.adopt_promises(now=self.now)
+        rows = self.read("current-wants.json")
+        rid = "WA-" + "b" * 24
+        rows[0]["agent_work"] = {"request_id": rid, "status": "in_work", "thread": "%.6f" % (self.now - hours * 3600),
+                                 "goal_sha256": A.fingerprint(rows[0]["want"])}
+        self.write("current-wants.json", rows)
+        if answered:
+            folder = A.directory(rid, A.workspace()); folder.mkdir(parents=True)
+            (folder / "working-thread.json").write_text(json.dumps({"events": [{"key": "agent:1.0"}]}))
+        return rows[0]["id"]
+
+    def test_silent_agent_gives_its_place_back_after_the_timeout_counted(self):
+        wid = self.silent(A.ADOPT_ANSWER_HOURS + 1)
+        lines = A.adopt_promises(now=self.now)
+        self.assertEqual(lines[0], "adopted want %s gave its place back: no answer after %d h (1 released so far)" % (wid, A.ADOPT_ANSWER_HOURS))
+        self.assertEqual(len(lines), 2)                                                 # and the next newest comes in
+        w = next(w for w in self.read("current-wants.json") if w["id"] == wid)
+        self.assertEqual(w["adoption_released"]["reason"], "no_answer"); self.assertIn("agent_work", w)
+        self.assertEqual(A.adopt_promises(now=self.now), [])                           # said once
+
+    def test_an_agent_that_answered_or_is_not_yet_late_keeps_its_place(self):
+        self.silent(A.ADOPT_ANSWER_HOURS + 1, answered=True)
+        self.assertEqual(A.adopt_promises(now=self.now), [])
+        Base.setUp(self)
+        self.silent(A.ADOPT_ANSWER_HOURS - 1)
+        self.assertEqual(A.adopt_promises(now=self.now), [])
+
+    def test_journal_promise_past_its_carry_over_is_still_kept_by_its_want_and_brought_to_her(self):
+        start = datetime(2026, 11, 1, 9, 0)
+        with patch.object(PK, "_now", lambda: start):
+            PK.save({"day": "2026-11-01", "scanned": [], "items": [
+                {"id": "PR-carry1", "quote": "x", "what": "Render the synthetic tide chart as a PNG", "state": "open",
+                 "opened": iso(start), "thread": None}]})
+            A.adopt_promises(now=self.now)
+        later = start + timedelta(days=10)
+        with patch.object(PK, "_now", lambda: later):
+            self.assertEqual([i["id"] for i in PK.load()["items"]], ["PR-carry1"])     # carried: its want works it
+            self.assertEqual(len(PK.close_ids(["PR-carry1"], "Chart rendered.")), 1)
+            self.assertEqual(PK.close_ids(["PR-carry1"], "again"), [])                 # once
+            self.assertEqual([i["id"] for i in PK.pending()], ["PR-carry1"])
+        with patch.object(PK, "_now", lambda: later + timedelta(days=1)):
+            self.assertEqual([i["id"] for i in PK.pending()], ["PR-carry1"])           # not yet brought: carried past midnight
+            PK.mark_posted("PR-carry1")
+        with patch.object(PK, "_now", lambda: later + timedelta(days=2)):
+            self.assertEqual(PK.pending(), [])
+            self.assertEqual(PK.close_ids(["PR-carry1"], "again"), [])                 # the archive does not bring it back
+
+    def test_journal_promise_already_filed_away_is_found_and_closed_once(self):
+        os.makedirs(PK.ARCHIVE, exist_ok=True)
+        json.dump({"day": "2026-10-20", "items": [{"id": "PR-filed1", "quote": "x", "what": "y", "state": "open"}]},
+                  open(os.path.join(PK.ARCHIVE, "2026-10-20.json"), "w"))
+        self.assertEqual(len(PK.close_ids(["PR-filed1"], "Made.")), 1)
+        self.assertEqual(PK.close_ids(["PR-filed1"], "Made."), [])
+        self.assertEqual([i["id"] for i in PK.pending()], ["PR-filed1"])
+
+
 if __name__ == "__main__":
     unittest.main()
