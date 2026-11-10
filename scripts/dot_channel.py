@@ -3051,8 +3051,9 @@ def agent_wants_pass(api, channel, dot, state, now, rows=(), put=None, notify=No
             chosen = working.generate(w, work, want_agent.workspace(), phase, trigger, instruction,
                                       writer=writer, identity=identity)
         except WorkBlocked as exc:
-            if exc.reason in ('per_want_call_cap', 'attempt_already_reserved', 'daily_call_cap'):
-                calls_left[0] += 1           # refused at the reservation: no call was made
+            if exc.reason in want_agent.NO_CALL_MADE or (exc.reason == 'interrupted_call_needs_review'
+                                                         and exc.__cause__ is None):
+                calls_left[0] += 1           # refused before any call was made: the pass keeps its calls (review)
             working.notify_block(w, work, want_agent.workspace(), exc.reason, block_notify,
                                  phase=phase, trigger=trigger)
             if exc.reason in want_agent.LANE_WIDE:

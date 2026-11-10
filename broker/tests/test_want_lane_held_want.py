@@ -87,6 +87,25 @@ class Tests(unittest.TestCase):
         self.run_pass(self.now + 420)
         self.assertEqual(self.current()['stuck']['agent_work']['blocked']['passes'], 2)
 
+    def test_wants_held_before_any_call_do_not_use_up_the_pass(self):
+        # review: two wants held on a block raised before any call, met first every pass, must not use both of the
+        # pass's working calls; the queued promise is still prepared and handed over
+        other = json.loads(json.dumps(self.rows[0])); other['id'] = 'stuck2'
+        other['agent_work'].update(request_id='WA-' + 'c' * 24, work_id='RW-stuck002')
+        self.write('current-wants.json', [self.rows[0], other, self.rows[1]])
+        self.state['room_work']['open'].append(dict(self.state['room_work']['open'][0], id='RW-stuck002', want_id='stuck2',
+                                                    want_request_id=other['agent_work']['request_id']))
+        for reason in ('context_needs_continuation', 'provider_retry_backoff', 'working_call_already_recorded',
+                       'interrupted_call_needs_review'):
+            with self.subTest(reason=reason):
+                self.block = {'stuck': reason, 'stuck2': reason}; self.generated = []; self.posts = []
+                rows = self.current(); rows['ec-fixture1'].pop('agent_work', None)
+                self.write('current-wants.json', list(rows.values()))
+                with patch.object(W, 'unanswered', lambda w, work, ws: [{'key': 'agent:fixture-1'}] if w['id'].startswith('stuck') else []):
+                    lines = self.run_pass()
+                self.assertEqual(self.generated, [('ec-fixture1', 'opening')], lines)
+                self.assertTrue(any('handed to its agent' in l for l in lines), lines)
+
     def test_attempt_already_reserved_holds_only_that_want(self):
         self.block = {'stuck': 'attempt_already_reserved'}
         lines = self.run_pass()
