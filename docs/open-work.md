@@ -8333,3 +8333,27 @@ unchanged. Logs /tmp/judges-s73-comparison.log and /tmp/judges-s73-owners.log.
 Usage and limitations: experiments/nonllm-judges/TASTE-COMPARISON.md. Claude owns
 independent review/full isolated suite and the approved private counts-only pass;
 private results stay in coordination notes. No deployment, live writes or merge.
+
+
+## 2026-11-10 03:19 CST — offline intent shadow assessor and campaign design; ACTIVE
+
+Branch codex/judges-intent-shadow, based on integrated d46893f9. Added a pure
+offline assessor with explicit private-snapshot CLI, exact declaration/delivery
+and parented-response joins, fixed HELD reasons, per-axis coverage/crosstabs and
+explicit agreement denominators. Optional prior independently reviewed mechanical
+contracts can test exactly bound terminal action receipts. Missing or semantic
+criteria stay HELD; missing evidence is never NO. Receipt outcomes are conditional
+on supplied contracts, not authenticated source claims or semantic accuracy.
+No actual private data was used; no runtime module or deployment manifest changed.
+Original fields and provenance remain untouched; configured identities never
+become actual served identities. There is no path into realized, intent context,
+receptivity/priority, valence, pressure, anchors, training or policy. Campaign
+terminal gating and independent review are documented as shadow design only;
+selector keys and the existing continued campaign state remain untouched.
+21 synthetic shadow checks and 11 ownership checks pass (32 total); generated
+reports unchanged. Logs /tmp/judges-s74-shadow.log and /tmp/judges-s74-owners.log.
+Contracts/limitations: experiments/nonllm-judges/INTENT-SHADOW.md; campaign design:
+experiments/nonllm-judges/CAMPAIGN-SHADOW.md. Native-ledger-only runs report missing
+joins conservatively; no original identities, source adapter or historical
+contracts are invented. Claude owns independent review/full isolated suite and
+private cohort work; no model calls, live writes, merge or deployment here.
