@@ -8332,3 +8332,19 @@ known-failure reproduction shows a separate unresolved concurrent-resolution rac
 a stale result can replace settled verdicts and repeat pressure feedback. That
 repair must protect result ownership and effects together; no partial concurrency
 repair, deploy-branch merge, installation or deployment is included here.
+
+## 10 November — intent round five: resolution lands on what it read, effects once; review branch, not deployed
+
+`claude/intent-fields-fix-r5` (on reviewer head 85b8c8eb, after Chat's evidence-boundary
+commit 74e2dcbb). A resolver reads the row's `resolution_rev`; its result is written only if
+the row is still at that revision and no settled verdict would move. A losing result is
+dropped with all its effects and said: `RESOLUTION_DROPPED`, a `resolution DROPPED` line in
+the select log, `resolution_dropped` on the row. An accepted result writes its effects as
+`effects_pending` in the same ledger write, each keyed by row, destination, axis and
+verdict (an outcome by accepted revision), then applies them outside the lock. Pressure
+keeps the key on the pressure row, the required-consideration marker carries it (and
+`.intent-effect-receipts.json` keeps it once the marker goes), an outcome line carries it,
+a lead seed names its row: a retry after a crash applies nothing twice. The valence socket
+and his self-observation keep no record: claimed first, then sent - at most once. No lock
+is held across the judge. Chat's two race cases pass; twelve new cases in
+`broker/tests/test_intent_resolution_once.py`; six broken variants caught. ACTIVE review.

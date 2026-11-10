@@ -597,7 +597,7 @@ def _select_target(recent_text, resolve, step_campaign, persist, her_source, _tu
             # consumed, the primary picked and its showing COUNTED in one step under the turn-state lock,
             # BEFORE the model sees it (round four): two turns at once cannot both be given the last showing of
             # a run. The model is asked after the lock is released.
-            from desired_difference import primary_reserve as _ddpr, _turn_state as _tsl
+            from desired_difference import primary_reserve as _ddpr, _turn_state as _tsl, marker_consumed as _ddmc
             with _tsl(_rcp):
                 _m = None; _had = os.path.exists(_rcp)
                 if _had:
@@ -609,7 +609,7 @@ def _select_target(recent_text, resolve, step_campaign, persist, her_source, _tu
                 # the marker goes only once the count it was honoured in is written (review, round four): a
                 # count that was lost leaves the required consideration standing for her next turn
                 if _had and _fault_marks()[1] == _lost:
-                    try: os.remove(_rcp)
+                    try: _ddmc(_m); os.remove(_rcp)     # its key kept before it goes (round five)
                     except Exception as _rme: _turn_state_fault("required_consideration.consume", "failed", _rme, _tsf)
                 return _p
         _primary = _guarded("primary_reserve", _reserve, _tsf, _NOT_DONE)
@@ -938,6 +938,7 @@ def note_response(raw, source=None):
                     row["response_text"] = text
                     row["response_at"] = datetime.now().isoformat()   # when it came: the window is read against this, not against a later grading
                     if source: row["response_source"] = str(source)
+                    row["resolution_rev"] = int(row.get("resolution_rev", 0) or 0) + 1   # what a resolver reads has changed (round five)
                     changed = True
         if changed:
             write_json(LEDGER, led[-500:])
@@ -946,6 +947,10 @@ def note_response(raw, source=None):
 def resolve_previous(recent_text="", source=None):
     if str(recent_text).strip():
         note_response(recent_text, **({"source": source} if source else {}))
+    # effects an accepted verdict left unapplied - a process that died after it was written, a write that failed -
+    # are applied first, each once (round five)
+    try: _drain_effects()
+    except Exception as err: _turn_state_fault("resolve_previous.effects", "error", err)
     led = _load("intent-ledger.json")
     if not isinstance(led, list) or not led:
         return
@@ -978,7 +983,10 @@ def _resolve_row(last, recent_text="", source=None):
     if not reply:
         return
     _skip = last.get("skipped_observations") if isinstance(last.get("skipped_observations"), dict) else None
-    if not _skip:                           # a waiting row's reply was observed when its first follow-up came
+    _rev = int(last.get("resolution_rev", 0) or 0)   # the revision this resolver read: its result lands only on it (round five)
+    fx = []                                           # the effects its result asks for, published only if it lands
+    # his reply is observed once for the row however many passes it takes: claimed on the row first, so at most once
+    if not _skip and _claim_effect(last, "observe_self"):
         try:
             import self_difference as _sdf; _sdf.observe_self(reply)
         except Exception: pass
@@ -1029,13 +1037,11 @@ def _resolve_row(last, recent_text="", source=None):
         if _reasons: last["held_reason"] = _reasons
         else: last.pop("held_reason", None)
         if _settled:
-            try:
-                import outcome_join as _oj1; _oj1.record("intent", str(tgt.get("goal") or tgt.get("field_state", ""))[:120], copy.deepcopy(last["realized"]),
-                                                         {"axis": "field/gloria/self" if isinstance(r, dict) else "single"})
-            except Exception: pass
+            fx.append({"dest": "outcome", "verdict": copy.deepcopy(last["realized"]),
+                       "detail": {"axis": "field/gloria/self" if isinstance(r, dict) else "single"}})
         else:
             last.pop("response_text", None); last.pop("response_source", None); last.pop("response_at", None)   # the device event was not her reply: that is still to come
-        _persist_resolution(last)
+        _land(last, _rev, fx)
         return
     if not isinstance(r, dict):
         _held_why.set("")
@@ -1044,22 +1050,15 @@ def _resolve_row(last, recent_text="", source=None):
             last["held_attempts"] = last.get("held_attempts", 0) + 1
             last["held_reason"] = {"single": _held_why.get() or "judge_held"}
             if last["held_attempts"] < 3:
-                _persist_resolution(last)
+                _land(last, _rev, fx)
                 return
         else:
             last.pop("held_reason", None)
         last["realized"] = verdict
-        try:
-            import outcome_join as _oj2; _oj2.record("intent", str(tgt.get("goal") or tgt.get("field_state", ""))[:120], verdict, {"axis": "single"})
-        except Exception: pass
-        if verdict in ("YES", "PARTIAL", "NO"):
-            def _press1():
-                from desired_difference import field_verdict as _ddfv
-                return _ddfv(tgt, verdict)
-            _guarded("field_verdict", _press1)
-        if verdict == "YES": _nudge_valence(0.06)
-        elif verdict == "PARTIAL": _nudge_valence(0.02)
-        _persist_resolution(last)
+        fx.append({"dest": "outcome", "verdict": verdict, "detail": {"axis": "single"}})
+        if verdict in ("YES", "PARTIAL", "NO"): fx.append({"dest": "pressure", "axis": "single", "verdict": verdict})
+        if verdict in ("YES", "PARTIAL"): fx.append({"dest": "valence", "axis": "single", "verdict": verdict, "amount": 0.06 if verdict == "YES" else 0.02})
+        _land(last, _rev, fx)
         return
     pr = last.get("priority") or tgt.get("priority") or {"field": 0.34, "gloria": 0.33, "self": 0.33}
     held_any = False; held_why = {}; field_open = r.get("field") is None
@@ -1080,28 +1079,14 @@ def _resolve_row(last, recent_text="", source=None):
             held_any = True; held_why[axis] = _held_why.get() or "judge_held"; continue
         r[axis] = verdict
         w = float(pr.get(axis, 0.33) or 0.33)
-        if verdict == "YES": _nudge_valence(0.06 * w)
-        elif verdict == "PARTIAL": _nudge_valence(0.02 * w)
-        if axis == "field" and verdict in ("YES", "PARTIAL", "NO"):
-            def _press3(verdict=verdict):
-                from desired_difference import field_verdict as _ddfv
-                return _ddfv(tgt, verdict)
-            _guarded("field_verdict", _press3)
+        if verdict in ("YES", "PARTIAL"):
+            fx.append({"dest": "valence", "axis": axis, "verdict": verdict, "amount": (0.06 if verdict == "YES" else 0.02) * w})
+        if axis == "field" and verdict in ("YES", "PARTIAL", "NO"): fx.append({"dest": "pressure", "axis": "field", "verdict": verdict})
     # A miss on an addressed difference asks for it once more on the next turn - once: a turn that was itself
     # that second asking does not ask a third time, and a retired row is not asked for at all (10 November).
     if (field_open and r.get("field") == "NO" and str(tgt.get("addresses") or "NONE") not in ("NONE", "", "None")
             and not (tgt.get("primary_required") and str(tgt.get("primary_shown")) == str(tgt["addresses"]))):
-        def _require():
-            from desired_difference import _jload as _ddl2, PRESS as _ddP2, _turn_state as _tsl2
-            with _tsl2(os.path.join(MEM, ".intent-required-consideration.json")):   # the row is read and the marker written in one step, against a retire
-                _row = _ddl2(_ddP2, {}).get(str(tgt["addresses"]))
-                if _row and not _row.get("retired"):
-                    _rcp = os.path.join(MEM, ".intent-required-consideration.json")
-                    with open(_rcp + ".tmp", "w") as _rcf:
-                        json.dump({"id": str(tgt["addresses"]), "weight": _row.get("weight", 0),
-                                   "count": _row.get("count", 0), "text": str(_row.get("text", ""))[:250]}, _rcf)
-                    os.replace(_rcp + ".tmp", _rcp)
-        _guarded("required_consideration.write", _require)
+        fx.append({"dest": "required_consideration", "axis": "field", "verdict": "NO"})
     if held_any:
         last["held_attempts"] = last.get("held_attempts", 0) + 1
         if last["held_attempts"] >= 3:
@@ -1113,10 +1098,8 @@ def _resolve_row(last, recent_text="", source=None):
     if held_why: last["held_reason"] = held_why
     else: last.pop("held_reason", None)
     last["realized"] = r
-    try:
-        import outcome_join as _oj3; _oj3.record("intent", str(tgt.get("goal") or tgt.get("field_state", ""))[:120], dict(r), {"axis": "field/gloria/self"})
-    except Exception: pass
-    _persist_resolution(last)
+    fx.append({"dest": "outcome", "verdict": dict(r), "detail": {"axis": "field/gloria/self"}})
+    _land(last, _rev, fx)
 
 def record_pending(target, source="conversation", event_id=None, claim_once=False):
 
@@ -1198,21 +1181,199 @@ def record_pending(target, source="conversation", event_id=None, claim_once=Fals
     return True
 
 
-def _persist_resolution(row):
+# ---- round five: a resolver's result lands only on what it read, and each of its effects happens once ---------
+# Two resolvers can judge one row at once (her turn and the voice lane), and the judge is asked outside any lock:
+# a slow HELD used to land on top of three YES another resolver had written, and a late NO weighed the pressure
+# again. A resolver now reads the row's resolution_rev with the row, and its result is written only if the row is
+# still at that revision - note_response and every accepted result move it on - and never over a settled verdict.
+# A result that is not written is dropped with everything it asked for (no pressure, no marker, no valence, no
+# outcome) and said: RESOLUTION_DROPPED, a line in SELECT_LOG, resolution_dropped on the row. An accepted result
+# writes its effects on the row as effects_pending in the same ledger write, each with a key - row, destination,
+# axis and verdict, an outcome by the revision it was accepted at - and they are applied after, outside the
+# ledger lock. Each destination keeps that key in the very write that makes the effect, so a process that died
+# between the two is run again (the next resolve_previous) and changes nothing twice. The valence socket keeps
+# no record: its nudge is taken off the row first and then sent - at most once.
+RESOLUTION_DROPPED = {"stale_revision": 0, "settled_axis": 0, "row_gone": 0}
+_AT_MOST_ONCE = ("valence",)
+EFFECTS_KEPT = 50
+
+
+def _row_key(row):
+    if row.get("intent_id"): return str(row["intent_id"])
+    import hashlib
+    return "legacy-" + hashlib.sha1(json.dumps([row.get("timestamp"), row.get("target")], sort_keys=True, default=str).encode()).hexdigest()[:16]
+
+
+def _same_row(current, row):
+    return isinstance(current, dict) and (current.get("intent_id") == row["intent_id"] if row.get("intent_id") else
+                                          current.get("timestamp") == row.get("timestamp") and current.get("target") == row.get("target"))
+
+
+def _overwrites_settled(now, new):
+    if isinstance(now, dict):
+        return "settled_axis" if any(v is not None and (not isinstance(new, dict) or new.get(k) != v) for k, v in now.items()) else ""
+    return "settled_axis" if (now is not None and new != now) else ""
+
+
+def _persist_resolution(row, read_rev=0, effects=()):
+    """Write a resolver's result if the row is still at the revision it read; True when it landed."""
     from store_guard import transaction, write_json
+    why, now_rev = "row_gone", None
     with transaction(LEDGER):
         led = _load("intent-ledger.json") or []
-        for index, current in enumerate(led):
-            same = (current.get("intent_id") == row["intent_id"] if row.get("intent_id") else
-                    current.get("timestamp") == row.get("timestamp") and current.get("target") == row.get("target"))
-            if same:
+        for current in led:
+            if not _same_row(current, row): continue
+            now_rev = int(current.get("resolution_rev", 0) or 0)
+            why = "stale_revision" if now_rev != int(read_rev or 0) else _overwrites_settled(current.get("realized"), row.get("realized"))
+            if why:
+                _d = current.get("resolution_dropped") if isinstance(current.get("resolution_dropped"), dict) else {}
+                current["resolution_dropped"] = {"n": int(_d.get("n", 0) or 0) + 1, "reason": why, "at": datetime.now().isoformat()}
+            else:
                 # Preserve deliveries/selections appended while the judge was running.
                 current.update({key: copy.deepcopy(row[key]) for key in ("realized", "held_attempts", "held_reason", "skipped_observations") if key in row})
                 if "held_reason" not in row: current.pop("held_reason", None)
                 if "skipped_observations" in row and "response_text" not in row:
                     current.pop("response_text", None); current.pop("response_source", None); current.pop("response_at", None)   # so her next reply is stored
-                write_json(LEDGER, led[-500:])
-                return
+                current["resolution_rev"] = now_rev + 1
+                rk = _row_key(current); pend = list(current.get("effects_pending") or [])
+                for fx in effects:
+                    tail = ("r%d" % (now_rev + 1)) if fx["dest"] == "outcome" else "%s:%s" % (fx.get("axis"), fx.get("verdict"))
+                    fx = dict(copy.deepcopy(fx), key="%s:%s:%s" % (rk, fx["dest"], tail))
+                    if all(p.get("key") != fx["key"] for p in pend): pend.append(fx)
+                if pend: current["effects_pending"] = pend
+            write_json(LEDGER, led[-500:])
+            break
+    if why:
+        RESOLUTION_DROPPED[why] = RESOLUTION_DROPPED.get(why, 0) + 1
+        try:
+            with open(SELECT_LOG, "a") as _f:
+                _f.write("%s resolution DROPPED (%s): row %s was read at revision %s and is at %s now; its verdicts and their effects are not published\n---\n"
+                         % (datetime.now().isoformat(), why, _row_key(row), read_rev, now_rev))
+        except Exception: pass
+    return not why
+
+
+def _land(row, read_rev, effects):
+    """A resolver's last step: its result, if it lands, then the effects it asked for."""
+    if _persist_resolution(row, read_rev, effects) and effects:
+        try: _drain_effects(_row_key(row))
+        except Exception as err: _turn_state_fault("resolve_previous.effects", "error", err)
+
+
+def _settle_effect(row, key, pending=True):
+    """Under the ledger lock: take `key` off the row's effects_pending (or, pending=False, claim it fresh) and keep
+    it in effects_done. True only for the one caller that did so."""
+    from store_guard import transaction, write_json
+    with transaction(LEDGER):
+        led = _load("intent-ledger.json") or []
+        for current in led:
+            if not _same_row(current, row): continue
+            done = list(current.get("effects_done") or [])
+            if pending:
+                pend = [p for p in (current.get("effects_pending") or []) if isinstance(p, dict)]
+                if all(p.get("key") != key for p in pend): return False
+                rest = [p for p in pend if p.get("key") != key]
+                if rest: current["effects_pending"] = rest
+                else: current.pop("effects_pending", None)
+            elif key in done:
+                return False
+            current["effects_done"] = (done + [key])[-EFFECTS_KEPT:]
+            write_json(LEDGER, led[-500:])
+            return True
+    return False
+
+
+def _claim_effect(row, name):
+    try: return _settle_effect(row, "%s:%s" % (_row_key(row), name), pending=False)
+    except Exception: return False
+
+
+def _drain_effects(only=None):
+    """Apply the effects accepted results left on their rows, oldest first; each is taken off its row once done."""
+    from store_guard import transaction
+    with transaction(LEDGER):
+        led = _load("intent-ledger.json") or []
+        todo = [copy.deepcopy(r) for r in (led if isinstance(led, list) else [])
+                if isinstance(r, dict) and r.get("effects_pending") and (only is None or _row_key(r) == only)]
+    for row in todo:
+        for fx in list(row.get("effects_pending") or []):
+            if not isinstance(fx, dict) or not fx.get("key"): continue
+            if fx.get("dest") in _AT_MOST_ONCE:
+                if _settle_effect(row, fx["key"]): _apply_effect(row, fx)
+            elif _apply_effect(row, fx) is not _NOT_DONE:
+                _settle_effect(row, fx["key"])
+
+
+def _apply_effect(row, fx):
+    """One effect of an accepted verdict at its destination, its key written with it; _NOT_DONE when it did not happen
+    (it stays on the row and is tried again)."""
+    tgt = row.get("target") if isinstance(row.get("target"), dict) else {}
+    dest, key, said = fx.get("dest"), fx["key"], []
+    if dest == "valence":
+        _nudge_valence(fx.get("amount", 0)); return True
+    if dest == "outcome":
+        try: return _record_outcome(tgt, fx, key)
+        except Exception: return _NOT_DONE
+    if dest == "pressure":
+        def _press():
+            from desired_difference import field_verdict as _ddfv
+            return _ddfv(tgt, fx.get("verdict"), receipt=key)
+        out = _guarded("field_verdict", _press, said, _NOT_DONE)
+    elif dest == "required_consideration":
+        out = _guarded("required_consideration.write", lambda: _require(tgt, key), said, _NOT_DONE)
+    else:
+        return _NOT_DONE
+    return _NOT_DONE if any(f["result"] == "failed" for f in said) else out
+
+
+def _require(tgt, key):
+    """A miss on an addressed difference asks for it once more on the next turn. The marker carries the miss's key;
+    a marker that goes leaves its key in desired_difference's receipts, so the miss is found in one or the other."""
+    from desired_difference import _jload as _ddl2, PRESS as _ddP2, _turn_state as _tsl2, marker_consumed as _ddmc, marker_receipts as _ddmr
+    _rcp = os.path.join(MEM, ".intent-required-consideration.json")
+    with _tsl2(_rcp):   # the row is read and the marker written in one step, against a retire
+        _m = _ddl2(_rcp, None)
+        if (isinstance(_m, dict) and _m.get("effect_key") == key) or key in _ddmr():
+            return True
+        _row = _ddl2(_ddP2, {}).get(str(tgt["addresses"]))
+        if _row and not _row.get("retired"):
+            if isinstance(_m, dict): _ddmc(_m)          # the marker this one replaces was written: its key is kept
+            with open(_rcp + ".tmp", "w") as _rcf:
+                json.dump({"id": str(tgt["addresses"]), "weight": _row.get("weight", 0), "count": _row.get("count", 0),
+                           "text": str(_row.get("text", ""))[:250], "effect_key": key}, _rcf)
+            os.replace(_rcp + ".tmp", _rcp)
+    return True
+
+
+def _joined(path, key):
+    """Is the outcome line with this key in the join already (its last MB)?"""
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, 2); f.seek(max(0, f.tell() - 1048576)); tail = f.read().decode("utf-8", "replace")
+    except OSError:
+        return False
+    needle = json.dumps(key)
+    for ln in tail.splitlines():
+        if needle not in ln: continue
+        try:
+            if (json.loads(ln).get("detail") or {}).get("effect_key") == key: return True
+        except Exception: pass
+    return False
+
+
+def _record_outcome(tgt, fx, key):
+    """The outcome line carries its key; with the real join it is looked for under the join's lock first, and
+    looked for again after, so a line that was not written is not taken for one that was."""
+    import contextlib as _cl
+    import outcome_join as _oj
+    from store_guard import transaction
+    joins = getattr(_oj, "JOINS", None)
+    with (transaction(joins) if joins else _cl.nullcontext()):
+        if joins and _joined(joins, key): return True
+        _oj.record("intent", str(tgt.get("goal") or tgt.get("field_state", ""))[:120], copy.deepcopy(fx.get("verdict")),
+                   dict(fx.get("detail") or {}, effect_key=key))
+        if joins and not _joined(joins, key): return _NOT_DONE
+    return True
 
 
 def record_delivery(reply, surface="chat", turn_id="", target=None, input_text="", test_mode=False):

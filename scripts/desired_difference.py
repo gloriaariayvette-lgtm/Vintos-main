@@ -340,13 +340,14 @@ def _key(db, text, kind=None, addresses=None):
 
 
 @_locked
-def bump(text,amount,kind="field",addresses=None):
+def bump(text,amount,kind="field",addresses=None,receipt=None):
     text=(text or "").strip()
     if len(text)<8: return
     db=_jload(PRESS,{}); k=_key(db,text,kind,addresses)
     if (db.get(k) or {}).get("retired"): return   # retired by hand: its record is kept and never weighed again (10 November)
     e=db.get(k) or {"text":text[:220],"kind":kind,"weight":0.0,"count":0,
                     "first":time.time(),"lineage":[]}
+    if _receipted(e,receipt): return              # this miss was counted already (round five)
     if text[:220]!=e.get("text") and text[:220] not in (e.get("wordings") or []):
         e["wordings"]=((e.get("wordings") or [])+[text[:220]])[-5:]   # the other words it has come in
     e["weight"]=round(e["weight"]+amount,2); e["count"]+=1; e["last"]=time.time()
@@ -355,7 +356,7 @@ def bump(text,amount,kind="field",addresses=None):
         _graduate(e)
         e["lineage"].append({"graduated":time.time(),"at_weight":e["weight"]})
         e["weight"]=1.0
-    db[k]=e; _jsave(PRESS,db)
+    _receipt(e,receipt); db[k]=e; _jsave(PRESS,db)
 def _graduate(e):
     """Failure converts to self-investigation - witnessed mutation, never silent."""
     try:
@@ -372,12 +373,20 @@ def _graduate(e):
         else: d.append({"ts":time.time(),"question":q,"source":"intent_pressure"})
         _jsave(p,d); _queue_bring_up(q)
     except Exception: pass
-def field_verdict(target,verdict):
+# An effect of an intent verdict carries its key (intent_engine, round five) and the key is kept on the pressure row in
+# the same write as the change it made: a resolver that died after that write and is run again finds it there and
+# changes nothing twice.
+RECEIPTS_KEPT=50
+def _receipted(e,receipt):
+    return bool(receipt) and str(receipt) in (e.get("receipts") or [])
+def _receipt(e,receipt):
+    if receipt: e["receipts"]=((e.get("receipts") or [])+[str(receipt)])[-RECEIPTS_KEPT:]
+def field_verdict(target,verdict,receipt=None):
     """Hook for intent_engine.resolve_previous - failed field targets get heavier."""
     fs=str((target or {}).get("field_state","")); ad=(target or {}).get("addresses")
-    if verdict=="NO": bump(fs,1.0,kind="field",addresses=ad)
-    elif verdict=="PARTIAL": bump(fs,0.5,kind="field",addresses=ad)
-    elif verdict=="YES": relieve(fs,addresses=ad,kind="field")
+    if verdict=="NO": bump(fs,1.0,kind="field",addresses=ad,receipt=receipt)
+    elif verdict=="PARTIAL": bump(fs,0.5,kind="field",addresses=ad,receipt=receipt)
+    elif verdict=="YES": relieve(fs,addresses=ad,kind="field",receipt=receipt)
     elif verdict in ("CORRECTED","WRONG_READING"): override(fs,"her correction: "+verdict,source="correction",addresses=ad,kind="field")
     elif verdict in ("KEEP_PRIVATE","PRIVATE"): override(fs,"legitimate privacy: "+verdict,source="privacy",addresses=ad,kind="field")
 
@@ -396,16 +405,37 @@ def override(text,reason,source="correction",addresses=None,kind=None):
     e["weight"]=0.0; e["overridden"]={"at":time.time(),"reason":str(reason)[:200],"source":source}
     db[k]=e; _jsave(PRESS,db); return e
 @_locked
-def relieve(text,addresses=None,kind=None):
+def relieve(text,addresses=None,kind=None,receipt=None):
     """A landed intent takes weight off - earned relief, lineage kept, never silent."""
     text=(text or "").strip()
     if len(text)<8: return
     db=_jload(PRESS,{}); k=_key(db,text,kind,addresses)
     e=db.get(k)
-    if not e or e.get("weight",0)<=0 or e.get("retired"): return
+    if not e or e.get("retired") or _receipted(e,receipt): return
+    if e.get("weight",0)<=0:
+        if receipt: _receipt(e,receipt); db[k]=e; _jsave(PRESS,db)   # nothing to take off; the landing is kept as seen
+        return
     e.setdefault("lineage",[]).append({"relieved":time.time(),"from_weight":e["weight"]})
     e["weight"]=round(e["weight"]/2.0,2); e["last"]=time.time()
-    db[k]=e; _jsave(PRESS,db)
+    _receipt(e,receipt); db[k]=e; _jsave(PRESS,db)
+
+
+# The required-consideration marker carries the key of the miss that wrote it (round five). When a marker goes -
+# consumed by a turn, replaced by another, cleared by a retire - its key is kept here first, under the turn-state
+# lock its callers hold, so the miss is found written in one place or the other and is never asked for twice.
+def _receipts_path():
+    return os.path.join(os.path.dirname(PRESS),".intent-effect-receipts.json")
+def marker_receipts():
+    d=_jload(_receipts_path(),{})
+    l=d.get("required_consideration") if isinstance(d,dict) else None
+    return [str(x) for x in l] if isinstance(l,list) else []
+def marker_consumed(m):
+    k=m.get("effect_key") if isinstance(m,dict) else None
+    have=marker_receipts()
+    if not k or str(k) in have: return True
+    d=_jload(_receipts_path(),{}); d=d if isinstance(d,dict) else {}
+    d["required_consideration"]=(have+[str(k)])[-200:]
+    return _jsave(_receipts_path(),d)
 
 # ---------- the primary difference: rotation, rest, retirement (10 November) ----------
 # The selector is shown one PRIMARY DIFFERENCE it must address or decline. It was the heaviest row of weight 1
@@ -641,7 +671,8 @@ def retire(key):
     db[k]=e; _jsave(PRESS,db)
     try:
         mp=os.path.join(os.path.dirname(PRESS),".intent-required-consideration.json")
-        if str(_jload(mp,{}).get("id"))==k: os.remove(mp)
+        _m=_jload(mp,{})
+        if isinstance(_m,dict) and str(_m.get("id"))==k: marker_consumed(_m); os.remove(mp)
     except Exception as x:
         # the row is retired either way (primary_eligible refuses it); the marker left behind is said, not hidden
         import sys as _s4
