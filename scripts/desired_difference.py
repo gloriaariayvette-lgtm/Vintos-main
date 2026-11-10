@@ -68,10 +68,23 @@ def _llm(system,user,max_tokens=220,temperature=0.4):
 def _jload(p,d):
     try: return json.load(open(p))
     except Exception: return d
+_UNGUARDED={"n":0,"failed":0}
 def _jsave(p,d):
-    if _sg_write(p, d, "desired_difference"): return
-    try: json.dump(d,open(p,"w"),indent=2,ensure_ascii=False)
-    except Exception: pass
+    """True when the store was written through its guard. A guard that fails is not passed off as one that held
+    (10 November, round four): the plain write that follows it is counted in _UNGUARDED and said on stderr as
+    UNPROTECTED, a write that did not happen at all as FAILED (the first time, then every 100th); both return
+    False."""
+    if _sg_write(p, d, "desired_difference"): return True
+    try:
+        json.dump(d,open(p,"w"),indent=2,ensure_ascii=False); _UNGUARDED["n"]+=1; how="written UNPROTECTED"
+    except Exception as e:
+        _UNGUARDED["failed"]+=1; how="write FAILED (%s)"%type(e).__name__
+    n=_UNGUARDED["n"]+_UNGUARDED["failed"]
+    if n==1 or n%100==0:
+        import sys as _s3
+        print("[desired_difference] store guard failed for %s: %s, %d unprotected and %d failed so far"
+              %(os.path.basename(str(p)),how,_UNGUARDED["n"],_UNGUARDED["failed"]),file=_s3.stderr,flush=True)
+    return False
 _UNLOCKED={"n":0}
 def _turn_state(path):
     """The one cross-process lock for the turn state (store_guard.turn_state, 10 November). store_guard ships
@@ -403,8 +416,11 @@ PRIMARY_RUN=3            # real selections in a row one primary may lead
 PRIMARY_REST_TURNS=3     # then it rests until this many of her turns have been led by another primary, or by none
 PRIMARY_REST_DAYS=3      # ... or this long, whichever comes first
 # The rest used to end as soon as one other primary had been shown: A A A B A A A B, three turns in four to one
-# row. A turn that is not hers (a device event, a background run) discharges nothing, and nothing is put up as
-# a primary just to use the count up: a turn with no primary counts.
+# row. Nothing is put up as a primary just to use the count up: a turn with no primary counts.
+# One accounting (10 November, round four): only an ELIGIBLE turn - one of her own foreground turns - is shown
+# a primary, and only an eligible turn moves the run or the rests. A device-only event is shown none and
+# reaches neither primary_reserve nor primary_shown, so thirty of them after A A A leave the rotation exactly
+# where it stood. The showing is counted when it is RESERVED, before the model sees it (primary_reserve).
 
 
 def _rotation_path():
@@ -511,11 +527,37 @@ def primary_for_turn(required=None,now=None):
 
 
 @_locked
+def primary_reserve(required=None,now=None):
+    """Pick this turn's primary AND count it, in one step under the turn-state lock, before it is shown to the
+    model (10 November, round four). The pick is primary_for_turn's and the count is primary_shown's, a turn
+    with no primary included, so two turns picking at once cannot both be given the last showing of a run: the
+    second reads the state the first has already moved. The caller does its model work after this returns,
+    outside the lock. A reservation is not handed back: a turn that fails after it has still used the showing
+    (reservation_failed records that), so the cap cannot be passed by failing turns either."""
+    now=now or time.time()
+    p=primary_for_turn(required,now)
+    primary_shown((p or {}).get("id"),bool((p or {}).get("required")),now)
+    return p
+
+
+@_locked
+def reservation_failed(pid,now=None):
+    """A turn that had reserved its showing failed before it was recorded. The reservation stands - the run and
+    the rests stay as counted - and the failure is kept beside them: how many, and the last one."""
+    st=_rotation()
+    st["failed_reservations"]=int(st.get("failed_reservations",0) or 0)+1
+    st["last_failed_reservation"]={"id":_addr(pid) or None,"at":now or time.time()}
+    _jsave(_rotation_path(),st)
+    return st
+
+
+@_locked
 def primary_shown(pid,required=False,now=None,her_turn=True):
     """One real selection showed this primary (or none): move the run and the rests. Called once per ledger
     row, whatever its verdict turns out to be; the state is a file, so the run and a rest part-served survive a
-    restart. `her_turn` is False for a turn that is not hers (a device event, a background run): the run moves
-    as on any real selection, and no rest is discharged by it."""
+    restart. An eligible turn comes here through primary_reserve. `her_turn` is False only for a lead prepared
+    in a background preview and admitted later (the voice route): the run moves as on any real selection, and
+    no rest is discharged by it. A device-only event never comes here."""
     now=now or time.time(); st=_rotation(); pid=_addr(pid)
     rest={}; turns={}
     for k,v in (st.get("resting") or {}).items():
@@ -539,16 +581,31 @@ def primary_report(n=30):
     """Counts only, from the last n ledger rows: how concentrated the primary has been. A 3-on/1-off cycle
     passes any run cap, so the share led by the single most frequent primary is reported beside the longest run."""
     led=_jload(os.path.join(os.path.dirname(PRESS),"intent-ledger.json"),[])
-    ids=[e["target"].get("primary_shown") or None for e in (led if isinstance(led,list) else [])
-         if isinstance(e,dict) and isinstance(e.get("target"),dict) and "primary_shown" in e["target"]][-int(n):]
+    # a device-only event is no selection (round four): its row is not a turn here, with or without a primary
+    rows=[e for e in (led if isinstance(led,list) else [])
+          if isinstance(e,dict) and isinstance(e.get("target"),dict) and "primary_shown" in e["target"]
+          and e["target"].get("primary_accounting")!="not_eligible"][-int(n):]
+    ids=[e["target"].get("primary_shown") or None for e in rows]
+    cov=[_coverage(e) for e in rows]
     counts={}; best=run=0; prev=None
     for i in ids:
         if i: counts[i]=counts.get(i,0)+1
         run=run+1 if (i and i==prev) else (1 if i else 0)
         best=max(best,run); prev=i
     top=max(counts.values()) if counts else 0
+    # a row still unsettled after its window closed is expired coverage: not pending, and never a NO (round four)
     return {"turns":len(ids),"with_primary":sum(counts.values()),"distinct_primaries":len(counts),
-            "top_primary_turns":top,"top_primary_share":round(top/float(len(ids)),2) if ids else 0.0,"max_run":best}
+            "top_primary_turns":top,"top_primary_share":round(top/float(len(ids)),2) if ids else 0.0,"max_run":best,
+            "pending":cov.count("pending"),"expired_coverage":cov.count("expired_coverage")}
+
+
+def _coverage(e,axis=None):
+    """"settled", "pending" or "expired_coverage" for one intent-ledger row, by intent_engine's one rule
+    (row_coverage); "" when that rule cannot be read, and the caller then says what it said before."""
+    try:
+        from intent_engine import row_coverage as _rcov
+        return _rcov(e,axis=axis)
+    except Exception: return ""
 
 
 @_locked
@@ -569,7 +626,10 @@ def retire(key):
     try:
         mp=os.path.join(os.path.dirname(PRESS),".intent-required-consideration.json")
         if str(_jload(mp,{}).get("id"))==k: os.remove(mp)
-    except Exception: pass
+    except Exception as x:
+        # the row is retired either way (primary_eligible refuses it); the marker left behind is said, not hidden
+        import sys as _s4
+        print("[desired_difference] retire %s: clearing the required-consideration marker FAILED (%s)"%(k,type(x).__name__),file=_s4.stderr,flush=True)
     return e,bak
 # What she has said she likes (16 October: "I like being lazy. I like a man who leads. Stop telling him to do
 # otherwise"). An aim that has her take the lead, hold the next beat, supply the scene or carry more of it, or has
@@ -632,7 +692,9 @@ def map_summary():
     def _fv(e):
         r=e.get("realized")
         if isinstance(r,dict): r=r.get("field")
-        return str(e.get("verdict") or r or "open")
+        v=str(e.get("verdict") or r or "open")
+        # still open after its window closed: expired coverage - not open, never a NO (10 November, round four)
+        return "expired_coverage" if (v=="open" and _coverage(e,"field")=="expired_coverage") else v
     def _tg(e):
         t=e.get("target")
         return t if isinstance(t,dict) else {}

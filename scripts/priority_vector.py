@@ -156,11 +156,32 @@ def note_selection(gloria_declared, opportunity=False, eligible=True):
         _atomic(STATE, st)
         return o
 
-def opportunity_report():
-    """Counts only: how her opportunity has gone."""
+def opportunity_report(coverage=False):
+    """Counts only: how her opportunity has gone. With `coverage` (the CLI report), what became of her axis
+    where it was declared is counted beside it, from the ledger."""
     o = _opportunity(_jload(STATE, {}))
-    return {"every": OPPORTUNITY_EVERY, "turns_since_gloria_declared": o["since"], "opportunities": o["opportunities"],
-            "attempts": o["attempts"], "declared": o["declared"], "abstained": o["abstained"]}
+    out = {"every": OPPORTUNITY_EVERY, "turns_since_gloria_declared": o["since"], "opportunities": o["opportunities"],
+           "attempts": o["attempts"], "declared": o["declared"], "abstained": o["abstained"]}
+    if coverage: out["gloria_axis"] = _gloria_coverage()
+    return out
+
+def _gloria_coverage(now=None):
+    """Her declared axis on the turns that reached her, counts only: settled, pending inside its window, and
+    expired_coverage - never observed before the window closed, which is not pending and is never a NO
+    (10 November, round four). The one rule is intent_engine.row_coverage; None when it cannot be read."""
+    out = {"settled": 0, "pending": 0, "expired_coverage": 0}
+    try:
+        from intent_engine import row_coverage
+        led = _jload(os.path.join(MEM, "intent-ledger.json"), [])
+        for e in (led if isinstance(led, list) else []):
+            if not isinstance(e, dict) or not isinstance(e.get("realized"), dict): continue
+            t = e.get("target")
+            if not isinstance(t, dict) or not t.get("gloria"): continue
+            c = row_coverage(e, now, "gloria")
+            if c in out: out[c] += 1
+    except Exception:
+        return None
+    return out
 
 def _receptivity(hist):
     """His model of whether she is movable right now: recent Gloria-axis landing rate."""
@@ -315,7 +336,7 @@ def prompt_block(rec):
 if __name__ == "__main__":
     import sys
     if len(sys.argv) > 1 and sys.argv[1] == "opportunity-report":
-        print(json.dumps(opportunity_report())); sys.exit(0)   # counts only; declares nothing
+        print(json.dumps(opportunity_report(coverage=True))); sys.exit(0)   # counts only; declares nothing
     if len(sys.argv) > 1 and sys.argv[1] == "receptivity-report":
         print(json.dumps(receptivity_report())); sys.exit(0)   # counts only; declares nothing
     r = declare()
