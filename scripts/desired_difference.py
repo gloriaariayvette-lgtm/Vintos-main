@@ -72,18 +72,27 @@ def _jsave(p,d):
     if _sg_write(p, d, "desired_difference"): return
     try: json.dump(d,open(p,"w"),indent=2,ensure_ascii=False)
     except Exception: pass
+_UNLOCKED={"n":0}
 def _turn_state(path):
-    """The one cross-process lock for the turn state (store_guard.turn_state, 10 November). A store_guard that
-    cannot be imported leaves the writer unlocked, as _sg_write leaves it unguarded; a lock that cannot be
-    taken raises, and the write does not happen."""
+    """The one cross-process lock for the turn state (store_guard.turn_state, 10 November). store_guard ships
+    beside this file, so the lock is expected to be there. Only an import that fails (an older store_guard
+    still loaded, with no turn_state) leaves the writer unlocked: the write still happens, because callers
+    swallow errors and a refused write would silently freeze the rotation, but it is counted in _UNLOCKED and
+    said on stderr (the first time, then every 100th). Anything else, a lock that cannot be taken included,
+    raises, and the write does not happen."""
     try:
         try: from store_guard import turn_state as _ts
         except ImportError:
-            import sys as _s; _s.path.insert(0,os.path.dirname(os.path.abspath(__file__)))
+            import sys as _s; _d=os.path.dirname(os.path.abspath(__file__))
+            if _d not in _s.path: _s.path.insert(0,_d)
             from store_guard import turn_state as _ts
-        return _ts(path)
-    except Exception:
-        import contextlib; return contextlib.nullcontext()
+    except ImportError as e:
+        import contextlib, sys as _s2
+        _UNLOCKED["n"]+=1
+        if _UNLOCKED["n"]==1 or _UNLOCKED["n"]%100==0:
+            print("[desired_difference] turn-state lock unavailable (%s): writing UNLOCKED, %d so far"%(str(e)[:80],_UNLOCKED["n"]),file=_s2.stderr,flush=True)
+        return contextlib.nullcontext()
+    return _ts(path)
 def _locked(fn):
     """A writer of the pressure store or the rotation: its whole read-modify-write runs under that lock."""
     import functools

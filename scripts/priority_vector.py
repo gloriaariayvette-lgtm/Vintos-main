@@ -99,18 +99,27 @@ def _axis_history(now=None):
             hist[a][v] += 1; hist[a]["n"] += 1
     return hist
 
+_UNLOCKED = {"n": 0}
+
 def _turn_state(path):
     """The one cross-process lock for the turn state (store_guard.turn_state, 10 November): every writer of this
-    state file holds it from its read to its write. A store_guard that cannot be imported leaves the writer
-    unlocked; a lock that cannot be taken raises, and the write does not happen."""
+    state file holds it from its read to its write. store_guard ships beside this file. Only an import that
+    fails (an older store_guard still loaded, with no turn_state) leaves the writer unlocked: the write still
+    happens, counted in _UNLOCKED and said on stderr (the first time, then every 100th). Anything else, a lock
+    that cannot be taken included, raises, and the write does not happen."""
     try:
         try: from store_guard import turn_state as _ts
         except ImportError:
-            import sys as _s; _s.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            import sys as _s; _d = os.path.dirname(os.path.abspath(__file__))
+            if _d not in _s.path: _s.path.insert(0, _d)
             from store_guard import turn_state as _ts
-        return _ts(path)
-    except Exception:
+    except ImportError as e:
+        import sys as _s2
+        _UNLOCKED["n"] += 1
+        if _UNLOCKED["n"] == 1 or _UNLOCKED["n"] % 100 == 0:
+            print("[priority_vector] turn-state lock unavailable (%s): writing UNLOCKED, %d so far" % (str(e)[:80], _UNLOCKED["n"]), file=_s2.stderr, flush=True)
         return contextlib.nullcontext()
+    return _ts(path)
 
 def _atomic(path, obj):
     tmp = path + ".tmp.%d.%d" % (os.getpid(), threading.get_ident())   # per thread: two turns of one process never share it

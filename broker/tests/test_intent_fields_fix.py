@@ -1007,6 +1007,33 @@ class IntentFieldsFix(unittest.TestCase):
         self.two_writers(DD, '_rotation', lambda: DD.primary_shown(None), locked=True)
         self.assertEqual(state()['rest_turns'], {A: 2})
 
+    def test_a_missing_lock_is_written_through_aloud_and_a_failing_lock_stops_the_write(self):
+        """Review, 10 November. store_guard ships beside these scripts; only an older one still loaded can lack
+        the lock. Then the write goes through unlocked, counted and said once on stderr. A lock that is there
+        and cannot be taken stops the write."""
+        self.press(**{A: self.prow(TEXT_A, 4.0)})
+        older = types.SimpleNamespace(**{k: v for k, v in vars(store_guard).items() if k != 'turn_state' and not k.startswith('__')})
+        cases = ((DD, lambda: DD.primary_shown(A), lambda: json.loads(Path(DD._rotation_path()).read_text())['run']),
+                 (PV, lambda: PV.note_selection(False, opportunity=True), lambda: PV.opportunity_report()['attempts']))
+        for mod, write, seen in cases:
+            count = {'n': 0}; err = io.StringIO()
+            with patch.dict(sys.modules, {'store_guard': older}), patch.object(mod, '_UNLOCKED', count), contextlib.redirect_stderr(err):
+                write(); write()
+            self.assertEqual(seen(), 2, mod.__name__)                          # both writes happened
+            self.assertEqual(count['n'], 2, mod.__name__)                      # ... each counted
+            self.assertEqual(err.getvalue().count('writing UNLOCKED'), 1, mod.__name__)   # ... and said once
+            self.assertIn(mod.__name__, err.getvalue())
+        @contextlib.contextmanager
+        def broken(path):
+            raise OSError('fixture: the lock cannot be taken')
+            yield
+        for mod, write, seen in cases:
+            count = {'n': 0}
+            with patch.object(store_guard, 'turn_state', broken), patch.object(mod, '_UNLOCKED', count):
+                with self.assertRaises(OSError): write()
+            self.assertEqual(seen(), 2, mod.__name__)                          # nothing was written
+            self.assertEqual(count['n'], 0, mod.__name__)                      # and it is not the unlocked path
+
     def test_every_writer_of_the_turn_state_takes_the_one_lock(self):
         self.press(**{A: self.prow(TEXT_A, 4.0), B: self.prow(TEXT_B, 2.0),
                       'cccc0003': self.prow(TEXT_A + ', again', 2.6, count=6, lineage=[{'graduated': time.time() - 7200, 'at_weight': 5.0}])})
