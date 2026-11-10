@@ -313,7 +313,7 @@ def gather_full_context():
     # 14. Voice coherence
     try:
         with open(os.path.join(MEMORY, "voice-coherence.md")) as f:
-            vc = _map_read(f)
+            vc = __import__("re").sub('(?m)^<!-- judge-reply-binding: [^\\r\\n]* -->\\r?\\n?', "", _map_read(f))
         if vc.strip():
             parts.append(f"VOICE COHERENCE NOTES:\n{vc.strip()[-1500:]}")
     except: pass

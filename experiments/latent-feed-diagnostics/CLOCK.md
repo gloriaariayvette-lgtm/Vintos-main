@@ -120,3 +120,28 @@ clocks, including a 2.8-second negative control that still refuses future_packet
 Each consumer path passes 50 injected post-publication backward steps in isolated
 synthetic fixtures. Production gates are unchanged. This establishes the retained
 fixture mismatch, not a general explanation for every historical clock failure.
+
+
+Note #64: durable ingress v3 carries a process-random domain plus PID and a
+monotonic staging point. Recovery in that process uses the larger of monotonic
+elapsed age and wall age: forward steps can expire early, backward steps cannot
+renew retention. Original packet contents and original retained wall timestamp
+are unchanged. Legacy v1/v2 and foreign-process v3 entries still use wall age.
+Negative/unknown order is retained unchanged and counted as retry-next-pass for
+at most eight observations, then held with one diagnostic; the normal wall check
+continues and may release it once order is known. At most 64 retry records are
+kept in process memory. This does not publish unknown-age legacy entries, add a
+tolerance, rebase their timestamps, or silently expire them. Restart loses these
+process-local diagnostics, not durable records. Nonfinite clocks remain inert.
+
+### Forecast launch prefix compatibility after ingress v3
+
+The handoff fixture now asserts v3 staging and retains an explicit converted v2
+fixture for already-staged launches. Both test invalid/missing prefixes and replay
+under only the launch prefix. v3's two allowed prefixes exposed an additional
+regression: a launch header changed to `capture-` was accepted because its payload
+digest still matched. Recovery now checks that the payload's exact
+`self-forecast-launch-v1` discriminator agrees with the launch prefix, rejecting
+both launch-to-capture and capture-to-launch relabeling. This is a consistency
+check, not authentication. Legacy v1/v2 handling, retention clocks and payload
+bytes remain unchanged; no new producer or model calls are involved.

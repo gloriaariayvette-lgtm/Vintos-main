@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 """Compare retained judgments with offline numerical receipts; counts only."""
 from collections import Counter, defaultdict
+from datetime import datetime, timezone
 import hashlib
 import importlib.util
 import json
-import math
 import os
 from pathlib import Path
-import re
 import sys
 sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
@@ -21,6 +20,7 @@ def load(name, path):
 
 G = load('agreement_private_io', HERE / 'render_gloria.py')
 R = load('agreement_numerical_runner', HERE / 'run_private.py')
+V = load('agreement_verdict_shapes', HERE / 'verdict_shapes.py')
 BANDS = ('abstain', 'flag', 'pass')
 PAIRS = {
     'voice_coherence': ('voice', ('memory/voice-coherence.md',), 'selected_flags_only'),
@@ -67,39 +67,13 @@ def digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(',', ':'), allow_nan=False).encode()).hexdigest()
 
 
-def number(value, low=0, high=1):
-    return type(value) in (int, float) and math.isfinite(value) and low <= value <= high
-
-
 def band(judge, record, store):
-    """Read native retained fields. Absence and parse failure never mean pass."""
-    if judge in ('voice_coherence', 'deviation_check'):
-        if not isinstance(record, str): return None
-        lines = record.strip().splitlines()
-        if not lines: return None
-        if judge == 'voice_coherence':
-            found = re.fullmatch(r'## \d{4}-\d\d-\d\d \d\d:\d\d — Score ([1-5])', lines[0])
-            if not found or len(lines) < 3 or not lines[-1].startswith('Reply excerpt: '): return None
-            # This writer persists only <=3 with a nonempty, non-none note.
-            if int(found[1]) > 3 or not '\n'.join(lines[1:-1]).strip() or lines[1].strip().lower() == 'none': return None
-            return 'flag'
-        found = re.fullmatch(r'## \d{4}-\d\d-\d\d \d\d:\d\d — (Deviation|Aligned) \(score: (\d+(?:\.\d+)?)\)', lines[0])
-        if not found or not number(float(found[2])): return None
-        if found[1] == 'Deviation':
-            return 'flag' if float(found[2]) > .30 and '**Not aligned.** Something resisted.' in lines else None
-        # The writer also calls commitment_friction "Aligned". Do not infer pass.
-        return 'abstain'
-    if not isinstance(record, dict): return None
-    if judge == 'presence_audit':
-        if not isinstance(record.get('id'), str) or not number(record.get('composite')): return None
-        # History drops both flag and requested-work exemption: it cannot recover the decision.
-        if store.endswith('history.jsonl'): return 'abstain'
-        if record.get('exempt') == 'requested_work': return 'abstain'
-        return ('flag' if record['flag'] else 'pass') if type(record.get('flag')) is bool else None
-    if judge == 'humor_detector':
-        if record.get('source') != 'vintos' or not number(record.get('signal')) or record['signal'] < .5: return None
-        return 'pass'
-    return None
+    result = V.classify(judge, record, store)['band']
+    return None if result == 'unsupported' else result
+
+
+def native_binding(record):
+    return V.native_binding(record)
 
 
 def project_records(projection, rows, cutoff):
@@ -125,9 +99,26 @@ def project_records(projection, rows, cutoff):
             else: poisoned.add(key); c['conflicting_copies'] += 1
             continue
         seen[key] = signature
-        result = band(judge, record, entry['store'])
+        verdict = V.classify(judge, record, entry['store'])
+        c['shape_' + verdict['shape']] += 1
+        c['reason_' + verdict['reason']] += 1
+        result = None if verdict['band'] == 'unsupported' else verdict['band']
         if result is None: c['invalid_or_unsupported_verdict'] += 1; continue
-        binding = entry.get('binding')
+        binding = entry.get('binding'); native = native_binding(record)
+        recorded_at = entry.get('recorded_at'); clock_order = entry.get('clock_order')
+        if native is not None:
+            target = indexes.get(native['turn_id'])
+            if target is None or target['sha'] != native['content_sha256']:
+                c['native_reply_not_admitted_or_hash_mismatch'] += 1; continue
+            exact = dict(kind='recorded_full_reply',turn_id=target['id'],content_sha256=target['sha'],surface=target['surface'],
+                         mode={'opening_everyday':'everyday','intimate':'intimate'}.get(target.get('mode'),'unknown'),
+                         finalized_at=datetime.fromtimestamp(target['at'],timezone.utc).isoformat())
+            if binding is not None and binding != exact:
+                c['conflicting_native_binding'] += 1; continue
+            binding = exact
+            recorded_at = native['recorded_at']
+            # Known order is checked below against the exact retained act time.
+            clock_order = 'known' if entry.get('clock_order') != 'unknown_order' else 'unknown_order'
         if not isinstance(binding, dict) or binding.get('kind') != 'recorded_full_reply':
             c['missing_exact_binding'] += 1; continue
         row = indexes.get(binding.get('turn_id'))
@@ -136,8 +127,8 @@ def project_records(projection, rows, cutoff):
         try:
             valid = (binding['content_sha256'] == row['sha'] and binding['surface'] == row['surface']
                      and binding['mode'] == mode and G.instant(binding['finalized_at']).timestamp() == row['at']
-                     and row['at'] <= G.instant(entry['recorded_at']).timestamp() < cutoff
-                     and entry.get('clock_order') == 'known')
+                     and row['at'] <= G.instant(recorded_at).timestamp() < cutoff
+                     and clock_order == 'known')
         except (KeyError, TypeError, ValueError): valid = False
         if not valid: c['binding_or_time_mismatch'] += 1; continue
         # These are recorded metadata claims, never inferred from configured defaults.
@@ -242,7 +233,7 @@ def main(argv=None):
         if event == 'open' and isinstance(values[2], int) and values[2] & (os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC | os.O_APPEND): raise PermissionError('write')
         if event in ('os.mkdir', 'os.remove', 'os.rename', 'os.rmdir', 'os.chmod', 'os.link', 'os.symlink', 'os.fork', 'os.forkpty'): raise PermissionError('mutation')
     sys.addaudithook(guard)
-    result = report(G.read(root, args.input), G.read(root, args.landings) if args.landings else None,
+    result = report(G.read(root, args.input, max_bytes=64 * 1024 * 1024), G.read(root, args.landings) if args.landings else None,
                     G.read(root, args.verdicts), args.cutoff)
     print(json.dumps(result, sort_keys=True, allow_nan=False))
 

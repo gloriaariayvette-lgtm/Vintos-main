@@ -854,9 +854,9 @@ verdicts never become passes or abstention votes. Empty joins produce null rates
 
 See [AGREEMENT.md](AGREEMENT.md) for the read-only projection/CLI contract, all 33
 writers' persistence destinations, source-selection limitations and explicit
-unavailable counterparts. Daily drift is not joined to per-reply verdicts. The
-native voice/deviation logs lack exact bindings and cannot be rescued by timestamp
-or excerpt matching. Deviation's persisted decision is mixed classifier/similarity,
+unavailable counterparts. Daily drift is not joined to per-reply verdicts. Legacy
+voice/deviation logs lack exact bindings and cannot be rescued by timestamp
+or excerpt matching; prospective writer bindings are checked exactly. Deviation's persisted decision is mixed classifier/similarity,
 not pure LLM output; its ambiguous Aligned entries and presence exemptions remain
 abstentions. Historical presence lacks exemption fields. Humor moments are a
 positive-selected sample and are not proof of a laugh.
@@ -971,3 +971,76 @@ reference rules, and synthetic validation. This builds no UI or runtime wiring,
 generates no actual signing key, signs no real answer, and reads no live store.
 The low-level analyzer remains a claim-based pure function; a future private
 integrator must use the verification boundary and preserve its signed audit trail.
+
+
+## Retained verdict shapes and read-only inventory
+
+[`verdict_shapes.py`](verdict_shapes.py) inventories explicitly supplied private
+snapshots of the shared voice/deviation Markdown, current presence JSON, presence
+history JSONL and humor moments JSON. Output contains counts, fixed classifications
+and allowlisted field names/types, never scalar source values or prose. It groups
+exact field/type structures, including nested metadata, without merging records
+whose unknown field names differ; unknown names are redacted and distinguished
+only by report-local shape numbers. Missing inputs are `not_supplied`, not zero.
+It has no numerical dependency, provider call, source discovery, writes or sends.
+
+The table describes writer contracts found in source, including the initial
+tracked humor writer and later additions. It is **not an observed private-store
+census**. The reported 75 unsupported humor rows cannot be assigned to these
+families until the reviewer runs the inventory. Field additions such as
+`material_kind` and `reply_binding` create separate structural signatures while
+preserving the same decision contract. No free-text note establishes a band.
+
+| Known retained shape | Structured decision evidence | Agreement band |
+|---|---|---|
+| Voice score Markdown, legacy or bound | Writer header `Score`, nonempty note and `Reply excerpt` framing; selected scores 1–3 | flag; malformed or unpersisted scores unsupported |
+| Deviation Markdown | Writer `Deviation` header, score above .30 and exact writer marker | flag |
+| Aligned Markdown, including commitment friction | Writer `Aligned` header and valid score | abstain; the format conflates two decisions |
+| Presence current JSON | `id`, numeric `composite`, boolean `flag` | flag/pass from the boolean, never recomputed from composite |
+| Presence requested-work exemption | Explicit `exempt` field | abstain; unknown exemption unsupported |
+| Legacy presence history | `id`, `composite`, rubric dimensions; missing retained exemption/decision binding | abstain even when scores are high |
+| Prospective presence history | Retained boolean `flag`, exemption and valid `reply_binding` | same as current presence |
+| His reply humor, legacy/modern/bound | `source`, numeric `signal` at least .5; optional `perpetrator` must agree | pass, a positive-selected signal, not proof of a laugh |
+| Incoming-message humor | Source identifies the incoming-message writer; often `original`, `expected` | unsupported: other subject |
+| Social-exchange humor | Source identifies exchange scanner; often `stated`, `actual` | unsupported: exchange is not a reply verdict |
+| Self-observation/blush humor | Self source; optional `mechanism`, `material_kind` | unsupported: observation is not a reply verdict |
+| Behavioral-trial humor | Self source and `type` identifies behavioral default; `stated`, `actual` | unsupported: trial is not a reply verdict |
+| Missing/unknown source, signal alias only, string/bool/nonfinite/out-of-range signal, conflicting subject, malformed shape | No proven equivalent structured decision | unsupported; never repaired from prose, perpetrator alone, or a numeric coercion |
+
+Source references: `bin/humor_detector.py` scan functions (including initial
+tracked version d74f9c4e and changes 56e8880e/bbd99b7f),
+`bin/voice_coherence.py:check`, `bin/deviation_check.py:append_voice_coherence`,
+`scripts/presence_audit.py:main` and `archive_labels`. The current humor store's
+100-row cap mixes observation units. Earlier fields without `material_kind` are
+not automatically invalid; source and signal still determine reply eligibility.
+The inventory counts retained rows without deduplication, including current/history
+copies. Agreement retains its own copy/ambiguity and exact-ID/hash/time/ancestry
+gates. Understanding a schema does not recover a missing reply binding.
+
+Have the independent reviewer supply authorized 0700 scratch snapshots with 0600
+files, outside any repository or live workspace, then run:
+
+```sh
+python3 experiments/nonllm-judges/verdict_shapes.py \
+  --scratch "$SCRATCH" \
+  --voice "$SCRATCH/voice-coherence.md" \
+  --presence "$SCRATCH/presence-audit.json" \
+  --presence-history "$SCRATCH/presence-audit-history.jsonl" \
+  --humor "$SCRATCH/humor-moments.json"
+```
+
+No live paths are opened automatically. Omit unavailable inputs, and report that
+absence. Each input is bounded to 4 MiB and 4096 records; nested shape depth and
+field counts are bounded. Duplicate JSON keys, nonfinite JSON, malformed containers,
+symlinks, non-private paths and oversized inputs refuse with only
+`judge_verdict_shapes_refused`. Malformed JSONL refuses the whole report; there is
+no silent partial census. Unknown Markdown headings are counted as unattributed
+without emitting headings or body text. Recognized headers are writer syntax,
+not authenticated provenance. Actual served-model/fallback values and all original
+fields remain in the untouched snapshots; the inventory exposes none of them.
+
+Return only the aggregate inventory for review. Unknown field names may need
+private review by the source holder before a new adapter is justified. The reader
+uses this explicit mapping in agreement and adds fixed `shape_*`/`reason_*` counts;
+unsupported remains distinct from a recorded abstention. No runtime writer,
+threshold, model, feed or reference is changed by this reader.

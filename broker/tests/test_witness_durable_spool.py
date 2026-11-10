@@ -23,6 +23,7 @@ class Tests(unittest.TestCase):
         self.fixture=F.Tests('test_production_destination_is_independent_of_workspace')
         self.fixture.setUp();self.addCleanup(self.fixture.doCleanups)
         self.sink=self.fixture.sink
+        S._UNKNOWN_SPOOL.clear()
         self.fixture.settings['durable_queue']=True;self.fixture.write_config()
         self.assertIsNone(S._writer)
         self.assertNotIn('.vintos',self.sink.parts)
@@ -56,6 +57,18 @@ class Tests(unittest.TestCase):
         self.assertEqual(self.fixture.status()['deferred']['counts'],{'spooled':1,'replayed':1})
         self.assertEqual(list(self.fixture.workspace.iterdir()),[])
 
+    def test_v3_capture_cannot_replay_under_launch_prefix(self):
+        self.assertTrue(self.stage())
+        path,=self.entries();original=path.read_bytes();line,body=original.split(b'\n',1)
+        header=json.loads(line);self.assertEqual(header['schema'],'judges-ingress-v3')
+        header['prefix']='self-forecast-launch-'
+        path.write_bytes(json.dumps(header).encode()+b'\n'+body)
+        self.assertEqual(S.recover_spool(),0)
+        self.assertTrue(path.exists());self.assertEqual(self.packets(),[])
+        self.assertEqual(list(self.sink.glob('self-forecast-launch-*.json')),[])
+        path.write_bytes(original);self.assertEqual(S.recover_spool(),1)
+        self.assertEqual(len(self.packets()),1)
+
     def test_startup_recovery_precedes_first_queue_wait(self):
         self.assertTrue(self.stage())
         owner=self
@@ -68,7 +81,8 @@ class Tests(unittest.TestCase):
         S._write_queued(Queue())
 
     def test_busy_queue_cannot_starve_bounded_durable_recovery(self):
-        for i in range(9):self.assertTrue(self.stage({'synthetic':i}))
+        with patch.object(S.time,'monotonic',return_value=100.0):
+            for i in range(9):self.assertTrue(self.stage({'synthetic':i}))
         owner=self;clock=[100.0];gets=[]
         class Queue:
             def get(self,timeout):
@@ -85,7 +99,7 @@ class Tests(unittest.TestCase):
         with patch.object(S.time,'monotonic',side_effect=lambda:clock[0]):S._write_queued(Queue())
 
     def test_configuration_failure_does_not_kill_writer_or_drop_ingress(self):
-        self.assertTrue(self.stage())
+        with patch.object(S.time,'monotonic',return_value=100.0):self.assertTrue(self.stage())
         configuration=S.configuration
         failures=[True]; clock=[100.0]; owner=self
         def config(*args,**kwargs):
@@ -196,6 +210,9 @@ raise AssertionError('expected process exit')
 
     def test_original_age_expires_and_future_clock_is_held(self):
         with patch.object(S.time,'time',return_value=100):self.assertTrue(self.stage())
+        entry=self.entries()[0];head,body=entry.read_bytes().split(b'\n',1)
+        header=json.loads(head);header['schema']='judges-ingress-v1';header.pop('clock');header.pop('prefix')
+        entry.write_bytes(json.dumps(header).encode()+b'\n'+body)
         with patch.object(S.time,'time',return_value=99):self.assertEqual(S.recover_spool(),0)
         self.assertEqual(len(self.entries()),1)
         with patch.object(S.time,'time',return_value=101+S.RETENTION):self.assertEqual(S.recover_spool(),0)
@@ -259,6 +276,41 @@ raise AssertionError('expected process exit')
         with S._spool_lock(c):
             self.assertFalse(self.stage());self.assertEqual(S.recover_spool(),0)
         self.assertEqual(len(self.entries()),1);self.assertEqual(S.recover_spool(),1)
+
+    def test_backward_step_recovers_same_process_ingress_with_original_timestamp(self):
+        for n in range(50):
+            with patch.object(S.time,'time',return_value=100),patch.object(S.time,'monotonic',return_value=10):
+                self.assertTrue(self.stage({'synthetic':n}))
+            with patch.object(S.time,'time',return_value=97.2),patch.object(S.time,'monotonic',return_value=10.1):
+                self.assertEqual(S.recover_spool(),1)
+        self.assertEqual(len(self.packets()),50);self.assertEqual(self.entries(),[])
+        self.assertTrue(all(p.stat().st_mtime==100 for p in self.packets()))
+
+    def test_same_domain_expiry_uses_monotonic_even_when_wall_is_behind(self):
+        with patch.object(S.time,'time',return_value=100),patch.object(S.time,'monotonic',return_value=10):self.assertTrue(self.stage())
+        with patch.object(S.time,'time',return_value=97.2),patch.object(S.time,'monotonic',return_value=11+S.RETENTION):
+            self.assertEqual(S.recover_spool(),0)
+        self.assertEqual(self.entries(),[]);self.assertEqual(self.packets(),[])
+        self.assertEqual(S.COUNTERS['spool_expired'],1)
+
+    def test_foreign_domain_unknown_order_is_bounded_and_retry_can_recover(self):
+        with patch.object(S.time,'time',return_value=100):self.assertTrue(self.stage())
+        original=self.entries()[0].read_bytes()
+        with patch.object(S,'_spool_domain',return_value='0'*32+':1'),patch.object(S.time,'time',return_value=97.2):
+            for _ in range(30):self.assertEqual(S.recover_spool(),0)
+        self.assertEqual(S.COUNTERS['spool_unknown_order_retry'],S.UNKNOWN_ORDER_RETRIES)
+        self.assertEqual(S.COUNTERS['spool_unknown_order_held'],1)
+        self.assertEqual(self.entries()[0].read_bytes(),original);self.assertEqual(self.packets(),[])
+        with patch.object(S,'_spool_domain',return_value='0'*32+':1'),patch.object(S.time,'time',return_value=100):
+            self.assertEqual(S.recover_spool(),1)
+        self.assertFalse(S._UNKNOWN_SPOOL)
+
+    def test_invalid_same_domain_interval_never_falls_back_to_wall(self):
+        with patch.object(S.time,'monotonic',return_value=100):self.assertTrue(self.stage())
+        for mono in (99,float('nan'),float('inf')):
+            with patch.object(S.time,'monotonic',return_value=mono):self.assertEqual(S.recover_spool(),0)
+        self.assertEqual(len(self.entries()),1)
+        with patch.object(S.time,'monotonic',return_value=101):self.assertEqual(S.recover_spool(),1)
 
     def test_durable_capture_does_not_claim_phone_delivery(self):
         capture=F.W.begin_shadow('synthetic-turn','synthetic-surface',100)

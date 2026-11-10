@@ -84,6 +84,21 @@ class Tests(unittest.TestCase):
     def test_humor_only_his_positive_moments(self):
         for source,signal,expected in [('vintos',.5,'pass'),('vintos',.49,None),('gloria',.9,None),('moltbook_exchange',.9,None)]:
             self.assertEqual(A.band('humor_detector',dict(source=source,signal=signal),''),expected)
+    def test_native_shape_diagnostics_never_admit_other_observation_units(self):
+        records=[]
+        for source in ('vintos','gloria','self','moltbook_exchange','synthetic-unknown'):
+            e=entry(self.rows[0],'humor_detector');e['record']['source']=source;records.append(e)
+        selected,counts=self.select(records);c=counts['humor_detector']
+        self.assertEqual(len(selected['humor_detector']),1)
+        self.assertEqual(c['invalid_or_unsupported_verdict'],4)
+        for shape in ('humor_reply','humor_incoming','humor_self_observation','humor_social_exchange','humor_unknown_source'):
+            self.assertEqual(c['shape_'+shape],1)
+        self.assertNotIn('synthetic-unknown',json.dumps(counts))
+    def test_recognized_legacy_shape_still_needs_exact_binding(self):
+        e=entry(self.rows[0],'humor_detector');e.pop('binding')
+        selected,counts=self.select([e]);c=counts['humor_detector']
+        self.assertFalse(selected['humor_detector']);self.assertEqual(c['shape_humor_reply'],1)
+        self.assertEqual(c['missing_exact_binding'],1)
     def test_binding_requires_exact_content_turn_time_scope_and_known_order(self):
         good = entry(self.rows[0]); selected,counts = self.select([good])
         self.assertEqual(selected['presence_audit'][self.rows[0]['id']],'pass')
@@ -196,6 +211,17 @@ class Tests(unittest.TestCase):
         result=subprocess.run(args,capture_output=True,text=True,timeout=30,env=dict(os.environ,PYTHONDONTWRITEBYTECODE='1'))
         self.assertEqual(result.returncode,0,result.stderr);self.assertEqual(json.loads(result.stdout)['schema'],'judge-agreement-counts-v1')
         self.assertEqual(before,{p.name:p.read_bytes() for p in self.root.iterdir()})
+    def test_large_evidence_bundle_has_its_own_bound(self):
+        args=self.cli();path=self.root/'input.json'
+        # Whitespace is valid JSON and does not alter any fixture semantics.
+        path.write_text(path.read_text()+' '* (8*1024*1024))
+        result=subprocess.run(args,capture_output=True,text=True,timeout=30)
+        self.assertEqual(result.returncode,0,result.stderr)
+        with self.assertRaises(ValueError):A.G.read(self.root,path)
+        with path.open('ab') as stream:stream.truncate(64*1024*1024+1)
+        result=subprocess.run(args,capture_output=True,text=True,timeout=30)
+        self.assertNotEqual(result.returncode,0);self.assertEqual(result.stderr.strip(),'judge_agreement_refused')
+
     def test_cli_private_permissions_symlinks_and_sanitized_errors(self):
         args=self.cli();file=self.root/'verdicts.json';file.chmod(0o644)
         result=subprocess.run(args,capture_output=True,text=True,timeout=30)

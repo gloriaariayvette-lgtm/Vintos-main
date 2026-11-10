@@ -142,7 +142,8 @@ def private_root(value):
     return root
 
 
-def read(root, value):
+def read(root, value, *, max_bytes=MAX_BYTES):
+    if type(max_bytes) is not int or not 1 <= max_bytes <= 64 * 1024 * 1024: raise ValueError('input bound')
     path = Path(value).expanduser().absolute()
     if path != path.resolve() or not path.is_relative_to(root): raise ValueError('private file')
     for parent in (path.parent, *path.parent.parents):
@@ -153,8 +154,8 @@ def read(root, value):
     with os.fdopen(fd, 'rb') as stream:
         mode = os.fstat(stream.fileno())
         if not stat.S_ISREG(mode.st_mode) or mode.st_uid != os.getuid() or mode.st_mode & 0o077: raise ValueError('private regular file')
-        raw = stream.read(MAX_BYTES+1)
-    if len(raw) > MAX_BYTES: raise ValueError('size bound')
+        raw = stream.read(max_bytes+1)
+    if len(raw) > max_bytes: raise ValueError('size bound')
     def pairs(values):
         result = {}
         for key, value in values:

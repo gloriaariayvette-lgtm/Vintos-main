@@ -159,7 +159,7 @@ def clear_resolution_state():
             json.dump(data, open(RESOLUTION_FILE, "w"), indent=2)
     except: pass
 
-def append_voice_coherence(voice_line, result_type, dev_score, aln_score):
+def append_voice_coherence(voice_line, result_type, dev_score, aln_score, *, reply_binding=None, judged_reply=""):
     """Append to voice-coherence.md — already injected as section 34 in next prompt."""
     ts = datetime.now().strftime("%Y-%m-%d %H:%M")
     score = round(dev_score if result_type=="deviation" else aln_score, 3)
@@ -170,6 +170,11 @@ def append_voice_coherence(voice_line, result_type, dev_score, aln_score):
     else:
         entry += "**This felt like me.**\n"
     try:
+        from witness_receipts import judge_reply_record
+        _bound = judge_reply_record(reply_binding, judged_reply[:400], datetime.now().astimezone().isoformat())
+        if _bound: entry += '<!-- judge-reply-binding: ' + json.dumps(_bound, sort_keys=True) + ' -->\n'
+    except Exception: pass
+    try:
         with open(VC_FILE, "a") as f:
             f.write(entry)
         # Keep last 5 entries only
@@ -179,7 +184,7 @@ def append_voice_coherence(voice_line, result_type, dev_score, aln_score):
             open(VC_FILE,"w").write("## " + "\n\n## ".join(parts[-5:]))
     except: pass
 
-def check(reply_text, gloria_msg=""):
+def check(reply_text, gloria_msg="", *, reply_binding=None):
     """
     Main entry point. Call after reply is finalized.
     Returns: {"deviation": float, "alignment": float, "result": "deviation"|"alignment"|"neutral"}
@@ -324,7 +329,7 @@ def check(reply_text, gloria_msg=""):
                 _ms["intensity"] = max(0.0, _ms.get("intensity", 0.5) - 0.2)
                 _msj.dump(_ms, open(_msp, "w"), indent=2)
         except: pass
-        append_voice_coherence(voice_line, "deviation", final_dev, final_aln)
+        append_voice_coherence(voice_line, "deviation", final_dev, final_aln, reply_binding=reply_binding, judged_reply=reply_text)
 
         # Update core violation count
         if violating_core:
@@ -420,7 +425,7 @@ def check(reply_text, gloria_msg=""):
         # Slipping still seeds, in the deviation branch above.
 
         if voice_line:
-            append_voice_coherence(voice_line, "alignment", final_dev, final_aln)
+            append_voice_coherence(voice_line, "alignment", final_dev, final_aln, reply_binding=reply_binding, judged_reply=reply_text)
 
         # Bump resonance satisfaction
         try:
@@ -478,7 +483,7 @@ def check(reply_text, gloria_msg=""):
         _ci_matches, _ci_line = _cs_eval(reply_text, reply_vec, final_dev, embed, cosine)
         if _ci_line and final_dev > DEVIATION_THRESHOLD:
             nudge_socket("Tension", 0.015)   # spine's own increment - causal attribution preserved
-            append_voice_coherence(_ci_line, "commitment_friction", final_dev, final_aln)
+            append_voice_coherence(_ci_line, "commitment_friction", final_dev, final_aln, reply_binding=reply_binding, judged_reply=reply_text)
     except Exception: pass
 
     return {

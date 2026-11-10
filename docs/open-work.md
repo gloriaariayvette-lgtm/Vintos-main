@@ -8148,3 +8148,123 @@ replay, count privacy, private file modes, symlink refusal, unchanged inputs and
 no overwrite. Generated reports refreshed without changes; diff clean.
 Independent review/full suite/test merge remain Claude's. Real Landings access
 and cron application from #62 remain unapplied and for Gloria's separate decision.
+
+
+## 2026-11-09 17:39 CST — #64 four review follow-ups; heartbeat ACTIVE
+
+Scratch remains on codex/judges-review-followups, based on d47255dd. Three
+separate commits precede this receipt-binding change: 6d175156 clarifies latest
+rating semantics in the Landings ask; a72fd71b permits 64 MiB evidence inputs
+while other agreement inputs retain 4 MiB; a659d281 gives staged spool entries
+a process/domain monotonic age. Legacy/foreign future-wall entries retain their
+bytes with eight counted unknown-order retries and a held diagnostic; a later
+known wall order may release them. Publication rechecks age without rebasing
+stored timestamps. No tolerance widened or private source read.
+
+Prospective selected verdicts from voice_coherence, deviation_check,
+presence_audit and humor_detector now carry an existing exact turn ID, whole
+reply SHA-256, actual judged-input SHA-256 and offset-aware record time. Their
+existing clips remain 500/400/900/600 characters respectively. No new judge
+calls, text copies, synthesized legacy IDs, changed thresholds or extra records.
+Missing/malformed metadata fails open for ordinary verdict behavior. Presence
+history retains flag, exemption and binding. Chat-memory rows retain the real
+coordinator turn ID; delayed deviation work captures identity before threading.
+Avatar humor binds the stored reply including turn marks. Unknown doors remain
+unbound. Existing merge retention and serving/provenance fields remain intact.
+
+The offline agreement reader joins native bindings only to exact admitted
+ID/full-hash matches, respects cutoffs and explicit unknown-order claims, and
+rejects conflicting supplied bindings. Old unsupported records are not repaired
+by proximity or excerpts. Metadata is removed before all six existing voice-note
+prompt reads/truncations, preserving their previous text and budgets. This is a
+prospective source change, not proof of live coverage or independent producer
+authentication. Actual served-model/fallback unknowns remain unknown.
+
+199 distinct targeted isolated checks pass: durable spool 32, agreement 22,
+new reply bindings 12, sink 26, humor taste 12, humor ferment 4, audit integrity 4,
+merged chat 31, WAL ledger 16, pride mirror 5, Gloria page 14, value-map context 10,
+owners 11. Agreement's repeat run is counted once. The spool test includes 50
+injected backward-step recoveries. All fixtures are synthetic and senders stubbed.
+Local Python 3.9 cannot parse an existing unrelated value-map f-string; those
+10 context tests pass with installed Python 3.12. The binding suite uses 3.9 with
+its installed numerical dependencies and parses only changed filter assignments
+for that assertion; 3.12 lacks numpy. No package installation or production syntax
+change was needed. Logs are /tmp/judges-s64-*.log; failed interpreter attempts are
+retained alongside the final passing logs. Reports regenerated without changes;
+owner parity and diff checks pass.
+
+No live writes, real model/paid calls, GPU, merges, deploys, cron changes or real
+Landings access. No new unresolved blocker or ntfy. Claude owns independent
+review/full isolated suite/test merge; Gloria deploys. Heartbeat remains ACTIVE.
+
+
+## 2026-11-09 18:07 CST — #66 historical verdict reader and inventory; heartbeat ACTIVE
+
+Branch codex/judges-verdict-shapes builds on 7c03a4cd; #64 remains independently
+in review. Added a standard-library-only read-only snapshot inventory for all
+four physical stores shared by the four verdict writers. Groups exact field/type
+structures and fixed source families, emits counts and allowlisted field names
+only, redacts unknown names without collapsing distinct schemas, and never emits
+scalar values, text, IDs, hashes, model names or destinations. Missing snapshots
+are reported as not supplied. Private path/owner/mode/symlink, duplicate-key,
+nonfinite, input-size, record-count and nested-structure bounds fail closed with
+a sanitized error. No automatic live discovery, writes, network or subprocesses.
+
+Source/history-backed families include legacy/modern/bound reply humor, incoming
+messages, social exchanges, self-observation and behavioral trials; voice score
+and deviation/ambiguous Aligned logs; presence flags, exemptions, legacy stripped
+history and prospective bound history. A shared pure reader maps known decision
+fields to bands or explicit unsupported reasons. No prose interpretation, signal
+alias coercion, guessed subject or invented history binding. Unknown exemptions
+and conflicting humor subjects refuse. Agreement adds fixed shape/reason counts
+while keeping exact reply, cutoff, clock, lineage and selection gates. README has
+the requested shape-to-band table and private command. Runtime writers/feeds and
+serving/fallback provenance are unchanged.
+
+65 targeted isolated checks pass: shape inventory 18, agreement 24, prospective
+bindings 12, owners 11. Synthetic fixtures cover every source-known family,
+field/type grouping, redacted unknown keys, scalar/nested privacy, exact joining,
+missing-versus-empty stores, all four CLI inputs, unchanged files, no writes,
+malformed/oversized input, duplicate keys, nonfinite values and private paths.
+Logs /tmp/judges-s66-shapes.log, /tmp/judges-s66-agreement.log,
+/tmp/judges-s66-bindings.log, /tmp/judges-s66-owners.log. Generated reports unchanged;
+diff clean. No model/paid/GPU calls, actual private records, live changes or merge.
+
+Private census is pending the independent reviewer's snapshot run: the reported
+75 unsupported humor records have not been assigned to families from source
+alone. No snapshots or aggregate schema census were present in the designated
+coordination directory. Request only the aggregate output from that private run;
+no raw records are needed here. Review/full suite/test merge remain Claude's,
+Gloria deploys. No new user approval needed or routine notification. ACTIVE.
+
+
+## 2026-11-09 18:24 CST — #67 forecast v3 and pinned capacity-age fixture; ACTIVE
+
+Branch codex/judges-review-date-fixes builds on 0f543df4. Two separate fixes:
+5e09a0ee updates the launch handoff fixture to v3, keeps explicit v2 replay
+coverage and tests bad prefixes against both. Running those assertions exposed
+a v3 regression: an allowlisted capture prefix could relabel a launch payload.
+Recovery now requires the exact launch schema discriminator to agree with the
+launch prefix; reverse capture-to-launch relabeling also refuses. This is a
+consistency check, not authentication. Legacy v1/v2 handling and retention clocks
+stay unchanged. Final isolated handoff 27/27 and durable spool 33/33 pass, including
+the existing backward-step stress fixture. The initial failing v3 test established
+the defect before the production check was added.
+
+The separate causality fix changes only test_causality_budgets_nov06.py. Inspection
+of the supplied failure and _readiness shows no local/UTC mix in this path: the
+test made a timestamp three calendar dates ago at 01:00 but asserted three completed
+elapsed days. Between midnight and 01:00 that is only two, exactly as the log shows.
+The fixture now uses an actual three-day-plus-30-second elapsed age. Both sides
+of UTC midnight are pinned in UTC and America/Chicago; explicit expected ages
+also demonstrate the original calendar fixture's 3-to-2 UTC transition. Engine
+behavior, ranking, tenure and live data are unchanged. This suite passes 47/47.
+
+118 distinct targeted isolated checks pass: handoffs 27, durable spool 33,
+causality budgets 47, owners 11. Logs /tmp/judges-s67-handoffs.log,
+/tmp/judges-s67-spool.log, /tmp/judges-s67-causality.log and
+/tmp/judges-s67-owners.log. Reports regenerated unchanged, twin parity and diff
+checks pass. No real stores, external/model/paid calls, GPU, live changes, merge
+or deployment. #66 actual schema counts remain pending the independent private
+inventory run, with no invented explanation for the 75 rows. Review/full isolated
+suite/test merge remain Claude's; Gloria deploys. Heartbeat remains ACTIVE.
