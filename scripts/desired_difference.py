@@ -377,8 +377,19 @@ def _rotation_path():
 
 
 def _rotation():
+    """The rotation state as its sound parts. A hand-edited or half-written file must neither take the primary
+    away for good nor switch the cap off: a part of the wrong shape reads as absent, and the next real
+    selection writes the file whole again."""
     st=_jload(_rotation_path(),{})
-    return st if isinstance(st,dict) else {}
+    if not isinstance(st,dict): return {}
+    rest={}
+    for k,v in (st.get("resting").items() if isinstance(st.get("resting"),dict) else ()):
+        try: rest[str(k)]=float(v)
+        except Exception: pass
+    try: run=max(0,int(st.get("run",0) or 0))
+    except Exception: run=0
+    pid=st.get("id") if isinstance(st.get("id"),str) else None
+    return dict(st,id=pid,run=run if pid else 0,required=bool(st.get("required")),resting=rest)
 
 
 def _graduated_closed(r):
@@ -584,5 +595,7 @@ if __name__=="__main__":
             print("no such pressure row: "+_s.argv[2]); _s.exit(1)
         print("retired %s (kind %s, weight %.1f, %d misses); the store as it was: %s"
               %(_s.argv[2],r[0].get("kind","?"),float(r[0].get("weight",0) or 0),int(r[0].get("count",0) or 0),r[1]))
+    elif len(_s.argv)>1 and _s.argv[1]=="retire":
+        print("usage: desired_difference.py retire <id>"); _s.exit(2)
     elif len(_s.argv)>1 and _s.argv[1]=="primary-report":
         print(_js.dumps(primary_report(int(_s.argv[2]) if len(_s.argv)>2 else 30)))   # counts only

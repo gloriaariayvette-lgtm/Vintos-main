@@ -100,7 +100,7 @@ def _axis_history(now=None):
     return hist
 
 def _atomic(path, obj):
-    tmp = path + ".tmp.%d" % os.getpid()
+    tmp = path + ".tmp.%d.%d" % (os.getpid(), threading.get_ident())   # per thread: two turns of one process never share it
     with open(tmp, "w") as f: json.dump(obj, f, indent=2)
     os.replace(tmp, path)
 

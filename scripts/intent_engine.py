@@ -177,10 +177,10 @@ def _criterion_fault(target):
     return ""
 
 
-# What followed my move, and whose it is (10 November). A device event - the button, a touch - was stored as
+# What followed my move, and whose it is (10 November). A device event - the button, a touch, a spin - was stored as
 # the follow-up under her label and graded as her answer: NO, on words she never said.
 DEVICE_SOURCES = ("gcs", "reelroom_event")
-_DEVICE_EVENT = re.compile(r"\[(?:she pressed\b|gloria just touched\b)[^\]]*\]", re.I)
+_DEVICE_EVENT = re.compile(r"\[(?:she pressed\b|gloria just (?:touched|spun)\b)[^\]]*\]", re.I)
 _HER_LABEL = "GLORIA (now):"
 _EVENT_LABEL = "REELROOM EVENT (not Gloria's words):"
 _held_why = ContextVar("intent_held_why", default="")

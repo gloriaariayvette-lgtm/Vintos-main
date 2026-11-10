@@ -11,6 +11,7 @@ from pathlib import Path
 import runpy
 import sys
 import tempfile
+import threading
 import time
 import types
 import unittest
@@ -539,6 +540,55 @@ class IntentFieldsFix(unittest.TestCase):
         self.assertLess(user.index('WHERE THE CRITERION SHOWS'), user.index('Return ONLY one complete JSON object'))
         for field in ('"observation_window"', '"evidence_type"'): self.assertIn(field, user)
         self.assertEqual(len(self.select_calls), 1)
+
+
+    # ---- review, 10 November: shapes the first pass missed ----------------------------------------------
+    def test_spin_note_is_a_device_event_never_her_answer(self):
+        self.delivered(gloria=copy.deepcopy(GLORIA)); self.verdict = 'NO'
+        E.resolve_previous('GLORIA: Earlier topic.\nVINTOS: Earlier answer.\nGLORIA (now): [Gloria just spun Vintos around]')
+        row = self.rows()[-1]
+        self.assertEqual(self.judge_calls, [])
+        self.assertNotIn('NO', row['realized'].values()); self.assertNotIn(None, row['realized'].values())
+        self.assertEqual(set(row['held_reason'].values()), {'device_event_only'})
+        self.assertEqual(E._her_follow_up('GLORIA (now): [Gloria just spun Vintos around] Do that again.'),
+                         ('GLORIA (now): Do that again.', ''))
+
+    def test_wrong_shaped_rotation_file_neither_hides_the_primary_nor_lifts_the_cap(self):
+        self.press(**{A: self.prow(TEXT_A, 4.0), B: self.prow(TEXT_B, 2.0)})
+        path = Path(DD._rotation_path())
+        for bad in ({'resting': [1]}, {'resting': 'soon'}, {'resting': {A: 'not a time'}}, {'run': 'x', 'id': A},
+                    {'id': 7, 'run': 2}, {'id': A, 'run': -4}, [], 'x'):
+            path.write_text(json.dumps(bad)); Path(E.LEDGER).write_text('[]')
+            self.assertEqual(DD.primary_for_turn()['id'], A, bad)
+            for _ in range(5): self.turn(resolve=False)
+            self.assertEqual([p for p, _ in self.shown()], [A, A, A, B, A], bad)
+            mended = json.loads(path.read_text())
+            self.assertIsInstance(mended['resting'], dict); self.assertEqual((mended['id'], mended['run']), (A, 1))
+        path.write_text('{not json'); Path(E.LEDGER).write_text('[]')
+        for _ in range(4): self.turn(resolve=False)
+        self.assertEqual([p for p, _ in self.shown()], [A, A, A, B])
+
+    def test_two_turns_at_once_do_not_trip_over_one_temporary_file(self):
+        faults = []
+        def turns():
+            for _ in range(40):
+                try: PV.note_selection(False)
+                except Exception as e: faults.append(type(e).__name__)
+        threads = [threading.Thread(target=turns) for _ in range(6)]
+        for t in threads: t.start()
+        for t in threads: t.join()
+        self.assertEqual(faults, [])
+        self.assertGreater(PV.opportunity_report()['turns_since_gloria_declared'], 0)
+        self.assertEqual([f.name for f in self.mem.iterdir() if '.tmp.' in f.name], [])
+
+    def test_retire_without_an_id_says_so_and_writes_nothing(self):
+        self.press(**{A: self.prow(TEXT_A, 4.0)}); before = Path(DD.PRESS).read_text()
+        with patch.object(sys, 'argv', ['desired_difference.py', 'retire']), contextlib.redirect_stdout(io.StringIO()) as out:
+            with self.assertRaises(SystemExit) as stop:
+                runpy.run_path(str(REPO / 'scripts/desired_difference.py'), run_name='__main__')
+        self.assertEqual(stop.exception.code, 2); self.assertIn('usage', out.getvalue())
+        self.assertEqual(Path(DD.PRESS).read_text(), before)
+        self.assertEqual(list(self.mem.glob('intent-pressure.json.bak-*')), [])
 
 
 if __name__ == '__main__':
