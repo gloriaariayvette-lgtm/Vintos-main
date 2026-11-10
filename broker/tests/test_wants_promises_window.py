@@ -1,0 +1,275 @@
+#!/usr/bin/env python3
+"""Wants and promises lane, 10 November (Gloria: "Email and journal wants skip the slack !start/!stop limit"; "he
+should work on the newest wants and promises. That's supposed to be on a rolling window").
+
+Scratch workspace under a temporary HOME; Slack, the writers and the readers are stubs; every socket is refused."""
+import json, os, socket, sys, tempfile, time, unittest
+from datetime import datetime, timedelta
+from pathlib import Path
+from unittest.mock import patch
+
+HERE = os.path.dirname(os.path.abspath(__file__)); REPO = os.path.dirname(os.path.dirname(HERE))
+HOME = tempfile.mkdtemp(prefix="wants-window-")
+os.environ["HOME"] = HOME
+os.environ["SPARK_WORKSPACE"] = os.path.join(HOME, ".vintos", "workspace")
+os.environ["VINTOS_SECRETS"] = os.path.join(HOME, "no-secrets")
+NET = []
+def _no_net(self, *a, **k):
+    if self.family != socket.AF_UNIX: NET.append(a)
+    raise OSError("this suite reaches nothing")
+socket.socket.connect = _no_net
+sys.path.insert(0, os.path.join(REPO, "scripts"))
+
+import dot_channel as D
+import email_commitments as EC
+import promise_keeper as PK
+import room_work
+import want_agent as A
+from journal_wants import as_his_want, operational, source_receipt
+
+MEM = Path(os.environ["SPARK_WORKSPACE"]) / "memory"
+SELF, DOT = "UVINTOS", D.DOT
+WORK = "Run the synthetic torn-read test against the old write"
+
+
+def iso(dt): return dt.isoformat(timespec="seconds")
+
+
+def ec(n, days_ago, state="open", what=WORK, base=None):
+    at = (base or datetime(2026, 11, 10, 12, 0)) - timedelta(days=days_ago)
+    return {"id": "EC-%08x" % n, "what": "%s %d" % (what, n), "quote": "I will %s %d." % (what.lower(), n),
+            "letter_id": "fixture-letter-%d" % n, "agent": "Fixture Agent", "at": iso(at), "state": state, "evidence": "",
+            "rests_on": []}
+
+
+def bound(wid, days_ago, text="I want to run the synthetic audio analysis %s and export its score.", **over):
+    w = dict(id=wid, want=text % wid, source="idle-journal", journal_seeded=True,
+             timestamp=iso(datetime(2026, 11, 10, 12, 0) - timedelta(days=days_ago)))
+    w.update(source_receipt("journal", "fixture-journal-" + wid, w["want"])); w.update(over)
+    return w
+
+
+class Base(unittest.TestCase):
+    def setUp(self):
+        for p in (EC.STORE, PK.STORE, D.STATE, D.PAUSE_FILE):
+            self.assertTrue(str(p).startswith(HOME), p)
+        self.assertTrue(str(A.workspace()).startswith(HOME))
+        if MEM.exists():
+            import shutil; shutil.rmtree(MEM)
+        MEM.mkdir(parents=True)
+        self.write("current-wants.json", []); self.write("fulfilled-wants.json", [])
+        for k in EC.COUNTS: EC.COUNTS[k] = 0
+        self.posts = []; self.now = 2000000000.0
+        for target, name, value in ((room_work, "evidence_sync", lambda s: None),
+                                    (room_work, "evidence_finish", lambda *a, **k: "untracked")):
+            p = patch.object(target, name, value); p.start(); self.addCleanup(p.stop)
+
+    def write(self, name, value): (MEM / name).write_text(json.dumps(value))
+    def read(self, name): return json.loads((MEM / name).read_text())
+    def post(self, text, agent, identity):
+        self.posts.append(text); return {"ok": True, "ts": "%.6f" % (self.now + len(self.posts))}
+    def intake(self, state=None):
+        return A.intake(state if state is not None else {}, self.post, lambda s: None, self.now)
+
+
+class WantWindow(Base):
+    def test_newest_bound_want_is_handed_over_first(self):
+        self.write("current-wants.json", [bound("older", 3), bound("newer", 1), bound("middle", 2)])
+        self.intake()
+        self.assertEqual(len(self.posts), 1); self.assertIn("[want:newer]", self.posts[0])
+
+    def test_wants_outside_the_window_age_out_counted_and_marked_never_dropped(self):
+        working = bound("in-work", 30); working["agent_work"] = {"request_id": "WA-" + "a" * 24, "status": "in_work",
+                                                                  "goal_sha256": A.fingerprint(working["want"])}
+        self.write("current-wants.json", [bound("stale-a", 20), bound("stale-b", 9), bound("fresh", 6), working, bound("newest", 0)])
+        lines = self.intake()
+        self.assertIn("want window: 2 aged out (bound, never handed over, older than 7 days before the newest)", lines)
+        rows = {w["id"]: w for w in self.read("current-wants.json")}
+        self.assertEqual(len(rows), 5)                                                 # nothing removed
+        self.assertEqual({k for k, w in rows.items() if w.get("aged_out")}, {"stale-a", "stale-b"})
+        self.assertEqual(rows["stale-a"]["aged_out"]["window_days"], A.WINDOW_DAYS)
+        self.assertNotIn("aged_out", rows["in-work"])                                  # work in hand keeps going
+        self.assertFalse(any(m in "".join(self.posts) for m in ("[want:stale-a]", "[want:stale-b]")))
+        self.assertNotIn("want window", " ".join(self.intake()))                       # counted once
+
+    def test_window_does_not_move_while_nothing_new_comes(self):
+        self.write("current-wants.json", [bound("only", 400)])
+        self.assertNotIn("want window", " ".join(self.intake()))
+        self.assertEqual(len(self.posts), 1)
+
+
+class EmailPromiseWindow(Base):
+    def test_owed_rows_are_never_dropped_by_the_cap(self):
+        rows = [ec(i, 1, state="open" if i % 2 else "done") for i in range(240)]
+        EC._save(rows)
+        kept = EC._load()
+        self.assertEqual(len(kept), EC.CAP)
+        self.assertEqual(sum(1 for r in kept if r["state"] == "open"), 120)            # every owed one
+        self.assertEqual(EC.COUNTS["trimmed"], 40)
+        lines = EC.sync({}, self.now)
+        self.assertIn("email promises: 40 row(s) no longer owed let go at the 200-row cap", lines)
+        self.assertFalse([l for l in EC.sync({}, self.now) if "let go" in l])
+        EC._save([ec(i, 1) for i in range(230)])                                       # all owed: past the cap, all kept
+        self.assertEqual(len(EC._load()), 230)
+
+    def test_newest_first_and_older_ones_age_out_visibly(self):
+        rows = [ec(1, 20), ec(2, 10), ec(3, 5), ec(4, 0), ec(5, 30, state="in work")]
+        self.write("email-commitments.json", rows)
+        with patch("awaiting_evidence.store") as store:
+            store.return_value.safe_read.return_value = {}
+            owed = EC.open_rows()
+            block = EC.block()
+        self.assertEqual([r["id"] for r in owed], ["EC-00000004", "EC-00000003", "EC-00000005"])   # in work kept
+        states = {r["id"]: r["state"] for r in EC._load()}
+        self.assertEqual((states["EC-00000001"], states["EC-00000002"]), ("aged out", "aged out"))
+        self.assertIn("newest first, within 7 days of the newest; 2 older ones aged out, kept as aged out", block)
+        self.assertLess(block.index("EC-00000004"), block.index("EC-00000003"))
+        self.assertEqual(EC.COUNTS["aged_out"], 2)
+        text, log = EC.close_lines("PROMISE DROPPED EC-00000001: overtaken by the newer test")
+        self.assertEqual(log, ["promise EC-00000001 dropped"])                          # an aged-out one can still be closed
+
+    def test_sync_says_what_aged_out(self):
+        self.write("email-commitments.json", [ec(1, 9), ec(2, 0)])
+        self.assertIn("email promises aged out of the 7-day window: 1 (kept, marked aged out)", EC.sync({}, self.now))
+
+
+class Adoption(Base):
+    def test_owed_email_promises_become_bound_wants_newest_first_a_few_at_a_time(self):
+        self.write("email-commitments.json", [ec(i, i % 5) for i in range(1, 6)]
+                   + [ec(9, 0, what="Read the letter again")])                          # not literal work
+        made = A.adopt_promises(now=self.now)
+        self.assertEqual(len(made), A.ADOPT_OPEN)
+        wants = self.read("current-wants.json")
+        self.assertTrue(all(A.specific(w) and A.bypass(w) for w in wants))
+        self.assertTrue(all({"kind": "commitment", "id": w["adopted_from"]} in w["source_refs"] for w in wants))
+        self.assertNotIn("EC-00000009", [w["adopted_from"] for w in wants])
+        self.assertEqual(A.adopt_promises(now=self.now), [])                           # three open: no more, none twice
+        newest = sorted([r for r in EC.open_rows() if operational(r["what"])], key=lambda r: r["at"], reverse=True)[:3]
+        self.assertEqual({w["adopted_from"] for w in wants}, {r["id"] for r in newest})
+        # handed over, the request names its promise; finished, the promise is kept
+        self.intake()
+        w = next(w for w in self.read("current-wants.json") if w.get("agent_work"))
+        self.assertEqual(w["agent_work"]["commitment_ids"], [w["adopted_from"]])
+        A.close_sources(w, "Synthetic test run, numbers attached.", "https://example.invalid/r", A.workspace())
+        self.assertEqual({r["id"]: r["state"] for r in EC._load()}[w["adopted_from"]], "done")
+        # one finished frees a place for the next newest
+        rows = self.read("current-wants.json")
+        for r in rows:
+            if r["id"] == w["id"]: r["fulfilled"] = True
+        self.write("current-wants.json", rows)
+        self.assertEqual(len(A.adopt_promises(now=self.now)), 1)
+
+    def test_journal_promise_that_is_work_goes_to_the_want_lane_not_a_thread(self):
+        d = PK.load(); d["items"].append({"id": "PR-abc123", "at": "20:01", "quote": "render the tide chart tonight",
+                                          "what": "Render the synthetic tide chart as a PNG", "state": "open",
+                                          "opened": iso(PK._now()), "thread": None})
+        d["items"].append({"id": "PR-def456", "at": "20:02", "quote": "show her the chart", "what": "Show Gloria the chart",
+                           "state": "open", "opened": iso(PK._now()), "thread": None})
+        PK.save(d)
+        made = A.adopt_promises(now=self.now)
+        self.assertEqual(made, ["promise PR-abc123 became a want for the work lane"])
+        w = self.read("current-wants.json")[0]
+        self.assertEqual((w["source"], A.specific(w)), ("idle-journal", True))
+        posted = []
+        PK.scan(lambda s, t: "NONE", lambda text: posted.append(text) or "1.0")
+        self.assertEqual(len(posted), 1); self.assertIn("show her the chart", posted[0])  # only the one that is not work
+        self.intake()
+        w = self.read("current-wants.json")[0]
+        self.assertEqual(w["agent_work"]["promise_ids"], ["PR-abc123"])
+        A.close_sources(w, "Chart rendered.", "https://example.invalid/c", A.workspace())
+        self.assertEqual([i["id"] for i in PK.pending()], ["PR-abc123"])              # brought to her by results_pass
+
+    def test_unposted_journal_promises_age_out_of_the_window_counted(self):
+        old = iso(PK._now() - timedelta(days=10))
+        PK.save({"day": (PK._now() - timedelta(days=1)).date().isoformat(), "scanned": [], "items": [
+            {"id": "PR-old", "quote": "x", "what": "y", "state": "open", "opened": old, "thread": None},
+            {"id": "PR-new", "quote": "x", "what": "y", "state": "open", "opened": iso(PK._now()), "thread": None}]})
+        d = PK.load()
+        self.assertEqual([i["id"] for i in d["items"]], ["PR-new"])
+        PK.save(d)
+        self.assertEqual((PK.aged_out_unsaid(), PK.aged_out_unsaid()), (1, 0))
+
+
+class Receipt(unittest.TestCase):
+    def test_email_want_receipt_is_taken_on_the_words_that_are_kept(self):
+        letter = "To run the synthetic spectrum comparison and export the table."
+        kept = as_his_want(letter)
+        self.assertEqual(kept, "I want to run the synthetic spectrum comparison and export the table.")
+        before = dict(id="w1", want=kept, source="email", **source_receipt("email", "fixture-mail", letter))
+        after = dict(id="w1", want=kept, source="email", **source_receipt("email", "fixture-mail", kept))
+        self.assertFalse(A.specific(before)); self.assertTrue(A.specific(after))
+        self.assertEqual(as_his_want(kept), kept)
+        src = open(os.path.join(REPO, "scripts", "want_email.py")).read()
+        self.assertIn("text = as_his_want(text)", src)
+
+
+class PausedTick(Base):
+    """The room is paused: email and journal promises are still worked; the room's own conversation is not."""
+    class Slack:
+        def __init__(self): self.msgs, self.posted, self.n = [], [], 100.0
+        def add(self, user, text, thread=None):
+            self.n += 1; ts = "%.6f" % self.n
+            m = {"ts": ts, "user": user, "text": text}
+            if thread: m["thread_ts"] = thread
+            self.msgs.append(m); return ts
+        def __call__(self, method, params):
+            if method == "auth.test": return {"ok": True, "user_id": SELF}
+            if method == "conversations.history":
+                return {"ok": True, "messages": [m for m in reversed(self.msgs) if not m.get("thread_ts")]}
+            if method == "conversations.replies":
+                return {"ok": True, "messages": [m for m in self.msgs if m["ts"] == params["ts"] or m.get("thread_ts") == params["ts"]]}
+            if method == "chat.postMessage":
+                self.posted.append(params); return {"ok": True, "ts": self.add(SELF, params["text"], params.get("thread_ts"))}
+            raise AssertionError("unexpected Slack call " + method)
+
+    def setUp(self):
+        super().setUp()
+        for target, name, value in ((D, "his_context", lambda: "Synthetic identity"), (D, "talking_with_gloria", lambda now: None),
+                                    (D, "slack_lens", lambda lens, state: lens), (D, "study_room", lambda: None)):
+            p = patch.object(target, name, value); p.start(); self.addCleanup(p.stop)
+        self.now = time.time(); self.today = datetime.fromtimestamp(self.now).date().isoformat()
+        D._save(D.STATE, dict(self=SELF, since=1, date=self.today, paused_said=True))
+        D.set_paused(True, "fixture owner", self.now - 60)
+        self.ordinary = []; self.working = []
+
+    def writer(self, system, user):
+        self.working.append(user)
+        return {"text": json.dumps({"message": "Plan the exact synthetic task.", "accept": False}), "observations": []}
+
+    def tick(self, slack, at, ask=lambda s, t: "NONE"):
+        return D.tick(api=slack, think=lambda *a: self.ordinary.append(1) or "x", fable=lambda *a: self.ordinary.append(1) or "x",
+                      now=at, today=self.today, want_writer=self.writer, promise_ask=ask)
+
+    def test_paused_day_still_works_email_and_journal_promises_and_nothing_else(self):
+        self.write("email-commitments.json", [ec(7, 0, base=datetime.fromtimestamp(self.now))])
+        os.makedirs(PK.JOURNAL_DIR, exist_ok=True)
+        Path(PK.JOURNAL_DIR, self.today + ".md").write_text("## 09:00 - Morning\nTonight I will render the tide chart.\n")
+        ask = lambda s, t: ("QUOTE: I will render the tide chart | WHAT: Render the synthetic tide chart as a PNG"
+                            if "tide chart" in t else "NONE")
+        slack = self.Slack(); slack.add(DOT, "An ordinary room question, held while paused.")
+        out = self.tick(slack, self.now, ask)
+        self.assertTrue(D.paused())
+        self.assertFalse(self.ordinary, out)                                            # the room's own voice stays stopped
+        self.assertIn("promise EC-00000007 became a want for the work lane", out)
+        self.assertIn("promise %s became a want for the work lane" % PK.load()["items"][0]["id"], out)
+        self.assertEqual(len(slack.posted), 1, out)                                    # one handoff a pass, no thread
+        self.assertNotIn("\U0001F4CC", slack.posted[0]["text"])
+        handed = [w for w in self.read("current-wants.json") if w.get("agent_work")]
+        self.assertEqual(len(handed), 1); self.assertIn("[want:%s]" % handed[0]["id"], slack.posted[0]["text"])
+        self.assertTrue(any("paused by Gloria" in l for l in out))
+        out = self.tick(slack, self.now + 60, ask)                                      # the next pass: the next promise
+        self.assertEqual(len([w for w in self.read("current-wants.json") if w.get("agent_work")]), 2, out)
+        self.assertFalse(self.ordinary)
+        self.assertFalse(PK.load()["items"][0].get("thread"))                           # its work is the want, not a thread
+
+    def test_results_channel_her_words_wait_while_paused(self):
+        with patch.object(PK, "results_channel", lambda: "fixture-results"), \
+             patch.object(D, "fresh", side_effect=AssertionError("her words are not read while paused")):
+            self.assertEqual(D.results_pass(self.Slack(), {"self": SELF}, self.now, deliver_only=True), [])
+
+    def test_nothing_reached_the_network(self):
+        self.assertEqual(NET, [])
+
+
+if __name__ == "__main__":
+    unittest.main()
