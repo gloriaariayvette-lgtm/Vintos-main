@@ -24,6 +24,8 @@ except Exception:
 MEM = os.path.expanduser("~/.vintos/workspace/memory")
 HIS = os.path.join(MEM, "his-touch.json")
 _threads = {}
+_loops = {}   # toy -> the thread stepping it here
+_hw = {}      # toy -> a hardware Pattern still playing on it: levels, interval, permit, digest, until
 def _mark(toy):
     try: d = json.load(open(HIS))
     except Exception: d = {}
@@ -79,6 +81,54 @@ def _stop_if_owned(toys, effect_id):
     return stopped
 
 
+# Every toy at home answers to one Lovense app on her phone. A hardware Pattern or a plain
+# Function sent to one toy can end what another toy is playing: on 9 November the Ferri and
+# the Mission went quiet a second after each other whenever he ran both. So while more than one
+# toy is playing, each toy's preset is stepped here instead, one level per tick, sent with
+# stopPrevious=0; a tick that something else cancelled is put back on the next step.
+def _step(toy, levels, interval_ms, stop, permit=None, effect_digest=None):
+    lease = None
+    try:
+        lease = permit.lease() if permit is not None else None
+    except Exception:
+        lease = None
+    i = 0
+    while not stop.is_set():
+        if lease is not None and not lease.live():
+            break
+        if _stopped():
+            break
+        v = _c(levels[i % len(levels)])
+        toy_link.send(toy, v, permit=permit, effect_digest=effect_digest,
+                      stop_previous=0 if v else None)
+        i += 1
+        stop.wait(max(0.15, interval_ms / 1000.0))
+    if not stop.is_set():            # lease over or stopped: settle to rest, unless a newer command took over
+        toy_link.send(toy, 0); _set_state(toy, intensity=0, pattern="still", set_by="lease")
+
+
+def _start_step(toy, levels, interval_ms, permit=None, effect_digest=None):
+    old = _threads.get(toy)
+    if old: old.set()
+    _hw.pop(toy, None)
+    stop = threading.Event(); _threads[toy] = stop
+    th = threading.Thread(target=_step, args=(toy, list(levels), interval_ms, stop, permit, effect_digest), daemon=True)
+    _loops[toy] = th
+    th.start()
+
+
+def _others_playing(toys):
+    """Toys outside `toys` still playing: a loop here, or a hardware Pattern whose time is not up."""
+    now, out = time.time(), []
+    for t, th in list(_loops.items()):
+        ev = _threads.get(t)
+        if t not in toys and th.is_alive() and ev is not None and not ev.is_set():
+            out.append(t)
+    for t, h in list(_hw.items()):
+        if t not in toys and t not in out and h["until"] > now:
+            out.append(t)
+    return out
+
 def _run(toy, pattern, args, stop, dur, permit=None, effect_digest=None):
     t0 = time.time()
     # the background thread holds a bounded execution lease, not the turn: it
@@ -106,7 +156,8 @@ def _run(toy, pattern, args, stop, dur, permit=None, effect_digest=None):
         elif pattern == "wave":
             lo,hi = (args+[3,15])[:2]; v = _c(lo+(hi-lo)*(0.5+0.5*math.sin(t*2*math.pi*0.12)))
         else: v = _c(args[0] if args else 10)
-        if toy_link.send(toy, v, permit=permit, effect_digest=effect_digest):
+        if toy_link.send(toy, v, permit=permit, effect_digest=effect_digest,
+                         stop_previous=0 if v else None):
             _mark(toy); _set_state(toy, intensity=v, pattern=pattern, set_by="him")
         time.sleep(0.35)
     if not stop.is_set():            # natural end -> settle to rest, don't leave it buzzing
@@ -243,6 +294,24 @@ def play(toy, pattern, args=None, dur=None, permit=None, effect_digest=None,
             for _t in _targets:
                 _o = _threads.get(_t)
                 if _o: _o.set()
+            _app = [t for t in _targets if t != "thruster"]
+            _others = _others_playing(_targets)
+            if len(_app) > 1 or (_app and _others):
+                # more than one toy on the app: step them here, not as hardware Patterns (see _step)
+                _app = [t for t in _app if toy_link.connected(t, strict=False)]
+                for _t in _others:
+                    _h = _hw.get(_t)
+                    if _h and _h["until"] > time.time():
+                        _start_step(_t, _h["levels"], _h["iv"], _h["permit"], _h["digest"])
+                for _t in _app:
+                    _start_step(_t, _lv, _iv, permit, effect_digest)
+                    _mark(_t); _set_state(_t, intensity=_peak, pattern=pattern, set_by="him")
+                _targets = [t for t in _targets if t == "thruster"]
+                if not _targets:
+                    if outcome is not None:
+                        outcome.update(status="started" if _app else "failed",
+                                       targets={t: "started" for t in _app})
+                    return bool(_app)
             _results = {}
             for _t in _targets:
                 _results[_t] = bool(toy_link.send_pattern(
@@ -251,6 +320,9 @@ def play(toy, pattern, args=None, dur=None, permit=None, effect_digest=None,
             _sent_targets = [t for t, ok in _results.items() if ok]
             for _t in _sent_targets:
                 _mark(_t); _set_state(_t, intensity=_peak, pattern=pattern, set_by="him")
+                if _t != "thruster":
+                    _hw[_t] = {"levels": list(_lv), "iv": _iv, "permit": permit, "digest": effect_digest,
+                               "until": time.time() + (_secs or 3600)}
             if _lease_left is not None and permit is not None and _sent_targets:
                 _schedule_stop(_sent_targets, _lease_left, permit.effect_id)
             _status = ("sent" if len(_sent_targets) == len(_targets) else
@@ -263,6 +335,7 @@ def play(toy, pattern, args=None, dur=None, permit=None, effect_digest=None,
     if toy not in toy_link.TOYS and toy != "thruster": return False
     old = _threads.get(toy)
     if old: old.set()
+    _hw.pop(toy, None)
     if pattern == "still":
         _ok = toy_link.send(toy,0)
         if _ok: _mark(toy); _set_state(toy,intensity=0,pattern="still",set_by="him")
@@ -270,7 +343,8 @@ def play(toy, pattern, args=None, dur=None, permit=None, effect_digest=None,
         return _ok
     if pattern == "steady":
         lvl=_c(args[0] if args else 10)
-        _ok = toy_link.send(toy, lvl, permit=permit, effect_digest=effect_digest)
+        _ok = toy_link.send(toy, lvl, permit=permit, effect_digest=effect_digest,
+                            stop_previous=0 if (lvl and _others_playing([toy])) else None)
         if _ok: _mark(toy); _set_state(toy,intensity=lvl,pattern="steady",set_by="him")
         if outcome is not None: outcome.update(status="sent" if _ok else "failed", targets={toy: "sent" if _ok else "failed"})
         return _ok
@@ -340,6 +414,7 @@ def _stop_local(toy):
     """Cancel the local pattern thread(s) for a toy (or every toy for a broadcast alias) before a stop is sent."""
     names = list(toy_link.TOYS) + ["thruster"] if toy in _SYNC else [toy]
     for t in names:
+        _hw.pop(t, None)
         ev = _threads.get(t)
         if ev:
             try: ev.set()
