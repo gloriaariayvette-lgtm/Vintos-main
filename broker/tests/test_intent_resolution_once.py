@@ -244,6 +244,30 @@ class ResolutionOnce(unittest.TestCase):
         E.resolve_previous(HER); E.resolve_previous(HER)
         self.assertEqual((f.pressure(A)['count'], self.pending(f)), (3, []))
 
+    def test_an_effect_that_never_happens_is_said_each_time_and_given_up_at_the_cap(self):
+        # review, round five: a pressure store that never takes the write, and an outcome join that cannot be
+        # opened (it used to fail without a word), are each said on every miss and stop being tried at the cap
+        f = self.f; self.missed(f)
+        with patch.object(E, 'EFFECT_TRIES_MAX', 3), patch.dict(E.EFFECTS_GIVEN_UP, n=0), \
+                patch.object(DD, 'field_verdict', side_effect=OSError('fixture: the pressure store cannot be written')), \
+                patch.object(E, '_record_outcome', side_effect=OSError('fixture: the join cannot be opened')):
+            E.resolve_previous(HER)                                                 # one try each: drained when the pass lands
+            row = f.rows()[-1]
+            self.assertEqual(sorted((p['key'].split(':', 1)[1], p.get('tries')) for p in row['effects_pending']),
+                             [('outcome:r2', 1), ('pressure:field:NO', 1)])
+            for _ in range(4): E.resolve_previous('')
+            row = f.rows()[-1]; log = Path(E.SELECT_LOG).read_text()
+            self.assertNotIn('effects_pending', row)
+            self.assertEqual(sorted(k.split(':', 1)[1] for k in row['effects_given_up']), ['outcome:r2', 'pressure:field:NO'])
+            self.assertEqual(log.count('effect NOT DONE at outcome'), 2); self.assertEqual(log.count('effect GIVEN UP at outcome'), 1)
+            self.assertEqual(log.count('effect NOT DONE at pressure'), 2); self.assertEqual(log.count('effect GIVEN UP at pressure'), 1)
+            self.assertEqual(E.EFFECTS_GIVEN_UP['n'], 2)
+            n = log.count('effect ')
+            E.resolve_previous(''); E.resolve_previous('')
+            self.assertEqual(Path(E.SELECT_LOG).read_text().count('effect '), n)          # given up: not tried again
+        self.assertEqual(f.pressure(A)['count'], 2)
+        self.assertEqual(f.rows()[-1]['realized']['field'], 'NO')                   # the verdict stands; only its effects were lost, aloud
+
     def test_a_judge_that_raises_or_a_process_that_dies_at_it_strands_nothing(self):
         f = self.f; f.delivered()
         with patch.object(E, '_judge_realized', side_effect=RuntimeError('fixture')), self.assertRaises(RuntimeError):

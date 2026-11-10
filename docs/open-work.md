@@ -8348,3 +8348,7 @@ a lead seed names its row: a retry after a crash applies nothing twice. The vale
 and his self-observation keep no record: claimed first, then sent - at most once. No lock
 is held across the judge. Chat's two race cases pass; twelve new cases in
 `broker/tests/test_intent_resolution_once.py`; six broken variants caught. ACTIVE review.
+Review: an effect that does not happen is said on every miss (`effect NOT DONE`; the
+outcome's used to fail without a word), counted on the effect (`tries`), and given up
+aloud at `EFFECT_TRIES_MAX` (20) into `effects_given_up` (`effect GIVEN UP`,
+`EFFECTS_GIVEN_UP`) instead of being retried on every turn for ever; one new case.

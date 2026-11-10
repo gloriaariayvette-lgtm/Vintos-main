@@ -1196,6 +1196,11 @@ def record_pending(target, source="conversation", event_id=None, claim_once=Fals
 RESOLUTION_DROPPED = {"stale_revision": 0, "settled_axis": 0, "row_gone": 0}
 _AT_MOST_ONCE = ("valence",)
 EFFECTS_KEPT = 50
+# An effect that does not happen stays on its row and is tried again on the next pass - not for ever (review, round
+# five): each miss is said ("effect NOT DONE"), counted on the effect as `tries`, and the EFFECT_TRIES_MAX-th miss
+# takes it off the row into effects_given_up, said as "effect GIVEN UP" and counted in EFFECTS_GIVEN_UP.
+EFFECT_TRIES_MAX = 20
+EFFECTS_GIVEN_UP = {"n": 0}
 
 
 def _row_key(row):
@@ -1302,6 +1307,39 @@ def _drain_effects(only=None):
                 if _settle_effect(row, fx["key"]): _apply_effect(row, fx)
             elif _apply_effect(row, fx) is not _NOT_DONE:
                 _settle_effect(row, fx["key"])
+            else:
+                _effect_not_done(row, fx)
+
+
+def _effect_not_done(row, fx):
+    """Under the ledger lock: one more miss on a pending effect; the EFFECT_TRIES_MAX-th gives it up (review, round five)."""
+    from store_guard import transaction, write_json
+    tries, gone = None, False
+    with transaction(LEDGER):
+        led = _load("intent-ledger.json") or []
+        for current in led:
+            if not _same_row(current, row): continue
+            pend = [p for p in (current.get("effects_pending") or []) if isinstance(p, dict)]
+            mine = next((p for p in pend if p.get("key") == fx["key"]), None)
+            if mine is None: return
+            tries = int(mine.get("tries", 0) or 0) + 1
+            if tries >= EFFECT_TRIES_MAX:
+                gone = True
+                rest = [p for p in pend if p is not mine]
+                if rest: current["effects_pending"] = rest
+                else: current.pop("effects_pending", None)
+                current["effects_given_up"] = ((current.get("effects_given_up") or []) + [fx["key"]])[-EFFECTS_KEPT:]
+            else:
+                mine["tries"] = tries; current["effects_pending"] = pend
+            write_json(LEDGER, led[-500:])
+            break
+    if tries is None: return
+    if gone: EFFECTS_GIVEN_UP["n"] = EFFECTS_GIVEN_UP.get("n", 0) + 1
+    try:
+        with open(SELECT_LOG, "a") as _f:
+            _f.write("%s effect %s at %s: try %d of %d, %s\n---\n" % (datetime.now().isoformat(), "GIVEN UP" if gone else "NOT DONE",
+                     fx.get("dest"), tries, EFFECT_TRIES_MAX, "taken off the row (effects_given_up)" if gone else "kept on the row for the next pass"))
+    except Exception: pass
 
 
 def _apply_effect(row, fx):
