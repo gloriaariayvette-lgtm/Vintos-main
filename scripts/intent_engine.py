@@ -1141,7 +1141,8 @@ def record_pending(target, source="conversation", event_id=None, claim_once=Fals
         # preview ran, and nothing was counted then; a turn may have reserved the last showing of that run
         # since. So before this lead is recorded or shown, the pick is looked at again and counted in one step
         # under the turn-state lock (review, round four). If it may no longer stand, or the count cannot be
-        # written, nothing is admitted: the cap is not left to chance on this route either.
+        # written, nothing is admitted: the cap is not left to chance on this route either. A preview that
+        # carried no primary has nothing to cap: it is admitted whatever became of the count, and says so.
         with transaction(LEDGER):
             _seen = _load("intent-ledger.json") or []
             if isinstance(_seen, list) and any(isinstance(row, dict) and row.get("intent_id") == target["intent_id"] for row in _seen):
@@ -1152,14 +1153,16 @@ def record_pending(target, source="conversation", event_id=None, claim_once=Fals
         _af = []
         _ok = _guarded("record_pending.primary_admit", _admit, _af, _NOT_DONE)
         _how = [f["result"] for f in _af]
-        if _ok is not True or "failed" in _how:
+        _uncounted = _ok is not True or "failed" in _how
+        if _uncounted and target.get("primary_shown"):
             try:
                 with open(SELECT_LOG, "a") as _f:
                     _f.write("%s primary_admission_refused: primary %s; %s\n---\n" % (datetime.now().isoformat(),
                              target.get("primary_shown"), "not_eligible_now" if _ok is False else "count_not_written"))
             except Exception: pass
             return False
-        target["primary_accounting"] = "admitted_unprotected" if "unprotected" in _how else "admitted"
+        target["primary_accounting"] = ("failed" if _uncounted else
+                                        "admitted_unprotected" if "unprotected" in _how else "admitted")
     with transaction(LEDGER):
         led = _load("intent-ledger.json") or []
         if not isinstance(led, list): led = []

@@ -1566,6 +1566,13 @@ class IntentFieldsFix(unittest.TestCase):
         prepared = self.preview(); self.assertIsNone(prepared['primary_shown'])
         self.assertTrue(self.admit(prepared, 'event-five')); self.assertEqual(self.rows()[-1]['target']['primary_accounting'], 'admitted')
         self.assertEqual((rotation()['id'], rotation()['run']), (None, 0))
+        # ... and is still admitted when that count cannot be written: nothing was shown, so there is nothing to cap
+        prepared = self.preview(); self.assertIsNone(prepared['primary_shown']); n = len(self.rows())
+        with self.faulty(lock=OSError('fixture: the lock cannot be taken')) as (faults, unguarded, err):
+            self.assertTrue(self.admit(prepared, 'event-six'))
+            self.assertEqual(faults['failed'], 1)
+        self.assertEqual((len(self.rows()), self.rows()[-1]['target']['primary_accounting']), (n + 1, 'failed'))
+        self.assertEqual(Path(E.SELECT_LOG).read_text().count('primary_admission_refused: primary None'), 0)
 
     def test_rows_the_bounded_pending_list_lets_go_are_counted(self):
         LT, asked = self.lead_trials()
