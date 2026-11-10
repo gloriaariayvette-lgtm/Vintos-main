@@ -28,8 +28,10 @@ TARGET = {
     'success_criterion': 'the reply names both alternatives and their tradeoff',
     'observation_window': 'her_next_reply', 'evidence_type': 'her_response',
     'enactment_type': 'offer', 'enactment': 'compare the two alternatives she asked about',
-    'gloria': {'difference_intended': 'she can choose using the tradeoff', 'enactment': 'give both alternatives'},
-    'self': {'difference_intended': 'say which I prefer', 'enactment': 'choose one and explain why'},
+    'gloria': {'difference_intended': 'she can choose using the tradeoff', 'enactment': 'give both alternatives',
+               'observation_window': 'her_next_reply', 'evidence_type': 'her_response'},
+    'self': {'difference_intended': 'say which I prefer', 'enactment': 'choose one and explain why',
+             'observation_window': 'this_reply', 'evidence_type': 'my_move'},
     'priority': {'field': 0, 'gloria': 1, 'self': 0}, 'addresses': 'NONE'
 }
 

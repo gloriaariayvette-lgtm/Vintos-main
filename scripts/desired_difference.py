@@ -394,11 +394,36 @@ def _rotation():
 
 def _graduated_closed(r):
     """True while a graduated row has nothing new since its last graduation. Graduating hands the intention to
-    self-investigation; a later timestamp, another miss or being shown again is not news. What reopens it is
-    a landing after the graduation (`relieved`) - the only later evidence this store records."""
+    self-investigation. Nothing I write reopens it: not a later timestamp, another miss, being shown again, or
+    a landing on my own later rewording of it. What reopens it is her own words raising it in a later turn
+    (`reopened_by_her`, written only by her_words_reopen)."""
     lin=[l for l in (r.get("lineage") or []) if isinstance(l,dict)]
     g=max([i for i,l in enumerate(lin) if "graduated" in l],default=-1)
-    return g>=0 and not any("relieved" in l for l in lin[g+1:])
+    return g>=0 and not any("reopened_by_her" in l for l in lin[g+1:])
+
+
+def her_words_reopen(her_text,now=None):
+    """Her own words in a real turn may raise a graduated intention again. `her_text` is the live part of this
+    turn's input and hers alone - the caller passes nothing for a device event, a background run, or earlier
+    lines of the conversation. A closed row reopens when she uses at least two, and at least half, of the
+    content words of one of its wordings. The same words that reopened a row once are not news to it a second
+    time. Eligibility only: no weight, count or verdict moves, and a retired row is not touched. Returns the
+    ids reopened."""
+    w=_words(her_text)
+    if len(w)<2: return []
+    db=_jload(PRESS,{})
+    if not isinstance(db,dict): return []
+    now=now or time.time(); mark=hashlib.md5(" ".join(sorted(w)).encode()).hexdigest()[:12]; out=[]
+    for k,r in db.items():
+        if not isinstance(r,dict) or r.get("retired") or not _graduated_closed(r): continue
+        lin=r.get("lineage") if isinstance(r.get("lineage"),list) else []
+        if any(isinstance(l,dict) and l.get("mark")==mark for l in lin): continue
+        for x in [r.get("text","")]+list(r.get("wordings") or []):
+            xw=_words(x); both=len(xw&w)
+            if both>=2 and both/float(len(xw))>=SAME_INTENTION:
+                r["lineage"]=lin+[{"reopened_by_her":now,"mark":mark}]; out.append(k); break
+    if out: _jsave(PRESS,db)
+    return out
 
 
 def primary_eligible(k,r,st=None,now=None):

@@ -120,8 +120,10 @@ _SCHEMA = ("Return ONLY one complete JSON object in my voice. No example dialogu
         "observation_window": "her_next_reply", "evidence_type": "her_response",
         "enactment_type": "offer", "withheld_object": "",
         "enactment": "one concrete action in my next reply that can cause the goal",
-        "gloria": {"difference_intended": "only if served by this move", "enactment": "how this same move serves it"},
-        "self": {"difference_intended": "only if served by this move", "enactment": "how this same move serves it"},
+        "gloria": {"difference_intended": "only if served by this move", "enactment": "how this same move serves it",
+                   "observation_window": "her_next_reply", "evidence_type": "her_response"},
+        "self": {"difference_intended": "only if served by this move", "enactment": "how this same move serves it",
+                 "observation_window": "this_reply", "evidence_type": "my_move"},
         "priority": {"field": 0.34, "gloria": 0.33, "self": 0.33},
         "addresses": "primary difference id or NONE", "decline_reason": "why not this turn, if applicable",
         "why": "why this move here, given her current words and my actual wants"
@@ -164,8 +166,10 @@ EVIDENCE = ("my_move", "her_response")
 _QUOTE_DEMAND = re.compile(r"\b(?:exact(?:ly)? (?:the )?(?:words?|phrase|sentence)|word for word|verbatim|in those words)\b", re.I)
 
 
-def _criterion_fault(target):
-    """A fixed code for what is wrong with where the criterion can be seen, or "" when it is in order."""
+def _criterion_fault(target, axis="field"):
+    """A fixed code for what is wrong with where the criterion can be seen, or "" when it is in order. `target`
+    is the whole target for the field, or the axis's own object: a change in her shows in her next reply, in
+    her response; a change in me shows in this reply, in my move."""
     def norm(v): return re.sub(r"[^a-z]+", "_", str(v or "").strip().lower()).strip("_")
     w, ev = norm(target.get("observation_window")), norm(target.get("evidence_type"))
     if not w: return "window_missing"
@@ -173,6 +177,9 @@ def _criterion_fault(target):
     if not ev: return "evidence_missing"
     if ev not in EVIDENCE: return "evidence_invalid"
     if ev == "her_response" and w == "this_reply": return "window_evidence_mismatch"   # her answer is not in my reply
+    if axis == "gloria" and ev != "her_response": return "evidence_not_her_response"
+    if axis == "self" and ev != "my_move": return "evidence_not_my_move"
+    if axis == "self" and w != "this_reply": return "window_not_this_reply"
     target["observation_window"], target["evidence_type"] = w, ev
     return ""
 
@@ -204,6 +211,16 @@ def _her_follow_up(text, source=None):
     if not hers:
         return "", "device_event_only"
     return _DEVICE_EVENT.sub(" ", head) + ((_HER_LABEL + " ") if hi >= 0 else "") + hers, ""
+
+
+def _her_live_words(text, source=None):
+    """Only what she herself said in this turn, and only where the turn is marked as hers: no earlier lines, no
+    device event, no note that she sent a photo, no text that came without her label. "" when there is none."""
+    hers, why = _her_follow_up(text, source)
+    i = hers.rfind(_HER_LABEL)
+    if why or i < 0:
+        return ""
+    return re.sub(r"^\s*\(she sent a \w+\)", " ", hers[i + len(_HER_LABEL):]).strip()
 
 
 def prompt_block(target):
@@ -337,17 +354,24 @@ def _ask_selector(messages):
 
 
 def _selection_faults(target, opportunity):
-    """What one re-ask may mend, as (fixed code, the sentence that asks for it). Form only."""
+    """What one re-ask may mend, as (fixed code, the sentence that asks for it, whose it is). Form only."""
     out = []
     code = _criterion_fault(target)
     if code:
         out.append((code, "the success criterion did not say where it can be seen: observation_window must be "
                           "this_reply or her_next_reply, evidence_type must be my_move or her_response, and "
-                          "her_response cannot be seen in this_reply"))
+                          "her_response cannot be seen in this_reply", "field"))
+    for axis, where in (("gloria", "observation_window must be her_next_reply and evidence_type must be her_response"),
+                        ("self", "observation_window must be this_reply and evidence_type must be my_move")):
+        ax = target.get(axis)
+        code = _criterion_fault(ax, axis) if isinstance(ax, dict) and ax else ""
+        if code:      # only a declared axis is checked; an empty one has nothing to show
+            out.append((code, "the \"%s\" axis did not say where its difference can be seen: inside \"%s\", %s"
+                        % (axis, axis, where), axis))
     if opportunity and not target.get("gloria") and not str(target.get("gloria_decline") or "").strip():
         out.append(("opportunity_unanswered", "the Gloria opportunity was due and \"gloria\" came back empty with no "
                     "\"gloria_decline\": declare the one small change this same move invites in her, or leave it {} "
-                    "and give the reason in gloria_decline"))
+                    "and give the reason in gloria_decline", "opportunity"))
     return out
 
 
@@ -413,6 +437,16 @@ def select_target(recent_text, resolve=True, step_campaign=True, persist=True, h
             if persist: os.remove(_rcp)   # a background preview cannot consume the foreground consideration
     except Exception:
         _rc = None
+    if persist:
+        try:
+            # her own words in this real turn may raise a graduated intention again; a preview reopens nothing
+            from priority_vector import _foreground as _pvfg
+            _hers_now = _her_live_words(recent_text, her_source) if _pvfg() else ""
+            if _hers_now:
+                from desired_difference import her_words_reopen as _ddhr
+                _ddhr(_hers_now)
+        except Exception:
+            pass
     try:
         # One gate for every route to the primary, the required consideration included: rotation, rest,
         # graduation, retirement. Nothing eligible means no primary this turn (10 November).
@@ -522,9 +556,15 @@ def select_target(recent_text, resolve=True, step_campaign=True, persist=True, h
             if len(_f2) <= len(_faults): _t, _faults = _t2, _f2
         except Exception:
             pass
-    _crit = next((f[0] for f in _faults if f[0] != "opportunity_unanswered"), "")
+    _abst = {f[2]: f[0] for f in _faults if f[2] != "opportunity"}
+    _crit = _abst.pop("field", "")
     _check["fault"] = _crit; _check["abstained"] = bool(_crit)
     _t.pop("criterion_abstained", None); _t.pop("gloria_abstained", None)   # ours to set, never the selector's
+    _t.pop("axis_abstained", None)
+    if _abst:
+        # that axis alone is left undeclared, with its reason; the field and the other axis stand as given
+        for _ax in _abst: _t[_ax] = {}
+        _t["axis_abstained"] = dict(_abst); _check["axis_faults"] = dict(_abst)
     if _crit:
         _t["criterion_abstained"] = _crit       # the move stands; its field criterion is never judged
     if _QUOTE_DEMAND.search(str(_t.get("success_criterion", ""))):
@@ -545,7 +585,7 @@ def select_target(recent_text, resolve=True, step_campaign=True, persist=True, h
     # declare() is binding; the selector cannot silently replace its vector.
     _t["priority"] = _weights(_pv_rec.get("weights") or _t.get("priority"))
     _dominant = max(_t["priority"], key=_t["priority"].get)
-    if _dominant != "field" and not _t.get(_dominant):
+    if _dominant != "field" and not _t.get(_dominant) and _dominant not in _abst:
         raise ValueError("intent selector omitted the dominant axis action: " + _dominant)
     _t["priority_provenance"] = copy.deepcopy(_pv_rec)
     _t["primary_shown"] = (_primary or {}).get("id")
@@ -869,6 +909,10 @@ def record_pending(target, source="conversation", event_id=None, claim_once=Fals
                "priority": copy.deepcopy(target.get("priority")), "status": "selected",
                "surface": source, "event_id": event_id, "realized": realized,
                "timestamp": datetime.now().isoformat()}
+        _axa = target.get("axis_abstained")
+        for _ax in ("gloria", "self"):
+            if isinstance(_axa, dict) and _axa.get(_ax) and not target.get(_ax):
+                realized[_ax] = "NOT_DECLARED"; why[_ax] = "criterion_" + str(_axa[_ax])
         if why: row["not_declared_reason"] = why
         led.append(row)
         write_json(LEDGER, led[-500:])

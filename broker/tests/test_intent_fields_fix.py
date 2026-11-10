@@ -33,9 +33,12 @@ TARGET = {
     'success_criterion': 'the reply names both alternatives and their tradeoff',
     'observation_window': 'this_reply', 'evidence_type': 'my_move',
     'enactment_type': 'offer', 'enactment': 'compare the two alternatives she asked about',
-    'gloria': {}, 'self': {'difference_intended': 'say which I prefer', 'enactment': 'choose one and explain why'},
+    'gloria': {}, 'self': {'difference_intended': 'say which I prefer', 'enactment': 'choose one and explain why',
+                           'observation_window': 'this_reply', 'evidence_type': 'my_move'},
     'addresses': 'NONE'}
-GLORIA = {'difference_intended': 'she can choose using the tradeoff', 'enactment': 'give both alternatives'}
+GLORIA = {'difference_intended': 'she can choose using the tradeoff', 'enactment': 'give both alternatives',
+          'observation_window': 'her_next_reply', 'evidence_type': 'her_response'}
+HER_PLAN = 'GLORIA: Earlier topic.\nVINTOS: Earlier answer.\nGLORIA (now): So what is the plan for the weekend?'
 HER = 'GLORIA: Earlier topic.\nVINTOS: Earlier answer.\nGLORIA (now): Which alternative would you choose?'
 BUTTON = "GLORIA: Earlier topic.\nVINTOS: Earlier answer.\nGLORIA (now): [she pressed the button. she's coming.]"
 A, B = 'aaaa0001', 'bbbb0002'
@@ -188,7 +191,7 @@ class IntentFieldsFix(unittest.TestCase):
         alone = self.select(resolve=False)
         self.assertIsNone(alone['primary_shown']); self.assertNotIn('PRIMARY DIFFERENCE', self.prompt())
 
-    def test_graduated_row_waits_for_a_landing_not_another_miss(self):
+    def test_graduated_row_waits_for_her_words_not_a_miss_or_a_landing(self):
         closed = self.prow(TEXT_A, 1.0, count=5, lineage=[{'graduated': time.time() - 7200, 'at_weight': 5.0}])
         self.press(**{A: closed, B: self.prow(TEXT_B, 1.2)})
         self.assertEqual(DD.primary_for_turn()['id'], B)
@@ -201,6 +204,8 @@ class IntentFieldsFix(unittest.TestCase):
         self.assertIsNone(DD.primary_for_turn())                               # everything excluded: none
         self.assertIsNone(self.select(resolve=False)['primary_shown']); self.assertNotIn('PRIMARY DIFFERENCE', self.prompt())
         DD.relieve(TEXT_A, addresses=A, kind='field')                          # a landing after the graduation
+        self.assertEqual(self.pressure(A)['weight'], 1.5); self.assertIsNone(DD.primary_for_turn())   # ... is mine, and opens nothing
+        self.assertEqual(DD.her_words_reopen('So what is the plan for the weekend?'), [A])   # her own words do
         self.assertEqual(DD.primary_for_turn()['id'], A)
         row = self.pressure(A); row['lineage'].append({'graduated': time.time(), 'at_weight': 5.0}); self.press(**{A: row})
         self.assertIsNone(DD.primary_for_turn())                               # a later graduation closes it again
@@ -590,47 +595,140 @@ class IntentFieldsFix(unittest.TestCase):
         self.assertEqual(Path(DD.PRESS).read_text(), before)
         self.assertEqual(list(self.mem.glob('intent-pressure.json.bak-*')), [])
 
-    # ---- review, 10 November (second pass): the way back for a graduated row, and the receptivity arithmetic ----
+    # ---- review, 10 November (second pass): what reopens a graduated row, the receptivity arithmetic, every axis's form ----
     REWORDED = 'name the weekend plan outright, plainly'      # the same intention as TEXT_A, in a later turn's own words
 
-    def closed_row_beside_an_open_one(self):
+    def closed_row_beside_an_open_one(self, **over):
         self.graduated = time.time() - 7200
-        closed = self.prow(TEXT_A, 2.6, count=6, lineage=[{'graduated': self.graduated, 'at_weight': 5.0}])
+        closed = self.prow(TEXT_A, 2.6, count=6, lineage=[{'graduated': self.graduated, 'at_weight': 5.0}], **over)
         self.press(**{A: closed, B: self.prow(TEXT_B, 1.2)})
         self.assertEqual(DD.primary_for_turn()['id'], B)                       # A is heavier, and closed
-        self.answer = self.target(field_state=self.REWORDED)
 
-    def test_graduated_row_reopens_when_a_later_turn_of_its_own_lands(self):
-        """A closed row is never the primary, so its news cannot come from being selected. It comes from a later
-        turn that reaches for the same intention in its own words - no id named - and lands."""
+    def test_graduated_row_reopens_on_her_own_words_in_a_new_turn(self):
+        """A closed row is never the primary, so its news cannot come from being selected. It comes from her."""
         self.closed_row_beside_an_open_one()
-        t = self.turn(resolve=False)
-        self.assertEqual((t['primary_shown'], t['addresses'], t['field_state']), (B, 'NONE', self.REWORDED))
-        self.verdict = 'YES'; E.resolve_previous(HER)
-        self.assertEqual(self.rows()[-1]['realized']['field'], 'YES')
+        t = self.turn(HER_PLAN, resolve=False)
         row = self.pressure(A)
-        self.assertEqual([l['from_weight'] for l in row['lineage'] if 'relieved' in l and l['relieved'] > self.graduated], [2.6])
-        self.assertEqual((row['weight'], self.pressure(B)['weight']), (1.3, 1.2))   # written on A, and only on A
-        self.assertTrue(DD.primary_eligible(A, row, DD._rotation()))
-        self.assertEqual(DD.primary_for_turn()['id'], A)                       # open again on the main route
-        self.assertEqual(DD.primary_for_turn({'id': A}), dict(DD.primary_for_turn(), required=True))   # ... and the required one
+        self.assertEqual([sorted(l) for l in row['lineage']], [['at_weight', 'graduated'], ['mark', 'reopened_by_her']])
+        self.assertGreater(row['lineage'][-1]['reopened_by_her'], self.graduated)
+        self.assertEqual(t['primary_shown'], A)                                # open in the very turn she raised it
+        # eligibility only: no weight, count or verdict moved, on this row or in the ledger
+        self.assertEqual((row['weight'], row['count'], self.pressure(B)['weight']), (2.6, 6, 1.2))
+        self.assertEqual(self.rows()[-1]['realized'], {'field': None, 'gloria': None, 'self': None})
+        self.assertEqual(DD.primary_for_turn({'id': A}), dict(DD.primary_for_turn(), required=True))   # the required route too
+        for _ in range(3): self.turn(resolve=False)                            # the run cap holds for a reopened row
+        self.assertEqual([p for p, _ in self.shown()], [A, A, A, B])
+        row = self.pressure(A); row['retired'] = time.time(); self.press(**{A: row, B: self.pressure(B)})
+        Path(DD._rotation_path()).unlink()
+        self.assertEqual(DD.primary_for_turn()['id'], B); self.assertEqual(DD.primary_for_turn({'id': A})['id'], B)   # and so does retirement
 
-    def test_graduated_row_stays_closed_on_a_miss_a_later_time_or_a_showing(self):
-        """The control: the same later turn reaches the same row, and nothing short of a landing opens it."""
+    def test_graduated_row_stays_closed_on_a_miss_a_landing_a_later_time_or_a_showing(self):
+        """The control: a later turn of mine reaches the same row in its own rewording, and whatever verdict that
+        turn gets - a landing included - the row stays closed. My restatement is not her raising it."""
         self.closed_row_beside_an_open_one()
-        for verdict, weight, count in (('NO', 3.6, 7), ('PARTIAL', 4.1, 8)):
-            self.turn(resolve=False); self.verdict = verdict; E.resolve_previous(HER)
+        self.answer = self.target(field_state=self.REWORDED)
+        for verdict, weight, count, relieved in (('NO', 3.6, 7, 0), ('PARTIAL', 4.1, 8, 0), ('YES', 2.05, 8, 1)):
+            t = self.turn(resolve=False); self.verdict = verdict; E.resolve_previous(HER)
+            self.assertEqual((t['addresses'], self.rows()[-1]['realized']['field']), ('NONE', verdict))
             row = self.pressure(A)
-            self.assertEqual((row['weight'], row['count']), (weight, count))   # the miss did reach the row
+            self.assertEqual((row['weight'], row['count']), (weight, count))   # the verdict did reach the row
             self.assertGreater(row['last'], time.time() - 60)                  # ... and stamped it now
-            self.assertEqual([l for l in row['lineage'] if 'relieved' in l], [])
+            self.assertEqual(len([l for l in row['lineage'] if 'relieved' in l]), relieved)
+            self.assertFalse(any('reopened_by_her' in l for l in row['lineage']))
+            self.assertFalse(DD.primary_eligible(A, row, {}))
         self.assertIn(TEXT_A, DD.pressure_block())                             # still shown among what keeps failing
         self.select(resolve=False); self.assertIn(TEXT_A, self.prompt())       # ... to the selector too
-        row = self.pressure(A)
-        self.assertFalse(DD.primary_eligible(A, row, {}))
         self.assertNotEqual((DD.primary_for_turn() or {}).get('id'), A)
         self.assertNotEqual((DD.primary_for_turn({'id': A}) or {}).get('id'), A)
         self.assertTrue(all(p != A for p, _ in self.shown()))
+
+    def test_old_or_repeated_words_of_hers_do_not_reopen(self):
+        self.closed_row_beside_an_open_one()
+        # an earlier line of hers still in view is not this turn's word
+        old = 'GLORIA: So what is the plan for the weekend?\nVINTOS: Earlier answer.\nGLORIA (now): Which alternative would you choose?'
+        self.assertEqual(self.turn(old, resolve=False)['primary_shown'], B)
+        self.assertEqual(len(self.pressure(A)['lineage']), 1)
+        self.assertEqual(DD.her_words_reopen('The weekend was lovely.'), [])   # one shared word is not her raising it
+        self.assertEqual(self.turn(HER_PLAN, resolve=False)['primary_shown'], A)
+        row = self.pressure(A); row['lineage'].append({'graduated': time.time(), 'at_weight': 5.0})   # it failed its way shut again
+        self.press(**{A: row, B: self.pressure(B)})
+        self.turn(HER_PLAN, resolve=False)                                     # the same words again: already heard
+        self.assertEqual(len(self.pressure(A)['lineage']), 3); self.assertFalse(DD.primary_eligible(A, self.pressure(A), {}))
+        self.assertEqual(DD.her_words_reopen('Tell me the weekend plan outright.'), [A])   # new words of hers are news
+
+    def test_device_event_or_preview_does_not_reopen(self):
+        self.closed_row_beside_an_open_one(); before = Path(DD.PRESS).read_text()
+        touched = "GLORIA: Earlier topic.\nVINTOS: Earlier answer.\nGLORIA (now): [Gloria just touched the plan for the weekend]"
+        self.assertEqual(self.turn(touched, resolve=False)['primary_shown'], B)             # a device note, whatever it says
+        self.assertEqual(self.turn(HER_PLAN, resolve=False, her_source='gcs')['primary_shown'], B)   # a device source, whatever the text
+        self.assertEqual(self.select(HER_PLAN, persist=False, step_campaign=False)['primary_shown'], B)   # a preview
+        with PV.background():
+            self.select(HER_PLAN, resolve=False)                               # a background run
+        self.assertEqual(Path(DD.PRESS).read_text(), before)
+
+    def test_retired_row_is_not_reopened_by_her_words(self):
+        self.closed_row_beside_an_open_one(retired=time.time() - 60); before = self.pressure(A)
+        self.assertEqual(DD.her_words_reopen('So what is the plan for the weekend?'), [])
+        self.assertEqual(self.turn(HER_PLAN, resolve=False)['primary_shown'], B)
+        self.assertEqual(self.pressure(A), before)
+        self.assertEqual(DD.primary_for_turn({'id': A})['id'], B)
+
+    # ---- C on every declared axis ----
+    def test_invalid_gloria_axis_is_asked_once_more_then_only_it_abstains(self):
+        unsaid = {k: v for k, v in GLORIA.items() if k != 'observation_window'}
+        self.answers = [self.target(gloria=unsaid), self.target(gloria=dict(GLORIA, observation_window='this_reply'))]
+        t = self.turn(resolve=False)
+        self.assertEqual(len(self.select_calls), 2)                            # one retry, never a third call
+        self.assertIn('the "gloria" axis did not say where', self.select_calls[1]['messages'][-1]['content'])
+        self.assertEqual(t['selection_check'], {'retry': 1, 'fault': '', 'abstained': False,
+                                                'axis_faults': {'gloria': 'window_evidence_mismatch'}})
+        self.assertEqual((t['gloria'], t['self'], t['goal']), ({}, TARGET['self'], TARGET['goal']))   # the others stand
+        self.assertNotIn('criterion_abstained', t)
+        row = self.rows()[-1]
+        self.assertEqual(row['realized'], {'field': None, 'gloria': 'NOT_DECLARED', 'self': None})
+        self.assertEqual(row['not_declared_reason'], {'gloria': 'criterion_window_evidence_mismatch'})
+        self.verdict = 'YES'; E.resolve_previous(HER)
+        self.assertEqual(self.rows()[-1]['realized'], {'field': 'YES', 'gloria': 'NOT_DECLARED', 'self': 'YES'})
+        self.assertEqual(len(self.judge_calls), 2)                             # her axis never reaches the judge
+        self.answers = [self.target(gloria=dict(GLORIA, evidence_type='my_move'))] * 2    # a change in her is not my move
+        self.assertEqual(self.select(resolve=False)['axis_abstained'], {'gloria': 'evidence_not_her_response'})
+        self.answers = [self.target(gloria=unsaid), self.target(gloria=copy.deepcopy(GLORIA))]   # mended on the re-ask
+        t = self.select(resolve=False)
+        self.assertEqual((t['gloria'], t['selection_check']), (GLORIA, {'retry': 1, 'fault': '', 'abstained': False}))
+        self.assertNotIn('axis_abstained', t); self.assertNotIn('not_declared_reason', self.rows()[-1])
+
+    def test_invalid_self_axis_abstains_alone_even_when_it_leads(self):
+        self.low_receptivity()                                                 # self carries 0.6 here: the dominant axis
+        mine = dict(TARGET['self'], evidence_type='her_response', observation_window='her_next_reply')
+        self.answers = [dict(self.target(gloria=copy.deepcopy(GLORIA)), **{'self': mine})] * 2
+        t = self.turn(resolve=False)                                           # the turn keeps its lead
+        self.assertEqual((t['priority'], t['self'], t['gloria']), (LOW, {}, GLORIA))
+        self.assertEqual(t['axis_abstained'], {'self': 'evidence_not_my_move'})
+        row = self.rows()[-1]
+        self.assertEqual(row['realized'], {'field': None, 'gloria': None, 'self': 'NOT_DECLARED'})
+        self.assertEqual(row['not_declared_reason'], {'self': 'criterion_evidence_not_my_move'})
+        self.verdict = 'YES'; E.resolve_previous(HER)
+        self.assertEqual(self.rows()[-1]['realized'], {'field': 'YES', 'gloria': 'YES', 'self': 'NOT_DECLARED'})
+        self.answers = [dict(self.target(), **{'self': dict(TARGET['self'], observation_window='her_next_reply')})] * 2
+        self.assertEqual(self.select(resolve=False)['axis_abstained'], {'self': 'window_not_this_reply'})
+        self.answers = [dict(self.target(), **{'self': {k: v for k, v in TARGET['self'].items() if k != 'evidence_type'}})] * 2
+        self.assertEqual(self.select(resolve=False)['axis_abstained'], {'self': 'evidence_missing'})
+
+    def test_abstained_gloria_attempt_is_counted_and_never_a_verdict(self):
+        self.low_receptivity(); before = PV.receptivity_report()
+        for _ in range(3): self.select(resolve=False)
+        unsaid = {k: v for k, v in GLORIA.items() if k != 'evidence_type'}
+        self.answers = [self.target(gloria=unsaid)] * 2
+        t = self.turn(resolve=False)                                           # the fourth turn: her opportunity
+        self.assertTrue(t['priority_provenance']['gloria_opportunity'])
+        self.assertEqual(t['selection_check']['gloria_opportunity'], 'abstained')
+        self.assertEqual(PV.opportunity_report(), {'every': 4, 'turns_since_gloria_declared': 0, 'opportunities': 1,
+                                                   'attempts': 1, 'declared': 0, 'abstained': 1})
+        row = self.rows()[-1]
+        self.assertEqual((row['realized']['gloria'], row['not_declared_reason']), ('NOT_DECLARED', {'gloria': 'criterion_evidence_missing'}))
+        self.verdict = 'NO'; E.resolve_previous(HER)
+        self.assertEqual(self.rows()[-1]['realized'], {'field': 'NO', 'gloria': 'NOT_DECLARED', 'self': 'NO'})
+        self.assertEqual(PV.receptivity_report(), before)                      # six NO, as before: nothing was added
 
     def test_receptivity_reason_and_report_state_the_counts(self):
         self.ledger([(1, 'NO')] * 5 + [(1, 'PARTIAL')])
