@@ -3039,17 +3039,34 @@ def agent_wants_pass(api, channel, dot, state, now, rows=(), put=None, notify=No
             title="Want needs attention", authority=lambda:(True, "bound want continuation or cost control"))
     calls_left = [2]
     accepted_results = {}
+    held_lines = []
     def decision(w, work, phase, trigger, instruction):
+        # One want's block holds that want only (10 November: a want at its per-want call cap raised out of this
+        # whole pass, every pass, and no other want was answered or handed over). The stop file and a broken
+        # policy or budget store still stop the lane; the day's call cap stops calls for the pass.
         if calls_left[0] <= 0:
-            raise RuntimeError("working decisions used for this pass; retained")
+            raise want_agent.WantHeld('pass_call_limit')
         calls_left[0] -= 1
         try:
-            return working.generate(w, work, want_agent.workspace(), phase, trigger, instruction,
-                                    writer=writer, identity=identity)
+            chosen = working.generate(w, work, want_agent.workspace(), phase, trigger, instruction,
+                                      writer=writer, identity=identity)
         except WorkBlocked as exc:
+            if exc.reason in ('per_want_call_cap', 'attempt_already_reserved', 'daily_call_cap'):
+                calls_left[0] += 1           # refused at the reservation: no call was made
             working.notify_block(w, work, want_agent.workspace(), exc.reason, block_notify,
                                  phase=phase, trigger=trigger)
-            raise
+            if exc.reason in want_agent.LANE_WIDE:
+                raise
+            if exc.reason in want_agent.DAY_WIDE:
+                calls_left[0] = 0
+                held_lines.append('want lane: the day\'s working calls are used; no more calls today')
+            else:
+                rec = want_agent.hold(w, exc.reason, now)
+                held_lines.append('bound want %s held: %s (request %s, %d passes); the rest of the lane goes on'
+                                  % (w.get('id'), exc.reason, (w.get('agent_work') or {}).get('request_id'), rec['passes']))
+            raise want_agent.WantHeld(exc.reason)
+        want_agent.unhold(w)
+        return chosen
     def post(text, agent, client_id):
         ensure_running(want_agent.workspace())
         bad = _guarded(text)
@@ -3158,7 +3175,10 @@ def agent_wants_pass(api, channel, dot, state, now, rows=(), put=None, notify=No
         work = working.binding(w, state)
         if work is None: raise RuntimeError('result has no current want-room binding')
         trigger = want_agent.fingerprint(json.dumps(result, sort_keys=True))
-        chosen = decision(w, work, 'result', trigger, result)
+        try:
+            chosen = decision(w, work, 'result', trigger, result)
+        except want_agent.WantHeld:
+            return None                      # the result stays retained; finish goes on to the next want
         if chosen['accept']:
             accepted_results[w['agent_work']['request_id']] = (chosen['message'], result)
             return chosen['message']
@@ -3176,16 +3196,21 @@ def agent_wants_pass(api, channel, dot, state, now, rows=(), put=None, notify=No
         events = working.unanswered(w, work, want_agent.workspace())
         if not events: continue
         trigger = json.dumps([e['key'] for e in events])
-        chosen = decision(w, work, 'continue', trigger,
-                          {'next':'Answer these agent messages and carry the same want forward.',
-                           'event_keys':[e['key'] for e in events], 'result_error':a.get('result_error')})
+        try:
+            chosen = decision(w, work, 'continue', trigger,
+                              {'next':'Answer these agent messages and carry the same want forward.',
+                               'event_keys':[e['key'] for e in events], 'result_error':a.get('result_error')})
+        except want_agent.WantHeld:
+            continue                         # this want waits; the next one may still be answered
         send_reply(w, work, chosen['message'], ':reply:' + want_agent.fingerprint(trigger))
         lines.append('bound want answered with its retained working context')
         break
     def prepare(w, work, contract):
         return decision(w, work, 'opening', w['agent_work']['request_id'],
                         {'next':'Plan this exact task and write your request to its agent.', 'contract':contract})['message']
-    return lines + want_agent.intake(state, post, save, now, identity=identity, prepare=prepare)
+    lines += want_agent.release_blocked(state, now, save_state=save)
+    handed = want_agent.intake(state, post, save, now, identity=identity, prepare=prepare)
+    return lines + held_lines + handed
 
 
 def promise_lanes(state, now, paused=False):

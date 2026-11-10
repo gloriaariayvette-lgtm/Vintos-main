@@ -366,7 +366,13 @@ def intake(state, post, save_state, now, *, ws=None, identity=None, prepare=None
             continue
         body = opening(w, a, work['id'])
         if prepare is not None:
-            body = prepare(w, work, body) + '\n\n' + body
+            try:
+                body = prepare(w, work, body) + '\n\n' + body
+            except WantHeld as held:
+                lines.append('want %s not handed over yet: %s' % (w['id'], held.reason))
+                if held.reason in DAY_WIDE or held.reason == 'pass_call_limit':
+                    break           # no working call is left for this pass or day: nothing else can be prepared
+                continue
         body = '[want:%s] %s\n%s' % (w['id'], work['id'], body)
         sent = post(body, a['agent'], str(uuid.uuid5(uuid.NAMESPACE_URL, rid)))
         if not isinstance(sent, dict) or not sent.get('ts') or sent.get('ok') is False:
@@ -412,6 +418,81 @@ def age_out(wants, *, ws=None):
     for w in wants:
         if w.get('id') in marked: w['aged_out'] = dict(mark)
     return len(marked)
+
+
+class WantHeld(Exception):
+    """One bound want cannot move now. Only it waits: the other wants and the handoff go on in the same pass
+    (10 November: one want at its call cap raised WorkBlocked out of the whole pass, 146 passes in a row, and three
+    adopted email promises were never handed to an agent)."""
+    def __init__(self, reason):
+        super().__init__(reason)
+        self.reason = reason
+
+
+# Blocks that stop the whole lane (the stop file, a broken policy or budget store); every other block holds one want.
+LANE_WIDE = ('want_lane_stopped', 'invalid_work_policy', 'invalid_work_budget', 'linked_work_budget')
+# The day's call cap stops model calls for the day, not the lane; a handoff that needs a call waits for tomorrow.
+DAY_WIDE = ('daily_call_cap',)
+
+
+def hold(w, reason, now, *, ws=None):
+    """Mark one bound want held on its own block, on the want where it shows: the reason, since when, and how many
+    passes it has been held. Returns the record."""
+    ws = Path(ws or workspace()); a = w.get('agent_work') or {}
+    old = a.get('blocked') or {}
+    same = old.get('reason') == reason
+    rec = {'reason': reason, 'since': old.get('since', now) if same else now, 'last': now,
+           'passes': (int(old.get('passes') or 0) + 1) if same else 1}
+    if a.get('request_id'):
+        _update(w['id'], a['request_id'], {'blocked': rec}, ws)
+    a['blocked'] = rec
+    return rec
+
+
+def unhold(w, *, ws=None):
+    """A want whose working call went through again is no longer held."""
+    a = w.get('agent_work') or {}
+    if a.get('blocked') and a.get('request_id'):
+        _update(w['id'], a['request_id'], {'blocked': None}, Path(ws or workspace()))
+        a['blocked'] = None
+
+
+def release_blocked(state, now, *, ws=None, save_state=None):
+    """A want held on its own block for ADOPT_ANSWER_HOURS gives its places back, as a silent adopted want does: it is
+    marked adoption_released (so it no longer counts toward ADOPT_OPEN), and its room work is paused for that cause
+    (so it no longer takes one of room_work.MAX_OPEN). Its context and request are kept; it moves again when its
+    block is cleared. Log lines."""
+    import room_work
+    from store_guard import locked_update
+    ws = Path(ws or workspace()); lines = []; board = room_work.board(state); changed = False
+    held = {}
+    for w in read(ws / 'memory/current-wants.json', []):
+        a = (w.get('agent_work') or {}) if isinstance(w, dict) else {}
+        b = a.get('blocked') or {}
+        if (b.get('reason') and b['reason'] not in DAY_WIDE and not w.get('fulfilled') and not w.get('dismissed')
+                and now - float(b.get('since') or now) >= ADOPT_ANSWER_HOURS * 3600):
+            held[w['id']] = (a.get('request_id'), b['reason'])
+    for item in board['open']:
+        for wid, (rid, reason) in held.items():
+            if item.get('want_request_id') == rid and not room_work.paused(item, now):
+                item.update(paused_until=float(now) + ADOPT_ANSWER_HOURS * 3600,
+                            pause_why=('held on its own block (%s); its place is given back until the block is '
+                                       'cleared' % reason)[:300])
+                changed = True
+                lines.append('held want %s gave its room place back: %s' % (wid, reason))
+    if changed and save_state:
+        save_state(state)
+    released = []
+    def mutate(rows):
+        for w in rows:
+            if isinstance(w, dict) and w.get('id') in held and not w.get('adoption_released'):
+                w['adoption_released'] = {'at': now, 'reason': 'blocked_' + held[w['id']][1], 'hours': ADOPT_ANSWER_HOURS}
+                released.append(w['id'])
+        return rows if released else None
+    if held:
+        locked_update(str(ws / 'memory/current-wants.json'), mutate, default=[], reader='want_agent.release_blocked')
+    lines += ['held want %s gave its adoption place back after %d h' % (wid, ADOPT_ANSWER_HOURS) for wid in released]
+    return lines
 
 
 def _silent_hours(w, ws, now):
