@@ -21,6 +21,14 @@ NOW = datetime.now().strftime("%H:%M")
 GHOST_BLOCK_BEGIN = "<!-- tactical:ghost_branch - rehearsal, not evidence -->"
 GHOST_BLOCK_END = "<!-- /tactical:ghost_branch -->"
 
+def ghost_tried(text, limit=500):
+    """One line of what an unresolved ghost lean wrote: whitespace folded, cut at a sentence end near the limit."""
+    t = " ".join(str(text or "").split())
+    if len(t) <= limit:
+        return t
+    cut = max(t.rfind(". ", 0, limit), t.rfind("? ", 0, limit), t.rfind("! ", 0, limit))
+    return (t[:cut + 1] if cut >= limit // 2 else t[:limit].rstrip() + "...")
+
 def section(title, content):
     if not content or not content.strip():
         return ""
@@ -200,6 +208,13 @@ def build_inner():
                     _res = "✓" if _gb_g.get("resolved") else "✗"
                     _trg = len(_gb_g.get("triggers", []))
                     _gb_lines.append(f"  {_res} {_gb_g['lean']} " + (f"({_trg} reversion)" if _trg else ""))
+                    # A lean that did not resolve still shows what he tried (Gloria, 10 November).
+                    _tried = ghost_tried(_gb_g.get("tried"))
+                    if _tried:
+                        _gb_lines.append(f"    what I tried: {_tried}")
+                if not _gb_run.get("primary_output") and not any(_g.get("tried") or _g.get("output")
+                                                                 for _g in _gb_run.get("ghosts", [])):
+                    _gb_lines.append("_No text came back from today's run._")
                 if _gb_run.get("appendage"):
                     _gb_lines.append(f"**Appendage:** {_gb_run['appendage']}")
                 # Kept here on purpose (Gloria, 2026-11-07): he reads the day's better-working style and tries it.
