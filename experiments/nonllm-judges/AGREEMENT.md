@@ -215,3 +215,16 @@ refuses. A conflicting manually supplied binding refuses. New history with both
 an explicit flag and a valid native binding can compare; old history abstains.
 Duplicate current/history snapshots remain subject to the existing ambiguity
 checks: use one canonical source rather than manufacturing extra votes.
+
+
+## Historical format inventory
+
+`verdict_shapes.py` is the shared explicit format reader. See the README's
+retained-shape table and private snapshot command. Agreement now counts fixed
+shape/reason categories separately from exact-join failures. Other-subject humor,
+social exchanges and self-observation/trial material are explicitly unsupported
+for reply comparison, rather than silently treated as malformed reply judgments.
+Unknown presence exemptions and conflicting humor subjects also refuse. Existing
+recognized formats retain their bands; no prose, numeric aliases or string scores
+are promoted into a verdict. Unsupported is not an abstention vote. Legacy reply
+bindings remain absent, and all independent admission/time/provenance gates remain.

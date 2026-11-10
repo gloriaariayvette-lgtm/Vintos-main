@@ -84,6 +84,21 @@ class Tests(unittest.TestCase):
     def test_humor_only_his_positive_moments(self):
         for source,signal,expected in [('vintos',.5,'pass'),('vintos',.49,None),('gloria',.9,None),('moltbook_exchange',.9,None)]:
             self.assertEqual(A.band('humor_detector',dict(source=source,signal=signal),''),expected)
+    def test_native_shape_diagnostics_never_admit_other_observation_units(self):
+        records=[]
+        for source in ('vintos','gloria','self','moltbook_exchange','synthetic-unknown'):
+            e=entry(self.rows[0],'humor_detector');e['record']['source']=source;records.append(e)
+        selected,counts=self.select(records);c=counts['humor_detector']
+        self.assertEqual(len(selected['humor_detector']),1)
+        self.assertEqual(c['invalid_or_unsupported_verdict'],4)
+        for shape in ('humor_reply','humor_incoming','humor_self_observation','humor_social_exchange','humor_unknown_source'):
+            self.assertEqual(c['shape_'+shape],1)
+        self.assertNotIn('synthetic-unknown',json.dumps(counts))
+    def test_recognized_legacy_shape_still_needs_exact_binding(self):
+        e=entry(self.rows[0],'humor_detector');e.pop('binding')
+        selected,counts=self.select([e]);c=counts['humor_detector']
+        self.assertFalse(selected['humor_detector']);self.assertEqual(c['shape_humor_reply'],1)
+        self.assertEqual(c['missing_exact_binding'],1)
     def test_binding_requires_exact_content_turn_time_scope_and_known_order(self):
         good = entry(self.rows[0]); selected,counts = self.select([good])
         self.assertEqual(selected['presence_audit'][self.rows[0]['id']],'pass')

@@ -5,10 +5,8 @@ from datetime import datetime, timezone
 import hashlib
 import importlib.util
 import json
-import math
 import os
 from pathlib import Path
-import re
 import sys
 sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
@@ -22,6 +20,7 @@ def load(name, path):
 
 G = load('agreement_private_io', HERE / 'render_gloria.py')
 R = load('agreement_numerical_runner', HERE / 'run_private.py')
+V = load('agreement_verdict_shapes', HERE / 'verdict_shapes.py')
 BANDS = ('abstain', 'flag', 'pass')
 PAIRS = {
     'voice_coherence': ('voice', ('memory/voice-coherence.md',), 'selected_flags_only'),
@@ -68,63 +67,13 @@ def digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(',', ':'), allow_nan=False).encode()).hexdigest()
 
 
-def number(value, low=0, high=1):
-    return type(value) in (int, float) and math.isfinite(value) and low <= value <= high
-
-
 def band(judge, record, store):
-    """Read native retained fields. Absence and parse failure never mean pass."""
-    if judge in ('voice_coherence', 'deviation_check'):
-        if not isinstance(record, str): return None
-        lines = [line for line in record.strip().splitlines() if not line.startswith('<!-- judge-reply-binding: ')]
-        if not lines: return None
-        if judge == 'voice_coherence':
-            found = re.fullmatch(r'## \d{4}-\d\d-\d\d \d\d:\d\d — Score ([1-5])', lines[0])
-            if not found or len(lines) < 3 or not lines[-1].startswith('Reply excerpt: '): return None
-            # This writer persists only <=3 with a nonempty, non-none note.
-            if int(found[1]) > 3 or not '\n'.join(lines[1:-1]).strip() or lines[1].strip().lower() == 'none': return None
-            return 'flag'
-        found = re.fullmatch(r'## \d{4}-\d\d-\d\d \d\d:\d\d — (Deviation|Aligned) \(score: (\d+(?:\.\d+)?)\)', lines[0])
-        if not found or not number(float(found[2])): return None
-        if found[1] == 'Deviation':
-            return 'flag' if float(found[2]) > .30 and '**Not aligned.** Something resisted.' in lines else None
-        # The writer also calls commitment_friction "Aligned". Do not infer pass.
-        return 'abstain'
-    if not isinstance(record, dict): return None
-    if judge == 'presence_audit':
-        if not isinstance(record.get('id'), str) or not number(record.get('composite')): return None
-        # History drops both flag and requested-work exemption: it cannot recover the decision.
-        if store.endswith('history.jsonl') and not (type(record.get('flag')) is bool and native_binding(record)): return 'abstain'
-        if record.get('exempt') == 'requested_work': return 'abstain'
-        return ('flag' if record['flag'] else 'pass') if type(record.get('flag')) is bool else None
-    if judge == 'humor_detector':
-        if record.get('source') != 'vintos' or not number(record.get('signal')) or record['signal'] < .5: return None
-        return 'pass'
-    return None
+    result = V.classify(judge, record, store)['band']
+    return None if result == 'unsupported' else result
 
 
 def native_binding(record):
-    """Read the prospective writer's exact identity, never infer it from an excerpt."""
-    try:
-        if isinstance(record,dict): binding = record.get('reply_binding')
-        elif isinstance(record,str):
-            matches = re.findall(r'^<!-- judge-reply-binding: (.+) -->$',record,re.MULTILINE)
-            if len(matches)!=1: return None
-            def unique(pairs):
-                out={}
-                for k,v in pairs:
-                    if k in out: raise ValueError('duplicate native field')
-                    out[k]=v
-                return out
-            binding=json.loads(matches[0],object_pairs_hook=unique)
-        else: return None
-        if (not isinstance(binding,dict) or set(binding)!={'schema','turn_id','content_sha256','judged_sha256','recorded_at'}
-                or binding['schema']!='judge-reply-binding-v1' or not isinstance(binding['turn_id'],str)
-                or re.fullmatch(r'[A-Za-z0-9:._-]{1,160}',binding['turn_id']) is None
-                or not R.P.hashed(binding['content_sha256']) or not R.P.hashed(binding['judged_sha256'])): return None
-        G.instant(binding['recorded_at'])
-        return binding
-    except (ValueError,KeyError,TypeError): return None
+    return V.native_binding(record)
 
 
 def project_records(projection, rows, cutoff):
@@ -150,7 +99,10 @@ def project_records(projection, rows, cutoff):
             else: poisoned.add(key); c['conflicting_copies'] += 1
             continue
         seen[key] = signature
-        result = band(judge, record, entry['store'])
+        verdict = V.classify(judge, record, entry['store'])
+        c['shape_' + verdict['shape']] += 1
+        c['reason_' + verdict['reason']] += 1
+        result = None if verdict['band'] == 'unsupported' else verdict['band']
         if result is None: c['invalid_or_unsupported_verdict'] += 1; continue
         binding = entry.get('binding'); native = native_binding(record)
         recorded_at = entry.get('recorded_at'); clock_order = entry.get('clock_order')

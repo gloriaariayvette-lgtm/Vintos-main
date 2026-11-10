@@ -3362,3 +3362,43 @@ owner parity and diff checks pass.
 No live writes, real model/paid calls, GPU, merges, deploys, cron changes or real
 Landings access. No new unresolved blocker or ntfy. Claude owns independent
 review/full isolated suite/test merge; Gloria deploys. Heartbeat remains ACTIVE.
+
+
+## 2026-11-09 18:07 CST — #66 historical verdict reader and inventory; heartbeat ACTIVE
+
+Branch codex/judges-verdict-shapes builds on 7c03a4cd; #64 remains independently
+in review. Added a standard-library-only read-only snapshot inventory for all
+four physical stores shared by the four verdict writers. Groups exact field/type
+structures and fixed source families, emits counts and allowlisted field names
+only, redacts unknown names without collapsing distinct schemas, and never emits
+scalar values, text, IDs, hashes, model names or destinations. Missing snapshots
+are reported as not supplied. Private path/owner/mode/symlink, duplicate-key,
+nonfinite, input-size, record-count and nested-structure bounds fail closed with
+a sanitized error. No automatic live discovery, writes, network or subprocesses.
+
+Source/history-backed families include legacy/modern/bound reply humor, incoming
+messages, social exchanges, self-observation and behavioral trials; voice score
+and deviation/ambiguous Aligned logs; presence flags, exemptions, legacy stripped
+history and prospective bound history. A shared pure reader maps known decision
+fields to bands or explicit unsupported reasons. No prose interpretation, signal
+alias coercion, guessed subject or invented history binding. Unknown exemptions
+and conflicting humor subjects refuse. Agreement adds fixed shape/reason counts
+while keeping exact reply, cutoff, clock, lineage and selection gates. README has
+the requested shape-to-band table and private command. Runtime writers/feeds and
+serving/fallback provenance are unchanged.
+
+65 targeted isolated checks pass: shape inventory 18, agreement 24, prospective
+bindings 12, owners 11. Synthetic fixtures cover every source-known family,
+field/type grouping, redacted unknown keys, scalar/nested privacy, exact joining,
+missing-versus-empty stores, all four CLI inputs, unchanged files, no writes,
+malformed/oversized input, duplicate keys, nonfinite values and private paths.
+Logs /tmp/judges-s66-shapes.log, /tmp/judges-s66-agreement.log,
+/tmp/judges-s66-bindings.log, /tmp/judges-s66-owners.log. Generated reports unchanged;
+diff clean. No model/paid/GPU calls, actual private records, live changes or merge.
+
+Private census is pending the independent reviewer's snapshot run: the reported
+75 unsupported humor records have not been assigned to families from source
+alone. No snapshots or aggregate schema census were present in the designated
+coordination directory. Request only the aggregate output from that private run;
+no raw records are needed here. Review/full suite/test merge remain Claude's,
+Gloria deploys. No new user approval needed or routine notification. ACTIVE.
