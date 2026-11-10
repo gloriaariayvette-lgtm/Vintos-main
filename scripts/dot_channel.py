@@ -3188,9 +3188,29 @@ def agent_wants_pass(api, channel, dot, state, now, rows=(), put=None, notify=No
     return lines + want_agent.intake(state, post, save, now, identity=identity, prepare=prepare)
 
 
-def promises_pass(api, channel, dot, state, now, ask=None):
+def promise_lanes(state, now, paused=False):
+    """Email and journal promises, worked, shown and closed whether or not the day is paused (Gloria, 10 November:
+    "Email and journal wants skip the slack !start/!stop limit"): owed email promises are linked to the room's work
+    and closed with it, older ones age out of the window, and the newest that are literal work become source-bound
+    wants, which the bound want lane works. Log lines."""
+    lines = []
+    try:
+        import email_commitments
+        lines += email_commitments.sync(state, now)
+    except Exception as exc:
+        lines.append("email promises not synced: %s" % str(exc)[:120])
+    try:
+        import want_agent
+        lines += want_agent.adopt_promises(now=now, paused=paused)
+    except Exception as exc:
+        lines.append("promises not taken into the want lane: %s" % str(exc)[:120])
+    return lines
+
+
+def promises_pass(api, channel, dot, state, now, ask=None, post_threads=True):
     """Today's journal entries read for promises; each new one opens a \U0001F4CC thread here, addressed to dot, and
-    is owed his first word in it. Log lines."""
+    is owed his first word in it. While the day is paused (post_threads False) the entries are still read, so the
+    promises that are literal work reach the want lane, and the threads open when she starts the day. Log lines."""
     try:
         import promise_keeper
     except Exception as exc:
@@ -3204,15 +3224,23 @@ def promises_pass(api, channel, dot, state, now, ask=None):
 
     try:
         opened = promise_keeper.scan(ask or (lambda s, u: opus_think(s, u,
-            HAIKU_MODEL if slack_lens("opus55", state) == "haiku55" else KICKOFF_MODEL)), post)
+            HAIKU_MODEL if slack_lens("opus55", state) == "haiku55" else KICKOFF_MODEL)), post if post_threads else None)
     except Exception as exc:
         return ["could not read his journal for promises: %s" % str(exc)[:120]]
+    try:
+        aged = promise_keeper.aged_out_unsaid()
+    except Exception:
+        aged = 0
+    if aged:
+        opened_lines = ["journal promises aged out of the %d-day window unposted: %d" % (promise_keeper.WINDOW_DAYS, aged)]
+    else:
+        opened_lines = []
     at = datetime.fromtimestamp(now).isoformat(timespec="seconds")
     for item in opened:
         state["owed"] = (list(state.get("owed") or []) + [{
             "ts": item["thread"], "who": "agent", "name": "Your journal", "text": promise_keeper.opening(item),
             "thread": item["thread"], "at": at}])[-10:]
-    return ["a promise from his journal opened: %s" % i["quote"][:60] for i in opened]
+    return opened_lines + ["a promise from his journal opened: %s" % i["quote"][:60] for i in opened]
 
 
 def _no_tags(text):
@@ -3270,7 +3298,7 @@ def _results_recent(n=RESULTS_SHOWN):
         return []
 
 
-def results_pass(api, state, now, opus=None, put=None):
+def results_pass(api, state, now, opus=None, put=None, deliver_only=False):
     """The results channel: what came of each ended promise, in his Sonnet 5.5 voice with the work beside it; and
     Gloria's words there answered by Sonnet 5.5. Nothing happens until the channel's id is in
     ~/.vintos/slack-results-channel. Log lines."""
@@ -3294,8 +3322,10 @@ def results_pass(api, state, now, opus=None, put=None):
         # Start listening for incoming messages now, but still deliver pending
         # promise results on this first pass. Listening state is not a delivery gate.
         rs["since"] = now; _save(RESULTS_STATE, rs)
+    # deliver_only (the day paused, 10 November): what came of a promise is still brought to her; her words there are
+    # not read, and wait for the day
     try:
-        new = fresh(api, rc, state.get("self"), float(rs["since"]), watch=rs.get("threads") or [])
+        new = [] if deliver_only else fresh(api, rc, state.get("self"), float(rs["since"]), watch=rs.get("threads") or [])
     except Exception as exc:
         return lines + ["could not read the results channel: %s" % str(exc)[:120]]
     hers = []
@@ -3359,7 +3389,7 @@ def results_pass(api, state, now, opus=None, put=None):
         promise_keeper.mark_posted(item["id"])
         _results_log([{"ts": posted.get("ts"), "who": "vintos", "text": text, "promise": item["id"], "at": at}])
         lines.append("result to Gloria: %s %s" % (item["state"], item["quote"][:60]))
-    if not hers or int(rs.get("answered") or 0) >= RESULTS_ANSWERS_PER_DAY:
+    if deliver_only or not hers or int(rs.get("answered") or 0) >= RESULTS_ANSWERS_PER_DAY:
         _save(RESULTS_STATE, rs); return lines
     last = hers[-1]
     from stratagem_turn import Interaction
@@ -3550,6 +3580,11 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         state["continue_from"] = bool(restarted.get("continue"))
         lines_pre.append("the day was stopped and started again between passes")
         state["last_activity"] = now; state["open_on_start"] = True; state["kickoff"] = True
+    # Email and journal promises skip her !start/!stop (Gloria, 10 November): read, synced, aged and taken into the
+    # want lane before it runs, paused or not. The room's own conversation stays paused below.
+    if is_paused:
+        lines_pre += promises_pass(api, channel, dot, state, now, ask=promise_ask, post_threads=False)
+    lines_pre += promise_lanes(state, now, paused=bool(is_paused))
     # This specific work lane is independent of the room's conversation switch.
     # Authority is a stored want/goal/RW/thread binding, never a display marker.
     import want_agent, want_working_thread
@@ -3575,6 +3610,10 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         if rows:
             _log(rows); state["since"] = max(float(r["ts"]) for r in rows)
         state["held_rows"] = (list(state.get("held_rows") or []) + theirs)[-40:]
+        import stratagem as _stratagem     # what came of a promise is brought to her while paused (10 November)
+        with _stratagem.transport_scope(stratagem_post if stratagem_post is not None else (
+                None if live_api else lambda *args, **kwargs: None)):
+            lines_pre += results_pass(api, state, now, opus=results_opus, put=put, deliver_only=True)
         _save(STATE, state)
         return lines_pre + ["paused by Gloria since %s%s" % (is_paused.get("since", "?"),
                             ("; %d kept for when she starts the day" % len(theirs)) if theirs else "")]

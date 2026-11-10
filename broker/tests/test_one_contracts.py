@@ -43,7 +43,8 @@ check("three evaluators, one record", [x["kind"] for x in OJ.outcomes()] == ["in
 try: OJ.record("mood", "x", "y"); check("an unknown outcome kind is refused", False)
 except ValueError: check("an unknown outcome kind is refused", True)
 check("the off switches are named, BIS among them", "bis_trials" in OJ.EXPERIMENTAL and OJ.EXPERIMENTAL["bis_trials"].startswith("off"))
-check("intent_engine finds his reply through the join and records both outcome shapes", "_oj.latest_exchange()" in src("scripts/intent_engine.py") and src("scripts/intent_engine.py").count('record("intent"') == 3)   # the third: a move held before any judge (10 November)
+check("intent_engine finds his reply through the join and records both outcome shapes", "_oj.latest_exchange()" in src("scripts/intent_engine.py") and src("scripts/intent_engine.py").count('record("intent"') == 1
+      and '"detail": {"axis": "single"}' in src("scripts/intent_engine.py") and '"field/gloria/self"' in src("scripts/intent_engine.py"))   # one site since round five (10 November): every outcome is an effect applied once, its shape in its detail
 check("lead_trials joins through outcome_join and records", "_oj.exchange_at(index=ot.get(\"ledger_len\", 0))" in src("scripts/lead_trials.py") and '_oj.record("lead"' in src("scripts/lead_trials.py"))
 check("plan outcomes record too", '_oj.record("plan"' in src("scripts/plan.py"))
 

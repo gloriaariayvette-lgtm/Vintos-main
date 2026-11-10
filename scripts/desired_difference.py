@@ -68,10 +68,23 @@ def _llm(system,user,max_tokens=220,temperature=0.4):
 def _jload(p,d):
     try: return json.load(open(p))
     except Exception: return d
+_UNGUARDED={"n":0,"failed":0}
 def _jsave(p,d):
-    if _sg_write(p, d, "desired_difference"): return
-    try: json.dump(d,open(p,"w"),indent=2,ensure_ascii=False)
-    except Exception: pass
+    """True when the store was written through its guard. A guard that fails is not passed off as one that held
+    (10 November, round four): the plain write that follows it is counted in _UNGUARDED and said on stderr as
+    UNPROTECTED, a write that did not happen at all as FAILED (the first time, then every 100th); both return
+    False."""
+    if _sg_write(p, d, "desired_difference"): return True
+    try:
+        json.dump(d,open(p,"w"),indent=2,ensure_ascii=False); _UNGUARDED["n"]+=1; how="written UNPROTECTED"
+    except Exception as e:
+        _UNGUARDED["failed"]+=1; how="write FAILED (%s)"%type(e).__name__
+    n=_UNGUARDED["n"]+_UNGUARDED["failed"]
+    if n==1 or n%100==0:
+        import sys as _s3
+        print("[desired_difference] store guard failed for %s: %s, %d unprotected and %d failed so far"
+              %(os.path.basename(str(p)),how,_UNGUARDED["n"],_UNGUARDED["failed"]),file=_s3.stderr,flush=True)
+    return False
 _UNLOCKED={"n":0}
 def _turn_state(path):
     """The one cross-process lock for the turn state (store_guard.turn_state, 10 November). store_guard ships
@@ -327,13 +340,14 @@ def _key(db, text, kind=None, addresses=None):
 
 
 @_locked
-def bump(text,amount,kind="field",addresses=None):
+def bump(text,amount,kind="field",addresses=None,receipt=None):
     text=(text or "").strip()
     if len(text)<8: return
     db=_jload(PRESS,{}); k=_key(db,text,kind,addresses)
     if (db.get(k) or {}).get("retired"): return   # retired by hand: its record is kept and never weighed again (10 November)
     e=db.get(k) or {"text":text[:220],"kind":kind,"weight":0.0,"count":0,
                     "first":time.time(),"lineage":[]}
+    if _receipted(e,receipt): return              # this miss was counted already (round five)
     if text[:220]!=e.get("text") and text[:220] not in (e.get("wordings") or []):
         e["wordings"]=((e.get("wordings") or [])+[text[:220]])[-5:]   # the other words it has come in
     e["weight"]=round(e["weight"]+amount,2); e["count"]+=1; e["last"]=time.time()
@@ -342,7 +356,7 @@ def bump(text,amount,kind="field",addresses=None):
         _graduate(e)
         e["lineage"].append({"graduated":time.time(),"at_weight":e["weight"]})
         e["weight"]=1.0
-    db[k]=e; _jsave(PRESS,db)
+    _receipt(e,receipt); db[k]=e; _jsave(PRESS,db)
 def _graduate(e):
     """Failure converts to self-investigation - witnessed mutation, never silent."""
     try:
@@ -359,12 +373,20 @@ def _graduate(e):
         else: d.append({"ts":time.time(),"question":q,"source":"intent_pressure"})
         _jsave(p,d); _queue_bring_up(q)
     except Exception: pass
-def field_verdict(target,verdict):
+# An effect of an intent verdict carries its key (intent_engine, round five) and the key is kept on the pressure row in
+# the same write as the change it made: a resolver that died after that write and is run again finds it there and
+# changes nothing twice.
+RECEIPTS_KEPT=50
+def _receipted(e,receipt):
+    return bool(receipt) and str(receipt) in (e.get("receipts") or [])
+def _receipt(e,receipt):
+    if receipt: e["receipts"]=((e.get("receipts") or [])+[str(receipt)])[-RECEIPTS_KEPT:]
+def field_verdict(target,verdict,receipt=None):
     """Hook for intent_engine.resolve_previous - failed field targets get heavier."""
     fs=str((target or {}).get("field_state","")); ad=(target or {}).get("addresses")
-    if verdict=="NO": bump(fs,1.0,kind="field",addresses=ad)
-    elif verdict=="PARTIAL": bump(fs,0.5,kind="field",addresses=ad)
-    elif verdict=="YES": relieve(fs,addresses=ad,kind="field")
+    if verdict=="NO": bump(fs,1.0,kind="field",addresses=ad,receipt=receipt)
+    elif verdict=="PARTIAL": bump(fs,0.5,kind="field",addresses=ad,receipt=receipt)
+    elif verdict=="YES": relieve(fs,addresses=ad,kind="field",receipt=receipt)
     elif verdict in ("CORRECTED","WRONG_READING"): override(fs,"her correction: "+verdict,source="correction",addresses=ad,kind="field")
     elif verdict in ("KEEP_PRIVATE","PRIVATE"): override(fs,"legitimate privacy: "+verdict,source="privacy",addresses=ad,kind="field")
 
@@ -383,16 +405,37 @@ def override(text,reason,source="correction",addresses=None,kind=None):
     e["weight"]=0.0; e["overridden"]={"at":time.time(),"reason":str(reason)[:200],"source":source}
     db[k]=e; _jsave(PRESS,db); return e
 @_locked
-def relieve(text,addresses=None,kind=None):
+def relieve(text,addresses=None,kind=None,receipt=None):
     """A landed intent takes weight off - earned relief, lineage kept, never silent."""
     text=(text or "").strip()
     if len(text)<8: return
     db=_jload(PRESS,{}); k=_key(db,text,kind,addresses)
     e=db.get(k)
-    if not e or e.get("weight",0)<=0 or e.get("retired"): return
+    if not e or e.get("retired") or _receipted(e,receipt): return
+    if e.get("weight",0)<=0:
+        if receipt: _receipt(e,receipt); db[k]=e; _jsave(PRESS,db)   # nothing to take off; the landing is kept as seen
+        return
     e.setdefault("lineage",[]).append({"relieved":time.time(),"from_weight":e["weight"]})
     e["weight"]=round(e["weight"]/2.0,2); e["last"]=time.time()
-    db[k]=e; _jsave(PRESS,db)
+    _receipt(e,receipt); db[k]=e; _jsave(PRESS,db)
+
+
+# The required-consideration marker carries the key of the miss that wrote it (round five). When a marker goes -
+# consumed by a turn, replaced by another, cleared by a retire - its key is kept here first, under the turn-state
+# lock its callers hold, so the miss is found written in one place or the other and is never asked for twice.
+def _receipts_path():
+    return os.path.join(os.path.dirname(PRESS),".intent-effect-receipts.json")
+def marker_receipts():
+    d=_jload(_receipts_path(),{})
+    l=d.get("required_consideration") if isinstance(d,dict) else None
+    return [str(x) for x in l] if isinstance(l,list) else []
+def marker_consumed(m):
+    k=m.get("effect_key") if isinstance(m,dict) else None
+    have=marker_receipts()
+    if not k or str(k) in have: return True
+    d=_jload(_receipts_path(),{}); d=d if isinstance(d,dict) else {}
+    d["required_consideration"]=(have+[str(k)])[-200:]
+    return _jsave(_receipts_path(),d)
 
 # ---------- the primary difference: rotation, rest, retirement (10 November) ----------
 # The selector is shown one PRIMARY DIFFERENCE it must address or decline. It was the heaviest row of weight 1
@@ -403,8 +446,11 @@ PRIMARY_RUN=3            # real selections in a row one primary may lead
 PRIMARY_REST_TURNS=3     # then it rests until this many of her turns have been led by another primary, or by none
 PRIMARY_REST_DAYS=3      # ... or this long, whichever comes first
 # The rest used to end as soon as one other primary had been shown: A A A B A A A B, three turns in four to one
-# row. A turn that is not hers (a device event, a background run) discharges nothing, and nothing is put up as
-# a primary just to use the count up: a turn with no primary counts.
+# row. Nothing is put up as a primary just to use the count up: a turn with no primary counts.
+# One accounting (10 November, round four): only an ELIGIBLE turn - one of her own foreground turns - is shown
+# a primary, and only an eligible turn moves the run or the rests. A device-only event is shown none and
+# reaches neither primary_reserve nor primary_shown, so thirty of them after A A A leave the rotation exactly
+# where it stood. The showing is counted when it is RESERVED, before the model sees it (primary_reserve).
 
 
 def _rotation_path():
@@ -511,11 +557,53 @@ def primary_for_turn(required=None,now=None):
 
 
 @_locked
+def primary_reserve(required=None,now=None):
+    """Pick this turn's primary AND count it, in one step under the turn-state lock, before it is shown to the
+    model (10 November, round four). The pick is primary_for_turn's and the count is primary_shown's, a turn
+    with no primary included, so two turns picking at once cannot both be given the last showing of a run: the
+    second reads the state the first has already moved. The caller does its model work after this returns,
+    outside the lock. A reservation is not handed back: a turn that fails after it has still used the showing
+    (reservation_failed records that), so the cap cannot be passed by failing turns either."""
+    now=now or time.time()
+    p=primary_for_turn(required,now)
+    primary_shown((p or {}).get("id"),bool((p or {}).get("required")),now)
+    return p
+
+
+@_locked
+def primary_admit(pid,required=False,now=None,her_turn=False):
+    """A lead prepared in a preview is admitted as a turn later (the voice route). Its primary was picked when
+    the preview ran and nothing was counted then. Here, in one step under the turn-state lock and before the
+    admitted lead is recorded or shown, the pick is looked at again and counted (review, round four): True when
+    it may still stand - no primary, or one still eligible: not resting, retired or graduated since - and False
+    when it may not. Nothing is counted then, and the caller admits nothing: a turn that reserved the last
+    showing of a run in between is not followed by a fourth."""
+    now=now or time.time(); pid=_addr(pid)
+    if pid:
+        db=_jload(PRESS,{})
+        if not isinstance(db,dict) or not primary_eligible(pid,db.get(pid),_rotation(),now): return False
+    primary_shown(pid,required,now,her_turn=her_turn)
+    return True
+
+
+@_locked
+def reservation_failed(pid,now=None):
+    """A turn that had reserved its showing failed before it was recorded. The reservation stands - the run and
+    the rests stay as counted - and the failure is kept beside them: how many, and the last one."""
+    st=_rotation()
+    st["failed_reservations"]=int(st.get("failed_reservations",0) or 0)+1
+    st["last_failed_reservation"]={"id":_addr(pid) or None,"at":now or time.time()}
+    _jsave(_rotation_path(),st)
+    return st
+
+
+@_locked
 def primary_shown(pid,required=False,now=None,her_turn=True):
     """One real selection showed this primary (or none): move the run and the rests. Called once per ledger
     row, whatever its verdict turns out to be; the state is a file, so the run and a rest part-served survive a
-    restart. `her_turn` is False for a turn that is not hers (a device event, a background run): the run moves
-    as on any real selection, and no rest is discharged by it."""
+    restart. An eligible turn comes here through primary_reserve. `her_turn` is False only for a lead prepared
+    in a background preview and admitted later (the voice route): the run moves as on any real selection, and
+    no rest is discharged by it. A device-only event never comes here."""
     now=now or time.time(); st=_rotation(); pid=_addr(pid)
     rest={}; turns={}
     for k,v in (st.get("resting") or {}).items():
@@ -539,16 +627,31 @@ def primary_report(n=30):
     """Counts only, from the last n ledger rows: how concentrated the primary has been. A 3-on/1-off cycle
     passes any run cap, so the share led by the single most frequent primary is reported beside the longest run."""
     led=_jload(os.path.join(os.path.dirname(PRESS),"intent-ledger.json"),[])
-    ids=[e["target"].get("primary_shown") or None for e in (led if isinstance(led,list) else [])
-         if isinstance(e,dict) and isinstance(e.get("target"),dict) and "primary_shown" in e["target"]][-int(n):]
+    # a device-only event is no selection (round four): its row is not a turn here, with or without a primary
+    rows=[e for e in (led if isinstance(led,list) else [])
+          if isinstance(e,dict) and isinstance(e.get("target"),dict) and "primary_shown" in e["target"]
+          and e["target"].get("primary_accounting")!="not_eligible"][-int(n):]
+    ids=[e["target"].get("primary_shown") or None for e in rows]
+    cov=[_coverage(e) for e in rows]
     counts={}; best=run=0; prev=None
     for i in ids:
         if i: counts[i]=counts.get(i,0)+1
         run=run+1 if (i and i==prev) else (1 if i else 0)
         best=max(best,run); prev=i
     top=max(counts.values()) if counts else 0
+    # a row still unsettled after its window closed is expired coverage: not pending, and never a NO (round four)
     return {"turns":len(ids),"with_primary":sum(counts.values()),"distinct_primaries":len(counts),
-            "top_primary_turns":top,"top_primary_share":round(top/float(len(ids)),2) if ids else 0.0,"max_run":best}
+            "top_primary_turns":top,"top_primary_share":round(top/float(len(ids)),2) if ids else 0.0,"max_run":best,
+            "pending":cov.count("pending"),"expired_coverage":cov.count("expired_coverage")}
+
+
+def _coverage(e,axis=None):
+    """"settled", "pending" or "expired_coverage" for one intent-ledger row, by intent_engine's one rule
+    (row_coverage); "" when that rule cannot be read, and the caller then says what it said before."""
+    try:
+        from intent_engine import row_coverage as _rcov
+        return _rcov(e,axis=axis)
+    except Exception: return ""
 
 
 @_locked
@@ -568,8 +671,12 @@ def retire(key):
     db[k]=e; _jsave(PRESS,db)
     try:
         mp=os.path.join(os.path.dirname(PRESS),".intent-required-consideration.json")
-        if str(_jload(mp,{}).get("id"))==k: os.remove(mp)
-    except Exception: pass
+        _m=_jload(mp,{})
+        if isinstance(_m,dict) and str(_m.get("id"))==k: marker_consumed(_m); os.remove(mp)
+    except Exception as x:
+        # the row is retired either way (primary_eligible refuses it); the marker left behind is said, not hidden
+        import sys as _s4
+        print("[desired_difference] retire %s: clearing the required-consideration marker FAILED (%s)"%(k,type(x).__name__),file=_s4.stderr,flush=True)
     return e,bak
 # What she has said she likes (16 October: "I like being lazy. I like a man who leads. Stop telling him to do
 # otherwise"). An aim that has her take the lead, hold the next beat, supply the scene or carry more of it, or has
@@ -632,7 +739,9 @@ def map_summary():
     def _fv(e):
         r=e.get("realized")
         if isinstance(r,dict): r=r.get("field")
-        return str(e.get("verdict") or r or "open")
+        v=str(e.get("verdict") or r or "open")
+        # still open after its window closed: expired coverage - not open, never a NO (10 November, round four)
+        return "expired_coverage" if (v=="open" and _coverage(e,"field")=="expired_coverage") else v
     def _tg(e):
         t=e.get("target")
         return t if isinstance(t,dict) else {}

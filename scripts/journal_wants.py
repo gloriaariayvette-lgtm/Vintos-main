@@ -67,6 +67,16 @@ def translation_want(text):
     return bool(_METAPHOR.search(text or ""))
 
 
+def as_his_want(text):
+    """An agent letter's "To ..." sentence said as his want, as express_want keeps it (22 October). The source receipt
+    is taken on these words, the ones kept (10 November: an email want's receipt was taken on the words before that
+    rewrite, so it never matched its own want and the want could never reach the agent lane)."""
+    t = str(text or "")
+    if t[:3].lower() == "to " and not t.lower().startswith("to tell"):
+        return "I want " + t[0].lower() + t[1:]
+    return t
+
+
 def source_receipt(kind, source_id, text):
     """Stable private provenance; callers supply the source identity they read."""
     if kind not in ("email", "journal") or not isinstance(source_id, str) or not source_id:

@@ -1885,7 +1885,8 @@ def read_mail(msgs, think=None, want=None, now=None):
     if want is None:
         def want(text, why):
             import emoclaw_utils
-            from journal_wants import source_receipt
+            from journal_wants import source_receipt, as_his_want
+            text = as_his_want(text)     # the receipt is taken on the words that are kept (10 November)
             emoclaw_utils.express_want(text, source="email", intensity=3, reasoning=why[:300],
                                       **source_receipt("email", m["id"], text))
     me = who_i_am(4000)

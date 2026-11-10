@@ -8388,3 +8388,68 @@ axis/single scoping, declaration precedence and waiting versus expired responses
 All 25 isolated shadow tests pass; log /tmp/judges-s76-shadow.log. No runtime,
 manifest or new-file changes; no live writes, inference, merge or deployment.
 Claude owns independent review, full isolated suite and integration. ACTIVE.
+
+## 10 November — intent verdict evidence boundaries; review branch, not deployed
+
+`codex/intent-independent-review` rejects substring verdicts, supplies only the
+current human input as follow-up evidence, and keeps later responses out of
+`my_move` judgments while preserving each axis's evidence metadata. Selection,
+priority logic, provider configuration and call sites are unchanged.
+
+Seven new cases pass; all twelve affected/ownership test files pass. Full local
+sweep: 674 files, 658 pass and 16 fail; all sixteen failures also reproduce on the
+untouched published baseline in the same environment. Five deliberately broken
+variants are caught. The complete host suite and Claude review remain pending.
+
+`docs/intent-evidence-boundary-review.md` records scope and validation. Its isolated
+known-failure reproduction shows a separate unresolved concurrent-resolution race:
+a stale result can replace settled verdicts and repeat pressure feedback. That
+repair must protect result ownership and effects together; no partial concurrency
+repair, deploy-branch merge, installation or deployment is included here.
+
+## 10 November — intent round five: resolution lands on what it read, effects once; review branch, not deployed
+
+`claude/intent-fields-fix-r5` (on reviewer head 85b8c8eb, after Chat's evidence-boundary
+commit 74e2dcbb). A resolver reads the row's `resolution_rev`; its result is written only if
+the row is still at that revision and no settled verdict would move. A losing result is
+dropped with all its effects and said: `RESOLUTION_DROPPED`, a `resolution DROPPED` line in
+the select log, `resolution_dropped` on the row. An accepted result writes its effects as
+`effects_pending` in the same ledger write, each keyed by row, destination, axis and
+verdict (an outcome by accepted revision), then applies them outside the lock. Pressure
+keeps the key on the pressure row, the required-consideration marker carries it (and
+`.intent-effect-receipts.json` keeps it once the marker goes), an outcome line carries it,
+a lead seed names its row: a retry after a crash applies nothing twice. The valence socket
+and his self-observation keep no record: claimed first, then sent - at most once. No lock
+is held across the judge. Chat's two race cases pass; twelve new cases in
+`broker/tests/test_intent_resolution_once.py`; six broken variants caught. ACTIVE review.
+Review: an effect that does not happen is said on every miss (`effect NOT DONE`; the
+outcome's used to fail without a word), counted on the effect (`tries`), and given up
+aloud at `EFFECT_TRIES_MAX` (20) into `effects_given_up` (`effect GIVEN UP`,
+`EFFECTS_GIVEN_UP`) instead of being retried on every turn for ever; one new case.
+
+## 10 November — wants and promises lane: past the pause, on a rolling window; review branch, not deployed
+
+`claude/wants-promises-window` (on 14694e3d). Gloria: "Email and journal wants skip the slack
+!start/!stop limit"; "he should work on the newest wants and promises. That's supposed to be on a
+rolling window." While the room is paused, journal entries are still read for promises (their
+threads open when she starts the day), owed email promises are synced with the room's work and
+aged, and the newest promises that are literal work become source-bound wants, three open at a
+time, which the bound want lane works and closes; promise results still go to the results channel,
+where her own words wait. The room's conversation stays paused. Wants are taken newest first; a
+bound want or promise more than seven days older than the newest ages out, marked, counted and
+said, never trimmed; the 200-row cap of email-commitments.json lets go only rows no longer owed,
+and says how many. An email want's source receipt is now taken on the words it is kept as.
+Thirteen cases in `broker/tests/test_wants_promises_window.py`. ACTIVE review.
+Review: every load-change-save of `email-commitments.json` now holds the store's own lock (the one
+`want_agent.close_sources` already took): sync runs on every pass, beside the mail reader's `record` in
+another process, and an unlocked save of a stale copy could drop the other's rows. The cap never lets an
+`aged out` promise go either (it can still be kept). Two new cases.
+
+Follow-up (same day): while paused, an email promise linked to room work is adopted too, the link
+kept and the promise closed once by whichever ends first; a promise of his own work with the evidence
+that would show it done is adoptable; an adopted want whose agent is silent 48 h gives its place back,
+counted; a journal promise its want is working outlives the 7-day carry-over and its result still
+reaches the results channel. Eight more cases in the same test file. ACTIVE review.
+Review of the follow-up: a want that gave its place back before any agent had it is not handed over
+later, and one whose promise its room work kept first is released (`kept_another_way`) and never handed
+over, so a promise is not done again. Two new cases.
