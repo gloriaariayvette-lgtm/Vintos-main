@@ -292,7 +292,7 @@ check("the chat block carries no call or frame rows", blk and "moment of a call"
 check("the chat route still asks the block as before", "return _wn.block(str(getattr(msg, \"message\", \"\") or \"\")[-1500:])" in srv)
 msrc = open(os.path.join(REPO, "scripts", "media_embed.py")).read()
 blocksrc = msrc[msrc.index("def block("):msrc.index("def nearest(")]
-check("block() never asks for other kinds", "kinds" not in blocksrc.split('"""')[2] and "near(text, k)" in blocksrc)
+check("block() never asks for other kinds", "kinds" not in blocksrc.split('"""')[2] and "near(text, k + 2)" in blocksrc)
 check("the service holds only the text half; the batch alone loads the audio and vision halves",
       'config_kwargs={"vision_config": None, "audio_config": None}' in msrc and "encode = encode or text_encoder()" in msrc
       and "model_encoder()" in msrc[msrc.index("def drain("):msrc.index("def kick(")])

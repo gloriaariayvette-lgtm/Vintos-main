@@ -921,16 +921,37 @@ WORDS = {"image": "painting", "video": "video", "audio": "song", "motif": "motif
          "atelier": "Atelier piece", "call_audio": "moment of a call", "film_frame": "frame from a film night"}
 
 
+def _head(h):
+    """The line describe() prints for a hit: what kind, what it is called, when."""
+    path = h.get("path")
+    name = h.get("title") or (os.path.splitext(os.path.basename(path))[0].replace("_", " ") if path else "") \
+        or h.get("variation_id") or h.get("speaker") or h.get("session_id") or ""
+    when = _when(path) if path else str(h.get("at") or "")[:10]
+    return "- your %s \"%s\" (%s)" % (WORDS.get(h.get("kind"), "work"), name[:120], when)
+
+
+def distinct(hits, k=None):
+    """Hits that would print as the same line count once, the nearer first. A song is made as two takes under one
+    title on one day: two files, two rows, and the journal's "Near this, among my own works" named the same song
+    twice with the same quote under it (157 such pairs in the store, 10 November)."""
+    out, seen = [], set()
+    for h in hits or []:
+        key = _head(h)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(h)
+    return out[:k] if k else out
+
+
 def describe(hits, episodes=None):
     """One line per work, in his words for it: what kind, what it is called, when, and where it is. `episodes`
-    ({path: [lines]}, from work_episodes.context) puts each work's recorded origin and later readings under it."""
+    ({path: [lines]}, from work_episodes.context) puts each work's recorded origin and later readings under it.
+    A work that prints as a line already given is not given again."""
     out = []
-    for h in hits:
+    for h in distinct(hits):
         path = h.get("path")
-        name = h.get("title") or (os.path.splitext(os.path.basename(path))[0].replace("_", " ") if path else "") \
-            or h.get("variation_id") or h.get("speaker") or h.get("session_id") or ""
-        when = _when(path) if path else str(h.get("at") or "")[:10]
-        out.append("- your %s \"%s\" (%s)" % (WORDS.get(h.get("kind"), "work"), name[:120], when))
+        out.append(_head(h))
         if path:
             out.extend((episodes or {}).get(path) or [])
     return "\n".join(out)
@@ -949,7 +970,8 @@ def episodes_for(hits, surface="chat"):
 def block(text, k=2):
     """For a chat prompt: the works of his nearest what she just said, or '' (service down, nothing indexed). His
     works only: call audio and film frames are never asked for here."""
-    hits = [h for h in near(text, k) if h.get("kind") in WORK_KINDS]
+    # two more than shown, so a second take of the same song does not take the place of another work
+    hits = distinct([h for h in near(text, k + 2) if h.get("kind") in WORK_KINDS], k)
     if not hits:
         return ""
     per, header = episodes_for(hits)

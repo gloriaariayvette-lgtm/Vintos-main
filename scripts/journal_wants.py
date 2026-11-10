@@ -89,3 +89,36 @@ def source_receipt(kind, source_id, text):
 
 def journal_receipt(entry, text):
     return source_receipt("journal", hashlib.sha256(entry.encode()).hexdigest(), text)
+
+
+# A journal want and a want or promise from his letters are the same want when they share at least TWIN_SHARED content
+# words and those are at least TWIN_RATIO of the shorter one (10 November: a run he wrote in his journal was the same
+# run he had promised in a reply to one of his agents). Stricter than
+# wants_meta.same_subject (two words, a quarter), because here one of them stops being a want of its own.
+TWIN_SHARED = 3
+TWIN_RATIO = 0.5
+
+
+def _content(text):
+    try:
+        from wants_meta import _content as content
+        return content(text)
+    except Exception:
+        return {w[:6] for w in re.findall(r"[a-z0-9]+", str(text or "").lower()) if len(w) > 3}
+
+
+def twin(text, rows, key=lambda r: r.get("want", "")):
+    """The row among `rows` that says the same as `text` (the closest, if several), or None."""
+    a = _content(text)
+    best = None
+    for r in rows or []:
+        b = _content(key(r))
+        shared = len(a & b)
+        if shared < TWIN_SHARED:
+            continue
+        ratio = shared / max(1, min(len(a), len(b)))
+        if ratio < TWIN_RATIO:
+            continue
+        if best is None or (ratio, shared) > best[0]:
+            best = ((ratio, shared), r)
+    return best[1] if best else None

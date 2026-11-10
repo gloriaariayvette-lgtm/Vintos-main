@@ -285,7 +285,10 @@ def opening(want, a, wid):
     # JSON quoting prevents a journal's newlines from becoming room control lines.
     return ('WORK REQUEST %s (%s; want %s)\nExact task: %s\n' % (a['request_id'], wid, want['id'], json.dumps(want['want'], ensure_ascii=False))
             + ('Done when this exists (what he promised would show it): %s\n' % json.dumps(want['done_when'], ensure_ascii=False)
-               if want.get('done_when') else '') +
+               if want.get('done_when') else '')
+            + ('His journal on this same want (context, not the task): %s\n'
+               % json.dumps([{'at': c.get('at'), 'text': c.get('text')} for c in want['journal_context'][-4:]], ensure_ascii=False)
+               if want.get('journal_context') else '') +
             'Source references: %s\nExisting step results (context, not proof of this task): %s\n'
             'Work with me until this deliverable exists. Keep the named tools, inputs, flags and acceptance requirements. '
             'If a download, dependency, account or code change is needed, handle it with your existing permissions; '
@@ -429,6 +432,75 @@ def _silent_hours(w, ws, now):
     return max(0.0, (now - start) / 3600.0) if start else 0.0
 
 
+JOURNAL_CONTEXT_MAX = 8
+
+
+def _live(w):
+    return isinstance(w, dict) and not any(w.get(k) for k in ('fulfilled', 'dismissed', 'aged_out', '_delete',
+                                                               'adoption_released'))
+
+
+def _from_letters(w):
+    """A want from his mail: read in a letter, or an email promise adopted as a want."""
+    return w.get('source') in ('email', 'letter-promise') or str(w.get('adopted_from') or '').startswith('EC-')
+
+
+def fold_journal(text, receipt=None, *, ws=None, now=None):
+    """A journal want that is the same as a live want from his letters is that want (Gloria, 10 November: "it does not
+    duplicate but the journal becomes additional context for the want"). The journal's sentence is kept on the email
+    want as journal_context, with its source receipt, once per journal entry; no second want is made. Returns the email
+    want's id, or None (the journal want then forms as before)."""
+    from datetime import datetime
+    from journal_wants import twin
+    from store_guard import locked_update
+    ws = Path(ws or workspace()); receipt = receipt or {}; hit = []
+    stamp = datetime.fromtimestamp(now or time.time()).isoformat(timespec='seconds')
+    # an owed email promise that says the same more closely wins (review, 10 November: on the live copy a journal want
+    # matched its own promise at 5 shared words and all of the shorter, and a different letter want at 4 and 0.8; it
+    # was folded into the looser one and the promise it repeated was left to become a second want)
+    try:
+        pid = promise_twin(text)
+        import email_commitments
+        p = next((r for r in email_commitments._load() if isinstance(r, dict) and r.get('id') == pid), None) if pid else None
+    except Exception:
+        p = None
+    def mutate(rows):
+        w = twin(text, [r for r in rows if _live(r) and _from_letters(r)])
+        if w is None:
+            return None
+        if p is not None and _twin_score(text, p.get('what', '')) > _twin_score(text, w.get('want', '')):
+            return None                                 # the promise is the closer twin: express_want carries it
+        hit.append(w.get('id'))
+        ctx = w.setdefault('journal_context', [])
+        sid = receipt.get('source_event_id')
+        if any((sid and c.get('source_event_id') == sid) or c.get('text') == str(text)[:600] for c in ctx):
+            return None                                 # this journal sentence is already its context
+        ctx.append({'text': str(text)[:600], 'at': stamp, 'source_event_id': sid,
+                    'source_refs': [r for r in (receipt.get('source_refs') or []) if isinstance(r, dict)][:2]})
+        w['journal_context'] = ctx[-JOURNAL_CONTEXT_MAX:]
+        return rows
+    locked_update(str(ws / 'memory/current-wants.json'), mutate, default=[], reader='want_agent.fold_journal')
+    return hit[0] if hit else None
+
+
+def _twin_score(a, b):
+    """(share of the shorter, shared content words) - the order journal_wants.twin ranks twins by."""
+    from journal_wants import _content
+    x, y = _content(a), _content(b)
+    return (len(x & y) / max(1, min(len(x), len(y))), len(x & y))
+
+
+def promise_twin(text):
+    """The id of an email promise he still owes (open, or in room work) that says the same as this journal want, or None.
+    The journal want then carries the promise, so adopt_promises does not make the same work a second want."""
+    import email_commitments
+    from journal_wants import twin
+    rows = [r for r in email_commitments._load() if isinstance(r, dict) and r.get('id')
+            and r.get('state') in ('open', 'in work')]
+    r = twin(text, rows, key=lambda r: r.get('what', ''))
+    return r.get('id') if r else None
+
+
 def adopt_promises(*, ws=None, now=None, paused=False):
     """The newest promises he owes - in his email replies and his journal - that are literal work an agent can do
     become source-bound wants, once each, ADOPT_OPEN at a time (10 November: none ever had; about a hundred email
@@ -465,7 +537,8 @@ def adopt_promises(*, ws=None, now=None, paused=False):
     for w in read(ws / 'memory/fulfilled-wants.json', []):
         for ref in (w.get('source_refs') or []) if isinstance(w, dict) else []:
             if isinstance(ref, dict) and ref.get('kind') in ('commitment', 'promise'): taken.add(ref.get('id'))
-    made = []; released = []
+    made = []; released = []; joined = []
+    from journal_wants import twin
     def mutate(rows):
         open_now = 0
         for w in rows:
@@ -488,7 +561,16 @@ def adopt_promises(*, ws=None, now=None, paused=False):
                     released.append(w); continue
                 open_now += 1
         for kind, pid, source, rkind, sid, text, at, agent, done in found:
-            if pid in taken or open_now + len(made) >= ADOPT_OPEN: continue
+            if pid in taken: continue
+            if kind == 'commitment':
+                # the same work already stands as a journal want: the promise joins it, once; no second want
+                jw = twin(text, [w for w in rows if _live(w) and w.get('source') == 'idle-journal'])
+                if jw is not None:
+                    jw.setdefault('source_refs', []).append({'kind': 'commitment', 'id': pid})
+                    if isinstance(jw.get('agent_work'), dict):
+                        jw['agent_work'].setdefault('commitment_ids', []).append(pid)
+                    joined.append((pid, jw.get('id'))); taken.add(pid); continue
+            if open_now + len(made) >= ADOPT_OPEN: continue
             row = dict(id=('ec-' if kind == 'commitment' else 'pr-') + pid.split('-', 1)[-1], want=text, source=source,
                        urgency='normal', intensity=3, timestamp=datetime.fromtimestamp(now or time.time()).isoformat(timespec='seconds'),
                        promised_at=str(at or '')[:19], fulfilled=False, outreach_count=0, adopted_from=pid, timer_bypass=True,
@@ -498,7 +580,7 @@ def adopt_promises(*, ws=None, now=None, paused=False):
             row['source_refs'].append({'kind': kind, 'id': pid})
             if not specific(row): continue           # neither literal work nor promised work with its evidence
             rows.append(row); made.append(row); taken.add(pid)
-        return rows if (made or released) else None
+        return rows if (made or released or joined) else None
     locked_update(str(ws / 'memory/current-wants.json'), mutate, default=[], reader='want_agent.adopt')
     for row in made:
         if row['adopted_from'].startswith('PR-'):
@@ -510,7 +592,8 @@ def adopt_promises(*, ws=None, now=None, paused=False):
     return (['adopted want %s gave its place back: %s%s (%d released so far)'
              % (w['id'], w['adoption_released']['reason'].replace('_', ' '),
                 (' after %d h' % ADOPT_ANSWER_HOURS) if w['adoption_released']['hours'] else '', total) for w in released]
-            + ['promise %s became a want for the work lane' % row['adopted_from'] for row in made])
+            + ['promise %s became a want for the work lane' % row['adopted_from'] for row in made]
+            + ['promise %s joined journal want %s (one want, not two)' % j for j in joined])
 
 
 def threads(ws=None):
