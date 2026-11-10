@@ -2046,3 +2046,15 @@ message. It has no original turn ID and remains unbound; no broader writer work.
 /tmp/judges-s71-repro.log, /tmp/judges-s71-fit.log and
 /tmp/judges-s71-landings.log. No new private-store counts, live changes, model
 calls, deployment or merge. Independent review/full suite remain Claude's.
+
+
+## 2026-11-09 21:32 CST — counts-only completion-drop diagnostic; ACTIVE
+
+Branch codex/judges-fit-drop-counter, based on c4e6ba00. The fitting observer's
+exception handler emits one fixed self_fit_completion_dropped=1 JSON line to
+stderr for a publish_fit exception. No exception text, IDs, paths or parameters;
+a logging error is also swallowed. No receipt-admission or fitting policy change.
+One synthetic test covers actual rollback, private exception suppression, broken
+logging and silent success. Fit completion 17/17 and owners 11/11 pass; reports
+unchanged. Logs /tmp/judges-s72-fit.log and /tmp/judges-s72-owners.log. No new
+private-store counts, live actions or calls. Await independent review, then idle.
