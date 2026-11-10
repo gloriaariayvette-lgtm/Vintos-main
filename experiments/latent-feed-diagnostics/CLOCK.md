@@ -133,3 +133,15 @@ continues and may release it once order is known. At most 64 retry records are
 kept in process memory. This does not publish unknown-age legacy entries, add a
 tolerance, rebase their timestamps, or silently expire them. Restart loses these
 process-local diagnostics, not durable records. Nonfinite clocks remain inert.
+
+### Forecast launch prefix compatibility after ingress v3
+
+The handoff fixture now asserts v3 staging and retains an explicit converted v2
+fixture for already-staged launches. Both test invalid/missing prefixes and replay
+under only the launch prefix. v3's two allowed prefixes exposed an additional
+regression: a launch header changed to `capture-` was accepted because its payload
+digest still matched. Recovery now checks that the payload's exact
+`self-forecast-launch-v1` discriminator agrees with the launch prefix, rejecting
+both launch-to-capture and capture-to-launch relabeling. This is a consistency
+check, not authentication. Legacy v1/v2 handling, retention clocks and payload
+bytes remain unchanged; no new producer or model calls are involved.

@@ -387,6 +387,11 @@ def _spool_read(directory, name):
                 or not isinstance(clock['domain'],str) or not re.fullmatch(r'[0-9a-f]{32}:[0-9]+',clock['domain'])
                 or type(clock['monotonic_at']) not in (int,float) or not math.isfinite(clock['monotonic_at']) or clock['monotonic_at']<0
                 or header['prefix'] not in ('capture-','self-forecast-launch-')): raise ValueError('invalid spool clock')
+        # v3 admits both prefixes; the launch discriminator must still agree.
+        packet = json.loads(payload, object_pairs_hook=unique)
+        is_launch = isinstance(packet,dict) and packet.get('schema')=='self-forecast-launch-v1'
+        if (header['prefix']=='self-forecast-launch-') != is_launch:
+            raise ValueError('spool prefix does not match payload')
     return header,payload
 
 

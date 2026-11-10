@@ -232,6 +232,12 @@ class Tests(unittest.TestCase):
         self.assertTrue(H.validate_receipt(json.loads(paths[0].read_text())))
 
     def test_durable_launch_replays_under_its_own_prefix(self):
+        self._durable_launch_replay('judges-ingress-v3')
+
+    def test_legacy_v2_durable_launch_replays_under_its_own_prefix(self):
+        self._durable_launch_replay('judges-ingress-v2')
+
+    def _durable_launch_replay(self, schema):
         import test_witness_sink as S
         case=S.Tests('test_production_destination_is_independent_of_workspace')
         case.setUp();self.addCleanup(case.doCleanups)
@@ -241,14 +247,20 @@ class Tests(unittest.TestCase):
         spool,=list((case.sink/S.S.SPOOL_NAME).glob('*.packet'))
         original=spool.read_bytes();line,body=original.split(b'\n',1)
         header=json.loads(line)
-        self.assertEqual(header['schema'],'judges-ingress-v2')
-        for prefix in ('capture-','../bad',None):
-            bad=dict(header,prefix=prefix)
-            spool.write_bytes(json.dumps(bad).encode()+b'\n'+body)
-            self.assertEqual(S.S.recover_spool(),0)
-            self.assertTrue(spool.exists())
-        spool.write_bytes(original)
-        self.assertEqual(S.S.recover_spool(),1)
+        self.assertEqual(header['schema'],'judges-ingress-v3')
+        self.assertEqual(header['clock']['domain'],S.S._spool_domain())
+        if schema == 'judges-ingress-v2':
+            header['schema']=schema;header.pop('clock')
+            original=json.dumps(header).encode()+b'\n'+body
+        # Legacy replay has no monotonic anchor: keep this prefix test's wall order fixed.
+        with patch.object(S.S.time,'time',return_value=header['created_at']+.1):
+            for prefix in ('capture-','../bad',None,''):
+                bad=dict(header,prefix=prefix)
+                spool.write_bytes(json.dumps(bad).encode()+b'\n'+body)
+                self.assertEqual(S.S.recover_spool(),0)
+                self.assertTrue(spool.exists())
+            spool.write_bytes(original)
+            self.assertEqual(S.S.recover_spool(),1)
         paths=list(case.sink.glob('self-forecast-launch-*.json'));self.assertEqual(len(paths),1)
         self.assertTrue(H.validate_receipt(json.loads(paths[0].read_text())))
         self.assertEqual(list(case.sink.glob('capture-*.json')),[])
