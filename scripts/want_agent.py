@@ -314,6 +314,8 @@ def intake(state, post, save_state, now, *, ws=None, identity=None, prepare=None
             continue
         if w.get('aged_out') and not w.get('agent_work'):
             continue
+        if w.get('adoption_released') and not w.get('agent_work'):
+            continue        # gave its place back before any agent had it: not handed over later (review, 10 November)
         if w.get('fulfilled') or w.get('dismissed') or w.get('gloria_routed') or w.get('board') == 'awaiting_gloria':
             continue
         pursuit = w.get('pursuit') or {}
@@ -471,6 +473,13 @@ def adopt_promises(*, ws=None, now=None, paused=False):
                 if isinstance(ref, dict) and ref.get('kind') in ('commitment', 'promise'): taken.add(ref.get('id'))
             a = (w.get('agent_work') or {}) if isinstance(w, dict) else {}
             if (isinstance(w, dict) and w.get('adopted_from') and not w.get('fulfilled') and not w.get('dismissed')
+                    and not w.get('aged_out') and not w.get('adoption_released') and w['adopted_from'] in closed
+                    and not a):
+                # its promise was kept (or dropped) another way - by its room work - before any agent had it: it is
+                # not handed over to be done again (review, 10 November)
+                w['adoption_released'] = {'at': now, 'reason': 'kept_another_way', 'hours': 0}
+                released.append(w); continue
+            if (isinstance(w, dict) and w.get('adopted_from') and not w.get('fulfilled') and not w.get('dismissed')
                     and not w.get('aged_out') and not w.get('adoption_released') and w['adopted_from'] not in closed
                     and a.get('status') not in ('completed', 'dropped')):
                 if _silent_hours(w, ws, now) >= ADOPT_ANSWER_HOURS:
@@ -498,8 +507,9 @@ def adopt_promises(*, ws=None, now=None, paused=False):
             except Exception:
                 pass
     total = sum(1 for w in read(ws / 'memory/current-wants.json', []) if isinstance(w, dict) and w.get('adoption_released'))
-    return (['adopted want %s gave its place back: %s after %d h (%d released so far)'
-             % (w['id'], w['adoption_released']['reason'].replace('_', ' '), ADOPT_ANSWER_HOURS, total) for w in released]
+    return (['adopted want %s gave its place back: %s%s (%d released so far)'
+             % (w['id'], w['adoption_released']['reason'].replace('_', ' '),
+                (' after %d h' % ADOPT_ANSWER_HOURS) if w['adoption_released']['hours'] else '', total) for w in released]
             + ['promise %s became a want for the work lane' % row['adopted_from'] for row in made])
 
 

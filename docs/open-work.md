@@ -8450,3 +8450,6 @@ kept and the promise closed once by whichever ends first; a promise of his own w
 that would show it done is adoptable; an adopted want whose agent is silent 48 h gives its place back,
 counted; a journal promise its want is working outlives the 7-day carry-over and its result still
 reaches the results channel. Eight more cases in the same test file. ACTIVE review.
+Review of the follow-up: a want that gave its place back before any agent had it is not handed over
+later, and one whose promise its room work kept first is released (`kept_another_way`) and never handed
+over, so a promise is not done again. Two new cases.

@@ -339,7 +339,37 @@ class PausedLinkedAndSlots(Base):
         A.close_sources(w, "the want's ending", "", A.workspace())
         self.assertEqual(EC._load()[0]["closed_said"], "room kept it")
         self.write("email-commitments.json", EC._load() + [ec(i, 0) for i in (2, 3, 4)])
-        self.assertEqual(len(A.adopt_promises(now=self.now, paused=True)), 3)          # the kept one holds no place
+        lines = A.adopt_promises(now=self.now, paused=True)
+        self.assertEqual(len([l for l in lines if "became a want" in l]), 3)            # the kept one holds no place
+        self.assertIn("gave its place back: kept another way (1 released so far)", lines[0])   # and says so (review)
+
+    def test_a_promise_its_room_work_kept_is_not_handed_to_an_agent_to_do_again(self):
+        # review: the room work closed the promise before any agent had the want; the want is released and never
+        # handed over, so the same promise is not done twice
+        self.linked(); A.adopt_promises(now=self.now, paused=True)
+        EC.sync(self.board(history=[dict(id="RW-0000aaaa", state="done", closed_said="room kept it", closed_at=self.now)]), self.now)
+        self.assertTrue(A.adopt_promises(now=self.now, paused=True)[0].endswith("gave its place back: kept another way (1 released so far)"))
+        w = self.read("current-wants.json")[0]
+        self.assertEqual((w["adoption_released"]["reason"], w.get("agent_work")), ("kept_another_way", None))
+        self.intake(); self.intake()
+        self.assertEqual(self.posts, [])
+        self.assertEqual(A.adopt_promises(now=self.now, paused=True), [])              # said once
+
+    def test_a_want_released_before_any_agent_had_it_is_not_handed_over_later(self):
+        # review: "never handed over" gives the place to the next promise; handing it over later as well would make
+        # ADOPT_OPEN three more every 48 hours
+        self.write("email-commitments.json", [ec(i, 0) for i in range(1, 6)])
+        A.adopt_promises(now=self.now - (A.ADOPT_ANSWER_HOURS + 1) * 3600)
+        rows = self.read("current-wants.json")
+        for w in rows: w["timestamp"] = iso(datetime.fromtimestamp(self.now - (A.ADOPT_ANSWER_HOURS + 1) * 3600))
+        self.write("current-wants.json", rows)
+        lines = A.adopt_promises(now=self.now)
+        self.assertEqual(sum("never handed over after %d h" % A.ADOPT_ANSWER_HOURS in l for l in lines), 3)
+        self.assertEqual(sum("became a want" in l for l in lines), 2)                   # the two left come in
+        released = {w["id"] for w in self.read("current-wants.json") if w.get("adoption_released")}
+        for _ in range(4): self.intake()
+        handed = [p.split("]")[0][len("[want:"):] for p in self.posts]
+        self.assertTrue(handed); self.assertFalse(set(handed) & released)
 
     def test_promised_work_with_its_evidence_is_adopted_and_told_its_acceptance(self):
         plain = ec(1, 0, what="Write up the synthetic comparison for the letter"); plain["evidence"] = "a table of the synthetic numbers"
