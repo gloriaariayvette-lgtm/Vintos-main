@@ -360,7 +360,8 @@ def _report(context, toy, ok, why="", permit=None):
         pass
 
 
-def send(toy, level, seconds=0, context=None, permit=None, effect_digest=None):
+def send(toy, level, seconds=0, context=None, permit=None, effect_digest=None,
+         stop_previous=None):
     """level 0-20. seconds=0 means until next command. Returns True on success.
     context/permit are the explicit authority path; bare calls (reflex,
     diagnostics) pass neither and are governed by the gate's no-context rules."""
@@ -382,8 +383,11 @@ def send(toy, level, seconds=0, context=None, permit=None, effect_digest=None):
             return False
         action = f"{ACTIONS[toy]}:{max(0, min(20, int(level)))}"
         try:
-            r = _post({"command": "Function", "action": action,
-                "timeSec": seconds, "toy": TOYS[toy], "apiVer": 1}, timeout=2)
+            _payload = {"command": "Function", "action": action,
+                "timeSec": seconds, "toy": TOYS[toy], "apiVer": 1}
+            if stop_previous is not None:   # 0: leave what the other toys on the app are playing alone
+                _payload["stopPrevious"] = int(stop_previous)
+            r = _post(_payload, timeout=2)
             _ok = r.json().get("code") == 200
             if _ok:
                 _note(toy, level); _claim_or_release(toy, level, permit)
@@ -666,10 +670,10 @@ def _toy_trace(tag):
 _send_orig, _pattern_orig = send, send_pattern
 
 def send(toy, level, seconds=0, context=None, permit=None, effect_digest=None,
-         _o=_send_orig):
+         stop_previous=None, _o=_send_orig):
     _toy_trace("send %s=%s sec=%s" % (toy, level, seconds))
     return _o(toy, level, seconds, context=context, permit=permit,
-              effect_digest=effect_digest)
+              effect_digest=effect_digest, stop_previous=stop_previous)
 
 def send_pattern(toy, strengths, interval_ms=250, seconds=0, func=None,
                  context=None, permit=None, effect_digest=None, _o=_pattern_orig):
