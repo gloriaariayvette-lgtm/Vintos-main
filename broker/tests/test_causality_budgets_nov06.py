@@ -7,6 +7,7 @@ goes through a counting stub. Nothing here reaches a model, a sender or live mem
 import os, sys, json, tempfile, types, importlib.util
 from datetime import date, datetime, timedelta, timezone
 from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, "..", ".."))
@@ -165,23 +166,49 @@ with patch.object(CE, "load_emotional_trajectory", return_value=[]), patch.objec
     CE.main()
 check("main() skips formation and the model when its slice is spent", no_form.calls == 0)
 
-# 6. Capacity cull records net, not age.
-old = (date.today() - timedelta(days=3)).isoformat()
-rows = [{"formed": old + "T01:00:00", "formed_date": old, "source": "causality_engine", "hypothesis": "row %d" % i,
-         "status": "held", "marks": []} for i in range(51)]
-rows[0]["graduation_readiness"] = {"net": -2}
-snap = CE.HypothesisSnapshot({"hypotheses": rows, "confirmed": 0, "revised": 0})
-formed_calls = Counter([])
-with patch.object(CE, "load_emotional_trajectory", return_value=[]), patch.object(CE, "find_spikes", return_value=[]), \
-     patch.object(CE, "load_recent_dreams", return_value=[]), patch.object(CE, "load_recent_mirrors", return_value=[]), \
-     patch.object(CE, "load_recent_silences", return_value=[]), patch.object(CE, "load_recent_conversations", return_value=[]), \
-     patch.object(CE, "load_trial_ledger", return_value=[]), patch.object(CE, "load_existing_hypotheses", return_value=snap), \
-     patch.object(CE, "form_hypotheses", formed_calls),      patch.object(CE, "save_hypotheses", return_value=None), patch.object(CE, "write_hypothesis_log", return_value=None):
-    CE.main()
-check("the over-capacity store leaves only its refuted row", formed_calls.calls == 1 and len(snap["hypotheses"]) == 50)
-culled = rows[0].get("retired") or {}
-check("capacity cull writes the refuted row's net, and its age separately",
-      culled.get("net") == -2 and culled.get("age_days") == 3, culled)
+# 6. Capacity age is completed elapsed days, not a calendar-date subtraction.
+# At 00:00, a timestamp three dates ago at 01:00 is still only two elapsed days old.
+for zone in ("UTC", "America/Chicago"):
+    for instant, utc_calendar_age in (("2026-11-09T23:59:59+00:00", 3), ("2026-11-10T00:00:01+00:00", 2)):
+        frozen = datetime.fromisoformat(instant)
+        local_now = frozen.astimezone(ZoneInfo(zone)).replace(tzinfo=None)
+
+        class FrozenDateTime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return frozen.astimezone(tz) if tz is not None else local_now
+
+        class FrozenDate(date):
+            @classmethod
+            def today(cls):
+                return local_now.date()
+
+        label = zone + " " + instant
+        old_calendar = (local_now.date() - timedelta(days=3)).isoformat() + "T01:00:00"
+        expected_calendar_age = utc_calendar_age if zone == "UTC" else 3
+        with patch.object(CE, "datetime", FrozenDateTime):
+            check("capacity readiness measures elapsed days at " + label,
+                  CE._readiness({"formed": old_calendar, "graduation_readiness": {"net": -2}})[1] == expected_calendar_age)
+        # The assertion about age 3 gets an actual three-day-old timestamp.
+        old = local_now - timedelta(days=3, seconds=30)
+        rows = [{"formed": old.isoformat(), "formed_date": old.date().isoformat(), "source": "causality_engine", "hypothesis": "row %d" % i,
+                 "status": "held", "marks": []} for i in range(51)]
+        rows[0]["graduation_readiness"] = {"net": -2}
+        snap = CE.HypothesisSnapshot({"hypotheses": rows, "confirmed": 0, "revised": 0})
+        formed_calls = Counter([])
+        with patch.object(CE, "datetime", FrozenDateTime), patch("datetime.date", FrozenDate), \
+             patch.object(CE, "load_emotional_trajectory", return_value=[]), patch.object(CE, "find_spikes", return_value=[]), \
+             patch.object(CE, "load_recent_dreams", return_value=[]), patch.object(CE, "load_recent_mirrors", return_value=[]), \
+             patch.object(CE, "load_recent_silences", return_value=[]), patch.object(CE, "load_recent_conversations", return_value=[]), \
+             patch.object(CE, "load_trial_ledger", return_value=[]), patch.object(CE, "load_existing_hypotheses", return_value=snap), \
+             patch.object(CE, "form_hypotheses", formed_calls), patch.object(CE, "save_hypotheses", return_value=None), \
+             patch.object(CE, "write_hypothesis_log", return_value=None):
+            CE.main()
+        check("the over-capacity store leaves only its refuted row at " + label,
+              formed_calls.calls == 1 and len(snap["hypotheses"]) == 50)
+        culled = rows[0].get("retired") or {}
+        check("capacity cull writes the refuted row's net, and its age separately at " + label,
+              culled.get("net") == -2 and culled.get("age_days") == 3, culled)
 
 
 # 7. Reviewer: enough tokens, truncated JSON is an error (retry), and only "yes" nights support belief.

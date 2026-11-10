@@ -1980,3 +1980,35 @@ alone. No snapshots or aggregate schema census were present in the designated
 coordination directory. Request only the aggregate output from that private run;
 no raw records are needed here. Review/full suite/test merge remain Claude's,
 Gloria deploys. No new user approval needed or routine notification. ACTIVE.
+
+
+## 2026-11-09 18:24 CST — #67 forecast v3 and pinned capacity-age fixture; ACTIVE
+
+Branch codex/judges-review-date-fixes builds on 0f543df4. Two separate fixes:
+5e09a0ee updates the launch handoff fixture to v3, keeps explicit v2 replay
+coverage and tests bad prefixes against both. Running those assertions exposed
+a v3 regression: an allowlisted capture prefix could relabel a launch payload.
+Recovery now requires the exact launch schema discriminator to agree with the
+launch prefix; reverse capture-to-launch relabeling also refuses. This is a
+consistency check, not authentication. Legacy v1/v2 handling and retention clocks
+stay unchanged. Final isolated handoff 27/27 and durable spool 33/33 pass, including
+the existing backward-step stress fixture. The initial failing v3 test established
+the defect before the production check was added.
+
+The separate causality fix changes only test_causality_budgets_nov06.py. Inspection
+of the supplied failure and _readiness shows no local/UTC mix in this path: the
+test made a timestamp three calendar dates ago at 01:00 but asserted three completed
+elapsed days. Between midnight and 01:00 that is only two, exactly as the log shows.
+The fixture now uses an actual three-day-plus-30-second elapsed age. Both sides
+of UTC midnight are pinned in UTC and America/Chicago; explicit expected ages
+also demonstrate the original calendar fixture's 3-to-2 UTC transition. Engine
+behavior, ranking, tenure and live data are unchanged. This suite passes 47/47.
+
+118 distinct targeted isolated checks pass: handoffs 27, durable spool 33,
+causality budgets 47, owners 11. Logs /tmp/judges-s67-handoffs.log,
+/tmp/judges-s67-spool.log, /tmp/judges-s67-causality.log and
+/tmp/judges-s67-owners.log. Reports regenerated unchanged, twin parity and diff
+checks pass. No real stores, external/model/paid calls, GPU, live changes, merge
+or deployment. #66 actual schema counts remain pending the independent private
+inventory run, with no invented explanation for the 75 rows. Review/full isolated
+suite/test merge remain Claude's; Gloria deploys. Heartbeat remains ACTIVE.
