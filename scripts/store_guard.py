@@ -132,6 +132,14 @@ def transaction(path):
             finally: _state.held = held
 
 
+def turn_state(path):
+    """The one lock for the intent turn state (10 November): the pressure store, the primary rotation, her
+    opportunity counter and the required-consideration marker. Each of their writers holds it across its whole
+    read-modify-write, so two turns in two processes cannot both read the old value and lose one change. One
+    lock file, intent-turn-state.lock, beside whichever of those stores `path` names."""
+    return transaction(os.path.join(os.path.dirname(os.path.abspath(path)), "intent-turn-state"))
+
+
 def serialized(path_name):
     import functools
     def wrap(fn):

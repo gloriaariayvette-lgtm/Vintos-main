@@ -118,9 +118,10 @@ class IntentFieldsFix(unittest.TestCase):
         self.assertTrue(E.record_delivery('Here are both, and the tradeoff between them.', target=t, input_text='Which?'))
         return t
 
-    def delivered(self, **over):
+    def delivered(self, drop=(), mine=None, **over):
         """A delivered move waiting for what follows it, with no selector involved."""
-        t = self.target(**over); t['intent_id'] = uuid.uuid4().hex
+        t = self.target(drop=drop, **over); t['intent_id'] = uuid.uuid4().hex
+        if mine is not None: t['self'] = mine
         E.record_pending(t)
         self.assertTrue(E.record_delivery('Here are both, and the tradeoff between them.', target=t, input_text='Which?'))
         return t
@@ -210,26 +211,51 @@ class IntentFieldsFix(unittest.TestCase):
         row = self.pressure(A); row['lineage'].append({'graduated': time.time(), 'at_weight': 5.0}); self.press(**{A: row})
         self.assertIsNone(DD.primary_for_turn())                               # a later graduation closes it again
 
-    def test_fourth_consecutive_selection_goes_to_another_primary(self):
+    def test_rested_primary_stays_out_for_three_of_her_turns(self):
+        # (10 November, round three) A rest used to end as soon as one other primary had been shown: A A A B A,
+        # three turns in four to one row over any long run. It now lasts three of her turns led by another primary.
         self.press(**{A: self.prow(TEXT_A, 4.0), B: self.prow(TEXT_B, 2.0)})
-        for _ in range(5): self.turn(resolve=False)
-        self.assertEqual([p for p, _ in self.shown()], [A, A, A, B, A])
+        for _ in range(24): self.turn(resolve=False)
+        shown = [p for p, _ in self.shown()]
+        self.assertEqual(shown, ([A] * 3 + [B] * 3) * 4)
+        for i in range(len(shown) - 5): self.assertEqual(shown[i:i + 6].count(A), 3, i)    # wherever the count starts
         # no row was ever graded: the cap counts selections, whatever verdict they later get
         self.assertTrue(all(r['realized']['field'] is None for r in self.rows()))
-        self.assertEqual(DD.primary_report(4), {'turns': 4, 'with_primary': 4, 'distinct_primaries': 2,
-                                                'top_primary_turns': 3, 'top_primary_share': 0.75, 'max_run': 2})
+        self.assertEqual(DD.primary_report(24), {'turns': 24, 'with_primary': 24, 'distinct_primaries': 2,
+                                                 'top_primary_turns': 12, 'top_primary_share': 0.5, 'max_run': 3})
 
-    def test_lone_primary_rests_three_days_and_nothing_stands_in(self):
+    def test_lone_primary_rests_and_nothing_stands_in(self):
         self.press(**{A: self.prow(TEXT_A, 4.0)})
-        for _ in range(5): self.select(resolve=False)
-        self.assertEqual([p for p, _ in self.shown()], [A, A, A, None, None])
+        for _ in range(12): self.select(resolve=False)
+        # (10 November, round three) nothing is put up as a primary to use the rest up: a turn with none counts
+        self.assertEqual([p for p, _ in self.shown()], [A, A, A, None, None, None] * 2)
         self.assertNotIn('PRIMARY DIFFERENCE', self.prompt())
-        now = time.time()
+        self.assertEqual(DD.primary_report(12)['top_primary_share'], 0.5)
+        for _ in range(4): self.select(resolve=False)                          # three more turns led, and one of the rest served
+        self.assertEqual(json.loads(Path(DD._rotation_path()).read_text())['rest_turns'], {A: 1})
+        now = time.time()                                                      # the three-day bound is the other way out
         self.assertIsNone(DD.primary_for_turn(now=now + 2 * 86400))
         self.assertEqual(DD.primary_for_turn(now=now + 3 * 86400 + 600)['id'], A)
-        self.assertEqual(DD.primary_shown(A, now=now + 3 * 86400 + 600)['run'], 1)
+        state = DD.primary_shown(A, now=now + 3 * 86400 + 600)
+        self.assertEqual((state['run'], state['resting'], state['rest_turns']), (1, {}, {}))
 
-    def test_streak_survives_a_restart(self):
+    def test_a_turn_that_is_not_hers_discharges_no_rest(self):
+        self.press(**{A: self.prow(TEXT_A, 4.0)})
+        served = lambda: json.loads(Path(DD._rotation_path()).read_text())['rest_turns']
+        for _ in range(3): self.select(resolve=False)                          # it leads three turns, and rests
+        self.assertEqual(served(), {A: 0})
+        self.select(BUTTON, resolve=False, her_source='gcs'); self.select(BUTTON, resolve=False)   # a device event, by source and by text
+        self.select("GLORIA: Earlier topic.\nREELROOM EVENT (not Gloria's words): the film ended", resolve=False)
+        with PV.background():
+            self.select(resolve=False)                                         # a background run
+        self.select(persist=False, step_campaign=False)                        # a preview
+        self.assertEqual(served(), {A: 0})
+        self.answer = self.target(her_turn=False)                              # the selector cannot say whose turn it is
+        for _ in range(4): self.select(resolve=False)
+        self.assertEqual([p for p, _ in self.shown()], [A] * 3 + [None] * 7 + [A])
+        self.assertEqual([r['target']['her_turn'] for r in self.rows()], [True] * 3 + [False] * 4 + [True] * 4)
+
+    def test_streak_and_rest_survive_a_restart(self):
         self.press(**{A: self.prow(TEXT_A, 4.0), B: self.prow(TEXT_B, 2.0)})
         self.turn(resolve=False); self.turn(resolve=False)
         state = json.loads(Path(DD._rotation_path()).read_text())
@@ -237,6 +263,13 @@ class IntentFieldsFix(unittest.TestCase):
         with patch.dict(sys.modules, {'desired_difference': self.restarted('desired_difference')}):
             self.turn(resolve=False); self.turn(resolve=False)
         self.assertEqual([p for p, _ in self.shown()], [A, A, A, B])
+        state = json.loads(Path(DD._rotation_path()).read_text())             # a rest part-served is on disk too
+        self.assertEqual((state['id'], state['run'], state['rest_turns']), (B, 1, {A: 1}))
+        with patch.dict(sys.modules, {'desired_difference': self.restarted('desired_difference')}):
+            self.turn(resolve=False)
+        with patch.dict(sys.modules, {'desired_difference': self.restarted('desired_difference')}):
+            self.turn(resolve=False); self.turn(resolve=False)
+        self.assertEqual([p for p, _ in self.shown()][4:], [B, B, A])          # not cut short, not begun again
 
     def test_required_consideration_cannot_ask_twice_running(self):
         self.press(**{A: self.prow(TEXT_A, 1.5)})
@@ -303,13 +336,19 @@ class IntentFieldsFix(unittest.TestCase):
         self.assertEqual(json.loads(out.getvalue())['turns'], 2)
 
     # ---- B. whose words the follow-up is ----------------------------------------------------------------
-    def test_device_only_follow_up_is_held_without_a_judge(self):
+    def test_device_only_follow_up_holds_my_side_and_keeps_her_reply_open(self):
+        # (10 November, round three) A device event used to close the whole move as HELD, her axis with it. What
+        # shows in my own reply is still held at once; what shows in her next reply waits for her, three such
+        # events at most.
         self.delivered(gloria=copy.deepcopy(GLORIA))
         E.resolve_previous(BUTTON, source='gcs')                               # where it came from decides
         row = self.rows()[-1]
-        self.assertEqual(row['realized'], {'field': 'HELD', 'gloria': 'HELD', 'self': 'HELD'})
-        self.assertEqual(row['held_reason'], {'field': 'device_event_only', 'gloria': 'device_event_only', 'self': 'device_event_only'})
-        self.assertEqual(row['response_source'], 'gcs')
+        self.assertEqual(row['realized'], {'field': 'HELD', 'gloria': None, 'self': 'HELD'})
+        self.assertEqual(row['held_reason'], {'field': 'device_event_only', 'self': 'device_event_only'})
+        skip = row['skipped_observations']                                     # how many, when, why, from where: never the text
+        self.assertEqual(sorted(skip), ['first', 'last', 'n', 'reason', 'source'])
+        self.assertEqual((skip['n'], skip['reason'], skip['source']), (1, 'device_event_only', 'gcs'))
+        self.assertNotIn('response_text', row); self.assertNotIn('response_source', row)   # the event is not kept as her reply
         self.delivered()
         E.resolve_previous(BUTTON)                                             # no source came with it: the text is read
         row = self.rows()[-1]
@@ -318,12 +357,99 @@ class IntentFieldsFix(unittest.TestCase):
         self.delivered()
         E.resolve_previous("GLORIA: Earlier topic.\nREELROOM EVENT (not Gloria's words): the film ended")
         self.assertEqual(self.rows()[-1]['held_reason'], {'field': 'not_her_words', 'self': 'not_her_words'})
+        first = self.rows()[0]                                                 # three device events, and her axis still waits
+        self.assertEqual((first['realized']['gloria'], first['skipped_observations']['n']), (None, E.DEVICE_SKIPS_MAX))
         self.delivered()
         self.select(BUTTON, her_source='gcs')                                  # the chat route hands the source through
         self.assertEqual(self.rows()[-2]['held_reason'], {'field': 'device_event_only', 'self': 'device_event_only'})
+        first = self.rows()[0]                                                 # the fourth: her reply never came inside the window
+        self.assertEqual(first['realized'], {'field': 'HELD', 'gloria': 'HELD', 'self': 'HELD'})
+        self.assertEqual(first['held_reason'], {'field': 'device_event_only', 'gloria': 'her_reply_window_expired', 'self': 'device_event_only'})
+        self.assertEqual(first['skipped_observations']['n'], 4)
         E.resolve_previous(HER)                                                # her later words do not reopen what was held
         self.assertEqual(self.judge_calls, []); self.assertEqual(len(self.select_calls), 1)
         self.assertEqual([r['realized']['field'] for r in self.rows()], ['HELD'] * 4 + [None])
+        self.assertEqual(PV._axis_history()['gloria']['n'], 0)                 # an expiry is no verdict on her
+
+    def test_her_reply_after_a_device_event_settles_the_waiting_axis_once(self):
+        self.delivered(gloria=copy.deepcopy(GLORIA))
+        E.resolve_previous(BUTTON, source='gcs'); E.resolve_previous(''); E.resolve_previous(BUTTON)
+        self.assertEqual(self.rows()[-1]['skipped_observations']['n'], 2); self.assertEqual(self.judge_calls, [])
+        self.verdict = 'PARTIAL'; E.resolve_previous(HER, source='chat')
+        row = self.rows()[-1]
+        self.assertEqual(row['realized'], {'field': 'HELD', 'gloria': 'PARTIAL', 'self': 'HELD'})
+        self.assertEqual(row['held_reason'], {'field': 'device_event_only', 'self': 'device_event_only'})   # what was held stays held, with its reason
+        self.assertEqual(len(self.judge_calls), 1)                             # only the axis that was waiting reached the judge
+        seen = self.judge_calls[0]['messages'][1]['content']
+        self.assertIn('Which alternative would you choose?', seen); self.assertNotIn('pressed the button', seen)
+        self.assertEqual((row['skipped_observations']['n'], row['response_source']), (2, 'chat'))
+        E.resolve_previous(HER); E.resolve_previous('GLORIA (now): And one more thing.'); E.resolve_previous(BUTTON, source='gcs')
+        self.assertEqual(len(self.judge_calls), 1); self.assertEqual(self.rows()[-1], row)   # settled once: nothing grades it again
+        self.assertEqual(sys.modules['outcome_join'].record.call_count, 1)
+        history = PV._axis_history()['gloria']
+        self.assertEqual((history['n'], history['PARTIAL']), (1, 1))
+
+    def test_one_reply_of_hers_settles_an_earlier_waiting_move_and_the_latest(self):
+        self.delivered(gloria=copy.deepcopy(GLORIA))
+        E.resolve_previous(BUTTON, source='gcs')
+        self.delivered(gloria=copy.deepcopy(GLORIA))                           # my next move, before she has spoken
+        self.verdicts = ['NO', 'YES', 'YES', 'YES']; E.resolve_previous(HER)
+        early, late = self.rows()
+        self.assertEqual(early['realized'], {'field': 'HELD', 'gloria': 'NO', 'self': 'HELD'})    # the earlier move first, its open axis only
+        self.assertEqual(late['realized'], {'field': 'YES', 'gloria': 'YES', 'self': 'YES'})
+        self.assertEqual(len(self.judge_calls), 4)
+        self.assertNotIn('skipped_observations', late)
+        self.verdict = 'NO'; E.resolve_previous(HER); E.resolve_previous('GLORIA (now): And one more thing.')
+        self.assertEqual(len(self.judge_calls), 4); self.assertEqual(self.rows(), [early, late])   # each row once
+        self.assertEqual(sys.modules['outcome_join'].record.call_count, 2)
+        history = PV._axis_history()['gloria']
+        self.assertEqual((history['n'], history['YES'], history['NO']), (2, 1, 1))
+
+    def test_waiting_axis_expires_held_after_a_day_with_no_judge(self):
+        def a_day_on(hours):
+            rows = self.rows(); rows[-1]['skipped_observations']['first'] -= hours * 3600 + 60
+            Path(E.LEDGER).write_text(json.dumps(rows))
+        self.delivered(gloria=copy.deepcopy(GLORIA)); E.resolve_previous(BUTTON, source='gcs'); a_day_on(E.DEVICE_WAIT_HOURS)
+        self.verdict = 'YES'; E.resolve_previous(HER)                          # her words, a day late: not this move's next reply
+        row = self.rows()[-1]
+        self.assertEqual(row['realized'], {'field': 'HELD', 'gloria': 'HELD', 'self': 'HELD'})
+        self.assertEqual(row['held_reason'], {'field': 'device_event_only', 'gloria': 'her_reply_window_expired', 'self': 'device_event_only'})
+        self.assertEqual(row['skipped_observations']['n'], 1); self.assertEqual(self.judge_calls, [])
+        E.resolve_previous(HER); self.assertEqual(self.rows()[-1], row); self.assertEqual(self.judge_calls, [])
+        self.assertEqual(PV._axis_history()['gloria']['n'], 0)
+        self.delivered(gloria=copy.deepcopy(GLORIA)); E.resolve_previous(BUTTON, source='gcs'); a_day_on(E.DEVICE_WAIT_HOURS - 1)
+        E.resolve_previous(HER)                                                # inside the day: it is her next reply
+        self.assertEqual(self.rows()[-1]['realized'], {'field': 'HELD', 'gloria': 'YES', 'self': 'HELD'}); self.assertEqual(len(self.judge_calls), 1)
+        self.delivered(gloria=copy.deepcopy(GLORIA)); E.resolve_previous(BUTTON, source='gcs'); a_day_on(E.DEVICE_WAIT_HOURS)
+        E.resolve_previous(BUTTON, source='gcs')                               # a second event, a day late: the day ends it, not the count
+        row = self.rows()[-1]
+        self.assertEqual((row['realized']['gloria'], row['held_reason']['gloria'], row['skipped_observations']['n']), ('HELD', 'her_reply_window_expired', 1))
+        self.assertEqual(len(self.judge_calls), 1)
+        self.assertEqual((E.DEVICE_SKIPS_MAX, E.DEVICE_WAIT_HOURS, E.WINDOW_EXPIRED), (3, 24, 'her_reply_window_expired'))
+
+    def test_move_that_never_said_where_it_shows_waits_for_her_too(self):
+        mine = {'difference_intended': 'say which I prefer', 'enactment': 'choose one and explain why'}
+        self.delivered(drop=('observation_window', 'evidence_type'), mine=mine)   # a row from before windows were written
+        E.resolve_previous(BUTTON, source='gcs')
+        row = self.rows()[-1]
+        self.assertEqual(row['realized'], {'field': None, 'gloria': 'NOT_DECLARED', 'self': None})
+        self.assertNotIn('held_reason', row); self.assertEqual(row['skipped_observations']['n'], 1)
+        self.verdict = 'YES'; E.resolve_previous(HER); E.resolve_previous(HER)
+        self.assertEqual(self.rows()[-1]['realized'], {'field': 'YES', 'gloria': 'NOT_DECLARED', 'self': 'YES'})
+        self.assertEqual(len(self.judge_calls), 2)
+        # ... and an older one still, with a single verdict: it waits, and expires as one
+        single = {'intent_id': 'synthetic-single', 'status': 'delivered', 'reply': 'a synthetic reply', 'realized': None,
+                  'target': {'field_state': 'a synthetic field', 'goal': 'a synthetic goal', 'enactment': 'a synthetic move'},
+                  'timestamp': datetime.now().isoformat(), 'delivered_at': datetime.now().isoformat()}
+        Path(E.LEDGER).write_text(json.dumps([single]))
+        for n in range(1, E.DEVICE_SKIPS_MAX + 1):
+            E.resolve_previous(BUTTON, source='gcs')
+            row = self.rows()[-1]
+            self.assertEqual((row['realized'], row['skipped_observations']['n']), (None, n)); self.assertNotIn('held_reason', row)
+        E.resolve_previous(BUTTON, source='gcs')
+        row = self.rows()[-1]
+        self.assertEqual((row['realized'], row['held_reason']), ('HELD', {'single': 'her_reply_window_expired'}))
+        E.resolve_previous(HER); self.assertEqual(len(self.judge_calls), 2)
 
     def test_empty_follow_up_leaves_the_move_waiting(self):
         self.delivered()
@@ -379,7 +505,10 @@ class IntentFieldsFix(unittest.TestCase):
     def test_run_of_held_rows_moves_no_landing_rate(self):
         for _ in range(6):
             self.delivered(gloria=copy.deepcopy(GLORIA)); E.resolve_previous(BUTTON, source='gcs')
-        self.assertEqual([r['realized']['gloria'] for r in self.rows()], ['HELD'] * 6)
+        # (10 November, round three) her axis waits through three device events and expires HELD on the fourth:
+        # the first three moves have expired, the last three still wait. Neither is a verdict.
+        self.assertEqual([r['realized']['gloria'] for r in self.rows()], ['HELD'] * 3 + [None] * 3)
+        self.assertEqual([r['skipped_observations']['n'] for r in self.rows()], [4, 4, 4, 3, 2, 1])
         self.assertEqual(PV._axis_history()['gloria']['n'], 0); self.assertIsNone(PV._receptivity(PV._axis_history()))
         self.assertEqual(PV.declare()['weights'], MIDDLING)                   # six HELDs are not six misses
         self.ledger([(2, 'YES'), (2, 'NO')] * 3 + [(1, 'HELD'), (1, 'NOT_DECLARED'), (1, None)] * 30)
@@ -553,7 +682,7 @@ class IntentFieldsFix(unittest.TestCase):
         E.resolve_previous('GLORIA: Earlier topic.\nVINTOS: Earlier answer.\nGLORIA (now): [Gloria just spun Vintos around]')
         row = self.rows()[-1]
         self.assertEqual(self.judge_calls, [])
-        self.assertNotIn('NO', row['realized'].values()); self.assertNotIn(None, row['realized'].values())
+        self.assertEqual(row['realized'], {'field': 'HELD', 'gloria': None, 'self': 'HELD'})   # (round three) her axis waits for her words
         self.assertEqual(set(row['held_reason'].values()), {'device_event_only'})
         self.assertEqual(E._her_follow_up('GLORIA (now): [Gloria just spun Vintos around] Do that again.'),
                          ('GLORIA (now): Do that again.', ''))
@@ -566,12 +695,18 @@ class IntentFieldsFix(unittest.TestCase):
             path.write_text(json.dumps(bad)); Path(E.LEDGER).write_text('[]')
             self.assertEqual(DD.primary_for_turn()['id'], A, bad)
             for _ in range(5): self.turn(resolve=False)
-            self.assertEqual([p for p, _ in self.shown()], [A, A, A, B, A], bad)
+            self.assertEqual([p for p, _ in self.shown()], [A, A, A, B, B], bad)   # (round three) the rest is three turns long
             mended = json.loads(path.read_text())
-            self.assertIsInstance(mended['resting'], dict); self.assertEqual((mended['id'], mended['run']), (A, 1))
+            self.assertIsInstance(mended['resting'], dict); self.assertEqual((mended['id'], mended['run']), (B, 2))
+            self.assertEqual(mended['rest_turns'], {A: 2})
         path.write_text('{not json'); Path(E.LEDGER).write_text('[]')
         for _ in range(4): self.turn(resolve=False)
         self.assertEqual([p for p, _ in self.shown()], [A, A, A, B])
+        for bad in ('x', [1], {A: 'soon'}, {A: -5}, {B: 2}, None):             # a wrong-shaped count neither ends a rest early nor lengthens it
+            path.write_text(json.dumps({'id': A, 'run': 3, 'resting': {A: time.time()}, 'rest_turns': bad})); Path(E.LEDGER).write_text('[]')
+            self.assertEqual(DD.primary_for_turn()['id'], B, bad)
+            for _ in range(4): self.turn(resolve=False)
+            self.assertEqual([p for p, _ in self.shown()], [B, B, B, A], bad)
 
     def test_two_turns_at_once_do_not_trip_over_one_temporary_file(self):
         faults = []
@@ -636,8 +771,9 @@ class IntentFieldsFix(unittest.TestCase):
             self.assertEqual(len([l for l in row['lineage'] if 'relieved' in l]), relieved)
             self.assertFalse(any('reopened_by_her' in l for l in row['lineage']))
             self.assertFalse(DD.primary_eligible(A, row, {}))
-        self.assertIn(TEXT_A, DD.pressure_block())                             # still shown among what keeps failing
-        self.select(resolve=False); self.assertIn(TEXT_A, self.prompt())       # ... to the selector too
+        # (10 November, round three) a closed row is not an instruction: it is out of what keeps failing as well
+        self.assertNotIn(TEXT_A, DD.pressure_block())
+        self.select(resolve=False); self.assertNotIn(TEXT_A, self.prompt())    # ... for the selector too
         self.assertNotEqual((DD.primary_for_turn() or {}).get('id'), A)
         self.assertNotEqual((DD.primary_for_turn({'id': A}) or {}).get('id'), A)
         self.assertTrue(all(p != A for p, _ in self.shown()))
@@ -701,8 +837,12 @@ class IntentFieldsFix(unittest.TestCase):
         self.low_receptivity()                                                 # self carries 0.6 here: the dominant axis
         mine = dict(TARGET['self'], evidence_type='her_response', observation_window='her_next_reply')
         self.answers = [dict(self.target(gloria=copy.deepcopy(GLORIA)), **{'self': mine})] * 2
-        t = self.turn(resolve=False)                                           # the turn keeps its lead
+        t = self.turn(resolve=False)                                           # the turn goes on, its weights as declared
         self.assertEqual((t['priority'], t['self'], t['gloria']), (LOW, {}, GLORIA))
+        # (10 November, round three) ... and the lead falls to the heaviest axis that is really declared
+        self.assertEqual((t['lead_axis'], t['lead_fallback']), ('field', {'from': 'self', 'to': 'field'}))
+        self.assertIn('My self axis is undeclared this turn; the field leads this move instead.', E.prompt_block(t))
+        self.assertEqual(len(self.select_calls), 2)
         self.assertEqual(t['axis_abstained'], {'self': 'evidence_not_my_move'})
         row = self.rows()[-1]
         self.assertEqual(row['realized'], {'field': None, 'gloria': None, 'self': 'NOT_DECLARED'})
@@ -748,6 +888,181 @@ class IntentFieldsFix(unittest.TestCase):
         before = {p.name: p.read_bytes() for p in self.mem.iterdir() if p.is_file()}
         PV.receptivity_report()
         self.assertEqual({p.name: p.read_bytes() for p in self.mem.iterdir() if p.is_file()}, before)   # the report writes nothing
+
+    # ---- round three, 10 November: the lead, what keeps failing, one lock ---------------------------------
+    def test_emptied_leading_axis_hands_the_lead_to_a_declared_axis_or_to_none(self):
+        self.low_receptivity()                                                 # self carries 0.6: it leads
+        mine = dict(TARGET['self'], evidence_type='her_response', observation_window='her_next_reply')
+        # the field's own criterion is abstained too: her axis is the one that is declared
+        self.answers = [dict(self.target(drop=('observation_window',), gloria=copy.deepcopy(GLORIA)), **{'self': mine})] * 2
+        t = self.select(resolve=False)
+        self.assertEqual((t['lead_axis'], t['lead_fallback']), ('gloria', {'from': 'self', 'to': 'gloria'}))
+        self.assertIn('My self axis is undeclared this turn; my gloria axis leads this move instead.', E.prompt_block(t))
+        self.assertEqual((t['priority'], t['self'], t['gloria']), (LOW, {}, GLORIA))
+        # nothing valid is left: no lead, and no pointer to a goal that is absent
+        self.answers = [dict(self.target(drop=('observation_window',)), **{'self': mine})] * 2
+        t = self.select(resolve=False)
+        self.assertEqual((t['lead_axis'], t['lead_fallback']), (None, {'from': 'self', 'to': None}))
+        self.assertIn('no axis leads this move', E.prompt_block(t))
+        self.assertEqual((t['priority'], t['self'], t['gloria'], t['criterion_abstained']), (LOW, {}, {}, 'window_missing'))
+        self.assertEqual(len(self.select_calls), 4)                            # one re-ask each, never a third call
+        row = self.rows()[-1]
+        self.assertEqual((row['realized']['field'], row['realized']['self']), ('NOT_DECLARED', 'NOT_DECLARED'))
+        self.assertEqual(row['target']['lead_fallback'], {'from': 'self', 'to': None})
+        # a leading axis that is declared leads, and the selector cannot name the lead itself
+        self.answer = self.target(lead_axis='gloria', lead_fallback={'from': 'self', 'to': 'gloria'})
+        t = self.select(resolve=False)
+        self.assertEqual(t['lead_axis'], 'self'); self.assertNotIn('lead_fallback', t)
+        self.assertNotIn('undeclared this turn', E.prompt_block(t))
+
+    def keeps_failing(self):
+        """What keeps failing, as the chat prompt reads it and as the selector is shown it (a preview: nothing moves)."""
+        self.select(persist=False, step_campaign=False)
+        return DD.pressure_block(), self.prompt()
+
+    def test_keeps_failing_block_leaves_out_a_retired_row(self):
+        self.press(**{A: self.prow(TEXT_A, 4.5, retired=True, retired_at=time.time()), B: self.prow(TEXT_B, 1.5)})
+        block, prompt = self.keeps_failing()
+        self.assertNotIn(TEXT_A, block); self.assertNotIn(TEXT_A, prompt)
+        self.assertIn(TEXT_B, block); self.assertIn(block, prompt)             # the row the picker would pick is still an instruction
+        self.press(**{A: self.pressure(A)})
+        self.assertEqual(self.keeps_failing()[0], ''); self.assertNotIn('KEEP FAILING', self.prompt())
+
+    def test_keeps_failing_block_leaves_out_a_graduated_closed_row(self):
+        closed = self.prow(TEXT_A, 2.6, count=6, lineage=[{'graduated': time.time() - 7200, 'at_weight': 5.0}])
+        self.press(**{A: closed, B: self.prow(TEXT_B, 1.2)})
+        block, prompt = self.keeps_failing()
+        self.assertNotIn(TEXT_A, block); self.assertNotIn(TEXT_A, prompt)
+        self.assertIn(TEXT_B, block); self.assertIn(block, prompt)
+        self.assertEqual(DD.her_words_reopen('So what is the plan for the weekend?'), [A])
+        block, prompt = self.keeps_failing()                                   # she raised it: open, and an instruction again
+        self.assertIn(TEXT_A, block); self.assertIn(block, prompt)
+
+    def test_keeps_failing_block_leaves_out_a_resting_row(self):
+        self.press(**{A: self.prow(TEXT_A, 4.0), B: self.prow(TEXT_B, 2.0)})
+        self.assertIn(TEXT_A, self.keeps_failing()[0])
+        for _ in range(3): self.turn(resolve=False)                            # A has led three turns: it rests
+        block, prompt = self.keeps_failing()
+        self.assertNotIn(TEXT_A, block); self.assertNotIn(TEXT_A, prompt)
+        self.assertIn(TEXT_B, block); self.assertIn(block, prompt)
+        for _ in range(3): self.turn(resolve=False)                            # B has led three: A is back, B rests
+        block, prompt = self.keeps_failing()
+        self.assertIn(TEXT_A, block); self.assertNotIn(TEXT_B, block); self.assertNotIn(TEXT_B, prompt)
+        # the block and the picker are one rule: whatever stands in the block could be picked, and nothing else
+        db = json.loads(Path(DD.PRESS).read_text())
+        self.assertEqual([k for k, r in db.items() if r['text'] in block], [k for k, r in db.items() if DD.primary_eligible(k, r, DD._rotation())])
+
+    def two_writers(self, mod, reader, write, locked):
+        """Two processes, one whole write each. This one has read the state and not yet written it back when the
+        other is let in. With no lock the other reads the same old value and finishes inside that gap; with the
+        lock it can only wait there. The order is set by pipes and by waiting on the other process, not a clock."""
+        go_r, go_w = os.pipe(); at_r, at_w = os.pipe(); me = os.getpid(); real = getattr(mod, reader); fired = []
+        def read_then_let_the_other_in(*a, **k):
+            out = real(*a, **k)
+            if os.getpid() == me and not fired:
+                fired.append(True); os.write(go_w, b'1'); os.read(at_r, 1)     # the other is at its own write now
+                if locked:
+                    for _ in range(10): time.sleep(0.05)                       # ... with time to reach the lock; it cannot pass it
+                else:
+                    os.waitpid(other, 0)                                       # ... and nothing holds it back
+            return out
+        with contextlib.ExitStack() as stack:
+            if not locked: stack.enter_context(patch.object(mod, '_turn_state', lambda path: contextlib.nullcontext()))
+            other = os.fork()                                                  # before any lock is taken: it inherits none
+            if other == 0:
+                try:
+                    os.read(go_r, 1); os.write(at_w, b'1'); write()
+                finally:
+                    os._exit(0)
+            with patch.object(mod, reader, read_then_let_the_other_in):
+                write()
+            if locked: os.waitpid(other, 0)
+        for fd in (go_r, go_w, at_r, at_w): os.close(fd)
+        self.assertEqual(fired, [True])
+
+    @unittest.skipUnless(hasattr(os, 'fork'), 'two real processes are needed')
+    def test_two_processes_lose_no_opportunity_count_under_the_lock(self):
+        write = lambda: PV.note_selection(False, opportunity=True)
+        self.two_writers(PV, '_jload', write, locked=False)
+        self.assertEqual(PV.opportunity_report()['attempts'], 1)               # the control: with no lock one of the two is lost
+        os.unlink(PV.STATE)
+        self.two_writers(PV, '_jload', write, locked=True)
+        report = PV.opportunity_report()
+        self.assertEqual((report['attempts'], report['abstained']), (2, 2))
+        self.assertEqual([f.name for f in self.mem.iterdir() if '.tmp' in f.name], [])
+
+    @unittest.skipUnless(hasattr(os, 'fork'), 'two real processes are needed')
+    def test_two_processes_lose_no_primary_run_under_the_lock(self):
+        self.press(**{A: self.prow(TEXT_A, 4.0)})
+        state = lambda: json.loads(Path(DD._rotation_path()).read_text())
+        self.two_writers(DD, '_rotation', lambda: DD.primary_shown(A), locked=False)
+        self.assertEqual(state()['run'], 1)                                    # the control: two showings, one counted
+        os.unlink(DD._rotation_path())
+        self.two_writers(DD, '_rotation', lambda: DD.primary_shown(A), locked=True)
+        self.assertEqual(state()['run'], 2)
+        self.two_writers(DD, '_rotation', lambda: DD.primary_shown(None), locked=True)   # a rest is served the same way: both turns count
+        self.assertEqual(state()['run'], 0); self.assertEqual(state()['rest_turns'], {})
+        os.unlink(DD._rotation_path()); DD.primary_shown(A); DD.primary_shown(A); DD.primary_shown(A)
+        self.assertEqual(state()['rest_turns'], {A: 0})
+        self.two_writers(DD, '_rotation', lambda: DD.primary_shown(None), locked=True)
+        self.assertEqual(state()['rest_turns'], {A: 2})
+
+    def test_a_missing_lock_is_written_through_aloud_and_a_failing_lock_stops_the_write(self):
+        """Review, 10 November. store_guard ships beside these scripts; only an older one still loaded can lack
+        the lock. Then the write goes through unlocked, counted and said once on stderr. A lock that is there
+        and cannot be taken stops the write."""
+        self.press(**{A: self.prow(TEXT_A, 4.0)})
+        older = types.SimpleNamespace(**{k: v for k, v in vars(store_guard).items() if k != 'turn_state' and not k.startswith('__')})
+        cases = ((DD, lambda: DD.primary_shown(A), lambda: json.loads(Path(DD._rotation_path()).read_text())['run']),
+                 (PV, lambda: PV.note_selection(False, opportunity=True), lambda: PV.opportunity_report()['attempts']))
+        for mod, write, seen in cases:
+            count = {'n': 0}; err = io.StringIO()
+            with patch.dict(sys.modules, {'store_guard': older}), patch.object(mod, '_UNLOCKED', count), contextlib.redirect_stderr(err):
+                write(); write()
+            self.assertEqual(seen(), 2, mod.__name__)                          # both writes happened
+            self.assertEqual(count['n'], 2, mod.__name__)                      # ... each counted
+            self.assertEqual(err.getvalue().count('writing UNLOCKED'), 1, mod.__name__)   # ... and said once
+            self.assertIn(mod.__name__, err.getvalue())
+        @contextlib.contextmanager
+        def broken(path):
+            raise OSError('fixture: the lock cannot be taken')
+            yield
+        for mod, write, seen in cases:
+            count = {'n': 0}
+            with patch.object(store_guard, 'turn_state', broken), patch.object(mod, '_UNLOCKED', count):
+                with self.assertRaises(OSError): write()
+            self.assertEqual(seen(), 2, mod.__name__)                          # nothing was written
+            self.assertEqual(count['n'], 0, mod.__name__)                      # and it is not the unlocked path
+
+    def test_every_writer_of_the_turn_state_takes_the_one_lock(self):
+        self.press(**{A: self.prow(TEXT_A, 4.0), B: self.prow(TEXT_B, 2.0),
+                      'cccc0003': self.prow(TEXT_A + ', again', 2.6, count=6, lineage=[{'graduated': time.time() - 7200, 'at_weight': 5.0}])})
+        marker = self.mem / '.intent-required-consideration.json'
+        one = str(self.mem / 'intent-turn-state'); asked = []; taken = []
+        real_lock, real_transaction = store_guard.turn_state, store_guard.transaction
+        def turn_state(path): asked.append(os.path.basename(path)); return real_lock(path)
+        def transaction(path): taken.append(path); return real_transaction(path)
+        def miss_on_an_addressed_row():
+            self.answer = self.target(addresses=B); self.turn(resolve=False)
+            del asked[:], taken[:]
+            self.verdict = 'NO'; E.resolve_previous(HER)
+            self.assertTrue(marker.exists())
+        writers = [('priority-vector-state.json', lambda: PV.note_selection(False, opportunity=True)),
+                   ('priority-vector-state.json', PV.declare),
+                   ('intent-pressure.json', lambda: DD.primary_shown(A)),
+                   ('intent-pressure.json', lambda: DD.bump(TEXT_B, 1.0, kind='field', addresses=B)),
+                   ('intent-pressure.json', lambda: DD.relieve(TEXT_B, addresses=B, kind='field')),
+                   ('intent-pressure.json', lambda: DD.override(TEXT_B, 'a synthetic reason', addresses=B, kind='field')),
+                   ('intent-pressure.json', lambda: DD.her_words_reopen('So what is the plan for the weekend?')),
+                   ('.intent-required-consideration.json', miss_on_an_addressed_row),                       # the marker, written
+                   ('.intent-required-consideration.json', lambda: self.select(persist=False, step_campaign=False)),   # ... and read
+                   ('intent-pressure.json', lambda: DD.retire(A))]
+        with patch.object(store_guard, 'turn_state', turn_state), patch.object(store_guard, 'transaction', transaction):
+            for n, (store, write) in enumerate(writers):
+                del asked[:], taken[:]; write()
+                self.assertIn(store, asked, n); self.assertIn(one, taken, n)
+        self.assertEqual({p for p in taken if 'turn-state' in p}, {one})
+        self.assertEqual([p.name for p in self.mem.glob('*turn-state*')], ['intent-turn-state.lock'])
 
 
 if __name__ == '__main__':
