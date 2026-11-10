@@ -16,6 +16,12 @@ import uuid
 RESULT = re.compile(r'^\s*WANT RESULT (WA-[0-9a-f]{24})\s*$', re.M)
 BUY = re.compile(r'\b(?:buy|purchase|subscribe|subscription|paid account)\b', re.I)
 SCHEMA = 'want-agent-result-v1'
+# The rolling window (Gloria, 10 November: "he should work on the newest wants and promises. That's supposed to be on a
+# rolling window"). Wants are taken newest first; a bound want from more than WINDOW_DAYS before the newest one that was
+# never handed over ages out - marked aged_out on the want, counted and said, never dropped. One in work keeps going.
+# Promises he owes become wants ADOPT_OPEN at a time, newest first: as one is finished, the next comes in.
+WINDOW_DAYS = 7
+ADOPT_OPEN = 3
 
 _PROCESS_ARTIFACT_CLOCK = uuid.uuid4().hex
 
@@ -139,6 +145,8 @@ def request(want, reason='', *, ws=None):
             explicit = {r.get('id') for r in row.get('source_refs', []) if r.get('kind') == 'commitment'}
             rec['commitment_ids'] = [c['id'] for c in commitments if c.get('id') and
                 (c['id'] in explicit or any(str(c.get(k, '')).strip() == goal.strip() for k in ('what', 'quote')))]
+            promised = [r.get('id') for r in row.get('source_refs', []) if r.get('kind') == 'promise' and r.get('id')]
+            if promised: rec['promise_ids'] = promised     # his journal's promise, kept when this is finished
             row['agent_work'] = rec
             if specific(row) and (row.get('journal_seeded') or row.get('source') == 'idle-journal'):
                 row['timer_bypass'] = True
@@ -282,8 +290,13 @@ def intake(state, post, save_state, now, *, ws=None, identity=None, prepare=None
     import room_work
     ws = Path(ws or workspace()); lines = []
     wants = read(ws / 'memory/current-wants.json', [])
-    for w in wants:
+    aged = age_out(wants, ws=ws)
+    if aged:
+        lines.append('want window: %d aged out (bound, never handed over, older than %d days before the newest)' % (aged, WINDOW_DAYS))
+    for w in sorted(wants, key=lambda w: _when(w) or 0, reverse=True):     # newest first
         if not specific(w):
+            continue
+        if w.get('aged_out') and not w.get('agent_work'):
             continue
         if w.get('fulfilled') or w.get('dismissed') or w.get('gloria_routed') or w.get('board') == 'awaiting_gloria':
             continue
@@ -346,6 +359,97 @@ def intake(state, post, save_state, now, *, ws=None, identity=None, prepare=None
         save_state(state)
         lines.append('specific want handed to its agent with exact result binding'); break
     return lines
+
+
+def _when(w):
+    from datetime import datetime
+    try:
+        return datetime.fromisoformat(str(w.get('timestamp') or '')[:19]).timestamp()
+    except (ValueError, AttributeError):
+        return None
+
+
+def age_out(wants, *, ws=None):
+    """Mark the bound wants that left the window unworked; how many now. The window ends WINDOW_DAYS before the newest
+    bound want, so nothing ages while nothing new comes."""
+    from store_guard import locked_update
+    bound = [(w, _when(w)) for w in wants if isinstance(w, dict) and not w.get('fulfilled') and not w.get('dismissed') and specific(w)]
+    times = [t for _, t in bound if t is not None]
+    if not times:
+        return 0
+    edge = max(times) - WINDOW_DAYS * 86400
+    late = {w['id'] for w, t in bound if t is not None and t < edge and not w.get('agent_work') and not w.get('aged_out')}
+    if not late:
+        return 0
+    marked = []; mark = {'at': time.time(), 'window_days': WINDOW_DAYS}
+    def mutate(rows):
+        for row in rows:
+            if row.get('id') in late and not row.get('agent_work') and not row.get('aged_out'):
+                row['aged_out'] = dict(mark); marked.append(row['id'])
+        return rows if marked else None
+    locked_update(str(Path(ws or workspace()) / 'memory/current-wants.json'), mutate, default=[], reader='want_agent.age_out')
+    for w in wants:
+        if w.get('id') in marked: w['aged_out'] = dict(mark)
+    return len(marked)
+
+
+def adopt_promises(*, ws=None, now=None):
+    """The newest promises he owes - in his email replies and his journal - that are literal work an agent can do
+    become source-bound wants, once each, ADOPT_OPEN at a time (10 November: none ever had; about a hundred email
+    promises were owed and not one reached this lane). The want keeps the promise's id, so finishing it keeps the
+    promise. Log lines."""
+    from datetime import datetime
+    from journal_wants import operational, source_receipt
+    from store_guard import locked_update
+    ws = Path(ws or workspace()); found = []
+    try:
+        import email_commitments
+        for r in email_commitments.open_rows():            # owed, newest first, inside its window
+            if r.get('state') == 'open' and r.get('id') and r.get('letter_id') and operational(r.get('what', '')):
+                found.append(('commitment', r['id'], 'email', 'email', str(r['letter_id']), r['what'], r.get('at'), r.get('agent') or ''))
+    except Exception:
+        pass
+    try:
+        import promise_keeper
+        for i in reversed(promise_keeper.load().get('items', [])):
+            if i.get('state') == 'open' and not i.get('thread') and not i.get('want_id') and operational(i.get('what', '')):
+                found.append(('promise', i['id'], 'idle-journal', 'journal', 'promise:' + i['id'], i['what'], i.get('opened'), ''))
+    except Exception:
+        pass
+    if not found:
+        return []
+    taken = set()
+    for w in read(ws / 'memory/fulfilled-wants.json', []):
+        for ref in (w.get('source_refs') or []) if isinstance(w, dict) else []:
+            if isinstance(ref, dict) and ref.get('kind') in ('commitment', 'promise'): taken.add(ref.get('id'))
+    made = []
+    def mutate(rows):
+        open_now = 0
+        for w in rows:
+            for ref in (w.get('source_refs') or []) if isinstance(w, dict) else []:
+                if isinstance(ref, dict) and ref.get('kind') in ('commitment', 'promise'): taken.add(ref.get('id'))
+            a = (w.get('agent_work') or {}) if isinstance(w, dict) else {}
+            if (isinstance(w, dict) and w.get('adopted_from') and not w.get('fulfilled') and not w.get('dismissed')
+                    and not w.get('aged_out') and a.get('status') not in ('completed', 'dropped')):
+                open_now += 1
+        for kind, pid, source, rkind, sid, text, at, agent in found:
+            if pid in taken or open_now + len(made) >= ADOPT_OPEN: continue
+            row = dict(id=('ec-' if kind == 'commitment' else 'pr-') + pid.split('-', 1)[-1], want=text, source=source,
+                       urgency='normal', intensity=3, timestamp=datetime.fromtimestamp(now or time.time()).isoformat(timespec='seconds'),
+                       promised_at=str(at or '')[:19], fulfilled=False, outreach_count=0, adopted_from=pid, timer_bypass=True,
+                       reasoning=('promised in my reply to %s' % (agent or 'an agent') if kind == 'commitment' else 'promised in my journal'))
+            row.update(source_receipt(rkind, sid, text))
+            row['source_refs'].append({'kind': kind, 'id': pid})
+            rows.append(row); made.append(row); taken.add(pid)
+        return rows if made else None
+    locked_update(str(ws / 'memory/current-wants.json'), mutate, default=[], reader='want_agent.adopt')
+    for row in made:
+        if row['adopted_from'].startswith('PR-'):
+            try:
+                import promise_keeper; promise_keeper.adopted(row['adopted_from'], row['id'])
+            except Exception:
+                pass
+    return ['promise %s became a want for the work lane' % row['adopted_from'] for row in made]
 
 
 def threads(ws=None):
@@ -504,12 +608,18 @@ def finish(state, publish, notify, complete, save_state, now, *, ws=None, review
 
 def close_sources(want, summary, url, ws):
     from store_guard import locked_update
+    promised = (want.get('agent_work') or {}).get('promise_ids') or []
+    if promised:
+        try:
+            import promise_keeper; promise_keeper.close_ids(promised, summary + ((' ' + url) if url else ''))
+        except Exception:
+            pass
     ids = set((want.get('agent_work') or {}).get('commitment_ids', []))
     if not ids: return
     def mutate(rows):
         changed = False
         for row in rows:
-            if row.get('id') in ids and row.get('state') in ('open', 'in work'):
+            if row.get('id') in ids and row.get('state') in ('open', 'in work', 'aged out'):
                 row.update(state='done', closed_said=summary[:300], result_url=url,
                            fulfilled_want_id=want['id'], closed_at=time.strftime('%Y-%m-%dT%H:%M:%S'))
                 changed = True
