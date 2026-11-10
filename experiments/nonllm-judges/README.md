@@ -1049,3 +1049,7 @@ threshold, model, feed or reference is changed by this reader.
 The proposed media-taste facet and prospective Landings text binding are described
 in [MEDIA-TASTE.md](MEDIA-TASTE.md). The pure synthetic prototype is unwired; raw
 media vectors without exact revision and qualified encoder provenance abstain.
+
+The approved, unwired [taste-profile comparison](TASTE-COMPARISON.md) reports
+literal phrase overlap against frozen ratings. Its counts and explicit proxy
+denominator do not measure semantic preference agreement or feed any judge.
