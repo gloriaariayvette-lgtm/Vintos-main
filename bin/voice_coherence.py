@@ -97,7 +97,7 @@ def get_context():
     except: pass
     return "\n\n".join(parts)
 
-def check(reply_text):
+def check(reply_text, *, reply_binding=None):
     context = get_context()
     # Truth Lock — if a recent moment is locked, reduce self-scrutiny pressure
     try:
@@ -165,6 +165,11 @@ NOTE: <one sentence about what felt off, or "none" if score 5>"""
     if score <= THRESHOLD and note and note.lower() != "none":
         # Log misalignment
         entry = f"\n## {datetime.now().strftime('%Y-%m-%d %H:%M')} — Score {score}\n{note}\nReply excerpt: {reply_text[:150]}\n"
+        try:
+            from witness_receipts import judge_reply_record
+            _bound = judge_reply_record(reply_binding, reply_text[:500], datetime.now().astimezone().isoformat())
+            if _bound: entry += '<!-- judge-reply-binding: ' + json.dumps(_bound, sort_keys=True) + ' -->\n'
+        except Exception: pass
         with open(COHERENCE_LOG, "a") as f:
             f.write(entry)
         log(f"Misalignment logged: {note[:80]}")
@@ -180,9 +185,13 @@ NOTE: <one sentence about what felt off, or "none" if score 5>"""
 if __name__ == "__main__":
     if len(sys.argv) >= 3 and sys.argv[1] == "check":
         reply = sys.argv[2]
-        check(reply)
+        try: _binding = json.loads(os.environ.get('VINTOS_JUDGE_REPLY_BINDING', '{}'))
+        except Exception: _binding = None
+        check(reply, reply_binding=_binding)
     elif len(sys.argv) >= 2 and sys.argv[1] == "check":
         reply = sys.stdin.read().strip()
-        check(reply)
+        try: _binding = json.loads(os.environ.get('VINTOS_JUDGE_REPLY_BINDING', '{}'))
+        except Exception: _binding = None
+        check(reply, reply_binding=_binding)
     else:
         log("Usage: voice-coherence.py check <reply_text>")

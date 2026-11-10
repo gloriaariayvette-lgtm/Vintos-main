@@ -17,6 +17,56 @@ RESULT = re.compile(r'^\s*WANT RESULT (WA-[0-9a-f]{24})\s*$', re.M)
 BUY = re.compile(r'\b(?:buy|purchase|subscribe|subscription|paid account)\b', re.I)
 SCHEMA = 'want-agent-result-v1'
 
+_PROCESS_ARTIFACT_CLOCK = uuid.uuid4().hex
+
+
+def _artifact_clock_domain():
+    try:
+        boot = Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+        if re.fullmatch(r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}', boot):
+            return 'boot:' + boot + ':time-ns:' + str(os.stat('/proc/self/ns/time').st_ino)
+    except OSError:
+        pass
+    return 'process:' + _PROCESS_ARTIFACT_CLOCK + ':' + str(os.getpid())
+
+
+def _artifact_clock_sample():
+    before = time.monotonic()
+    wall = time.time()
+    after = time.monotonic()
+    if (any(type(v) not in (int, float) or not math.isfinite(v) for v in (before, wall, after))
+            or not 0 <= before <= after or wall <= 0):
+        raise ValueError('artifact clock unavailable')
+    return dict(schema='artifact-clock-anchor-v1', domain=_artifact_clock_domain(),
+                wall_at=wall, monotonic_before=before, monotonic_after=after)
+
+
+def _artifact_time(request, mtime):
+    created = request.get('created_at')
+    current = _artifact_clock_sample()
+    if (type(created) not in (int, float) or not math.isfinite(created) or created <= 0
+            or not math.isfinite(mtime) or mtime < created - 2):
+        raise ValueError('deliverable modification time is outside this request window')
+    observed = dict(schema='artifact-time-check-v1', status='wall_window_observed',
+                    modified_at=mtime, request_wall_at=created, checked_wall_at=current['wall_at'])
+    if mtime <= current['wall_at'] + 1:
+        return observed
+    anchor = request.get('artifact_clock')
+    if isinstance(anchor, dict) and anchor.get('schema') == current['schema'] and anchor.get('domain') == current['domain']:
+        before, after = anchor.get('monotonic_before'), anchor.get('monotonic_after')
+        if (anchor.get('wall_at') == created
+                and all(type(v) in (int, float) and math.isfinite(v) for v in (before, after))
+                and 0 <= before <= after <= current['monotonic_before']):
+            lower = created + current['monotonic_before'] - after
+            upper = created + current['monotonic_after'] - before
+            if all(math.isfinite(v) for v in (lower, upper)) and current['wall_at'] < lower and mtime <= upper + 1:
+                observed.update(status='unknown_order', reason='measured_backward_wall_discrepancy',
+                                anchored_upper_at=upper, backward_discrepancy_min=lower-current['wall_at'],
+                                elapsed_seconds_min=current['monotonic_before']-after,
+                                elapsed_seconds_max=current['monotonic_after']-before)
+                return observed
+    raise ValueError('deliverable modification time is outside this request window')
+
 
 def workspace():
     return Path(os.environ.get('SPARK_WORKSPACE', Path.home() / '.vintos/workspace')).resolve()
@@ -80,8 +130,9 @@ def request(want, reason='', *, ws=None):
             if old.get('goal_sha256') == digest:
                 found.append(old); return None
             rid = 'WA-' + fingerprint(str(row['id']) + '\0' + digest)[:24]
+            clock = _artifact_clock_sample()
             rec = dict(request_id=rid, goal_sha256=digest, goal=goal, status='queued',
-                       reason=str(reason)[:300], agent='muse' if BUY.search(goal) else 'dot', created_at=time.time())
+                       reason=str(reason)[:300], agent='muse' if BUY.search(goal) else 'dot', created_at=clock['wall_at'], artifact_clock=clock)
             # Exact commitment identity only. Related topics or one shared email
             # must never close a different promised experiment.
             commitments = read(ws / 'memory/email-commitments.json', [])
@@ -121,7 +172,7 @@ def directory(rid, ws=None):
     return path
 
 
-def _artifact(ws, relative, want):
+def _artifact(ws, relative, want, *, clock_checks=None):
     if not isinstance(relative, str):
         raise ValueError('relative artifact path required')
     path = ws / relative
@@ -135,13 +186,10 @@ def _artifact(ws, relative, want):
         raise ValueError('request control records are not deliverables')
     if not path.is_file() or not 0 < path.stat().st_size <= 32 * 1024 * 1024:
         raise ValueError('artifact missing, empty or above the delivery budget')
-    created = request.get('created_at')
-    # Filesystem mtimes can lag the request clock. Bound that tolerance;
-    # exact request paths and recorded-byte checks still apply separately.
-    if (isinstance(created, bool) or not isinstance(created, (int, float))
-            or not math.isfinite(created) or created <= 0
-            or not created - 2 <= path.stat().st_mtime <= time.time() + 1):
-        raise ValueError('deliverable modification time is outside this request window')
+    # Keep the filesystem wall comparison and existing precision allowances.
+    # An interval anchor can expose uncertainty, never prove a file's causality.
+    check = _artifact_time(request, path.stat().st_mtime)
+    if clock_checks is not None: clock_checks.append(dict(check, path=relative))
     return path
 
 
@@ -179,7 +227,7 @@ def known_artifact_hashes(ws, want):
     return known
 
 
-def verify(want, ws=None):
+def verify(want, ws=None, *, clock_checks=None):
     """A trusted agent's attestation plus actual hashed files, not a prose 'done'."""
     ws = Path(ws or workspace())
     if not specific(want):
@@ -200,7 +248,7 @@ def verify(want, ws=None):
     paths = []
     known = known_artifact_hashes(ws, want)
     for entry in artifacts:
-        path = _artifact(ws, entry['path'], want)
+        path = _artifact(ws, entry['path'], want, clock_checks=clock_checks)
         if hashlib.sha256(path.read_bytes()).hexdigest() != entry.get('sha256'):
             raise ValueError('artifact changed after the agent reported completion')
         if entry.get('sha256') in known:
@@ -311,10 +359,16 @@ def result_digest(result):
 
 _RESULT_FIELDS = ('result', 'result_sha256', 'result_source', 'result_ts', 'result_error',
                   'stage_result_sha256', 'publishing', 'publication', 'delivery',
-                  'completed_at', 'completion_message')
+                  'completed_at', 'completion_message', 'artifact_clock_checks')
 
 
-def _receive_result(want, result, arrival, ws):
+def _retain_unknown_checks(prior, current):
+    unknown = {c.get('path'): c for c in (prior if isinstance(prior, list) else [])
+               if isinstance(c, dict) and c.get('status') == 'unknown_order'}
+    return [unknown.get(c['path'], c) for c in current]
+
+
+def _receive_result(want, result, arrival, ws, *, clock_checks=None):
     """Replace a result atomically; its previous stage receipts remain historical."""
     from copy import deepcopy
     from store_guard import locked_update
@@ -338,6 +392,8 @@ def _receive_result(want, result, arrival, ws):
                     a.setdefault('result_revisions', []).append(
                         deepcopy({key:a[key] for key in _RESULT_FIELDS if key in a}))
                 for key in _RESULT_FIELDS: a.pop(key, None)
+            if clock_checks is not None:
+                a['artifact_clock_checks'] = _retain_unknown_checks(a.get('artifact_clock_checks'), clock_checks)
             a.update(status='result_ready', result=result, result_sha256=result_digest(result),
                      result_source=arrival.get('who'), result_ts=arrival.get('ts'))
             accepted.append(True); return rows
@@ -361,8 +417,9 @@ def receive(rows, *, ws=None):
                 if r.get('name') == 'Muse' and a.get('agent') != 'muse':
                     continue
                 try:
-                    result, _ = verify(w, ws)
-                    changed += _receive_result(w, result, r, ws)
+                    checks = []
+                    result, _ = verify(w, ws, clock_checks=checks)
+                    changed += _receive_result(w, result, r, ws, clock_checks=checks)
                 except (OSError, ValueError, KeyError, TypeError) as exc:
                     _update(w['id'], m[1], {'result_error': str(exc)[:240]}, ws)
     return changed
@@ -389,7 +446,8 @@ def finish(state, publish, notify, complete, save_state, now, *, ws=None, review
         if a.get('status') != 'result_ready':
             continue
         try:
-            result, paths = verify(w, ws)
+            checks = []
+            result, paths = verify(w, ws, clock_checks=checks)
             if result != a.get('result'):
                 raise ValueError('result manifest changed after its authenticated arrival')
             revision = result_digest(result)
@@ -401,7 +459,8 @@ def finish(state, publish, notify, complete, save_state, now, *, ws=None, review
                 message = review(w, result)
                 if message is None: continue
                 result = dict(result, summary=message)
-            if not _update(w['id'], rid, {'stage_result_sha256': revision}, ws, expected_result=revision):
+            checks = _retain_unknown_checks(a.get('artifact_clock_checks'), checks)
+            if not _update(w['id'], rid, {'stage_result_sha256': revision, 'artifact_clock_checks': checks}, ws, expected_result=revision):
                 continue
             a['stage_result_sha256'] = revision
             publication = a.get('publication')
@@ -530,8 +589,10 @@ def main():
     result = dict(schema=SCHEMA, request_id=args.request_id, goal_sha256=fingerprint(w['want']), status='completed',
                   summary=args.summary[:2000], acceptance=args.acceptance[:4000], artifacts=[])
     for relative in args.artifact:
-        path = _artifact(ws, relative, w)
-        result['artifacts'].append(dict(path=relative, sha256=hashlib.sha256(path.read_bytes()).hexdigest()))
+        checks = []
+        path = _artifact(ws, relative, w, clock_checks=checks)
+        result['artifacts'].append(dict(path=relative, sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
+                                        artifact_time=checks[0]))
     if not 1 <= len(result['artifacts']) <= 8: parser.error('one to eight artifacts required')
     from store_guard import write_json
     write_json(str(root / 'result.json'), result)

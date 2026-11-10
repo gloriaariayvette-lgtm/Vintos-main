@@ -154,7 +154,7 @@ def archive_labels(audits):
         for row in audits:
             if not isinstance(row, dict) or not row.get("id") or row["id"] in seen:
                 continue
-            kept = {k: row[k] for k in ("id", "timestamp", "audited_at", "composite", "arrived", "moved", "left_alive", "explained") if k in row}
+            kept = {k: row[k] for k in ("id", "timestamp", "audited_at", "composite", "arrived", "moved", "left_alive", "explained", "flag", "exempt", "reply_binding") if k in row}
             f.write(json.dumps(kept) + "\n"); seen.add(row["id"])
         f.flush(); os.fsync(f.fileno())
 
@@ -180,7 +180,12 @@ def main():
         said = _when(e.get("timestamp"))
         if said is None or said < datetime.now(timezone.utc) - timedelta(days=WINDOW_DAYS):
             continue
-        pending.append((_id, um, e.get("content", ""), e.get("timestamp", "")))
+        _binding = {}
+        try:
+            from witness_receipts import judge_reply_binding
+            _binding = judge_reply_binding(e.get('turn_id'), e['content'], e['content'][:900])
+        except Exception: pass
+        pending.append((_id, um, e.get("content", ""), e.get("timestamp", ""), _binding))
     added = 0
     # A want of his to analyse less is obeyed here, at the rate rather than at the
     # door: he audits fewer replies per run, never none. Nothing else about the
@@ -194,7 +199,7 @@ def main():
         _per_run = max(1, int(round(MAX_PER_RUN * _ws.factor("analysis"))))
     except Exception:
         pass
-    for _id, um, reply, ts in pending[-_per_run:]:
+    for _id, um, reply, ts, _binding in pending[-_per_run:]:
         s = score(um, reply, ts)
         if not s:
             continue
@@ -214,6 +219,12 @@ def main():
                "ts": __import__("time").time(),
                "audited_at": datetime.now(timezone.utc).isoformat(), **s,
                "flag": (s["composite"] < THRESHOLD) and not _requested}
+        rec.pop("reply_binding", None)
+        try:
+            from witness_receipts import judge_reply_record
+            _bound = judge_reply_record(_binding, reply[:900], rec['audited_at'])
+            if _bound: rec['reply_binding'] = _bound
+        except Exception: pass
         if _requested:
             rec["exempt"] = "requested_work"
         audits.append(rec); added += 1

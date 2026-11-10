@@ -5,6 +5,7 @@ import copy
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
@@ -171,6 +172,18 @@ class Tests(unittest.TestCase):
         self.assertEqual(data['events'][:len(original)],original)
         self.assertIn('export remains',self.calls[0][1]);self.assertNotIn('Synthetic history. '*200,self.calls[0][1])
         self.assertIn(self.want['want'],self.calls[0][1])
+
+    def test_default_context_limit_leaves_room_above_identity_cap(self):
+        # his identity may fill the dot channel's cap by itself; a default no larger than that blocks the first call
+        cap=int(re.search(r'text = "\\n\\n"\.join\(parts\)\[:(\d+)\]',(ROOT/'scripts/dot_channel.py').read_text()).group(1))
+        self.assertLess(cap+len(W.RULES),B.DEFAULTS['context_chars']);self.assertLessEqual(B.DEFAULTS['context_chars'],250000)
+        want=dict(self.want,id='fixture-full-want')
+        want['agent_work']=dict(self.want['agent_work'],request_id='WA-'+'b'*24,thread='fixture-full-thread',work_id='RW-full')
+        work=dict(id='RW-full',want_id=want['id'],want_request_id=want['agent_work']['request_id'])
+        W.load(want,work,self.ws,'I'*cap)
+        W.append(want,work,self.ws,'agent:1','dot','Synthetic history. '*200)
+        W.generate(want,work,self.ws,'opening','fixture','Fixture instruction',self.writer)
+        self.assertEqual(len(self.calls),1);self.assertIn('I'*cap,self.calls[0][0])
 
     def test_block_notice_is_durable_and_failed_delivery_retries(self):
         calls=[]

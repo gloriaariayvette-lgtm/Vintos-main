@@ -105,7 +105,7 @@ def scan_gloria_message(message_text, context_tone="normal"):
     except:
         return None
 
-def scan_vintos_message(reply_text, gloria_text="", context_tone="normal"):
+def scan_vintos_message(reply_text, gloria_text="", context_tone="normal", *, reply_binding=None):
     """Find play in his reply without treating self-criticism as comic proof."""
     if len(reply_text or "") < 5:
         return None
@@ -134,6 +134,12 @@ def scan_vintos_message(reply_text, gloria_text="", context_tone="normal"):
         data = json.loads(result)
         if data.get("signal", 0) < 0.5:
             return None
+        data.pop("reply_binding", None)
+        try:
+            from witness_receipts import judge_reply_record
+            _bound = judge_reply_record(reply_binding, reply_text[:600], datetime.now().astimezone().isoformat())
+            if _bound: data["reply_binding"] = _bound
+        except Exception: pass
         data["source"] = "vintos"
         data.setdefault("material_kind", "self_play" if data.get("type") != "self_contradiction" else "self_mismatch")
         data["perpetrator"] = "vintos"
@@ -170,12 +176,12 @@ def _ferment(moment):
     return moment
 
 
-def scan_turn(gloria_text="", reply_text="", context_tone="normal"):
+def scan_turn(gloria_text="", reply_text="", context_tone="normal", *, reply_binding=None):
     """Live per-turn hook: scan BOTH sides, store, and ferment. Safe to call from any chat surface."""
     out = []
     try:
         for m in (scan_gloria_message(gloria_text, context_tone) if gloria_text else None,
-                  scan_vintos_message(reply_text, gloria_text, context_tone) if reply_text else None):
+                  scan_vintos_message(reply_text, gloria_text, context_tone, reply_binding=reply_binding) if reply_text else None):
             if m:
                 out.append(m)
         if out:

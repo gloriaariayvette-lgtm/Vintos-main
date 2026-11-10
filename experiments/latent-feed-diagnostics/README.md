@@ -29,3 +29,7 @@ On success it reports 50 runs/750 checks. Passing runs do not identify or prove 
 fix for the historical failure. Keep any saved logs outside the public repository.
 The existing suite may emit unclosed-file ResourceWarnings; warnings are not silently
 reclassified as assertion failures. No production code or existing assertion changes.
+
+The current clock-gate inventory and scoped interval changes are documented in
+[CLOCK.md](CLOCK.md). Backward-step regressions are in the ordinary isolated latent
+and capture suites; passing them does not establish every historical flake cause.

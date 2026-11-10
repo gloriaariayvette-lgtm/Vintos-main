@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import os
+import sys
 from pathlib import Path
 from datetime import datetime
 import numpy as np
@@ -146,6 +147,11 @@ def _self_fit_witness(mode, name, *args):
         import witness_self_artifacts
         return getattr(witness_self_artifacts, name)(*args)
     except Exception:
+        if name == 'publish_fit':
+            try:
+                print('{"self_fit_completion_dropped":1}', file=sys.stderr)
+            except Exception:
+                pass
         return None
 
 

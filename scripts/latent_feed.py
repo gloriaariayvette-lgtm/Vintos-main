@@ -7,13 +7,58 @@ snippets at consumption, so removal or changed admission cannot resurrect a quot
 from datetime import datetime, timezone
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
 import time
+import uuid
 
 SCHEMA = 'latent-feed-v1'
 TTL = 7200
+
+
+_PROCESS_CLOCK_DOMAIN = uuid.uuid4().hex
+
+
+def _clock_domain():
+    # Linux monotonic timestamps share a domain across processes in the same boot.
+    # A process-local fallback cannot authorize another process or a later boot.
+    try:
+        boot = Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+        if re.fullmatch(r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}', boot):
+            return 'boot:' + boot + ':time-ns:' + str(os.stat('/proc/self/ns/time').st_ino)
+    except OSError:
+        pass
+    return 'process:' + _PROCESS_CLOCK_DOMAIN + ':' + str(os.getpid())
+
+
+def _freshness_clock(wall):
+    mono = time.monotonic()
+    if type(wall) not in (int,float) or not math.isfinite(wall): raise ValueError('invalid wall bound')
+    if type(mono) not in (int,float) or not math.isfinite(mono) or mono < 0:
+        raise ValueError('invalid monotonic clock')
+    return dict(schema='latent-freshness-clock-v1', domain=_clock_domain(),
+                monotonic_at=mono, generated_at=wall)
+
+
+def _packet_age(packet, now, explicit_now):
+    clock = packet.get('freshness_clock')
+    if clock is None or explicit_now:
+        return now-float(packet['generated_at'])
+    if (not isinstance(clock,dict) or set(clock)!={'schema','domain','monotonic_at','generated_at','cutoff'}
+            or clock['schema']!='latent-freshness-clock-v1' or clock['domain']!=_clock_domain()
+            or clock['generated_at']!=packet['generated_at'] or clock['cutoff']!=packet['cutoff']
+            or type(clock['monotonic_at']) not in (int,float) or not math.isfinite(clock['monotonic_at'])
+            or clock['monotonic_at']<0):
+        raise ValueError('unknown freshness clock domain or binding')
+    mono=time.monotonic()
+    if type(mono) not in (int,float) or not math.isfinite(mono): raise ValueError('invalid monotonic clock')
+    elapsed=mono-clock['monotonic_at']
+    wall_age=now-float(packet['generated_at'])
+    if not math.isfinite(wall_age): raise ValueError('invalid wall age')
+    # A forward wall jump or suspend can expire early, never extend the TTL.
+    return elapsed if elapsed < 0 else max(elapsed,wall_age)
 
 
 def memory_path(memory=None):
@@ -228,7 +273,9 @@ def refresh(enc=None, memory=None, events=None, exs=None, now=None):
     from latent_stream_model import Model,State
     mem=memory_path(memory);path=mem/'jepa-readouts/present-moment.npz'
     if not path.exists():return {'status':'no-stream-checkpoint'}
-    now=float(now if now is not None else time.time())
+    explicit_now = now is not None
+    now=float(now if explicit_now else time.time())
+    freshness_clock = None if explicit_now else _freshness_clock(now)
     with (mem/'latent-feed.lock').open('a') as lock:
         try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
         except BlockingIOError:return {'status':'busy'}
@@ -333,6 +380,8 @@ def refresh(enc=None, memory=None, events=None, exs=None, now=None):
         packet={'schema':SCHEMA,'encoder':model.meta['encoder'],'generated_at':now,'cutoff':state.at.isoformat(),
                 'cursor':state.cursor,'channels':channels,'frame_id':digest([identity,state.cursor,now]),
                 'input_identity':identity,'agreement':None,'channel_errors':channel_errors}
+        if freshness_clock is not None:
+            packet['freshness_clock'] = dict(freshness_clock, cutoff=packet['cutoff'])
         if g:
             packet['agreement']={'shared_anchor_ids':sorted({r['id'] for r in g['anchors']} & {r['id'] for r in stream['anchors']}),
                                   'meaning':'retrieval overlap only; targets differ'}
@@ -349,16 +398,26 @@ def refresh(enc=None, memory=None, events=None, exs=None, now=None):
         return {'status':'updated','frame_id':packet['frame_id'],'events':len(events),'outcomes':len(outcomes)}
 
 
-def evidence(consumer, memory=None, now=None, frame_id=None):
+def evidence(consumer, memory=None, now=None, frame_id=None, diagnostics=False):
     """Return bounded text plus a content-free receipt; failures only omit this addition."""
+    explicit_now = now is not None
     mem=memory_path(memory);now=time.time() if now is None else now
+    def unavailable(reason):
+        return '',{'status':'unavailable','reason':reason} if diagnostics else {}
     try:
         p=load(mem/'latent-feed.json',{}) or {}
-        if p.get('schema')!=SCHEMA or not 0<=now-float(p['generated_at'])<=TTL:return '',{}
-        if frame_id and p['frame_id']!=frame_id:return '',{}
-        if epoch(p['cutoff'])>now:return '',{}
+        if p.get('schema')!=SCHEMA:return unavailable('missing_or_invalid_packet')
+        try: age=_packet_age(p,now,explicit_now)
+        except (ValueError,KeyError,TypeError): return unavailable('freshness_clock_unavailable')
+        if age<0:return unavailable('future_packet')
+        if not age<=TTL:return unavailable('stale_or_invalid_packet')
+        if frame_id and p['frame_id']!=frame_id:return unavailable('frame_mismatch')
+        # A same-domain monotonic receipt proves the packet preceded this read.
+        # Its evidence cutoff must still be no later than the producer's wall bound.
+        cutoff_bound=p['generated_at'] if p.get('freshness_clock') is not None and not explicit_now else now
+        if epoch(p['cutoff'])>cutoff_bound:return unavailable('future_cutoff')
         from jepa_predictor import EMB_MODEL
-        if p.get('encoder')!=EMB_MODEL:return '',{}
+        if p.get('encoder')!=EMB_MODEL:return unavailable('encoder_mismatch')
         channels={};refs=[]
         for name,c in p['channels'].items():
             if name not in ('stream', 'gloria'):continue
@@ -370,8 +429,10 @@ def evidence(consumer, memory=None, now=None, frame_id=None):
             if identity!=c['checkpoint_id']:continue
             channels[name]=c
             refs += c.get('anchors',[])[:2]+c.get('basis_refs',[])
+        if not channels:return unavailable('checkpoint_unavailable_or_changed')
         live={e['id']:e for e in text_events(mem,refs=refs)}
         channels={name:c for name,c in channels.items() if all(r['id'] in live and (name!='gloria' or r.get('gloria_content_hash')==live[r['id']]['ref'].get('gloria_content_hash')) for r in c.get('basis_refs',[]))}
+        if not channels:return unavailable('source_basis_changed_or_missing')
         lines=[];used=[];seen=set()
         for name,c in channels.items():
             for ref in c.get('anchors',[])[:2]:
@@ -389,7 +450,7 @@ def evidence(consumer, memory=None, now=None, frame_id=None):
         g=channels.get('gloria',{})
         if g.get('expected_cosine_error') is not None:
             lines.append('Next-Gloria-turn expected semantic error %.3f; lower is closer, not certainty about intent.'%g['expected_cosine_error'])
-        if not lines:return '',{}
+        if not lines:return unavailable('no_supported_evidence')
         text='\n\nTRAINED CONTEXT (past evidence and next-event estimates; interpretation remains yours):\n'+'\n'.join(lines)
         receipt={'frame_id':p['frame_id'],'consumer':consumer,'included':used,
                  'targets':{k:v.get('target') for k,v in channels.items()}}
@@ -400,7 +461,7 @@ def evidence(consumer, memory=None, now=None, frame_id=None):
         except OSError:pass
         return text,receipt
     except Exception:
-        return '',{}
+        return unavailable('evidence_read_failed')
 
 
 def append_context(original, consumer, memory=None):

@@ -21,6 +21,46 @@ def result(text="synthetic raw reply", actual="observed-fixture"):
 
 
 class Tests(unittest.TestCase):
+    def test_monotonic_lifecycle_retains_raw_backstep_without_witness_promotion(self):
+        c=Capture('synthetic-clock','avatar',100,monotonic=iter([10.,11.,12.,13.,14.]).__next__)
+        inv=prepare_shadow(c,'synthetic',[],{},False,lambda:101)[0]
+        inv.observe(result('synthetic raw'));c.select('synthetic raw',request=inv)
+        c.before_final_guard('synthetic final',98)
+        packet=c.finalize('synthetic final',99)
+        clock=packet['capture_clock']
+        self.assertEqual([x['wall_at'] for x in clock['samples']],[101,101,98,99])
+        self.assertEqual([x['elapsed_seconds'] for x in clock['samples']],[1,2,3,4])
+        self.assertEqual(clock['wall_order'],'unknown')
+        self.assertEqual(packet['witness_receipt']['finalized_at'],99)
+        self.assertEqual(normalize_receipt(packet['witness_receipt'])['status'],'unknown')
+        self.assertEqual(packet['observed_attempts'][0]['served_model'],'observed-fixture')
+        self.assertFalse(packet['reply_node']['complete'])
+        self.assertEqual(packet['reply_node']['at'],99)
+
+    def test_monotonic_finalization_cannot_hide_internal_backstep_when_final_recovers(self):
+        c=Capture('synthetic-clock','avatar',100,monotonic=iter([10.,11.,12.,13.]).__next__)
+        inv=c.request('synthetic',[],{},False,101);inv.observe(result('synthetic raw'))
+        c.select('synthetic raw',request=inv);c.before_final_guard('synthetic final',98)
+        packet=c.finalize('synthetic final',110)
+        self.assertEqual(packet['capture_clock']['wall_order'],'unknown')
+        self.assertEqual(packet['witness_receipt']['status'],'unknown')
+
+    def test_monotonic_lifecycle_bad_clock_and_reselection_still_refuse(self):
+        c=Capture('synthetic-clock','avatar',100,monotonic=iter([10.,11.,10.9]).__next__)
+        c.before_final_guard('synthetic',101)
+        with self.assertRaises(ValueError):c.finalize('synthetic',99)
+        with self.assertRaises(ValueError):c.select('synthetic')
+        for bad in (float('nan'),float('inf'),True,-1):
+            with self.assertRaises(ValueError):Capture('synthetic','avatar',100,monotonic=lambda:bad)
+
+    def test_monotonic_normal_wall_keeps_recorded_identity_and_unknown_delivery(self):
+        c=Capture('synthetic-clock','avatar',100,monotonic=iter([10.,11.,12.]).__next__)
+        inv=c.request('synthetic',[],{},False,101);inv.observe(result('synthetic raw'))
+        c.select('synthetic raw',request=inv);packet=c.finalize('synthetic raw',102)
+        self.assertEqual(packet['witness_receipt']['status'],'recorded')
+        self.assertEqual(packet['witness_receipt']['delivery'],'unknown')
+        self.assertEqual(packet['capture_clock']['wall_order'],'observed')
+
     def test_finalization_boundaries_bind_selected_output_to_exact_return(self):
         c = Capture("turn-1", "fixture-chat", 100)
         invocation = c.request("system", [], {}, False, 101)

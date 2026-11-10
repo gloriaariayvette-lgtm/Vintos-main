@@ -25,7 +25,7 @@ Never worse than before: on any error the existing merged file is LEFT in place 
 overwritten — a stale-but-real last build beats a freshly broken one, and nothing here can
 reintroduce the August gap.
 """
-import os, json
+import os, json, hashlib
 from datetime import datetime
 
 MEM = os.path.expanduser("~/.vintos/workspace/memory")
@@ -43,7 +43,7 @@ CARRY = ("generation_provenance", "provenance", "may_witness", "turn_id",
          "character_influenced", "test_mode", "generated_output_witness_eligible",
          "witness_final_text", "witness_final_sha256", "witness_origin_source", "reply_node", "derived_from", "parents", "ancestors",
          "evidence_standing", "dream_only", "imported", "transplanted", "timestamp_estimated",
-         "forgotten", "deleted")
+         "forgotten", "deleted", "joke_id", "joke_text_sha256", "joke_binding")
 # Where a per-turn time can legitimately live, in order of preference.
 TIME_KEYS = ("timestamp", "ts", "time", "at", "created")
 
@@ -110,8 +110,25 @@ def own_time(e):
     return "", False
 
 
+def _humor_binding(row, text, turn_id):
+    """Carry an existing exact binding; never derive one from text or proximity."""
+    if not isinstance(text,str) or not turn_id or row.get('vintos')!=text: return None
+    sha=hashlib.sha256(text.encode()).hexdigest()
+    key=row.get('joke_id')
+    if not isinstance(key,str) or not key or row.get('joke_text_sha256')!=sha: return None
+    expected=dict(schema='humor-reply-binding-v1',turn_id=turn_id,joke_id=key,
+                  joke_text_sha256=sha,response_sha256=sha,source='exact_full_reply_draft')
+    if row.get('joke_binding')!=expected: return None
+    return {k:row[k] for k in ('joke_id','joke_text_sha256','joke_binding')}
+
+
 def build():
     out = []
+    ledger_rows = load_json(ledger)
+    ledger_by_turn = {}
+    for row in ledger_rows:
+        if isinstance(row,dict) and isinstance(row.get('turn_id'),str) and row['turn_id']:
+            ledger_by_turn.setdefault(row['turn_id'],[]).append(row)
     seen_turns = set()     # turn_ids already taken from the canonical
     seen_content = {}      # content head -> canonical times (a ledger line is the same turn only near one)
 
@@ -133,7 +150,15 @@ def build():
         ts, found = own_time(e)
         if not found:
             continue
-        out.append(entry(e, e.get("role", "user"), str(content), ts, "canonical"))
+        merged_entry=entry(e, e.get("role", "user"), str(content), ts, "canonical")
+        if e.get('role')=='assistant' and isinstance(e.get('turn_id'),str) and e['turn_id'] in ledger_by_turn:
+            bindings=[_humor_binding(row,str(content),e['turn_id']) if row.get('surface')==e.get('surface') else None
+                      for row in ledger_by_turn[e['turn_id']]]
+            if bindings and all(b is not None and b==bindings[0] for b in bindings):
+                fields=bindings[0]
+                if all(k not in merged_entry or merged_entry[k]==v for k,v in fields.items()):
+                    merged_entry.update(fields)
+        out.append(merged_entry)
         _taken(e.get("turn_id"), content, ts=ts)
 
     def _held(text, ts):
@@ -144,7 +169,7 @@ def build():
 
     # 2) the ledger — the deeper history. Skip any turn or line the canonical already holds,
     #    and the historical '--source' / 'voice' placeholder junk.
-    for e in load_json(ledger):
+    for e in ledger_rows:
         if not isinstance(e, dict):
             continue
         tid = str(e.get("turn_id") or "")

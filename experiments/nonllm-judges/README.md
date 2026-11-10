@@ -632,3 +632,420 @@ need not sum to the reply count. Private output retains input/code fingerprints 
 original serving evidence; the importer itself records no served model/fallback
 because it makes no such call. Neither missing evidence nor unjoined attempts are
 negative outcomes. Synthetic validation is not evidence of historical coverage.
+
+The repository-owned producer `../character-reference/encode_cache.py` now writes
+`encoder-cache-metadata-v1` directly, with exact full strings, a copied GGUF hash,
+copy-time freeze, runtime/settings and per-input clocks. Use its freshly generated
+`character-input.json` alongside `cache-metadata.json`; do not attach fresh metadata
+to old vectors. See the character-reference README for private execution and migration.
+The default copy-time policy keeps the freeze-before-reply gate: fresh encoding of
+older replies reports `missing_invalid_or_late_freeze`, without historical backfill.
+
+The explicit `published_artifact` qualifier permits an external pretrained encoder's
+reviewed exact-file revision date as effective freeze. The actual copy timestamp
+remains in its receipt. See the character-reference README for the checked-in pin
+registry schema, review requirements and producer flags. The registry contains the
+external artifact pin supplied by the independent reviewer in note #51; its review
+attribution is retained. New pins require independent review. No network or historical cache relabelling.
+
+Builder accepts per-cache `freeze_source` and `freeze_receipt`, rechecks the pinned
+hash/date/subject-training qualification, then carries coherent receipts as
+`numerical_evidence.encoder_freeze_source` / `encoder_freeze_receipt` alongside
+`encoder_frozen_at`. Runner rechecks them again against its own registry. Explicit
+qualifiers with missing or mismatched receipts are errors. Local-trained artifacts
+cannot use published qualification. Published revision still must precede each act.
+Mixed sources/receipts cannot form the single global encoder. Supplied legacy freeze
+metadata remains labelled `legacy_unknown`, never implicitly published.
+
+All three summaries separate `copy_time`, `published_artifact`, `legacy_unknown`
+and `unknown` under `encoder_freeze_sources`. Builder counts recorded source
+qualifications even for late freezes; runner counts usable global qualification, or
+unknown when absent. The private report retains the receipt, while public counts
+contain no publisher/repository/file/hash/IDs. Pin-file and policy hashes stay private.
+Original lineage, indirect-influence exclusions, mode provenance, unknown serving
+identity/fallback, calibration and facet-anchor rules are unchanged.
+
+## Prospective humor bindings and daily capture coverage
+
+New interaction-ledger rows can carry `joke_id`, `joke_text_sha256` and
+`joke_binding` (`humor-reply-binding-v1`). The ledger calls the bounded
+`joke_fermentation.reply_binding` helper with its exact stored reply, existing
+turn ID and memory directory. It adds metadata only when the complete reply
+matches one unambiguous retained draft. It reads at most 1 MiB / 30 drafts and
+never writes the draft store or copies its text. Missing IDs, conflicting draft
+identities, prefixes, rewrites, callback offers and decorated replies remain
+unbound. This records content identity, **not proof of intention or influence**.
+It does not attest delivery, a positive reaction or clean original-act lineage.
+
+The existing route is practice drafts → app presentation/rating → rated material
+in fermentation → optional prompt callback. The rating/seed paths truncate text,
+and generation can rewrite the offer. There is no guaranteed verbatim delivery
+of every draft. Nothing in this change feeds additional drafts into chat, alters
+ratings, or makes absence of a match a negative judgment. Old ledger rows are
+never backfilled. The merger carries existing bindings to ledger-derived rows;
+for a canonical overlap it requires exact turn ID, surface, full reply and binding
+agreement across all ledger copies. It never uses the old proximity/prefix dedup
+heuristic to create a joke binding. The evidence builder retains these fields and
+rejects conflicting supplied hashes/bindings; historical explicit-ID/full-text
+contracts remain supported without inventing new receipts.
+
+`capture_report.py` reads an explicitly supplied private packet directory and
+prints counts-only JSON to stdout. It does not write files, call a provider,
+load an encoder, discover stores, alter capture configuration or run a service.
+For example, with `SCRATCH` naming the approved private capture root:
+
+```sh
+python3 experiments/nonllm-judges/capture_report.py \
+  --scratch "$SCRATCH" --packets "$SCRATCH/packets" \
+  --cutoff 2026-11-10T00:00:00Z --timezone America/Chicago
+```
+
+It requires owner-private directories/files, rejects symlinks, repository roots,
+`.vintos`/`.openclaw` roots and oversized/ambiguous inputs, and accepts only the sink's
+`capture-<32 hex>.json` files. Other entries are counted as ignored. Limits are
+10,000 directory entries, 1 MiB per capture packet and 64 MiB total packet bytes.
+Dates come from recorded finalization times, never file mtime. Duplicate packets
+count as files but identical copies count once in reply denominators; conflicting
+copies deny admission. Unsupported/malformed packets fail with a fixed error,
+without disclosing their paths, text, keys, IDs or model labels.
+
+Daily fields distinguish packets, unique replies, the selected provider-reported
+served model, complete context/final lineage and strict original-act bindings.
+The three shares use all unique replies that day as denominator. Runtime-attested
+identity can satisfy the existing strict identity gate, but does not inflate the
+**provider-reported** share. Requested/configured identities stay unknown.
+Delivery, provenance, indirect influence and final-byte gates use existing witness
+contracts. A handler-return packet alone does not attest delivery or completeness.
+
+Packet-only output reports `not_assessed_missing_prepared_projection`, unknown
+encoder qualification and zero scored replies. It must not be interpreted as
+measured judge failure or proof that no supplemental evidence exists elsewhere.
+Capture packets do not contain the required frozen vectors, references, mode
+receipts and witnessed positive anchors. Supplying the optional
+`--prepared-input "$SCRATCH/prepared/input.json"` uses an existing
+`build_evidence.py` output; `--landings` may supply the existing separate Landings
+projection. All inputs must be inside the same private root. The report reruns
+only the pure offline numerical evaluation. A projection cannot promote a packet
+that failed admission, change its final text, surface or timestamp, or invent its
+original-act binding. Freeze receipts are revalidated by the existing policy;
+copy_time, published_artifact, legacy_unknown and unknown remain separate.
+
+Primary and 30-second attribution views are separate and overlapping, never added.
+Voice/humor/taste counts are actual scored replies under existing reference and
+abstention rules. Drift counts are replies in assessed daily windows, not counts
+of claimed shifts. Recurrence/grouping have no retained-data adapter here and are
+explicitly **not evaluated**, rather than inferred ready from packet volume.
+Public output contains dates, counts, shares and fixed labels only; no score,
+model name, text, ID, hash, vector, path or notification destination. Supplied
+source claims are not independently authenticated. Review and real private runs
+remain with the reviewer; deployment and capture enablement remain with the owner.
+
+### Per-scope sufficiency planning
+
+`capture_report.py` now includes `sufficiency`, separately for primary and window30
+attribution. All supported mode/surface pairs appear, including empty ones. Humor
+and taste additionally separate item kinds; a joke cannot supply a journal's
+reference. Only exact packet-admitted, feature-qualified acts enter the counts.
+A prepared projection is required to assess references; packet-only availability
+and ETAs remain unknown. Output contains fixed labels, counts, rates and estimated
+days, never private IDs, content, model labels, scores, hashes or features.
+
+The current voice rule needs four distinct prior reference days, with nondegenerate
+leave-one-day-out calibration. Drift uses that same reference and a later target
+day; detecting a sustained shift additionally requires four consecutive observed
+shift days. No ETA can predict that a shift will happen. Humor/taste similarity
+needs exact positive anchors on acts spanning two prior days, and empirical ranking
+needs four. Both the original act and its positive observation must precede the
+target day. Voice reference IDs come from the existing explicit designation or
+existing candidate-day selection, never from treating every captured reply as a
+reference. Recurrence/grouping retain their missing-adapter status and no ETA;
+reviewed topic assignments/explicit grouping thresholds are still necessary.
+
+Rates cover **seven complete local calendar dates**, including zeros, excluding the
+partial current date. The estimator names its analysis timezone (the prepared
+projection's timezone when supplied). Raw capture rate is displayed per surface,
+but forecasts use qualifying reference-day and target-day rates per scope. Positive
+rates additionally require the exact outcome to have arrived in that same window.
+Multiple acts/anchors on one date cannot create additional reference days.
+
+For an unmet count floor, the conditional estimate is
+`ceil(missing_reference_days / observed_reference_days_per_day)` plus
+`ceil(1 / observed_target_days_per_day)` for a target on a later date. This assumes
+future acts retain the same qualified rate, references continue to be designated,
+exact positive joins continue, features are nondegenerate, and the target does not
+itself become part of the reference. No positive rate means an unknown ETA, not
+infinity or an extrapolation from raw traffic. Known degenerate references also
+have no ETA. A zero ETA means the existing evaluator has actually produced a score
+in that scope; count sufficiency alone never asserts readiness or a positive outcome.
+These are conditional planning estimates, not promises of future evidence quality
+or instructions to generate conversations for tests.
+
+### Gloria's short page from aggregate counts
+
+`render_gloria.py` renders [GLORIA.md](GLORIA.md) without loading messages, features,
+weights or judges. The checked-in page is explicitly an **unknown-state template**,
+not a private run or a claim about today's live setup. Regenerate that template with
+`python3 experiments/nonllm-judges/render_gloria.py --template`.
+
+For a private page, save the existing capture report's JSON in the approved 0700
+scratch root as a 0600 file, then run:
+
+```sh
+python3 experiments/nonllm-judges/render_gloria.py \
+  --scratch "$SCRATCH" --counts "$SCRATCH/coverage-counts.json"
+```
+
+The page goes to stdout. If retaining it, use a **new 0600 private file outside the
+repository**. Do not commit real-run pages or replace the public template with one.
+No scoring/encoding, network, subprocess or filesystem writes occur in this CLI.
+Only fixed prose, validated counts and parsed dates reach the page. Arbitrary
+metadata is ignored. Failures use a fixed error without echoing paths or inputs.
+The renderer refuses linked/nonprivate/out-of-root/repository/live-store inputs,
+nonregular files, duplicate JSON keys, nonfinite values and files above 4 MiB.
+
+The capture report now includes `cutoff_at` and `capture_window`: the exact trailing
+24-hour interval `[cutoff - 86400 seconds, cutoff)`, counting retained packet files
+by their recorded finalization, including identical copies as separate packets.
+This is not a sum of calendar-day buckets, an arrival-time measurement, or proof of
+a complete stream. Unknown-order raw capture clocks remain observation labels.
+Older aggregate reports without this field show an unknown 24-hour count, not zero.
+
+Sink status cannot be inferred from old packets or `status.json` write counters.
+An optional `--sink-health "$SCRATCH/sink-health-counts.json"` accepts only the
+reviewer's separate, timestamped aggregate observation, for example this **synthetic**
+shape:
+
+```json
+{"schema":"judge-sink-health-counts-v1","enabled":true,"observed_at":"2020-02-01T00:00:00Z"}
+```
+
+`enabled` is true, false or null. The timestamp needs an offset and must not exceed
+the counts cutoff. Only supply an actual reviewer observation of the intended
+sink's configuration/runtime state, never infer it from file existence or counts.
+The page says **last observed on/off**, with the observation time; absent/null
+status stays unknown. This renderer neither reads live configuration nor verifies
+the supplied observation independently. It does not expose a destination.
+
+Readiness comes only from `primary_10s` observed-scoreability flags in the supplied
+sufficiency counts. The overlapping `window30` view never promotes readiness or
+adds to it. Partial readiness stays partial across mode/surface/item-kind areas.
+Voice/drift use assessment, humor/taste use the first similarity comparison; the
+latter does not imply the stronger empirical-rank stage is available. Count floors
+alone cannot yield “scoring.” Earliest estimates refer to one qualifying area and
+are explicitly conditional, not a deadline for all areas. Missing rates, inputs or
+estimates remain unknown. Recurrence and grouping still need their reviewed offline
+connection; ordinary data accumulation alone does not make those adapters exist.
+The renderer trusts the aggregate report's measurements, not its arbitrary prose.
+
+Every judge's page explains its observations and sources, and the shared boundary:
+no verdict on feelings and no effect on replies, memory or choices. It asks for no
+test messages. Claude performs the independent private render and any authorized
+handoff; this tool sends nothing.
+
+## Offline recorded-judge agreement
+
+[`agreement.py`](agreement.py) compares exactly joined retained voice-coherence,
+deviation, presence and humor judgments with the existing numerical voice/humor
+receipts. It reuses the strict cached-evidence pipeline, makes no model calls and
+prints counts only. Separate primary/sensitivity and mode/surface reports include
+coverage, a three-band confusion matrix, agreement with its denominator,
+decisive-only agreement, and both flag/pass disagreement directions. Missing
+verdicts never become passes or abstention votes. Empty joins produce null rates.
+
+See [AGREEMENT.md](AGREEMENT.md) for the read-only projection/CLI contract, all 33
+writers' persistence destinations, source-selection limitations and explicit
+unavailable counterparts. Daily drift is not joined to per-reply verdicts. Legacy
+voice/deviation logs lack exact bindings and cannot be rescued by timestamp
+or excerpt matching; prospective writer bindings are checked exactly. Deviation's persisted decision is mixed classifier/similarity,
+not pure LLM output; its ambiguous Aligned entries and presence exemptions remain
+abstentions. Historical presence lacks exemption fields. Humor moments are a
+positive-selected sample and are not proof of a laugh.
+
+Agreement is evidence about two recorded decisions on their intersection, **not
+ground truth or permission to replace a judge**. The LLM may be wrong; familiarity
+may flag a valuable unfamiliar reply. Coverage/selection bias, different constructs
+and correlated days prevent an accuracy or causal-benefit claim. Held-out common
+rubrics and independent outcomes would be needed for replace/keep/run-both choices.
+All existing loops remain active; no new data collection, thresholds or live writes.
+
+## Proposed Landings snapshot projector (requires separate authorization)
+
+[`landings_project.py`](landings_project.py) is prepared for the decision in
+[LANDINGS-ASK.md](LANDINGS-ASK.md). Only synthetic snapshots have been read during
+implementation. It is not installed in a service or connected to a context builder.
+It takes an explicitly staged, authorized private JSONL snapshot of the native
+Landings store and a separate exact-item identity map; it never opens/discovers
+the live store or imports `scripts/landings.py` (whose helpers read live context).
+The one-line cron proposal is separate: [VALUE-MAP-CAPTURE.md](VALUE-MAP-CAPTURE.md).
+Neither proposal has been applied.
+
+After authorization, stage a bounded snapshot outside all repositories/live
+workspaces, with 0700 scratch directories and 0600 files. The snapshot contains
+her explanation/context as well as frozen pieces: they are necessarily parsed
+privately, but explanation/context words are never emitted or fed back to him.
+The identity map has exactly this schema (all values below are synthetic):
+
+```json
+{
+  "schema": "landings-item-bindings-v1",
+  "items": [{
+    "surface": "message",
+    "ref": "synthetic-outreach.md",
+    "node_id": "synthetic-original-act",
+    "content_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "finalized_at": "2020-01-10T12:00:00Z",
+    "identity_source_sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+  }]
+}
+```
+
+The example hashes are placeholders and will not match real text. `surface` here
+is Landings' **item kind** (`message`, `joke`, `journal`), not chat's avatar/voice
+surface. `ref` must be the exact native item reference from an independently
+retained identity relation. `node_id` and full-content SHA256 must name that same
+original act in the numerical evidence. `identity_source_sha256` fingerprints
+that retained identity record, kept privately alongside the map. The projector
+checks structure, uniqueness, full frozen text equality and time bounds; it does
+not independently authenticate the caller's identity map. Never derive this map
+from title/nearest timestamp/excerpt similarity or merely identical text across
+different items. Missing identity remains unused. This adapter does not establish
+clean lineage or scoreability; the numerical runner still independently gates its
+supplied ancestry, modes, encoder/freeze/reference and exact anchor joins.
+
+```sh
+python3 experiments/nonllm-judges/landings_project.py \
+  --scratch "$SCRATCH" --snapshot "$SCRATCH/landings-snapshot.jsonl" \
+  --bindings "$SCRATCH/item-bindings.json" --cutoff 2020-02-01T00:00:00Z \
+  --source-timezone America/Chicago \
+  --output "$SCRATCH/projected/landings-projection.json"
+```
+
+Use the actual agreed cutoff and reviewed source timezone, not the example date
+or an assumption about the serving host. The native writer records naive local
+times: without `--source-timezone` those observations stay unknown. Ambiguous or
+nonexistent DST times are never guessed. Explicit offsets need no timezone flag.
+Unknown observation time or a backward timestamp within an item's append history
+excludes that item; an older positive cannot be resurrected through uncertainty.
+The source `item_at` minute timestamp is not an exact original-act binding.
+
+Latest append-order rating per (surface, ref) **before cutoff** wins, matching
+Landings' replacement semantics as of that cutoff. A later partly/missed/invalid
+rating suppresses an earlier landed mark, with no negative example emitted.
+Future/equal-cutoff rows do not alter the historical view. Exact duplicate records
+count once; conflicting repeated rating IDs, item bindings or aliases for one
+original ID refuse the projection. Only exact `landed`, valid native explanation,
+consistent frozen `piece.text`/`made` text and a matching full hash can emit an
+anchor, at or after the original act's finalization. Legacy missing frozen pieces,
+truncated/mismatched content, unsupported media and unbound items stay unused.
+No current mutable item/context store is consulted to fill a gap.
+
+The new output directory must be an immediate child of scratch and not exist;
+its only output is `landings-projection.json`, created 0600 inside a new 0700
+directory. Existing outputs are never overwritten. It has exactly the runner's
+`landings-projection-v1` shape, retaining only private evidence/item IDs, hashes,
+observation times and positive-anchor metadata. Input snapshots/maps are unchanged.
+Stdout is `landings-project-counts-v1` with counts and fixed metadata only; it has
+no IDs, hashes, paths, dates, scores, explanations or arbitrary input strings.
+Network/subprocesses and writes outside the new output are blocked. Inputs are
+bounded at 4 MiB each, 4096 native rows, 512 identity bindings and 10,000 characters
+per full frozen piece; no silent truncation. Malformed JSONL (including duplicate
+keys/nonfinite values) refuses the whole input rather than skipping a correction.
+Errors print only `landings_projection_refused`. An interrupted/failed publication
+must be treated as failed and retried into a new directory, never merged into an
+old projection. A valid output can still have zero anchors. This is a snapshot of
+latest positive ratings, not an event-time retraction system for historical scores.
+
+## Explicit offline growth adoption (note #63)
+
+[`adoption.py`](adoption.py) recomputes exact sustained windows from a retained
+private run and its cached input, renders dates/mode/surface-only private weekly
+cards, and signs explicit owner answers (growth / not him / not sure). Only a
+verified growth answer yields an offline adoption candidate, bound to the digest,
+active reference, full original membership, timezone and attribution view.
+The drift replay now also forbids updates on the local review day. Earlier scores
+remain unchanged. Existing admission/provenance/calibration gates still apply.
+
+[`ADOPTION.md`](ADOPTION.md) documents the proposed three-button phone interaction,
+private CLI schemas, HMAC trust/key-custody boundary, complete-answer-set and stale
+reference rules, and synthetic validation. This builds no UI or runtime wiring,
+generates no actual signing key, signs no real answer, and reads no live store.
+The low-level analyzer remains a claim-based pure function; a future private
+integrator must use the verification boundary and preserve its signed audit trail.
+
+
+## Retained verdict shapes and read-only inventory
+
+[`verdict_shapes.py`](verdict_shapes.py) inventories explicitly supplied private
+snapshots of the shared voice/deviation Markdown, current presence JSON, presence
+history JSONL and humor moments JSON. Output contains counts, fixed classifications
+and allowlisted field names/types, never scalar source values or prose. It groups
+exact field/type structures, including nested metadata, without merging records
+whose unknown field names differ; unknown names are redacted and distinguished
+only by report-local shape numbers. Missing inputs are `not_supplied`, not zero.
+It has no numerical dependency, provider call, source discovery, writes or sends.
+
+The table describes writer contracts found in source, including the initial
+tracked humor writer and later additions. It is **not an observed private-store
+census**. The reported 75 unsupported humor rows cannot be assigned to these
+families until the reviewer runs the inventory. Field additions such as
+`material_kind` and `reply_binding` create separate structural signatures while
+preserving the same decision contract. No free-text note establishes a band.
+
+| Known retained shape | Structured decision evidence | Agreement band |
+|---|---|---|
+| Voice score Markdown, legacy or bound | Writer header `Score`, nonempty note and `Reply excerpt` framing; selected scores 1–3 | flag; malformed or unpersisted scores unsupported |
+| Deviation Markdown | Writer `Deviation` header, score above .30 and exact writer marker | flag |
+| Aligned Markdown, including commitment friction | Writer `Aligned` header and valid score | abstain; the format conflates two decisions |
+| Presence current JSON | `id`, numeric `composite`, boolean `flag` | flag/pass from the boolean, never recomputed from composite |
+| Presence requested-work exemption | Explicit `exempt` field | abstain; unknown exemption unsupported |
+| Legacy presence history | `id`, `composite`, rubric dimensions; missing retained exemption/decision binding | abstain even when scores are high |
+| Prospective presence history | Retained boolean `flag`, exemption and valid `reply_binding` | same as current presence |
+| His reply humor, legacy/modern/bound | `source`, numeric `signal` at least .5; optional `perpetrator` must agree | pass, a positive-selected signal, not proof of a laugh |
+| Incoming-message humor | Source identifies the incoming-message writer; often `original`, `expected` | unsupported: other subject |
+| Social-exchange humor | Source identifies exchange scanner; often `stated`, `actual` | unsupported: exchange is not a reply verdict |
+| Self-observation/blush humor | Self source; optional `mechanism`, `material_kind` | unsupported: observation is not a reply verdict |
+| Behavioral-trial humor | Self source and `type` identifies behavioral default; `stated`, `actual` | unsupported: trial is not a reply verdict |
+| Missing/unknown source, signal alias only, string/bool/nonfinite/out-of-range signal, conflicting subject, malformed shape | No proven equivalent structured decision | unsupported; never repaired from prose, perpetrator alone, or a numeric coercion |
+
+Source references: `bin/humor_detector.py` scan functions (including initial
+tracked version d74f9c4e and changes 56e8880e/bbd99b7f),
+`bin/voice_coherence.py:check`, `bin/deviation_check.py:append_voice_coherence`,
+`scripts/presence_audit.py:main` and `archive_labels`. The current humor store's
+100-row cap mixes observation units. Earlier fields without `material_kind` are
+not automatically invalid; source and signal still determine reply eligibility.
+The inventory counts retained rows without deduplication, including current/history
+copies. Agreement retains its own copy/ambiguity and exact-ID/hash/time/ancestry
+gates. Understanding a schema does not recover a missing reply binding.
+
+Have the independent reviewer supply authorized 0700 scratch snapshots with 0600
+files, outside any repository or live workspace, then run:
+
+```sh
+python3 experiments/nonllm-judges/verdict_shapes.py \
+  --scratch "$SCRATCH" \
+  --voice "$SCRATCH/voice-coherence.md" \
+  --presence "$SCRATCH/presence-audit.json" \
+  --presence-history "$SCRATCH/presence-audit-history.jsonl" \
+  --humor "$SCRATCH/humor-moments.json"
+```
+
+No live paths are opened automatically. Omit unavailable inputs, and report that
+absence. Each input is bounded to 4 MiB and 4096 records; nested shape depth and
+field counts are bounded. Duplicate JSON keys, nonfinite JSON, malformed containers,
+symlinks, non-private paths and oversized inputs refuse with only
+`judge_verdict_shapes_refused`. Malformed JSONL refuses the whole report; there is
+no silent partial census. Unknown Markdown headings are counted as unattributed
+without emitting headings or body text. Recognized headers are writer syntax,
+not authenticated provenance. Actual served-model/fallback values and all original
+fields remain in the untouched snapshots; the inventory exposes none of them.
+
+Return only the aggregate inventory for review. Unknown field names may need
+private review by the source holder before a new adapter is justified. The reader
+uses this explicit mapping in agreement and adds fixed `shape_*`/`reason_*` counts;
+unsupported remains distinct from a recorded abstention. No runtime writer,
+threshold, model, feed or reference is changed by this reader.
+
+
+The proposed media-taste facet and prospective Landings text binding are described
+in [MEDIA-TASTE.md](MEDIA-TASTE.md). The pure synthetic prototype is unwired; raw
+media vectors without exact revision and qualified encoder provenance abstain.

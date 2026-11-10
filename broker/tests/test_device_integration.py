@@ -112,8 +112,11 @@ def test_old_watchdog_cannot_stop_replacement():
             TL.send = original
 
 
-def test_preset_is_bounded_and_reports_partial_broadcast():
+def test_preset_is_bounded_and_reports_its_target():
+    # one toy alone keeps its hardware Pattern, bounded by the lease; several toys at once are
+    # stepped locally instead (test_toys_share_one_app), so a broadcast sends no hardware Pattern
     with Env():
+        DP._hw.clear(); DP._loops.clear()
         p = permit(targets=set(TL.TOYS), digest="B")
         calls = []
         original_send_pattern = TL.send_pattern
@@ -129,17 +132,22 @@ def test_preset_is_bounded_and_reports_partial_broadcast():
             (list(toys), secs, effect_id))
         try:
             outcome = {}
-            assert DP.play("both", "climb", permit=p, effect_digest="B",
-                           outcome=outcome)
-            assert outcome["status"] == "partial", outcome
+            assert not DP.play("ridge", "climb", permit=p, effect_digest="B",
+                               outcome=outcome)
+            assert outcome["status"] == "failed", outcome
             assert outcome["targets"]["ridge"] == "failed"
+            outcome = {}
+            assert DP.play("mission", "climb", permit=p, effect_digest="B",
+                           outcome=outcome)
+            assert outcome["status"] == "sent", outcome
             assert all(1 <= seconds <= EG.MAX_LEASE_SECONDS
                        for _toy, seconds, _digest in calls)
             assert all(digest == "B" for _toy, _seconds, digest in calls)
-            assert stops and "ridge" not in stops[0][0]
+            assert stops == [(["mission"], stops[0][1], p.effect_id)], stops
         finally:
             TL.send_pattern = original_send_pattern
             DP._schedule_stop = original_schedule
+            DP._hw.clear()
 
 
 def test_rotate_uses_rotate_permit_and_real_maximum():

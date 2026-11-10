@@ -25,6 +25,28 @@ RESERVE = 8192  # Lock, status and one atomic status replacement.
 SPOOL_BYTES = 8 * 1024 * 1024
 SPOOL_FILES = 64
 SPOOL_NAME = '.capture-spool'
+_PROCESS_SPOOL_DOMAIN = uuid.uuid4().hex
+_UNKNOWN_SPOOL = {}
+UNKNOWN_ORDER_RETRIES = 8
+
+
+def _spool_domain():
+    return _PROCESS_SPOOL_DOMAIN + ':' + str(os.getpid())
+
+
+def _unknown_spool(key):
+    # Bound both memory and retry diagnostics; retain uncertain entries unchanged.
+    if key not in _UNKNOWN_SPOOL and len(_UNKNOWN_SPOOL) >= SPOOL_FILES:
+        _UNKNOWN_SPOOL.pop(next(iter(_UNKNOWN_SPOOL)))
+    count = _UNKNOWN_SPOOL.get(key, 0)
+    if count < UNKNOWN_ORDER_RETRIES:
+        _UNKNOWN_SPOOL[key] = count + 1
+        COUNTERS['spool_unknown_order_retry'] += 1
+    elif count == UNKNOWN_ORDER_RETRIES:
+        _UNKNOWN_SPOOL[key] = count + 1
+        COUNTERS['spool_unknown_order_held'] += 1
+
+
 SPOOL_PACKET = re.compile(r'[0-9a-f]{32}\.packet\Z')
 PREFIXES = ('capture-', 'value-map-call-', 'value-map-build-', 'self-forecast-inputs-', 'self-forecast-launch-', 'self-forecast-handoff-', 'self-forecast-clock-', 'self-forecast-artifacts-', 'self-audit-embedding-', 'self-fit-completion-')
 PACKET = re.compile(r'(?:' + '|'.join(PREFIXES) + r')[0-9a-f]{32}\.json\Z')
@@ -128,7 +150,7 @@ def publish(root, packet, prefix):
         return False
 
 
-def _publish_bytes(root, payload, prefix, expected=None, diagnostic=None, packet_id=None, retained_at=None):
+def _publish_bytes(root, payload, prefix, expected=None, diagnostic=None, packet_id=None, retained_at=None, retention_clock=None):
     """Publish an immutable snapshot, rechecking current limits and permission."""
     c = configuration(root)
     if c is None or (expected is not None and c != expected):
@@ -142,9 +164,14 @@ def _publish_bytes(root, payload, prefix, expected=None, diagnostic=None, packet
             raise ValueError('invalid replay publication')
         if retained_at is not None:
             clock = time.time()
+            replay_age = clock-retained_at if type(retained_at) in (int,float) else float('nan')
+            if retention_clock is not None and retention_clock.get('domain')==_spool_domain():
+                elapsed = time.monotonic()-retention_clock['monotonic_at']
+                if not math.isfinite(elapsed) or elapsed<0: raise ValueError('invalid replay monotonic clock')
+                replay_age = max(replay_age,elapsed)
             if (packet_id is None or type(retained_at) not in (int,float)
                     or not math.isfinite(retained_at) or retained_at<0 or not math.isfinite(clock)
-                    or not 0<=clock-retained_at<=c['retention_seconds']):
+                    or not 0<=replay_age<=c['retention_seconds']):
                 raise ValueError('invalid replay retention clock')
         if diagnostic is not None and (not isinstance(diagnostic, dict) or any(
                 k not in DEFERRED_COUNT_KEYS or type(v) is not int or not 0 <= v < 10**18
@@ -344,15 +371,27 @@ def _spool_read(directory, name):
         header = json.loads(line,object_pairs_hook=unique)
         payload = f.read(MAX_PACKET+1)
     expected_keys = {'schema','configuration','created_at','sha256'}
-    if isinstance(header,dict) and header.get('schema')=='judges-ingress-v2': expected_keys.add('prefix')
+    if isinstance(header,dict) and header.get('schema') in ('judges-ingress-v2','judges-ingress-v3'): expected_keys.add('prefix')
+    if isinstance(header,dict) and header.get('schema')=='judges-ingress-v3': expected_keys.add('clock')
     if (not isinstance(header,dict) or set(header) != expected_keys
-            or header.get('schema') not in ('judges-ingress-v1','judges-ingress-v2')
+            or header.get('schema') not in ('judges-ingress-v1','judges-ingress-v2','judges-ingress-v3')
             or (header.get('schema')=='judges-ingress-v2' and header.get('prefix')!='self-forecast-launch-')
             or not isinstance(header['configuration'],str) or not re.fullmatch('[0-9a-f]{64}',header['configuration'])
             or type(header['created_at']) not in (int,float) or not math.isfinite(header['created_at']) or header['created_at']<0
             or not payload or len(payload)>MAX_PACKET
             or hashlib.sha256(payload).hexdigest()!=header['sha256']):
         raise ValueError('invalid spool record')
+    if header['schema']=='judges-ingress-v3':
+        clock = header['clock']
+        if (not isinstance(clock,dict) or set(clock)!={'domain','monotonic_at'}
+                or not isinstance(clock['domain'],str) or not re.fullmatch(r'[0-9a-f]{32}:[0-9]+',clock['domain'])
+                or type(clock['monotonic_at']) not in (int,float) or not math.isfinite(clock['monotonic_at']) or clock['monotonic_at']<0
+                or header['prefix'] not in ('capture-','self-forecast-launch-')): raise ValueError('invalid spool clock')
+        # v3 admits both prefixes; the launch discriminator must still agree.
+        packet = json.loads(payload, object_pairs_hook=unique)
+        is_launch = isinstance(packet,dict) and packet.get('schema')=='self-forecast-launch-v1'
+        if (header['prefix']=='self-forecast-launch-') != is_launch:
+            raise ValueError('spool prefix does not match payload')
     return header,payload
 
 
@@ -363,9 +402,11 @@ def _stage_capture(c,payload,prefix="capture-"):
         now = time.time()
         if not math.isfinite(now) or now<0 or not payload or len(payload)>c['max_packet_bytes']:
             raise ValueError('invalid ingress')
-        header = dict(schema='judges-ingress-v1',configuration=_config_sha(c),created_at=now,
-                      sha256=hashlib.sha256(payload).hexdigest())
-        if prefix!='capture-': header.update(schema='judges-ingress-v2',prefix=prefix)
+        mono = time.monotonic()
+        if type(mono) not in (int,float) or not math.isfinite(mono) or mono<0: raise ValueError('invalid ingress clock')
+        header = dict(schema='judges-ingress-v3',configuration=_config_sha(c),created_at=now,
+                      sha256=hashlib.sha256(payload).hexdigest(),prefix=prefix,
+                      clock=dict(domain=_spool_domain(),monotonic_at=mono))
         record = json.dumps(header,separators=(',',':')).encode()+b'\n'+payload
         with _spool_lock(c,create=True) as (root,directory):
             entries,total = _spool_entries(directory)
@@ -407,14 +448,14 @@ def _stage_capture(c,payload,prefix="capture-"):
 def recover_spool(limit=8):
     """Bounded replay; disabled/changed config never publishes old ingress."""
     if type(limit) is not int or not 1<=limit<=SPOOL_FILES: raise ValueError('invalid replay limit')
-    c = configuration()
-    if c is None or not c.get('durable_queue'): return 0
-    clock = time.time()
-    if not math.isfinite(clock) or clock<0:
-        COUNTERS['spool_clock_unavailable'] += 1
-        return 0
     confirmed = 0
     try:
+        c = configuration()
+        if c is None or not c.get('durable_queue'): return 0
+        clock = time.time()
+        if not math.isfinite(clock) or clock<0:
+            COUNTERS['spool_clock_unavailable'] += 1
+            return 0
         with _spool_lock(c) as (_,directory):
             entries,_ = _spool_entries(directory)
         attempted = 0
@@ -432,7 +473,17 @@ def recover_spool(limit=8):
                     continue
                 if header['configuration'] != _config_sha(c): continue
                 age = clock-header['created_at']
-                if age<0: continue
+                retry_key = (str(c['directory']),name,header['sha256'])
+                interval = header.get('clock')
+                if interval is not None and interval['domain']==_spool_domain():
+                    elapsed = time.monotonic()-interval['monotonic_at']
+                    if not math.isfinite(elapsed) or elapsed<0:
+                        _unknown_spool(retry_key); continue
+                    # A forward wall step may expire early; a backward step cannot renew age.
+                    age = max(age,elapsed)
+                if age<0:
+                    _unknown_spool(retry_key); continue
+                _UNKNOWN_SPOOL.pop(retry_key,None)
                 if age>c['retention_seconds']:
                     os.unlink(name,dir_fd=directory);os.fsync(directory)
                     COUNTERS['spool_expired'] += 1
@@ -440,7 +491,7 @@ def recover_spool(limit=8):
             if attempted>=limit: break
             attempted += 1
             # Do not hold the ingress lock across the slower final sink scan.
-            if not _publish_bytes(c['directory'],payload,header.get('prefix','capture-'),expected=c,packet_id=name[:-7],retained_at=header['created_at']):
+            if not _publish_bytes(c['directory'],payload,header.get('prefix','capture-'),expected=c,packet_id=name[:-7],retained_at=header['created_at'],retention_clock=header.get('clock')):
                 continue
             with _spool_lock(c) as (_,directory):
                 try: current,body = _spool_read(directory,name)
@@ -536,11 +587,15 @@ if hasattr(os, 'register_at_fork'):
 
 
 def _write_queued(pending):
+    next_recovery = time.monotonic()
     while True:
+        if time.monotonic() >= next_recovery:
+            # Startup and a busy volatile queue must not starve durable ingress.
+            recover_spool()
+            next_recovery = time.monotonic() + 0.25
         try: item = pending.get(timeout=0.25)
         except queue.Empty:
             _flush_deferred()
-            recover_spool()
             continue
         try:
             if item is None: return

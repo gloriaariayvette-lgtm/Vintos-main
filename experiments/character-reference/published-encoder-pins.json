@@ -1,0 +1,19 @@
+{
+  "schema": "published-encoder-pins-v1",
+  "pins": [
+    {
+      "id": "nomic-embed-text-v1.5-Q4_K_M",
+      "publisher": "nomic-ai",
+      "repo": "nomic-ai/nomic-embed-text-v1.5-GGUF",
+      "filename": "nomic-embed-text-v1.5.Q4_K_M.gguf",
+      "size_bytes": 84106624,
+      "artifact_sha256": "d4e388894e09cf3816e8b0896d81d265b55e7a9fff9ab03fe8bf4ef5e11295ac",
+      "revision": "0188c9bf409793f810680a5a431e7b899c46104c",
+      "revision_at": "2025-04-28T20:14:53+00:00",
+      "artifact_kind": "external_pretrained",
+      "trained_on_subject_data": false,
+      "reviewed": true,
+      "reviewer": "claude-code 2026-11-09 (HF x-linked-etag + local sha256)"
+    }
+  ]
+}

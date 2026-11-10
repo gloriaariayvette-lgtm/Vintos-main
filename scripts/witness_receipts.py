@@ -326,3 +326,33 @@ def row_receipt(row):
         if isinstance(row.get(k), dict) and "witness_receipt" in row[k]:
             return normalize_receipt(row[k]["witness_receipt"])
     return {"schema": SCHEMA, "status": "unknown"}
+
+
+def judge_reply_binding(turn_id, full_reply, judged_reply):
+    """Content-free prospective join; absent identities are never synthesized."""
+    try:
+        import re
+        if (not isinstance(turn_id, str) or re.fullmatch(r'[A-Za-z0-9:._-]{1,160}', turn_id) is None
+                or not isinstance(full_reply, str) or not 0 < len(full_reply) <= 1024*1024
+                or not isinstance(judged_reply, str) or not 0 < len(judged_reply) <= 1024*1024): return {}
+        return dict(schema='judge-reply-binding-v1', turn_id=turn_id,
+                    content_sha256=digest(full_reply), judged_sha256=digest(judged_reply))
+    except Exception:
+        return {}
+
+
+def judge_reply_record(binding, judged_reply, recorded_at):
+    """Validate the passed input before attaching metadata to an existing verdict."""
+    try:
+        import re
+        if (not isinstance(binding, dict) or set(binding) != {'schema','turn_id','content_sha256','judged_sha256'}
+                or binding['schema'] != 'judge-reply-binding-v1'
+                or not isinstance(binding['turn_id'],str) or re.fullmatch(r'[A-Za-z0-9:._-]{1,160}',binding['turn_id']) is None
+                or not isinstance(judged_reply,str) or not 0 < len(judged_reply) <= 1024*1024
+                or _hash(binding['content_sha256']) != binding['content_sha256']
+                or binding['judged_sha256'] != digest(judged_reply)
+                or not isinstance(recorded_at,str)): return {}
+        instant(recorded_at)
+        return dict(binding, recorded_at=recorded_at)
+    except Exception:
+        return {}

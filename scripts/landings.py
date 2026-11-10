@@ -13,7 +13,7 @@ of her, never a rating and never her words (her rule: a quoted rating would skew
 
 Unrated means nothing. There is no queue and no count of what she has not rated.
 """
-import json, os, re, time, uuid
+import hashlib, json, os, re, time, uuid
 from datetime import datetime, timedelta
 from urllib.parse import quote
 
@@ -182,6 +182,58 @@ def context(surface, ref):
 
 # ---- her notes -----------------------------------------------------------------------------
 
+def _reply_binding(surface, ctx):
+    """Bind a newly rated whole text to one retained reply identity, or abstain.
+
+    No prefix, proximity, normalization, invented identity or historical rewrite.
+    A binding identifies content; downstream witness/provenance gates still apply.
+    """
+    try:
+        field = {"message": "message", "joke": "joke", "journal": "entry"}.get(surface)
+        piece = ctx.get("piece", {})
+        text = piece.get("text")
+        if (not field or piece.get("type") != surface or not isinstance(text, str)
+                or not 0 < len(text) <= 1024 * 1024 or ctx.get("made", {}).get(field) != text):
+            return {}
+        replies = []
+        def unique(pairs):
+            out = {}
+            for key, value in pairs:
+                if key in out: raise ValueError("duplicate key")
+                out[key] = value
+            return out
+        for name in ("interaction-ledger.json", "chat-canonical.jsonl"):
+            try:
+                with open(os.path.join(MEMORY, name), "rb") as f:
+                    raw = f.read(8 * 1024 * 1024 + 1)
+            except FileNotFoundError:
+                continue
+            if len(raw) > 8 * 1024 * 1024: return {}
+            rows = ([json.loads(line, object_pairs_hook=unique) for line in raw.splitlines() if line.strip()]
+                    if name.endswith(".jsonl") else json.loads(raw, object_pairs_hook=unique))
+            if not isinstance(rows, list) or len(rows) > 50000: return {}
+            for row in rows:
+                if not isinstance(row, dict): return {}
+                if name.endswith(".jsonl"):
+                    if row.get("role") != "assistant": continue
+                    body = row.get("content")
+                else:
+                    body = row.get("vintos")
+                replies.append((row.get("turn_id"), body))
+        matching = [(tid, body) for tid, body in replies if body == text]
+        if not matching or any(not isinstance(tid, str) or
+                re.fullmatch(r"[A-Za-z0-9:._-]{1,160}", tid) is None for tid, _ in matching): return {}
+        ids = {tid for tid, _ in matching}
+        if len(ids) != 1: return {}
+        tid = next(iter(ids))
+        if any(body != text for key, body in replies if key == tid): return {}
+        return {"schema": "landings-reply-binding-v1", "turn_id": tid,
+                "content_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+                "source": "exact_full_retained_reply"}
+    except Exception:
+        return {}
+
+
 def record(surface, ref, rating, why, before="", now=None):
     """Her note on one piece. why is required: a bare rating is the thing she does not want."""
     if surface not in SURFACES: raise ValueError("unknown surface %r" % surface)
@@ -193,6 +245,12 @@ def record(surface, ref, rating, why, before="", now=None):
     row = {"id": "L-" + uuid.uuid4().hex[:10], "at": datetime.fromtimestamp(now or time.time()).isoformat(timespec="seconds"),
            "surface": surface, "ref": str(ref), "rating": rating, "why": why,
            "before": str(before or "").strip(), **ctx}
+    # Evidence is optional: recording her rating must survive binding failures.
+    try:
+        binding = _reply_binding(surface, ctx)
+        if binding: row["reply_binding"] = binding
+    except Exception:
+        pass
     os.makedirs(LANDINGS_DIR, mode=0o700, exist_ok=True)
     fd = os.open(STORE, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
     with os.fdopen(fd, "a") as f:

@@ -21,6 +21,7 @@ from collections import Counter
 import fcntl
 import hashlib
 import json
+import math
 import os
 
 import re
@@ -2184,23 +2185,65 @@ def _human_question_symbols(question):
 BACTERIAL_STYLE = re.compile(r'(?<![\w-])[A-Z][a-z]{2}[A-Z][0-9]?(?![\w-])')
 
 
+# Counts contain no symbols, receipt identifiers or source records.
+IDENTITY_CACHE_CLOCK_COUNTS = Counter()
+_IDENTITY_CACHE_INTERVALS = {}
+
+
+def _identity_cache_digest(row):
+    return hashlib.sha256(json.dumps(row, sort_keys=True, allow_nan=False).encode()).hexdigest()
+
+
 def _human_identity(symbol, client=None):
-    """The NCBI Gene identity receipt for one exact human symbol or alias: today's from source-receipts.jsonl, else
-    looked up and appended there. Both outcomes are cached for a day; a failed lookup raises and caches nothing.
-    The inquiry's grounding and its UniProt retrieval read the same receipt (SR-BI, 29 October)."""
+    """Reuse exact receipts for one day; interval reuse never changes scientific validation.
+
+    A persisted negative age is unknown: re-read the same wall clock once before
+    refreshing. A receipt fetched here can be reused within this process by its
+    exact digest and monotonic age, even when the wall clock steps backwards.
+    """
     from lab_sources import Sources
     symbol = str(symbol or '').upper()
     path = os.path.join(ROOT, 'source-receipts.jsonl')
+    key = (os.getpid(), path, symbol)
     for row in reversed(_tail_jsonl(path, nbytes=2*1024*1024)):
         if row.get('source') != 'ncbi_gene_identity' or str((row.get('query') or {}).get('symbol', '')).upper() != symbol:
             continue
         try:
             age = time.time() - datetime.fromisoformat(row['retrieved_at']).timestamp()
+            if not math.isfinite(age): raise ValueError('invalid identity cache age')
+            memo = _IDENTITY_CACHE_INTERVALS.get(key)
+            if memo is not None and memo[0] == _identity_cache_digest(row):
+                elapsed = time.monotonic() - memo[1]
+                if math.isfinite(elapsed) and 0 <= elapsed < 86400 and age < 86400:
+                    IDENTITY_CACHE_CLOCK_COUNTS['monotonic_reused'] += 1
+                    return row
+                # A backwards interval or expired anchor cannot be rescued by wall age.
+                IDENTITY_CACHE_CLOCK_COUNTS['interval_unavailable_or_expired'] += 1
+                break
+            if age < 0:
+                IDENTITY_CACHE_CLOCK_COUNTS['unknown_age'] += 1
+                age = time.time() - datetime.fromisoformat(row['retrieved_at']).timestamp()
+                IDENTITY_CACHE_CLOCK_COUNTS['wall_rechecked'] += 1
+                if not math.isfinite(age): raise ValueError('invalid identity cache age')
+                if age < 0: IDENTITY_CACHE_CLOCK_COUNTS['unknown_age_refresh'] += 1
+                else: IDENTITY_CACHE_CLOCK_COUNTS['wall_recheck_resolved'] += 1
             if 0 <= age < 86400: return row
-        except (ValueError, KeyError, TypeError): pass
+        except (ValueError, KeyError, TypeError, OverflowError): pass
         break
+    _IDENTITY_CACHE_INTERVALS.pop(key, None)
+    started = time.monotonic()
     result = (client or Sources()).human_gene_identity(symbol)
     _append(path, result)
+    # No cached copy of private records; only exact persisted bytes may be reused.
+    try:
+        if (type(started) in (int, float) and math.isfinite(started) and started >= 0
+                and result.get('source') == 'ncbi_gene_identity'
+                and str((result.get('query') or {}).get('symbol', '')).upper() == symbol):
+            digest = _identity_cache_digest(result)
+            if len(_IDENTITY_CACHE_INTERVALS) >= 256:
+                _IDENTITY_CACHE_INTERVALS.pop(next(iter(_IDENTITY_CACHE_INTERVALS)))
+            _IDENTITY_CACHE_INTERVALS[key] = (digest, started)
+    except (ValueError, TypeError, AttributeError): pass
     return result
 
 

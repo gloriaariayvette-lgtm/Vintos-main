@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Fitting receipts use synthetic arrays, a private scratch store and stubbed encoders."""
 import hashlib
+import io
+from contextlib import redirect_stderr
 import json
 import os
 from pathlib import Path
@@ -33,6 +35,11 @@ class Tests(unittest.TestCase):
         self.parameters={'W':np.array([[1.,2.],[3.,4.]]),'beta':.5}
         self.meta={'schema':'anchored-readout-v1','mode':'self_ahead','selected':'synthetic'}
         self.path=self.root/'self_ahead.npz'
+        # Success cases require ordered observation times, not the host wall clock.
+        self.clock=Mock(wraps=A.time)
+        self.clock.time=Mock(return_value=1800000000.)
+        fixed=patch.object(A,'time',self.clock)
+        fixed.start();self.addCleanup(fixed.stop)
 
     def begin(self):return A.begin_fit('self_ahead',self.rows,self.features,self.targets,self.indices)
     def prepared(self):return A.prepare_fit(self.begin(),self.meta,self.parameters)
@@ -161,6 +168,56 @@ class Tests(unittest.TestCase):
         for key in ('projection','W','bias','beta','gamma','confidence_W'):np.testing.assert_array_equal(a[key],b[key])
         packet,=self.packets()
         self.assertEqual(packet['checkpoint_id'],hashlib.sha256((out2/'self_ahead.npz').read_bytes()).hexdigest())
+
+    def test_backward_observation_clock_is_explicitly_rejected(self):
+        for clocks in ([1800000000.,1799999997.2,1799999998.2],
+                       [1800000000.,1800000001.,1799999998.2]):
+            with self.subTest(clocks=clocks):
+                self.clock.time.side_effect=clocks
+                scope=self.prepared();self.save()
+                with self.assertRaisesRegex(ValueError,'unusable fitting observation clocks'):
+                    A.publish_fit(scope,self.path)
+                self.assertEqual(self.packets(),[])
+
+    def test_backward_wall_step_drops_receipt_but_preserves_actual_fit(self):
+        rows=self.training_rows();baseline=self.encoder()
+        out=self.root/'baseline';out.mkdir()
+        with patch.dict(os.environ,JUDGES_CAPTURE_SCRATCH='',JUDGES_CAPTURE_CONFIG=''):
+            expected=R.train_mode(rows,R.Embeddings(baseline),'self_ahead',out,steps=1)
+        saved=R.load(out/'self_ahead.npz')
+        for n,clocks in enumerate(([1800000000.,1799999997.2,1799999998.2],
+                                   [1800000000.,1800000001.,1799999998.2])):
+            with self.subTest(boundary=n):
+                self.clock.time.side_effect=clocks
+                other=self.encoder();target=self.root/('rollback-'+str(n));target.mkdir()
+                report=R.train_mode(rows,R.Embeddings(other),'self_ahead',target,steps=1)
+                self.assertEqual(report,expected)
+                self.assertEqual(other.encode.call_count,baseline.encode.call_count)
+                actual=R.load(target/'self_ahead.npz')
+                for key in ('projection','W','bias','beta','gamma','confidence_W'):
+                    np.testing.assert_array_equal(actual[key],saved[key])
+                self.assertEqual(self.packets(),[])
+
+    def test_swallowed_completion_failure_emits_only_one_count_and_logging_is_passive(self):
+        scope=self.prepared();self.save()
+        self.clock.time.return_value=1799999997.2
+        output=io.StringIO()
+        with redirect_stderr(output):
+            self.assertIsNone(R._self_fit_witness('self_ahead','publish_fit',scope,self.path))
+        self.assertEqual(output.getvalue(),'{"self_fit_completion_dropped":1}\n')
+        self.assertEqual(self.packets(),[])
+        with patch.object(A,'publish_fit',side_effect=RuntimeError('synthetic private sentinel')):
+            output=io.StringIO()
+            with redirect_stderr(output):
+                self.assertIsNone(R._self_fit_witness('self_ahead','publish_fit',scope,self.path))
+            self.assertEqual(output.getvalue(),'{"self_fit_completion_dropped":1}\n')
+            with patch.object(R.sys,'stderr',Mock(write=Mock(side_effect=OSError('synthetic closed log')))):
+                self.assertIsNone(R._self_fit_witness('self_ahead','publish_fit',scope,self.path))
+        self.clock.time.return_value=1800000000.
+        output=io.StringIO()
+        with redirect_stderr(output):
+            self.assertTrue(R._self_fit_witness('self_ahead','publish_fit',scope,self.path))
+        self.assertEqual(output.getvalue(),'')
 
     def test_save_failure_preserves_exception_and_cannot_publish_completion(self):
         error=OSError('synthetic save failure')
