@@ -302,6 +302,7 @@ def bump(text,amount,kind="field",addresses=None):
     text=(text or "").strip()
     if len(text)<8: return
     db=_jload(PRESS,{}); k=_key(db,text,kind,addresses)
+    if (db.get(k) or {}).get("retired"): return   # retired by hand: its record is kept and never weighed again (10 November)
     e=db.get(k) or {"text":text[:220],"kind":kind,"weight":0.0,"count":0,
                     "first":time.time(),"lineage":[]}
     if text[:220]!=e.get("text") and text[:220] not in (e.get("wordings") or []):
@@ -346,7 +347,7 @@ def override(text,reason,source="correction",addresses=None,kind=None):
     if len(text)<8: return None
     db=_jload(PRESS,{}); k=_key(db,text,kind,addresses)
     e=db.get(k)
-    if not e: return None
+    if not e or e.get("retired"): return None
     e.setdefault("lineage",[]).append({"overridden":time.time(),"from_weight":e.get("weight",0),
                                        "reason":str(reason)[:200],"source":source})
     e["weight"]=0.0; e["overridden"]={"at":time.time(),"reason":str(reason)[:200],"source":source}
@@ -357,10 +358,129 @@ def relieve(text,addresses=None,kind=None):
     if len(text)<8: return
     db=_jload(PRESS,{}); k=_key(db,text,kind,addresses)
     e=db.get(k)
-    if not e or e.get("weight",0)<=0: return
+    if not e or e.get("weight",0)<=0 or e.get("retired"): return
     e.setdefault("lineage",[]).append({"relieved":time.time(),"from_weight":e["weight"]})
     e["weight"]=round(e["weight"]/2.0,2); e["last"]=time.time()
     db[k]=e; _jsave(PRESS,db)
+
+# ---------- the primary difference: rotation, rest, retirement (10 November) ----------
+# The selector is shown one PRIMARY DIFFERENCE it must address or decline. It was the heaviest row of weight 1
+# or more with no other test, so one old row stood there turn after turn - stale, graduated twice - and a miss
+# on it re-required it on the next turn. Every route to the primary now passes primary_eligible, the
+# required-consideration route included; when nothing passes, no primary is shown.
+PRIMARY_RUN=3            # real selections in a row one primary may lead
+PRIMARY_REST_DAYS=3      # then it rests until a different primary has been shown, or this long
+
+
+def _rotation_path():
+    return os.path.join(os.path.dirname(PRESS),"intent-primary-rotation.json")   # beside the store, wherever a suite points it
+
+
+def _rotation():
+    st=_jload(_rotation_path(),{})
+    return st if isinstance(st,dict) else {}
+
+
+def _graduated_closed(r):
+    """True while a graduated row has nothing new since its last graduation. Graduating hands the intention to
+    self-investigation; a later timestamp, another miss or being shown again is not news. What reopens it is
+    a landing after the graduation (`relieved`) - the only later evidence this store records."""
+    lin=[l for l in (r.get("lineage") or []) if isinstance(l,dict)]
+    g=max([i for i,l in enumerate(lin) if "graduated" in l],default=-1)
+    return g>=0 and not any("relieved" in l for l in lin[g+1:])
+
+
+def primary_eligible(k,r,st=None,now=None):
+    """May this pressure row stand as the primary difference now: the standing rule pressure_block applies
+    (weight, live, not overridden by her, not asking her to lead), and not retired, not graduated without
+    news, not resting."""
+    now=now or time.time()
+    if not isinstance(r,dict) or r.get("retired") or r.get("overridden"): return False
+    if float(r.get("weight",0) or 0)<1.0 or not _live(r,now) or asks_her_to_lead(r.get("text")): return False
+    if _graduated_closed(r): return False
+    since=((st or {}).get("resting") or {}).get(k)
+    return not (since and now-float(since)<PRIMARY_REST_DAYS*86400)
+
+
+def primary_for_turn(required=None,now=None):
+    """The primary difference for one selection, or None. Reads only: the run moves in primary_shown, once a
+    selection has become a real turn, so a background preview advances nothing. `required` is last turn's
+    required-consideration marker; it is honoured only if its row is eligible and was not already required
+    on the turn before."""
+    now=now or time.time(); db=_jload(PRESS,{}); st=_rotation()
+    if not isinstance(db,dict): return None
+    rid=_addr(required.get("id")) if isinstance(required,dict) else ""
+    pick=None; req=False
+    if rid and primary_eligible(rid,db.get(rid),st,now) and not (st.get("required") and st.get("id")==rid):
+        pick=rid; req=True
+    else:
+        rows=sorted(((k,r) for k,r in db.items() if primary_eligible(k,r,st,now)),
+                    key=lambda kv:-float(kv[1].get("weight",0) or 0))
+        if rows: pick=rows[0][0]
+    if pick is None: return None          # everything excluded: none, never the best of the excluded
+    r=db[pick]
+    out={"id":pick,"weight":r.get("weight",0),"count":r.get("count",0),"text":str(r.get("text",""))[:250]}
+    if req: out["required"]=True
+    return out
+
+
+def primary_shown(pid,required=False,now=None):
+    """One real selection showed this primary (or none): move the run and the rests. Called once per ledger
+    row, whatever its verdict turns out to be; the state is a file, so the run survives a restart."""
+    now=now or time.time(); st=_rotation(); pid=_addr(pid)
+    rest={}
+    for k,v in (st.get("resting") or {}).items():
+        try:
+            if now-float(v)<PRIMARY_REST_DAYS*86400: rest[k]=v
+        except Exception: pass
+    if not pid:
+        st.update(id=None,run=0,required=False)
+    else:
+        prev=int(st.get("run",0) or 0)
+        run=prev+1 if (st.get("id")==pid and prev<PRIMARY_RUN) else 1
+        if st.get("id")!=pid: rest={k:v for k,v in rest.items() if k==pid}   # a different primary has been shown: the others' rest is over
+        if run>=PRIMARY_RUN: rest[pid]=now
+        st.update(id=pid,run=run,required=bool(required))
+    st["resting"]=rest; st["updated"]=now
+    _jsave(_rotation_path(),st)
+    return st
+
+
+def primary_report(n=30):
+    """Counts only, from the last n ledger rows: how concentrated the primary has been. A 3-on/1-off cycle
+    passes any run cap, so the share led by the single most frequent primary is reported beside the longest run."""
+    led=_jload(os.path.join(os.path.dirname(PRESS),"intent-ledger.json"),[])
+    ids=[e["target"].get("primary_shown") or None for e in (led if isinstance(led,list) else [])
+         if isinstance(e,dict) and isinstance(e.get("target"),dict) and "primary_shown" in e["target"]][-int(n):]
+    counts={}; best=run=0; prev=None
+    for i in ids:
+        if i: counts[i]=counts.get(i,0)+1
+        run=run+1 if (i and i==prev) else (1 if i else 0)
+        best=max(best,run); prev=i
+    top=max(counts.values()) if counts else 0
+    return {"turns":len(ids),"with_primary":sum(counts.values()),"distinct_primaries":len(counts),
+            "top_primary_turns":top,"top_primary_share":round(top/float(len(ids)),2) if ids else 0.0,"max_run":best}
+
+
+def retire(key):
+    """Take one pressure row out for good, by hand. The store is copied beside itself first; the row keeps its
+    record and is never selected, shown or weighed again. A required-consideration marker naming it is cleared.
+    Returns (row, backup path), or None when there is no such row."""
+    k=str(key or "").strip(); db=_jload(PRESS,{})
+    e=db.get(k) if isinstance(db,dict) else None
+    if not isinstance(e,dict): return None
+    import shutil
+    stamp=time.strftime("%Y%m%d-%H%M%S"); bak=PRESS+".bak-"+stamp; n=0
+    while os.path.exists(bak): n+=1; bak=PRESS+".bak-%s-%d"%(stamp,n)
+    shutil.copy2(PRESS,bak)
+    e["retired"]=True; e["retired_at"]=time.time()
+    e.setdefault("lineage",[]).append({"retired":time.time(),"from_weight":e.get("weight",0)})
+    db[k]=e; _jsave(PRESS,db)
+    try:
+        mp=os.path.join(os.path.dirname(PRESS),".intent-required-consideration.json")
+        if str(_jload(mp,{}).get("id"))==k: os.remove(mp)
+    except Exception: pass
+    return e,bak
 # What she has said she likes (16 October: "I like being lazy. I like a man who leads. Stop telling him to do
 # otherwise"). An aim that has her take the lead, hold the next beat, supply the scene or carry more of it, or has
 # him pull back so she must, may still be chosen when a moment asks for it; it is never turned into standing
@@ -382,7 +502,7 @@ def asks_her_to_lead(text):
 def pressure_block():
     db=_jload(PRESS,{})
     rows=sorted(db.values(),key=lambda r:-r.get("weight",0))
-    rows=[r for r in rows if r.get("weight",0)>=1.0 and not r.get("overridden") and _live(r)
+    rows=[r for r in rows if r.get("weight",0)>=1.0 and not r.get("overridden") and not r.get("retired") and _live(r)
           and not asks_her_to_lead(r.get("text"))][:3]
     if not rows: return ""
     _ago=lambda r: max(0,int((time.time()-r.get("last",time.time()))/86400))
@@ -403,7 +523,7 @@ def map_summary():
     pend=sum(1 for e in db if e.get("status")=="PENDING")
     held=sum(1 for e in db if e.get("status")=="HELD" and not e.get("scene_quarantined"))
     yes=sum(1 for e in db if e.get("verdict")=="YES")
-    top=max((r for r in pr.values() if _live(r) and not r.get("overridden") and not asks_her_to_lead(r.get("text"))),
+    top=max((r for r in pr.values() if _live(r) and not r.get("overridden") and not r.get("retired") and not asks_her_to_lead(r.get("text"))),
             key=lambda r:r.get("weight",0),default=None) if pr else None
     MEM=os.path.dirname(DIFF)
     def _rd(fn,d):
@@ -457,3 +577,12 @@ if __name__=="__main__":
         _dlog("cli record start")
         r=record_intent(_js.loads(_s.argv[2]), _s.argv[3] if len(_s.argv)>3 else "")
         _dlog("cli record done: "+str(r))
+    elif len(_s.argv)>2 and _s.argv[1]=="retire":
+        # by hand, one row: python3 desired_difference.py retire <id>   (prints no text of the row)
+        r=retire(_s.argv[2])
+        if not r:
+            print("no such pressure row: "+_s.argv[2]); _s.exit(1)
+        print("retired %s (kind %s, weight %.1f, %d misses); the store as it was: %s"
+              %(_s.argv[2],r[0].get("kind","?"),float(r[0].get("weight",0) or 0),int(r[0].get("count",0) or 0),r[1]))
+    elif len(_s.argv)>1 and _s.argv[1]=="primary-report":
+        print(_js.dumps(primary_report(int(_s.argv[2]) if len(_s.argv)>2 else 30)))   # counts only
