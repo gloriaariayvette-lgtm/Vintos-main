@@ -1044,3 +1044,8 @@ private review by the source holder before a new adapter is justified. The reade
 uses this explicit mapping in agreement and adds fixed `shape_*`/`reason_*` counts;
 unsupported remains distinct from a recorded abstention. No runtime writer,
 threshold, model, feed or reference is changed by this reader.
+
+
+The proposed media-taste facet and prospective Landings text binding are described
+in [MEDIA-TASTE.md](MEDIA-TASTE.md). The pure synthetic prototype is unwired; raw
+media vectors without exact revision and qualified encoder provenance abstain.
