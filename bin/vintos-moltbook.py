@@ -198,6 +198,8 @@ _CAP_LIMITS = {"post": 1, "outside_comment": 2, "own_comment": 5, "save": 1}  # 
 _CAP_FUSE = 20  # absolute daily write ceiling, all categories
 
 _KNOWN_OWN_POSTS = set()   # post ids the reply check has established as his, for the cap classifier
+_OWN_POST_SCAN = 40        # notified posts the reply check reads per run, newest first (two GETs each)
+_READ_FAIL_STOP = 3        # reads failing in a row (timeout, 5xx, 429) that end that scan for the run
 
 
 def _molt_cap_check(method, endpoint):
@@ -416,7 +418,7 @@ def clean_leetspeak(challenge):
         "gains", "gain", "plus", "minus", "adds", "subtract",
         "faster", "slower", "remains", "remaining", "but",
         "travels", "travel", "distance", "weighs", "weight",
-        "multiplied", "divided", "times", "split", "half",
+        "multiplied", "multiplies", "multiply", "divided", "times", "split", "half",
         "increases", "decreases", "by", "and", "with", "at",
         "if", "then", "from", "to", "its", "it", "has", "a",
         "equals", "equal", "times", "divided", "product"
@@ -514,6 +516,7 @@ def words_to_numbers(text):
     numbers = []
     current_num = None
     operators = []
+    joins = []      # where an "and" was read as a plus
 
     i = 0
     while i < len(words):
@@ -566,12 +569,14 @@ def words_to_numbers(text):
         # Check for operators
         if w in ("plus", "adds", "gains", "increases", "faster", "and", "added",
                  "combined", "together"):
+            if w == "and":
+                joins.append(len(operators))
             operators.append("+")
             if current_num is not None:
                 numbers.append(current_num)
                 current_num = None
         elif w in ("minus", "slows", "slowed", "loses", "lost", "subtract", "decreases", "slower",
-                    "less", "drops", "reduced", "without"):
+                    "less", "drops", "reduced", "reduces", "without"):
             # "but" usually signals subtraction: "twenty five but loses seven"
             # Only treat as operator if we have a number pending
             if current_num is not None:
@@ -581,9 +586,10 @@ def words_to_numbers(text):
             elif w != "but":
                 # Non-but subtraction words count even without prior number
                 operators.append("-")
-        elif w in ("times", "multiplied", "by") and operators and operators[-1] == "*":
+        elif w in ("times", "multiplied", "multiplies", "multiply", "product", "by") and operators and operators[-1] == "*":
             pass  # "multiplied by" — already have the *
-        elif w in ("times", "multiplied"):
+        elif w in ("times", "multiplied", "multiplies", "multiply", "product"):
+            # "multiplies by" and "product" were not read at all, so the "and" before them made it a sum (2026-11-08)
             operators.append("*")
             if current_num is not None:
                 numbers.append(current_num)
@@ -599,6 +605,12 @@ def words_to_numbers(text):
     # Don't forget the last number
     if current_num is not None:
         numbers.append(current_num)
+
+    # "and" only joins the operands when the challenge names its operation ("twenty three and seven ...
+    # multiplies by"): read as a plus it came first and won, and 23 x 7 was answered 30.
+    named = [op for j, op in enumerate(operators) if j not in joins]
+    if named and len(operators) > len(numbers) - 1:
+        operators = named
 
     return numbers, operators
 
@@ -1108,8 +1120,9 @@ def compose_post():
     return title, content
 
 def _one_shot_answer(challenge):
-    """Moltbook verification is ONE-SHOT (retry gets 409). Compute local + Sonnet answers
-    BEFORE submitting; if they agree use it, else trust Sonnet. Submit exactly once."""
+    """Moltbook verification is ONE-SHOT (retry gets 409). Compute the local and the second-opinion answers
+    BEFORE submitting; if they disagree the second opinion goes, and the local answer only when there is no
+    second opinion. Submit exactly once."""
     local = None
     try:
         local = solve_verification(challenge)
@@ -1151,10 +1164,13 @@ def _one_shot_answer(challenge):
         return ("%.2f" % float(m.group(0))) if m else None
     ln, gn = _fmt_num(local), _fmt_num(llm)
     if ln and gn and ln == gn: return ln
-    # On a split, trust the local path: it now reasons the word problem out step by step. The second
-    # opinion comes from a non-reasoning model, which cannot do the worded torque/sum challenges the
-    # site switched to on 2026-10-23, so it must not win a disagreement.
-    ans = ln or gn
+    if ln and gn:
+        # On a split the second opinion goes. The local answer used to win these and was wrong about as often
+        # as right (a product read as a sum); replayed against the site's own verdicts, the second opinion was
+        # right on nearly every split whose answer is known (2026-11-09). Holding the answer back instead was
+        # worse: the comment or post is already created and its cap spent before the challenge arrives.
+        log("[verify] local and second opinion disagree - submitting the second opinion")
+    ans = gn or ln
     if not ans:
         log("[verify] NO numeric answer derived - NOT submitting (challenge stays answerable)")
         return None
@@ -1963,6 +1979,27 @@ def _visibly_answered(comments, agent_name):
     return answered, parents_seen
 
 
+_PARENT_GONE = "gone:"     # in moltbook-replied.json, before the id of a comment Moltbook takes no reply under
+
+
+def _parent_gone(resp):
+    """Moltbook's definitive 404 "Parent comment not found": the comment is listed but cannot be answered, now
+    or later. Three of them were written a reply every day, a paid call each, and were often the only
+    candidates (2026-11-08). Any other failure (a timeout, a 5xx, the cap, another 404) is retried as before."""
+    return (isinstance(resp, dict) and str(resp.get("statusCode")) == "404"
+            and "parent comment not found" in str(resp.get("message") or "").lower())
+
+
+def _read_failed(resp):
+    """A read Moltbook did not answer: a timeout or dropped connection, a 5xx, a 429. A 404 is an answer."""
+    if not isinstance(resp, dict) or resp.get("cap_refused"): return False
+    code = str(resp.get("statusCode") or "")
+    if not code and resp.get("success") is False:
+        _m = re.search(r"HTTP Error (\d{3})", str(resp.get("error") or ""))
+        code = _m.group(1) if _m else "5xx"      # no status at all: the request never got an answer
+    return code == "429" or code.startswith("5")
+
+
 def cmd_check_replies(dry_run=False):
     """Check for comments on Vintos's own posts and reply to them. Also reply to saved interesting posts.
     dry_run: read everything and say, per comment, what would happen; generate and post nothing."""
@@ -1982,10 +2019,14 @@ def cmd_check_replies(dry_run=False):
     # Author endpoints broken server-side — use notifications to find his post IDs
     _notif_r = api_call("GET", "/notifications?limit=100")
     log(f"[DEBUG] Full notifications resp: {json.dumps(_notif_r)[:2000]}")
-    _notif_post_ids = list({
-        n.get("relatedPostId") for n in _notif_r.get("notifications", [])
+    # Newest notification first, each post once. This was list(set(...)) cut to 15: an arbitrary 15 of the 30-35
+    # notified posts per run, so a new comment could go unseen for days (2026-11-08).
+    _newest_first = sorted(_notif_r.get("notifications", []),
+                           key=lambda n: str(n.get("createdAt") or n.get("created_at") or ""), reverse=True)
+    _notif_post_ids = list(dict.fromkeys(
+        n.get("relatedPostId") for n in _newest_first
         if n.get("type") in ("post_comment", "comment_reply") and n.get("relatedPostId")
-    })
+    ))
     # Mentions — tagged by other agents on their posts
     _mention_post_ids = list({
         n.get("relatedPostId") for n in _notif_r.get("notifications", [])
@@ -2029,12 +2070,23 @@ def cmd_check_replies(dry_run=False):
                           if n.get("type") == "post_comment" and n.get("relatedPostId")}
 
     her_posts = []
-    for _npid in _notif_post_ids[:15]:
+    if len(_notif_post_ids) > _OWN_POST_SCAN:
+        log(f"{len(_notif_post_ids) - _OWN_POST_SCAN} older notified post(s) not checked this run "
+            f"(the newest {_OWN_POST_SCAN} are)")
+    _fails = [0]      # reads failed in a row. Up to 80 reads a run: when Moltbook is down or limiting, stop asking.
+    def _scan_over(resp):
+        _fails[0] = _fails[0] + 1 if _read_failed(resp) else 0
+        if _fails[0] == _READ_FAIL_STOP:
+            log(f"{_READ_FAIL_STOP} reads in a row failed - the own-post scan stops here for this run")
+        return _fails[0] >= _READ_FAIL_STOP
+    for _npid in _notif_post_ids[:_OWN_POST_SCAN]:
         _p = _post_by_id.get(_npid)
         if not _p or not any(_author_of(_p)):
             # The copy embedded in a notification carries no author (2026-09-28). Fetch the post, and read it
             # in whatever shape Moltbook returns it.
             _raw = api_call("GET", f"/posts/{_npid}")
+            if _scan_over(_raw):
+                break
             if dry_run and not globals().get("_SHAPE_SHOWN"):
                 globals()["_SHAPE_SHOWN"] = True
                 log(f"[dry-run] shape of GET /posts/{{id}}: {json.dumps(_raw)[:700]}")
@@ -2070,13 +2122,18 @@ def cmd_check_replies(dry_run=False):
         except Exception as e:
             log(f"Reply attachment failed: {e}")
 
+    _cap_spent = False
     for post in her_posts:
         post_id = post.get("id")
         if not post_id:
             continue
+        if _fails[0] >= _READ_FAIL_STOP:
+            break
         # Fetch comments
         _KNOWN_OWN_POSTS.add(post_id)
         cresp = api_call("GET", f"/posts/{post_id}/comments")
+        if _scan_over(cresp):
+            break
         comments = (cresp.get("comments") if isinstance(cresp, dict) else None) or \
                    ((cresp.get("data") or {}).get("comments") if isinstance(cresp, dict) and isinstance(cresp.get("data"), dict) else None) or \
                    (cresp.get("data") if isinstance(cresp, dict) and isinstance(cresp.get("data"), list) else None) or \
@@ -2098,6 +2155,9 @@ def cmd_check_replies(dry_run=False):
             # compare let him answer himself and spend the day's cap on it (2026-09-09)
             if commenter.strip().lower() == agent_name.strip().lower():
                 continue
+            if _PARENT_GONE + str(comment_id) in replied_set:
+                if dry_run: log(f"[dry-run]   @{commenter}: skipped (Moltbook takes no reply under this comment)")
+                continue
             if comment_id in _answered:
                 if dry_run: log(f"[dry-run]   @{commenter}: already answered (his reply is visible)")
                 continue
@@ -2107,6 +2167,8 @@ def cmd_check_replies(dry_run=False):
             if dry_run:
                 log(f"[dry-run]   @{commenter}: WOULD ANSWER: {str(comment.get('content',''))[:80]}"
                     + (" (was marked answered, but no published reply)" if comment_id in replied_set else ""))
+                continue
+            if _cap_spent:      # the day's replies are used up: a draft now is a paid call that cannot be posted
                 continue
             # Generate reply
             post_title = post.get("title", "")
@@ -2260,6 +2322,11 @@ def cmd_check_replies(dry_run=False):
                 except: pass
             else:
                 log(f"Reply failed: {resp2.get('error', resp2)}")
+                if resp2.get("cap_refused"):
+                    _cap_spent = True
+                if _parent_gone(resp2):       # handled, not answered: marked so it is not written again
+                    new_replies.append(_PARENT_GONE + str(comment_id)); json.dump(new_replies[-2000:], open(REPLIED_FILE, "w"))
+                    replied_set.add(_PARENT_GONE + str(comment_id))
             if resp2.get("success"):
                 import threading as _cdt
                 def _dev_check(rt=reply_text, cm=commenter, pid=post_id):

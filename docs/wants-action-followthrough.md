@@ -243,7 +243,7 @@ paid call. The fallback spends credits; this is not a free path.
 `memory/want-work-policy.json` can set these conservative defaults:
 
 ```json
-{"per_want_calls": 8, "daily_calls": 16, "context_chars": 60000}
+{"per_want_calls": 8, "daily_calls": 16, "context_chars": 120000}
 ```
 
 The per-want limit covers the entire request lifetime. The daily limit is global
