@@ -443,7 +443,7 @@ def _selection_faults(target, opportunity):
 # round four). Each such site runs through _guarded: an error is said as FAILED (the write did not happen), a
 # write made with the lock or the store guard missing as UNPROTECTED - in SELECT_LOG, counted in
 # TURN_STATE_FAULTS, and on the target as turn_state_faults where there is one. A clean run adds nothing.
-TURN_STATE_FAULTS = {"failed": 0, "unprotected": 0}
+TURN_STATE_FAULTS = {"failed": 0, "unprotected": 0, "error": 0}
 _NOT_DONE = object()
 
 
@@ -464,20 +464,24 @@ def _turn_state_fault(site, result, err=None, into=None):
     TURN_STATE_FAULTS[result] = TURN_STATE_FAULTS.get(result, 0) + 1
     try:
         with open(SELECT_LOG, "a") as _f:
-            _f.write("%s turn-state write %s at %s: %s\n---\n" % (datetime.now().isoformat(), result.upper(), site,
+            # "error" is an error swallowed around a whole step (the resolver), whatever raised it: it is said as
+            # that, never as a lock fault it may not have been (review, round four)
+            _f.write("%s %s at %s: %s\n---\n" % (datetime.now().isoformat(),
+                     "resolver ERROR" if result == "error" else "turn-state write " + result.upper(), site,
                      ((type(err).__name__ + ": " + str(err))[:200] if err is not None else "lock or store guard unavailable")))
     except Exception: pass
     if isinstance(into, list):
         into.append({"site": site, "result": result})
 
 
-def _guarded(site, fn, into=None, default=None):
-    """Run one turn-state write whose error the caller swallows, and say what became of it."""
+def _guarded(site, fn, into=None, default=None, whole=False):
+    """Run one turn-state write whose error the caller swallows, and say what became of it. `whole` marks a
+    site that wraps a whole step and not one write (the resolver): its own error is an "error" of that step."""
     loose, lost = _fault_marks()
     try:
         out = fn()
     except Exception as err:
-        _turn_state_fault(site, "failed", err, into)
+        _turn_state_fault(site, "error" if whole else "failed", err, into)
         return default
     loose2, lost2 = _fault_marks()
     if lost2 > lost: _turn_state_fault(site, "failed", None, into)
@@ -512,7 +516,7 @@ def _select_target(recent_text, resolve, step_campaign, persist, her_source, _tu
     # message remains the thing that resolves it.
     _tsf = []     # this selection's turn-state writes that failed or went unprotected
     if resolve and persist:
-        _guarded("resolve_previous", lambda: resolve_previous(recent_text, **({"source": her_source} if her_source else {})), _tsf)
+        _guarded("resolve_previous", lambda: resolve_previous(recent_text, **({"source": her_source} if her_source else {})), _tsf, whole=True)
     try:
         from discourse_direction import get_direction_hint as _dd_gdh
         _dd_gdh(recent_text[-300:])   # updates direction AND records his drift - every chat surface
@@ -594,19 +598,28 @@ def _select_target(recent_text, resolve, step_campaign, persist, her_source, _tu
             # a run. The model is asked after the lock is released.
             from desired_difference import primary_reserve as _ddpr, _turn_state as _tsl
             with _tsl(_rcp):
-                _m = None
-                if os.path.exists(_rcp):
+                _m = None; _had = os.path.exists(_rcp)
+                if _had:
                     try:
                         with open(_rcp) as _rcf: _m = json.load(_rcf)
                     except Exception: _m = None
-                    os.remove(_rcp)
-                return _ddpr(_m if isinstance(_m, dict) else None)
+                _lost = _fault_marks()[1]
+                _p = _ddpr(_m if isinstance(_m, dict) else None)
+                # the marker goes only once the count it was honoured in is written (review, round four): a
+                # count that was lost leaves the required consideration standing for her next turn
+                if _had and _fault_marks()[1] == _lost:
+                    try: os.remove(_rcp)
+                    except Exception as _rme: _turn_state_fault("required_consideration.consume", "failed", _rme, _tsf)
+                return _p
         _primary = _guarded("primary_reserve", _reserve, _tsf, _NOT_DONE)
-        if _primary is _NOT_DONE or (_tsf and _tsf[-1] == {"site": "primary_reserve", "result": "failed"}):
+        _said = [f["result"] for f in _tsf if f.get("site") == "primary_reserve"]
+        if _primary is _NOT_DONE or "failed" in _said:
             # no reservation - the lock not taken, or the count not written - so nothing is shown: the cap is
             # never left to chance
             _primary = None; _acct = "failed"
         else:
+            # counted, but with the lock or the store guard missing: the accounting says so itself
+            if "unprotected" in _said: _acct = "reserved_unprotected"
             _turn["reserved"] = True; _turn["primary"] = (_primary or {}).get("id")
     elif not _acct:
         try:
@@ -946,7 +959,7 @@ def resolve_previous(recent_text="", source=None):
     # those rows first, oldest first, then the latest move as before. A row is settled once - a settled row is
     # no candidate again (10 November).
     for row in sorted((c for c in candidates if c is not last and isinstance(c.get("skipped_observations"), dict)), key=_order):
-        _guarded("resolve_previous.waiting_row", lambda row=row: _resolve_row(row, recent_text, source))
+        _guarded("resolve_previous.waiting_row", lambda row=row: _resolve_row(row, recent_text, source), whole=True)
     _resolve_row(last, recent_text, source)
 
 
@@ -1123,6 +1136,30 @@ def record_pending(target, source="conversation", event_id=None, claim_once=Fals
             pass
     from store_guard import transaction, write_json
     target.setdefault("intent_id", uuid.uuid4().hex)
+    if "primary_shown" in target and not target.get("primary_accounting"):
+        # A lead prepared in a preview and admitted now (the voice route). Its primary was picked when the
+        # preview ran, and nothing was counted then; a turn may have reserved the last showing of that run
+        # since. So before this lead is recorded or shown, the pick is looked at again and counted in one step
+        # under the turn-state lock (review, round four). If it may no longer stand, or the count cannot be
+        # written, nothing is admitted: the cap is not left to chance on this route either.
+        with transaction(LEDGER):
+            _seen = _load("intent-ledger.json") or []
+            if isinstance(_seen, list) and any(isinstance(row, dict) and row.get("intent_id") == target["intent_id"] for row in _seen):
+                return False if claim_once else True
+        def _admit():
+            from desired_difference import primary_admit as _dda
+            return _dda(target.get("primary_shown"), bool(target.get("primary_required")), her_turn=bool(target.get("her_turn", True)))
+        _af = []
+        _ok = _guarded("record_pending.primary_admit", _admit, _af, _NOT_DONE)
+        _how = [f["result"] for f in _af]
+        if _ok is not True or "failed" in _how:
+            try:
+                with open(SELECT_LOG, "a") as _f:
+                    _f.write("%s primary_admission_refused: primary %s; %s\n---\n" % (datetime.now().isoformat(),
+                             target.get("primary_shown"), "not_eligible_now" if _ok is False else "count_not_written"))
+            except Exception: pass
+            return False
+        target["primary_accounting"] = "admitted_unprotected" if "unprotected" in _how else "admitted"
     with transaction(LEDGER):
         led = _load("intent-ledger.json") or []
         if not isinstance(led, list): led = []
@@ -1146,14 +1183,9 @@ def record_pending(target, source="conversation", event_id=None, claim_once=Fals
         if why: row["not_declared_reason"] = why
         led.append(row)
         write_json(LEDGER, led[-500:])
-    if "primary_shown" in target and not target.get("primary_accounting"):
-        # One real selection, counted once, whatever verdict it later gets: the run a primary may lead (10 November).
-        # A turn's own selection was counted when it was reserved, and a device-only event counts nothing (round
-        # four); what is counted here is a lead prepared in a preview and admitted now (the voice route).
-        def _count():
-            from desired_difference import primary_shown as _ddps
-            return _ddps(target.get("primary_shown"), bool(target.get("primary_required")), her_turn=bool(target.get("her_turn", True)))
-        _guarded("record_pending.primary_shown", _count)
+    # One real selection, counted once, whatever verdict it later gets: the run a primary may lead (10 November).
+    # A turn's own selection was counted when it was reserved, a device-only event counts nothing, and a lead
+    # prepared in a preview was counted above, before this row was written (round four).
     return True
 
 

@@ -541,6 +541,22 @@ def primary_reserve(required=None,now=None):
 
 
 @_locked
+def primary_admit(pid,required=False,now=None,her_turn=False):
+    """A lead prepared in a preview is admitted as a turn later (the voice route). Its primary was picked when
+    the preview ran and nothing was counted then. Here, in one step under the turn-state lock and before the
+    admitted lead is recorded or shown, the pick is looked at again and counted (review, round four): True when
+    it may still stand - no primary, or one still eligible: not resting, retired or graduated since - and False
+    when it may not. Nothing is counted then, and the caller admits nothing: a turn that reserved the last
+    showing of a run in between is not followed by a fourth."""
+    now=now or time.time(); pid=_addr(pid)
+    if pid:
+        db=_jload(PRESS,{})
+        if not isinstance(db,dict) or not primary_eligible(pid,db.get(pid),_rotation(),now): return False
+    primary_shown(pid,required,now,her_turn=her_turn)
+    return True
+
+
+@_locked
 def reservation_failed(pid,now=None):
     """A turn that had reserved its showing failed before it was recorded. The reservation stands - the run and
     the rests stay as counted - and the failure is kept beside them: how many, and the last one."""

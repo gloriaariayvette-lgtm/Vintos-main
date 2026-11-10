@@ -123,6 +123,7 @@ def grade():
             save(SEEDS, seeds[-40:])
             print("[lead] evolution seed planted: %s" % p["ground"])
 SEEDSTATE = os.path.join(MEM, ".lead-seed-state.json")
+PENDING_MAX = 200     # unsettled rows kept beside the cursor
 def seed_from_intents():
     """The feeder (Gloria's design): his intent plans that LANDED (realized YES on field or gloria
     axis) become evolution seeds - unless extremely particular. Runs before each journal window."""
@@ -157,7 +158,11 @@ def seed_from_intents():
             seeds.append({"id": "le_" + uuid.uuid4().hex[:6], "ground": str(d["ground"])[:120],
                           "led": str(won)[:150], "status": "awaiting_statement", "created": datetime.now().isoformat()})
             print("[lead] seed from landed intent: %s" % d["ground"])
-    st["last_ts"] = new_last; st["pending"] = keep[-200:]
+    if len(keep) > PENDING_MAX:
+        # the list is bounded; what it lets go can no longer be seeded, so it is counted and said (review, round four)
+        st["pending_dropped"] = int(st.get("pending_dropped", 0) or 0) + len(keep) - PENDING_MAX
+        print("[lead] %d unsettled rows left the bounded pending list unseeded (%d so far)" % (len(keep) - PENDING_MAX, st["pending_dropped"]))
+    st["last_ts"] = new_last; st["pending"] = keep[-PENDING_MAX:]
     save(SEEDSTATE, st); save(SEEDS, seeds[-40:])
 def _seed_state(e):
     """What one ledger row is to the feeder: ("seed", what landed) - the field's goal on a field YES, else her

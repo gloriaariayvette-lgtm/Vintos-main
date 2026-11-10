@@ -1405,7 +1405,7 @@ class IntentFieldsFix(unittest.TestCase):
         with self.faulty(older=True) as (faults, unguarded, err):
             t = self.select(resolve=False)
         sites = ['her_words_reopen', 'primary_reserve', 'note_selection']
-        self.assertEqual((t['primary_shown'], t['primary_accounting'], said(t)), (A, 'reserved', [(s, 'unprotected') for s in sites]))
+        self.assertEqual((t['primary_shown'], t['primary_accounting'], said(t)), (A, 'reserved_unprotected', [(s, 'unprotected') for s in sites]))
         self.assertEqual(faults, {'failed': 0, 'unprotected': 3})
         self.assertEqual(log().count('turn-state write UNPROTECTED at primary_reserve: lock or store guard unavailable'), 1)
         self.assertIn('writing UNLOCKED', err.getvalue())
@@ -1413,7 +1413,7 @@ class IntentFieldsFix(unittest.TestCase):
         # the store guard refuses: the plain write that follows it is counted and said, not passed off as guarded
         with self.faulty(guard=False) as (faults, unguarded, err):
             t = self.select(resolve=False)
-        self.assertEqual((t['primary_shown'], t['primary_accounting'], said(t)), (A, 'reserved', [('primary_reserve', 'unprotected')]))
+        self.assertEqual((t['primary_shown'], t['primary_accounting'], said(t)), (A, 'reserved_unprotected', [('primary_reserve', 'unprotected')]))
         self.assertEqual((faults, unguarded), ({'failed': 0, 'unprotected': 1}, {'n': 1, 'failed': 0}))
         self.assertIn('[desired_difference] store guard failed for intent-primary-rotation.json: written UNPROTECTED, 1 unprotected and 0 failed so far',
                       err.getvalue())
@@ -1459,6 +1459,136 @@ class IntentFieldsFix(unittest.TestCase):
             DD.retire(A)
         self.assertIn('[desired_difference] retire %s: clearing the required-consideration marker FAILED (OSError)' % A, err.getvalue())
         self.assertTrue(marker.exists()); self.assertTrue(self.pressure(A)['retired'])
+
+
+    # ---- round four, review: what the reservation leaves behind when it is not whole --------------------
+    def test_required_consideration_is_consumed_only_once_its_count_is_written(self):
+        # The marker used to be removed before the count was made: a count that was then lost took the
+        # required consideration with it, shown to no one.
+        self.press(**{A: self.prow(TEXT_A, 4.0), B: self.prow(TEXT_B, 2.0)})
+        marker = self.mem / '.intent-required-consideration.json'; marker.write_text(json.dumps({'id': B}))
+        said = lambda t: [(f['site'], f['result']) for f in t.get('turn_state_faults', [])]
+        os.mkdir(DD._rotation_path())                                          # the count cannot be written
+        with self.faulty(guard=False) as (faults, unguarded, err):
+            t = self.select(resolve=False)
+        os.rmdir(DD._rotation_path())
+        self.assertEqual((t['primary_shown'], t['primary_accounting'], said(t)), (None, 'failed', [('primary_reserve', 'failed')]))
+        self.assertEqual(json.loads(marker.read_text()), {'id': B})            # it stands for her next turn
+        with self.faulty(lock=OSError('fixture: the lock cannot be taken')) as (faults, unguarded, err):
+            t = self.select(resolve=False)
+        self.assertEqual((t['primary_shown'], t['primary_accounting']), (None, 'failed')); self.assertTrue(marker.exists())
+        # a marker that cannot be cleared after a written count: the showing stands, and the failure is named
+        real_remove = os.remove
+        def remove(path, *a, **k):
+            if str(path) == str(marker): raise OSError('fixture: the marker cannot be cleared')
+            return real_remove(path, *a, **k)
+        with patch('os.remove', remove):
+            t = self.select(resolve=False)
+        self.assertEqual((t['primary_shown'], t['primary_required'], t['primary_accounting'], said(t)),
+                         (B, True, 'reserved', [('required_consideration.consume', 'failed')]))
+        self.assertTrue(marker.exists())
+        # her next turn: the same row is not required twice running, and the marker goes with that turn's count
+        t = self.select(resolve=False)
+        self.assertEqual((t['primary_shown'], t['primary_required'], t['primary_accounting'], said(t)), (A, False, 'reserved', []))
+        self.assertFalse(marker.exists())
+        self.assertEqual([p for p, _ in self.shown()], [None, None, B, A])
+
+    def test_error_swallowed_around_the_resolver_is_not_called_a_lock_fault(self):
+        self.press(**{A: self.prow(TEXT_A, 4.0)})
+        said = lambda t: [(f['site'], f['result']) for f in t.get('turn_state_faults', [])]
+        with self.faulty() as (faults, unguarded, err):
+            with patch.object(E, 'resolve_previous', side_effect=ValueError('fixture: nothing to do with a lock')):
+                t = self.select()
+        self.assertEqual((t['primary_shown'], t['primary_accounting'], said(t)), (A, 'reserved', [('resolve_previous', 'error')]))
+        self.assertEqual(faults, {'failed': 0, 'unprotected': 0, 'error': 1})
+        log = Path(E.SELECT_LOG).read_text()
+        self.assertEqual(log.count('resolver ERROR at resolve_previous: ValueError: fixture: nothing to do with a lock'), 1)
+        self.assertNotIn('turn-state write', log)
+        # ... nor is one around an earlier waiting row; the latest move is still resolved after it
+        os.unlink(E.SELECT_LOG)
+        self.delivered(gloria=copy.deepcopy(GLORIA)); E.resolve_previous(BUTTON, source='gcs')
+        self.delivered(gloria=copy.deepcopy(GLORIA)); real = E._resolve_row; seen = []
+        def resolve_row(row, *a, **k):
+            seen.append(row['intent_id'])
+            if len(seen) == 1: raise KeyError('fixture')
+            return real(row, *a, **k)
+        self.verdict = 'YES'
+        with self.faulty() as (faults, unguarded, err), patch.object(E, '_resolve_row', resolve_row):
+            E.resolve_previous(HER)
+        self.assertEqual((len(seen), faults), (2, {'failed': 0, 'unprotected': 0, 'error': 1}))
+        log = Path(E.SELECT_LOG).read_text()
+        self.assertEqual(log.count("resolver ERROR at resolve_previous.waiting_row: KeyError: 'fixture'"), 1)
+        self.assertNotIn('turn-state write', log); self.assertEqual(self.rows()[-1]['realized']['gloria'], 'YES')
+
+    # ---- round four, review: a lead prepared in a preview is looked at again when it is admitted --------
+    def preview(self):
+        with PV.background():
+            return self.select(persist=False, step_campaign=False)
+
+    def admit(self, prepared, event):
+        return E.record_pending(prepared, source='voice', event_id=event, claim_once=True)
+
+    def test_previewed_lead_cannot_be_admitted_as_a_fourth_showing(self):
+        self.press(**{A: self.prow(TEXT_A, 4.0), B: self.prow(TEXT_B, 2.0)})
+        rotation = lambda: json.loads(Path(DD._rotation_path()).read_text())
+        for _ in range(2): self.select(resolve=False)                          # A A: one showing of its run is left
+        prepared = self.preview()                                              # the voice lead is prepared on it ...
+        self.assertEqual((prepared['primary_shown'], prepared['her_turn'], 'primary_accounting' in prepared), (A, False, False))
+        self.assertEqual(self.select(resolve=False)['primary_shown'], A)       # ... and a turn of hers takes it
+        before = Path(DD._rotation_path()).read_text(); rows = len(self.rows())
+        # The control: counted without being looked at again, as it was - admitted, a fourth showing of A.
+        with patch.object(DD, 'primary_admit', lambda pid, required=False, now=None, her_turn=False: bool(DD.primary_shown(pid, required, now, her_turn=her_turn))):
+            self.assertTrue(self.admit(copy.deepcopy(prepared), 'control'))
+        self.assertEqual([p for p, _ in self.shown()], [A] * 4)
+        Path(E.LEDGER).write_text(json.dumps(self.rows()[:-1])); Path(DD._rotation_path()).write_text(before)
+        # Looked at again under the lock: A is resting now, so nothing is admitted and nothing is counted.
+        self.assertFalse(self.admit(copy.deepcopy(prepared), 'event-one'))
+        self.assertEqual((len(self.rows()), Path(DD._rotation_path()).read_text()), (rows, before))
+        self.assertEqual(Path(E.SELECT_LOG).read_text().count('primary_admission_refused: primary %s; not_eligible_now' % A), 1)
+        # the next preview is prepared on what may be shown, and is admitted and counted once
+        prepared = self.preview(); self.assertEqual(prepared['primary_shown'], B)
+        as_published = copy.deepcopy(prepared); self.assertTrue(as_published['intent_id'])   # what every voice event reads back
+        self.assertTrue(self.admit(prepared, 'event-two'))
+        row = self.rows()[-1]
+        self.assertEqual((row['surface'], row['target']['primary_shown'], row['target']['primary_accounting'], row['target']['her_turn']),
+                         ('voice', B, 'admitted', False))
+        state = rotation(); self.assertEqual((state['id'], state['run'], state['rest_turns']), (B, 1, {A: 0}))   # no rest served by it
+        self.assertFalse(self.admit(as_published, 'event-three'))             # the same lead again: claimed once, counted once
+        self.assertEqual((rotation()['run'], len(self.rows())), (1, rows + 1))
+        # a count that cannot be written admits nothing either
+        prepared = self.preview(); before = Path(DD._rotation_path()).read_text()
+        with self.faulty(lock=OSError('fixture: the lock cannot be taken')) as (faults, unguarded, err):
+            self.assertFalse(self.admit(prepared, 'event-four'))
+        self.assertEqual((len(self.rows()), Path(DD._rotation_path()).read_text(), faults['failed']), (rows + 1, before, 1))
+        self.assertEqual(Path(E.SELECT_LOG).read_text().count('primary_admission_refused: primary %s; count_not_written' % B), 1)
+        # a prepared lead with no primary is admitted, counted as a turn with none
+        self.press(**{A: self.prow(TEXT_A, 0.2)})
+        prepared = self.preview(); self.assertIsNone(prepared['primary_shown'])
+        self.assertTrue(self.admit(prepared, 'event-five')); self.assertEqual(self.rows()[-1]['target']['primary_accounting'], 'admitted')
+        self.assertEqual((rotation()['id'], rotation()['run']), (None, 0))
+
+    def test_rows_the_bounded_pending_list_lets_go_are_counted(self):
+        LT, asked = self.lead_trials()
+        def row(key, minutes):
+            at = ago(0, minutes)
+            return {'intent_id': key, 'status': 'delivered', 'timestamp': at, 'delivered_at': at, 'reply': 'a synthetic reply',
+                    'target': {'goal': 'goal of ' + key, 'enactment': 'a synthetic move'},
+                    'realized': {'field': None, 'gloria': 'NOT_DECLARED', 'self': 'NOT_DECLARED'}}
+        rows = [row('w%d' % i, 50 - i) for i in range(5)]
+        def feed():
+            Path(E.LEDGER).write_text(json.dumps(rows)); out = io.StringIO()
+            with contextlib.redirect_stdout(out): LT.seed_from_intents()
+            state = json.loads(Path(LT.SEEDSTATE).read_text())
+            return state['pending'], state.get('pending_dropped', 0), out.getvalue()
+        self.assertEqual(feed()[:2], (['w0', 'w1', 'w2', 'w3', 'w4'], 0))         # under the bound: nothing is let go
+        with patch.object(LT, 'PENDING_MAX', 3):
+            pending, dropped, out = feed()
+            self.assertEqual((pending, dropped), (['w2', 'w3', 'w4'], 2))
+            self.assertIn('[lead] 2 unsettled rows left the bounded pending list unseeded (2 so far)', out)
+            for r in rows: r['realized']['field'] = 'YES'                      # all five land afterwards
+            pending, dropped, out = feed()
+        self.assertEqual((pending, dropped, len(asked)), ([], 2, 3))           # the two let go are not seeded, and are counted
+        self.assertEqual(len(json.loads(Path(LT.SEEDS).read_text())), 3)
 
 
 if __name__ == '__main__':
