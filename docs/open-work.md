@@ -8268,3 +8268,18 @@ checks pass. No real stores, external/model/paid calls, GPU, live changes, merge
 or deployment. #66 actual schema counts remain pending the independent private
 inventory run, with no invented explanation for the 75 rows. Review/full isolated
 suite/test merge remain Claude's; Gloria deploys. Heartbeat remains ACTIVE.
+
+
+## 2026-11-09 19:39 CST — #70 prospective Landings binding and media-taste design; ACTIVE
+
+Branch codex/judges-landings-binding, based on integrated 73f7bffd. New ratings
+optionally retain an exact whole-reply turn ID/hash, deduplicating retained copies
+and refusing ambiguous/missing identities; recording remains fail-open, with no
+text copy or old-row backfill. Design and pure offline media prototype are at
+experiments/nonllm-judges/MEDIA-TASTE.md and media_taste.py. Existing vectors need
+exact media-revision and encoder-freeze evidence; no new encoding or published
+pin is supplied. Taste-profile comparison remains pending Gloria, unimplemented.
+47 targeted isolated checks pass: Landings 19, media contract 17, owners 11.
+Logs: /tmp/judges-s70-landings.log, /tmp/judges-s70-media.log,
+/tmp/judges-s70-owners.log. Generated reports unchanged; no live changes, model or
+paid calls, merge or deployment. Independent review/full suite remain Claude's.

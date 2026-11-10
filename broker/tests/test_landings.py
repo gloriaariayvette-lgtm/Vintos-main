@@ -2,6 +2,9 @@
 nothing here sends. The store must stay outside everything he reads."""
 import importlib.util, json, os, re, sys, tempfile, time, unittest
 from datetime import datetime, timedelta
+from unittest.mock import patch
+import hashlib, socket
+from pathlib import Path
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 HOME = tempfile.mkdtemp(prefix="vintos-landings-")
@@ -123,6 +126,110 @@ class Landings(unittest.TestCase):
                     except OSError: continue
                     if rel not in allowed and pat.search(src): hits.append(rel)
         self.assertEqual(hits, [], "only her routes and the weekly Gloria-model pass may read her notes")
+
+
+class ReplyBindings(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(prefix="landings-binding-")
+        self.addCleanup(self.tmp.cleanup)
+        self.mem = os.path.join(self.tmp.name, "memory")
+        os.mkdir(self.mem)
+        self.notes = os.path.join(self.tmp.name, "owner")
+        for name, value in (("MEMORY", self.mem), ("LANDINGS_DIR", self.notes),
+                            ("STORE", os.path.join(self.notes, "landings.jsonl"))):
+            fix = patch.object(L, name, value); fix.start(); self.addCleanup(fix.stop)
+        blocked = patch.object(socket, "socket", side_effect=AssertionError("network forbidden"))
+        self.socket = blocked.start(); self.addCleanup(blocked.stop)
+        self.text = "A synthetic whole reply.\nSecond line."
+        self.ctx = {"piece": {"type": "message", "text": self.text},
+                    "made": {"message": self.text}, "lead_up": [], "item_at": None}
+
+    def sources(self, ledger=(), canonical=()):
+        Path(self.mem, "interaction-ledger.json").write_text(json.dumps(list(ledger)))
+        Path(self.mem, "chat-canonical.jsonl").write_text("".join(json.dumps(r)+"\n" for r in canonical))
+
+    def row(self, tid="synthetic-turn", text=None):
+        return {"turn_id": tid, "vintos": self.text if text is None else text}
+
+    def bind(self): return L._reply_binding("message", self.ctx)
+
+    def test_new_rating_persists_exact_content_free_binding_and_preserves_sources(self):
+        self.sources([self.row()])
+        before = open(os.path.join(self.mem, "interaction-ledger.json"), "rb").read()
+        with patch.object(L, "context", return_value=self.ctx):
+            rated = L.record("message", "synthetic.md", "landed", "synthetic reason")
+        binding = rated["reply_binding"]
+        self.assertEqual(binding, {"schema": "landings-reply-binding-v1", "turn_id": "synthetic-turn",
+            "content_sha256": hashlib.sha256(self.text.encode()).hexdigest(),
+            "source": "exact_full_retained_reply"})
+        self.assertNotIn(self.text, json.dumps(binding))
+        self.assertEqual(json.loads(open(L.STORE).read())["reply_binding"], binding)
+        self.assertEqual(open(os.path.join(self.mem, "interaction-ledger.json"), "rb").read(), before)
+        self.assertFalse(L.STORE.startswith(self.mem))
+        self.assertTrue(self.socket.called is False)
+
+    def test_canonical_assistant_and_duplicate_projection_share_one_identity(self):
+        self.sources([self.row()], [{"role": "assistant", "content": self.text, "turn_id": "synthetic-turn"}]*2)
+        self.assertEqual(self.bind()["turn_id"], "synthetic-turn")
+        self.sources([], [{"role": "assistant", "content": self.text, "turn_id": "synthetic-turn"}])
+        self.assertTrue(self.bind())
+
+    def test_user_text_does_not_bind(self):
+        self.sources([], [{"role": "user", "content": self.text, "turn_id": "synthetic-turn"}])
+        self.assertEqual(self.bind(), {})
+
+    def test_multiple_reply_identities_are_ambiguous(self):
+        self.sources([self.row(), self.row("second-turn")])
+        self.assertEqual(self.bind(), {})
+
+    def test_reused_identity_with_changed_bytes_is_ambiguous(self):
+        self.sources([self.row(), self.row(text="different")])
+        self.assertEqual(self.bind(), {})
+
+    def test_missing_or_invalid_identity_cannot_be_discarded_to_force_match(self):
+        for tid in (None, "", 3, "bad space"):
+            self.sources([self.row(), self.row(tid)])
+            self.assertEqual(self.bind(), {})
+
+    def test_no_substring_normalization_or_device_marker_removal(self):
+        for text in (self.text[:15], self.text+" [marker]", self.text+" ", self.text.replace("\n", " ")):
+            self.sources([self.row(text=text)])
+            self.assertEqual(self.bind(), {})
+
+    def test_media_caption_and_mismatched_frozen_text_are_not_replies(self):
+        self.sources([self.row()])
+        self.assertEqual(L._reply_binding("video", self.ctx), {})
+        self.ctx["made"]["message"] = "changed"
+        self.assertEqual(self.bind(), {})
+
+    def test_journal_and_joke_require_their_whole_frozen_piece(self):
+        self.sources([self.row()])
+        for surface, field in (("journal", "entry"), ("joke", "joke")):
+            ctx = {"piece": {"type": surface, "text": self.text}, "made": {field: self.text}}
+            self.assertTrue(L._reply_binding(surface, ctx))
+
+    def test_malformed_duplicate_key_and_oversized_sources_abstain(self):
+        from pathlib import Path
+        for raw in ('oops', '[{"vintos":"a","vintos":"b"}]', ' '*(8*1024*1024+1)):
+            self.sources([], [{"role": "assistant", "content": self.text, "turn_id": "synthetic-turn"}])
+            Path(self.mem, "interaction-ledger.json").write_text(raw)
+            self.assertEqual(self.bind(), {})
+
+    def test_binding_failure_never_blocks_or_changes_rating(self):
+        with patch.object(L, "context", return_value=self.ctx), patch.object(L, "_reply_binding", side_effect=OSError):
+            row = L.record("message", "synthetic.md", "missed", "unchanged reason")
+        self.assertEqual(row["rating"], "missed")
+        self.assertEqual(row["why"], "unchanged reason")
+        self.assertNotIn("reply_binding", row)
+
+    def test_old_notes_are_not_backfilled(self):
+        self.sources([])
+        with patch.object(L, "context", return_value=self.ctx):
+            row = L.record("message", "synthetic.md", "landed", "synthetic reason")
+        self.sources([self.row()])
+        before = open(L.STORE, "rb").read()
+        self.assertNotIn("reply_binding", L.notes()[0])
+        self.assertEqual(open(L.STORE, "rb").read(), before)
 
 
 if __name__ == "__main__":
