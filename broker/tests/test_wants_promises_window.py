@@ -112,6 +112,35 @@ class EmailPromiseWindow(Base):
         EC._save([ec(i, 1) for i in range(230)])                                       # all owed: past the cap, all kept
         self.assertEqual(len(EC._load()), 230)
 
+    def test_the_cap_never_lets_an_aged_out_promise_go(self):
+        # review: an aged-out promise is still his and can still be kept (close_lines, close_sources take it), so the
+        # cap lets go only rows no longer owed at all, however old the aged-out ones are
+        rows = [ec(i, 30, state="aged out") for i in range(30)] + [ec(100 + i, 1, state="done") for i in range(190)]
+        EC._save(rows)
+        kept = EC._load()
+        self.assertEqual(sum(1 for r in kept if r["state"] == "aged out"), 30)
+        self.assertEqual((len(kept), EC.COUNTS["trimmed"]), (200, 20))
+
+    def test_a_promise_recorded_while_sync_runs_is_not_lost(self):
+        # review: sync now runs on every room pass, paused or not, and the mail reader records promises in another
+        # process; each load-change-save holds the store's lock, so neither writes over the other's rows
+        import threading
+        EC._save([ec(1, 0)])
+        inside, release, done = threading.Event(), threading.Event(), []
+        def open_items(state):
+            inside.set(); release.wait(10); return []
+        def recorder():
+            done.append(EC.record("fixture-letter-new", "I will build the second synthetic chart.", think=lambda *a, **k: json.dumps(
+                [{"what": "Build the second synthetic chart", "quote": "I will build the second synthetic chart.", "evidence": "", "rests_on": []}])))
+        with patch.object(room_work, "open_items", open_items):
+            syncer = threading.Thread(target=lambda: EC.sync({}, self.now)); syncer.start()
+            self.assertTrue(inside.wait(10))
+            writer = threading.Thread(target=recorder); writer.start()
+            writer.join(0.5); self.assertTrue(writer.is_alive())                     # it waits for the store
+            release.set(); syncer.join(10); writer.join(10)
+        self.assertEqual(len(done[0]), 1)
+        self.assertEqual(sorted(r["id"] for r in EC._load()), sorted(["EC-%08x" % 1, done[0][0]["id"]]))
+
     def test_newest_first_and_older_ones_age_out_visibly(self):
         rows = [ec(1, 20), ec(2, 10), ec(3, 5), ec(4, 0), ec(5, 30, state="in work")]
         self.write("email-commitments.json", rows)

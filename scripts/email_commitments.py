@@ -38,6 +38,7 @@ SHOWN = 6
 # silence. A promise already in work keeps going.
 WINDOW_DAYS = 7
 CAP = 200
+OWED = ("open", "in work", "aged out")   # what the cap never lets go (review, 10 November: an aged-out promise is still his)
 COUNTS = {"aged_out": 0, "trimmed": 0, "said_trimmed": 0}
 SAME = 0.7
 TAKES_UP = 0.4
@@ -51,6 +52,14 @@ READ = ("You are reading a reply you wrote to a letter. List each thing the repl
         'on, copied character for character, with every number as written"]}\n'
         "Copy numbers and ranges exactly as written. Never combine two ranges or two sources into one. [] if none.")
 _PROMISE = re.compile(r"[^.!?\n]*\b(?:I'll|I will|First build|Then (?:I|pydssp|run|the)|I'm going to)\b[^.!?\n]*[.!?]?", re.I)
+
+
+def _guard():
+    """The store's own lock (store_guard, <store>.lock) - the one want_agent.close_sources takes. Every load-change-save
+    here holds it (review, 10 November): sync now runs on every room pass, paused or not, beside the mail reader's
+    record() in another process, and an unlocked save of a stale copy dropped the other's new or closed rows."""
+    from store_guard import transaction
+    return transaction(STORE)
 
 
 def _load():
@@ -70,7 +79,7 @@ def _save(rows):
         gone = set()
         for i, r in enumerate(rows):
             if len(gone) >= over: break
-            if r.get("state") not in ("open", "in work"): gone.add(i)
+            if r.get("state") not in OWED: gone.add(i)       # an aged-out promise can still be kept: never let go (review)
         rows = [r for i, r in enumerate(rows) if i not in gone]
         COUNTS["trimmed"] += len(gone)
     os.makedirs(os.path.dirname(STORE), exist_ok=True)
@@ -148,16 +157,18 @@ def extract(reply, letter="", think=None):
 def record(letter_id, reply_body, letter_body="", subject="", agent="", reply_id="", think=None, now=None):
     """Keep one reply's promises; returns the new rows (a promise already kept, open, is not kept twice)."""
     now = now or datetime.now()
-    rows = _load()
-    new = []
-    for f in extract(reply_body, letter_body, think):
-        if any(r.get("state") in ("open", "in work") and _like(r["what"], f["what"]) >= SAME for r in rows + new):
-            continue
-        new.append(dict(f, id="EC-" + hashlib.sha256(("%s %s" % (letter_id, f["quote"])).encode()).hexdigest()[:8],
-                        letter_id=str(letter_id), reply_id=str(reply_id or ""), subject=str(subject)[:200],
-                        agent=str(agent)[:60], at=now.isoformat(timespec="seconds"), state="open"))
-    if new:
-        _save(rows + new)
+    found = extract(reply_body, letter_body, think)          # the model is asked before the store is locked
+    with _guard():
+        rows = _load()
+        new = []
+        for f in found:
+            if any(r.get("state") in ("open", "in work") and _like(r["what"], f["what"]) >= SAME for r in rows + new):
+                continue
+            new.append(dict(f, id="EC-" + hashlib.sha256(("%s %s" % (letter_id, f["quote"])).encode()).hexdigest()[:8],
+                            letter_id=str(letter_id), reply_id=str(reply_id or ""), subject=str(subject)[:200],
+                            agent=str(agent)[:60], at=now.isoformat(timespec="seconds"), state="open"))
+        if new:
+            _save(rows + new)
     return new
 
 
@@ -207,6 +218,11 @@ WORK_PROMISE = re.compile(r"\b(?:build|make|run|fold|measure|test|compare|render
 
 
 def open_rows():
+    with _guard():
+        return _open_rows()
+
+
+def _open_rows():
     """Owed promises, newest first, inside the window (10 November; they were oldest first, and the six shown were the
     oldest, from 22 October). A sentence that is not his own action is set aside as not his, once; one that makes
     nothing is kept in his letter, not owed here."""
@@ -224,6 +240,11 @@ def open_rows():
 
 
 def close_lines(text, now=None, proved=None, waiting_work_ids=()):
+    with _guard():
+        return _close_lines(text, now, proved, waiting_work_ids)
+
+
+def _close_lines(text, now=None, proved=None, waiting_work_ids=()):
     """His PROMISE DONE EC-id: proof / PROMISE DROPPED EC-id: why lines: done, and shown as what happened.
     A promise done needs something anyone could check (proved(), from room_work). Returns (text, log lines)."""
     rows = _load()
@@ -286,6 +307,11 @@ def block():
 
 
 def sync(state, now):
+    with _guard():
+        return _sync(state, now)
+
+
+def _sync(state, now):
     """Link promises to the room's work, and close them with it. Returns lines for the log."""
     import room_work
     rows = _load()

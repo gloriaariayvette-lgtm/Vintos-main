@@ -8440,3 +8440,7 @@ bound want or promise more than seven days older than the newest ages out, marke
 said, never trimmed; the 200-row cap of email-commitments.json lets go only rows no longer owed,
 and says how many. An email want's source receipt is now taken on the words it is kept as.
 Thirteen cases in `broker/tests/test_wants_promises_window.py`. ACTIVE review.
+Review: every load-change-save of `email-commitments.json` now holds the store's own lock (the one
+`want_agent.close_sources` already took): sync runs on every pass, beside the mail reader's `record` in
+another process, and an unlocked save of a stale copy could drop the other's rows. The cap never lets an
+`aged out` promise go either (it can still be kept). Two new cases.
