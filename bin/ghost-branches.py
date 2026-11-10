@@ -57,6 +57,7 @@ AUDIT_FILE     = os.path.join(MEMORY, "ghost-audit.json")
 
 TODAY = date.today().isoformat()
 NOW   = datetime.now().strftime("%H:%M")
+TRIED_CHARS = 1200
 
 PULL_THRESHOLD        = 3
 PULL_THRESHOLD_MIRROR = 3
@@ -140,6 +141,19 @@ def call_llm(messages, temperature=0.85, max_tokens=800):
     with urllib.request.urlopen(req, timeout=180) as r:
         data = json.loads(r.read().decode())
         return data["choices"][0]["message"]["content"]
+
+
+def whole_reply_text(raw):
+    """The text of a reply that came back whole instead of as a stream. AEON's subconscious lane (the shim's
+    /pool/subconscious, subcon_target.generative_route) answers stream requests with one JSON body, never with
+    "data:" lines, so from 8 November every primary and ghost read 0 characters and the Ghost Branch entry lost
+    its prose. '' when the body is not a chat reply."""
+    try:
+        text = raw.decode("utf-8") if isinstance(raw, (bytes, bytearray)) else str(raw or "")
+        d = json.loads(text)
+        return str(((d.get("choices") or [{}])[0].get("message") or {}).get("content") or "")
+    except Exception:
+        return ""
 
 
 def detect_reversion(accumulated, position):
@@ -332,6 +346,7 @@ def run_primary(system, prompt):
     last_scan = 0
     stream_cutoff = ""
     bis_trial = None
+    whole, saw_stream = b"", False
 
     req = urllib.request.Request(LM_URL, data=payload, headers=HEADERS)
     try:
@@ -342,6 +357,9 @@ def run_primary(system, prompt):
                 if not chunk:
                     break
                 buf += chunk
+                if not saw_stream:
+                    whole += chunk
+                    saw_stream = b"data:" in whole
                 while b"\n" in buf:
                     raw_line, buf = buf.split(b"\n", 1)
                     line = raw_line.decode("utf-8").strip()
@@ -377,6 +395,9 @@ def run_primary(system, prompt):
         import traceback
         print(f"[Ghost/primary] Stream error: {e}", flush=True)
         traceback.print_exc()
+    if not accumulated and not saw_stream and whole:
+        accumulated = whole_reply_text(whole)
+        print(f"[Ghost/primary] reply came whole, not streamed ({len(accumulated)} chars)", flush=True)
 
     if pattern_fired and stream_cutoff and bis_trial:
         alt = bis_trial.get("alternative", "")[:120]
@@ -422,6 +443,7 @@ def stream_ghost(messages, axis, results_container, idx):
     pattern_fired = False
     last_scan = 0
     stream_cutoff = ""
+    whole, saw_stream = b"", False
     req = urllib.request.Request(LM_URL, data=payload, headers=HEADERS)
     try:
         with urllib.request.urlopen(req, timeout=180) as r:
@@ -431,6 +453,9 @@ def stream_ghost(messages, axis, results_container, idx):
                 if not chunk:
                     break
                 buf += chunk
+                if not saw_stream:
+                    whole += chunk
+                    saw_stream = b"data:" in whole
                 while b"\n" in buf:
                     raw_line, buf = buf.split(b"\n", 1)
                     line = raw_line.decode("utf-8").strip()
@@ -462,6 +487,9 @@ def stream_ghost(messages, axis, results_container, idx):
         import traceback
         print(f"[Ghost/{axis['id']}] Stream error: {e}", flush=True)
         traceback.print_exc()
+    if not accumulated and not saw_stream and whole:
+        accumulated = whole_reply_text(whole)
+        print(f"[Ghost/{axis['id']}] reply came whole, not streamed ({len(accumulated)} chars)", flush=True)
     if pattern_fired and stream_cutoff:
         reversion = triggers[-1]
         reminder = (
@@ -918,6 +946,9 @@ def log_artifacts(thread, ghost_results, resolutions, primary_resolved, appendag
                 # the full output is kept for RESOLVED ghosts — the words that broke the pattern are
                 # the evidence, not the lean statistic (fable-subconscious-p2, 2026-09-05)
                 "output": (r.get("output") or "") if resolutions.get(r["axis"]["id"], False) else "",
+                # what an unresolved lean tried, for his daily-inner entry only (Gloria, 10 November: "if every lean
+                # fails, still show what he tried"); never evidence, so it is not "output"
+                "tried": "" if resolutions.get(r["axis"]["id"], False) else str(r.get("output") or "")[:TRIED_CHARS],
             }
             for r in ghost_results if r
         ],
