@@ -1134,7 +1134,7 @@ def _turn_organs(gloria_text, reply, before_state, surface="avatar"):
     return done
 
 
-def _apply_intent_lead(system_prompt, user_msg, resolve_previous=True, counterpart=True):
+def _apply_intent_lead(system_prompt, user_msg, resolve_previous=True, counterpart=True, source=None):
     """Choose once, carry the whole declaration, and bind delivery in this request's context."""
     try:
         import sys as _isys, os as _ios
@@ -1143,8 +1143,10 @@ def _apply_intent_lead(system_prompt, user_msg, resolve_previous=True, counterpa
         import intent_engine as _intent
         _intent.current_target.set(None)
         _label = "\nGLORIA (now): " if counterpart else "\nREELROOM EVENT (not Gloria's words): "
+        # where this turn came from travels with it: a device event is not her answer to the last move (10 November)
         _t = _intent.select_target(_intent._recent_conversation() + _label + str(user_msg),
-                                   resolve=bool(resolve_previous and counterpart))
+                                   resolve=bool(resolve_previous and counterpart),
+                                   **({"her_source": str(source)} if source else {}))
         _lead = _intent.prompt_block(_t)
         if _lead:
             _intent.current_target.set(_t)
@@ -10852,7 +10854,8 @@ Your current self-model (excerpt):
             # her words on the "GLORIA (now):" line, a photo named and not described; a room event stays itself
             system_prompt = _apply_intent_lead(system_prompt, msg.message if not _counterpart_text else _her_turn_text(msg),
                                                resolve_previous=bool(getattr(msg, "resolve_previous_intent", True)),
-                                               counterpart=bool(_counterpart_text))
+                                               counterpart=bool(_counterpart_text),
+                                               source=getattr(msg, "input_kind", None))
         except Exception:
             pass
         try:

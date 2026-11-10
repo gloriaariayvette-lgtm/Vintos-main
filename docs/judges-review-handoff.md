@@ -2058,3 +2058,77 @@ One synthetic test covers actual rollback, private exception suppression, broken
 logging and silent success. Fit completion 17/17 and owners 11/11 pass; reports
 unchanged. Logs /tmp/judges-s72-fit.log and /tmp/judges-s72-owners.log. No new
 private-store counts, live actions or calls. Await independent review, then idle.
+
+
+## 2026-11-10 00:28 CST — private taste comparison, synthetic implementation; ACTIVE
+
+Branch codex/judges-taste-comparison, based on c1bb8c8b. Removed actual private
+Landings counts from current MEDIA-TASTE.md while preserving its design contract.
+The approved offline taste_comparison.py reads explicit private snapshots and
+reports literal whole-phrase overlap against the latest prior frozen rating.
+Fixed aggregate crosstabs, coverage and a named polarity proxy expose the precise
+denominator; null means no decisive matches. This does not measure semantic
+agreement, predict historical preferences or assess media contents. Descriptions
+are separated from text evidence; explanations and titles cannot supply matches.
+No anchors, labels, training signals or policy inputs are emitted. Source fields,
+provenance and unknowns remain untouched. No runtime consumer or new calls.
+15 synthetic comparison checks and 11 ownership checks pass; generated reports
+unchanged. Logs /tmp/judges-s73-comparison.log and /tmp/judges-s73-owners.log.
+Usage and limitations: experiments/nonllm-judges/TASTE-COMPARISON.md. Claude owns
+independent review/full isolated suite and the approved private counts-only pass;
+private results stay in coordination notes. No deployment, live writes or merge.
+
+
+## 2026-11-10 03:19 CST — offline intent shadow assessor and campaign design; ACTIVE
+
+Branch codex/judges-intent-shadow, based on integrated d46893f9. Added a pure
+offline assessor with explicit private-snapshot CLI, exact declaration/delivery
+and parented-response joins, fixed HELD reasons, per-axis coverage/crosstabs and
+explicit agreement denominators. Optional prior independently reviewed mechanical
+contracts can test exactly bound terminal action receipts. Missing or semantic
+criteria stay HELD; missing evidence is never NO. Receipt outcomes are conditional
+on supplied contracts, not authenticated source claims or semantic accuracy.
+No actual private data was used; no runtime module or deployment manifest changed.
+Original fields and provenance remain untouched; configured identities never
+become actual served identities. There is no path into realized, intent context,
+receptivity/priority, valence, pressure, anchors, training or policy. Campaign
+terminal gating and independent review are documented as shadow design only;
+selector keys and the existing continued campaign state remain untouched.
+21 synthetic shadow checks and 11 ownership checks pass (32 total); generated
+reports unchanged. Logs /tmp/judges-s74-shadow.log and /tmp/judges-s74-owners.log.
+Contracts/limitations: experiments/nonllm-judges/INTENT-SHADOW.md; campaign design:
+experiments/nonllm-judges/CAMPAIGN-SHADOW.md. Native-ledger-only runs report missing
+joins conservatively; no original identities, source adapter or historical
+contracts are invented. Claude owns independent review/full isolated suite and
+private cohort work; no model calls, live writes, merge or deployment here.
+
+
+## 2026-11-10 04:02 CST — recognizable legacy shape has a distinct HELD reason; ACTIVE
+
+Branch codex/judges-legacy-shape, based on integrated 43d7203d. The reviewer's
+legacy-row note is addressed with fixed reason legacy_shape for old single-verdict
+records without status/delivery IDs or goal/criterion, but with field-state and
+enactment. Explicit abstention retains precedence; malformed modern declarations
+keep invalid_declaration. No verdict, denominator, evidence gate or runtime path
+changes. One synthetic regression covers legacy/open shapes, modern exclusions,
+malformed fields and explicit abstentions. All 22 shadow tests pass; log
+/tmp/judges-s75-shadow.log. Future observation fields alone do not establish
+coverage: exact source joins and prior reviewed contracts are also necessary.
+Independent review remains pending. No live writes, inference, merge or deployment.
+
+
+## 2026-11-10 05:32 CST — expired observation axes excluded from shadow coverage; ACTIVE
+
+Branch codex/judges-shadow-expiry, based on reviewed 4c49ca5f. Rule version 2
+keeps an explicitly engine-expired declared axis HELD with fixed reason
+her_reply_window_expired, even with complete joined evidence and prior contracts.
+It cannot enter decisive verdict counts or agreement denominators. Single reasons
+map only to field on single-verdict records; secondary axes remain independent.
+Declaration abstention retains precedence. Waiting rows and other held reasons
+keep existing evidence checks; skip metadata never synthesizes expiry. Original
+fields remain untouched. This is a supplied coverage marker, not source proof.
+Three synthetic regressions cover complete evidence, contradictory old verdicts,
+axis/single scoping, declaration precedence and waiting versus expired responses.
+All 25 isolated shadow tests pass; log /tmp/judges-s76-shadow.log. No runtime,
+manifest or new-file changes; no live writes, inference, merge or deployment.
+Claude owns independent review, full isolated suite and integration. ACTIVE.
