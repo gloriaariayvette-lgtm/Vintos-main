@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-DEFAULTS = {'per_want_calls': 8, 'daily_calls': 16, 'context_chars': 60000}
+DEFAULTS = {'per_want_calls': 8, 'daily_calls': 16, 'context_chars': 120000}   # his identity alone may be 60000
 
 
 class WorkBlocked(RuntimeError):
