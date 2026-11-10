@@ -3188,7 +3188,7 @@ def agent_wants_pass(api, channel, dot, state, now, rows=(), put=None, notify=No
     return lines + want_agent.intake(state, post, save, now, identity=identity, prepare=prepare)
 
 
-def promise_lanes(state, now):
+def promise_lanes(state, now, paused=False):
     """Email and journal promises, worked, shown and closed whether or not the day is paused (Gloria, 10 November:
     "Email and journal wants skip the slack !start/!stop limit"): owed email promises are linked to the room's work
     and closed with it, older ones age out of the window, and the newest that are literal work become source-bound
@@ -3201,7 +3201,7 @@ def promise_lanes(state, now):
         lines.append("email promises not synced: %s" % str(exc)[:120])
     try:
         import want_agent
-        lines += want_agent.adopt_promises(now=now)
+        lines += want_agent.adopt_promises(now=now, paused=paused)
     except Exception as exc:
         lines.append("promises not taken into the want lane: %s" % str(exc)[:120])
     return lines
@@ -3584,7 +3584,7 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     # want lane before it runs, paused or not. The room's own conversation stays paused below.
     if is_paused:
         lines_pre += promises_pass(api, channel, dot, state, now, ask=promise_ask, post_threads=False)
-    lines_pre += promise_lanes(state, now)
+    lines_pre += promise_lanes(state, now, paused=bool(is_paused))
     # This specific work lane is independent of the room's conversation switch.
     # Authority is a stored want/goal/RW/thread binding, never a display marker.
     import want_agent, want_working_thread

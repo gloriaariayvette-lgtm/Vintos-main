@@ -76,12 +76,17 @@ def load():
         prev = {"day": d["day"], "scanned": list(d.get("scanned") or [])} if d["day"] == _yesterday() else None
         # a promise opened yesterday but never posted (the day was paused) is still owed: it is carried over
         waiting = [i for i in d.get("items", []) if i.get("state") == "open" and not i.get("thread")]
-        carried = [i for i in waiting if _within(i)]
-        aged = [{"id": i.get("id"), "opened": i.get("opened")} for i in waiting if not _within(i)]
+        # a promise its want is working is carried whatever its age, and one ended but not yet brought to her is
+        # carried until it is (10 November: past midnight its result never reached the results channel)
+        carried = ([i for i in waiting if _within(i) or i.get("want_id")]
+                   + [i for i in d.get("items", []) if i.get("state") != "open" and not i.get("posted")])
+        aged = [{"id": i.get("id"), "opened": i.get("opened")} for i in waiting if not _within(i) and not i.get("want_id")]
+        kept_by_want = list(d.get("closed_by_want") or [])[-200:]
         n_aged, said = int(d.get("aged_out_n") or 0) + len(aged), int(d.get("aged_out_said") or 0)
         kept_ids = (list(d.get("aged_out") or []) + aged)[-200:]
         d = {"items": carried}
         if n_aged: d.update(aged_out=kept_ids, aged_out_n=n_aged, aged_out_said=said)
+        if kept_by_want: d["closed_by_want"] = kept_by_want
         if prev: d["previous"] = prev
     if "previous" not in d and d.get("day", today()) == today():
         try:   # rolled over before this rule: yesterday's archive says what was read
@@ -122,12 +127,23 @@ def adopted(pid, want_id):
 
 def close_ids(ids, result):
     """Promises kept by a finished want (want_agent.close_sources): done, with what came of it, to be brought to her."""
-    d = load(); closed = []
+    d = load(); closed = []; ids = set(ids) - set(d.get("closed_by_want") or [])
+    missing = ids - {i.get("id") for i in d["items"]}
+    # one that rolled out of the carry-over before this rule is found in the archive and brought back to be closed
+    for name in (sorted(os.listdir(ARCHIVE), reverse=True) if missing and os.path.isdir(ARCHIVE) else []):
+        try:
+            old = json.load(open(os.path.join(ARCHIVE, name)))
+        except (OSError, ValueError):
+            continue
+        for i in old.get("items", []) if isinstance(old, dict) else []:
+            if i.get("id") in missing and i.get("state") == "open":
+                d["items"].append(dict(i)); missing.discard(i["id"])
     for i in d["items"]:
-        if i.get("id") in set(ids) and i.get("state") == "open":
+        if i.get("id") in ids and i.get("state") == "open":
             i.update(state="done", result=str(result)[:1500], ended=_now().isoformat(timespec="seconds"), posted=False)
             closed.append(i)
     if closed:
+        d["closed_by_want"] = (list(d.get("closed_by_want") or []) + [i["id"] for i in closed])[-200:]   # once
         save(d)
     return closed
 
