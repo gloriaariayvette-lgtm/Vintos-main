@@ -496,9 +496,9 @@ def select_target(recent_text, resolve=True, step_campaign=True, persist=True, h
         "about her and let it shape your choice: leading is your natural ground with her, and an aim that hands her "
         "the lead, has her hold the next beat or carry the evening, or has you pull back so that she must, goes "
         "against what she has said she likes - choose it only when the moment itself clearly asks for it.\n\n"
-        "WHERE THE CRITERION SHOWS (10 November): it follows that the success criterion is one your own move can "
-        "meet, or one her ordinary next message can show in her own way. It does not wait on a later day, need a "
-        "particular sentence from her, or leave the work of the move to her. Say where it shows: observation_window "
+        "WHERE THE CRITERION SHOWS (10 November): the success criterion is one your own move can "
+        "meet, or one her ordinary next message can show in her own way. It does not wait on a later day or need a "
+        "particular sentence from her. Say where it shows: observation_window "
         "is this_reply or her_next_reply; evidence_type is my_move or her_response.\n\n"
         + _SCHEMA
     )
