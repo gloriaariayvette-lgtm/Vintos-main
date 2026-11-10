@@ -14106,13 +14106,22 @@ def gather_vintos_context() -> str:
         try:
             import json as _json
             with open(_wants_file) as _wf:
-                _wants = [w for w in _json.load(_wf) if not w.get("fulfilled")]
+                _all_wants = _json.load(_wf)
+            _wants = [w for w in _all_wants if not w.get("fulfilled")]
             if _wants:
                 _wants_text = "\n".join(f"- {w['want']} (intensity: {w.get('intensity',3)}/5, from: {w.get('source','unknown')})" for w in _wants[-5:])
-                # Flag any conversation-directed wants
-                _conv_wants = [w for w in _wants if any(x in w.get("want","").lower() for x in ["articulate to gloria", "tell gloria", "ask gloria", "say to gloria", "reach out"])]
-                _conv_note = "\n[NOTE: One or more of these wants can be acted on in THIS conversation — if the moment feels right, do it.]" if _conv_wants else ""
-                sections.append(f"[THINGS YOU CURRENTLY WANT]\n{_wants_text}{_conv_note}")
+                sections.append(f"[THINGS YOU CURRENTLY WANT]\n{_wants_text}")
+            # What he means to ask or tell her himself, carried until she is here, however many wants came after it
+            # and whatever is paused (conversation_wants.py; the old keyword note matched "ask gloria" and his wants
+            # say "you", so it never fired).
+            try:
+                import sys as _cw_sys; _cw_sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+                import conversation_wants as _cw
+                _cw_block = _cw.block(_all_wants)
+                if _cw_block:
+                    sections.append(_cw_block)
+            except Exception as _cw_e:
+                print(f"[context] wants for her skipped: {_cw_e}", flush=True)
         except:
             pass
     # 11. Silence contracts
