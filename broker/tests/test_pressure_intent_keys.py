@@ -121,7 +121,8 @@ DD.observe("[Gloria sent you a photo. What your eyes saw:]\nA red drum.\n\n[Glor
 check("a picture with no words of hers is not observed as her message", CALLS == [], CALLS)
 
 print("\n--- priority_vector: real turns only, and a streak that can graduate ---")
-json.dump([{"realized": {"gloria": "NO"}}] * 5, open(os.path.join(MEM, "intent-ledger.json"), "w"))
+json.dump([{"realized": {"gloria": "NO"}, "timestamp": __import__("datetime").datetime.now().isoformat()}] * 5,
+          open(os.path.join(MEM, "intent-ledger.json"), "w"))
 json.dump({"neglect": {"field": 0.0, "gloria": 0.0, "self": 0.0}}, open(PV.STATE, "w"))
 with PV.background():
     for _ in range(30):

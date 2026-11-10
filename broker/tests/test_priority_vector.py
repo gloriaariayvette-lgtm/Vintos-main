@@ -21,7 +21,9 @@ def check(name, ok, detail=""):
 check("the module writes only under scratch HOME", PV.MEM.startswith(HOME) and PV.LOG.startswith(HOME))
 
 def _write_ledger(realized_rows):
-    json.dump([{"realized": r} for r in realized_rows], open(os.path.join(MEM, "intent-ledger.json"), "w"))
+    # receptivity reads only recent verdicts, by the time of their own turn (10 November)
+    json.dump([{"realized": r, "timestamp": __import__("datetime").datetime.now().isoformat()} for r in realized_rows],
+              open(os.path.join(MEM, "intent-ledger.json"), "w"))
 def _reset_state(neglect=None, streak=None):
     st = {}
     if neglect is not None: st["neglect"] = neglect

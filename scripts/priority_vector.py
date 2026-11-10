@@ -57,30 +57,99 @@ def _jload(p, d):
     try: return json.load(open(p))
     except Exception: return d
 
-def _axis_history():
-    """Per-axis verdict counts from the intent ledger — the data the strategy leans on."""
+# Her receptivity is read from the last two weeks, and from at least five verdicts (10 November). It was the
+# landing rate over the last 60 ledger rows whatever their age: weeks-old NOs kept it under 0.35, under 0.35 her
+# axis is given 0.15, an axis at 0.15 is mostly left undeclared, so no new verdict arrived to lift it.
+RECENT_DAYS = 14
+MIN_VERDICTS = 5
+MAX_VERDICTS = 60
+# Her axis is offered an attempt on every fourth turn of her own that it has gone undeclared, whatever its
+# weight (10 November). The attempt is guaranteed, a declaration is not: the selector may decline with a reason.
+OPPORTUNITY_EVERY = 4
+
+def _when(e):
+    """When the turn a ledger row belongs to began (its selection, else its delivery), epoch seconds; None
+    when it carries no readable time."""
+    for k in ("timestamp", "delivered_at"):
+        try: return datetime.fromisoformat(str(e.get(k))).timestamp()
+        except Exception: pass
+    return None
+
+def _axis_history(now=None):
+    """Per-axis verdict counts from the intent ledger — the data the strategy leans on. Only settled
+    YES / PARTIAL / NO verdicts on turns of the last RECENT_DAYS count, and of those the latest MAX_VERDICTS
+    per axis: HELD, NOT_DECLARED and pending rows are neither a landing nor a miss, and a row with no readable
+    time cannot be called recent."""
     led = _jload(os.path.join(MEM, "intent-ledger.json"), [])
     hist = {a: {"YES": 0, "PARTIAL": 0, "NO": 0, "n": 0} for a in AXES}
-    for e in led[-60:]:
+    now = now or time.time()
+    seen = {a: [] for a in AXES}
+    for e in (led if isinstance(led, list) else []):
+        if not isinstance(e, dict): continue
+        t = _when(e)
+        if t is None or now - t > RECENT_DAYS * 86400:
+            continue
         r = e.get("realized")
-        if isinstance(r, dict):
-            for a in AXES:
-                v = r.get(a)
-                if v in ("YES", "PARTIAL", "NO"):
-                    hist[a][v] += 1; hist[a]["n"] += 1
-        elif isinstance(r, str) and r in ("YES", "PARTIAL", "NO"):
-            hist["field"][r] += 1; hist["field"]["n"] += 1
+        r = r if isinstance(r, dict) else ({"field": r} if isinstance(r, str) else {})
+        for a in AXES:
+            if r.get(a) in ("YES", "PARTIAL", "NO"):
+                seen[a].append((t, r[a]))
+    for a in AXES:
+        for _t, v in sorted(seen[a], key=lambda x: x[0])[-MAX_VERDICTS:]:
+            hist[a][v] += 1; hist[a]["n"] += 1
     return hist
+
+def _atomic(path, obj):
+    tmp = path + ".tmp.%d" % os.getpid()
+    with open(tmp, "w") as f: json.dump(obj, f, indent=2)
+    os.replace(tmp, path)
+
+def _opportunity(st):
+    o = st.get("gloria_opportunity") if isinstance(st, dict) else None
+    o = dict(o) if isinstance(o, dict) else {}
+    for k in ("since", "opportunities", "attempts", "declared", "abstained"):
+        try: o[k] = int(o.get(k, 0) or 0)
+        except Exception: o[k] = 0
+    return o
+
+def note_selection(gloria_declared, opportunity=False, eligible=True):
+    """After a completed foreground selection, move her opportunity counter (10 November).
+
+    A valid declaration on her axis resets it; a due opportunity resets it once the selection attempt is
+    complete, a reasoned abstention included; any other turn of her own adds one. Opportunities, attempts,
+    declarations and abstentions are counted apart, so a selector that always answers empty stays visible.
+    None of these is a verdict: nothing here reaches the landing rate. A background run, or a turn that is
+    not her words (a device event), moves nothing."""
+    if not _foreground() or not eligible:
+        return None
+    st = _jload(STATE, {})
+    if not isinstance(st, dict): st = {}
+    o = _opportunity(st)
+    if opportunity:
+        o["attempts"] += 1
+        o["declared" if gloria_declared else "abstained"] += 1
+    o["since"] = 0 if (gloria_declared or opportunity) else o["since"] + 1
+    st["gloria_opportunity"] = o
+    _atomic(STATE, st)
+    return o
+
+def opportunity_report():
+    """Counts only: how her opportunity has gone."""
+    o = _opportunity(_jload(STATE, {}))
+    return {"every": OPPORTUNITY_EVERY, "turns_since_gloria_declared": o["since"], "opportunities": o["opportunities"],
+            "attempts": o["attempts"], "declared": o["declared"], "abstained": o["abstained"]}
 
 def _receptivity(hist):
     """His model of whether she is movable right now: recent Gloria-axis landing rate."""
     g = hist["gloria"]
-    if g["n"] < 3: return None                      # not enough data — don't pretend
+    if g["n"] < MIN_VERDICTS: return None           # not enough data — don't pretend
     return round((g["YES"] + 0.5 * g["PARTIAL"]) / g["n"], 2)
 
-def declare():
-    """Set, log, and return this turn's vector. Called BEFORE generation."""
+def declare(eligible=True):
+    """Set, log, and return this turn's vector. Called BEFORE generation. `eligible` is False for a turn
+    that carries none of her own words (a device event): her opportunity is not spent on it."""
     st = _jload(STATE, {})
+    if not isinstance(st, dict): st = {}
     st.setdefault("neglect", {a: 0.0 for a in AXES})
     st.setdefault("arc", {a: 0.33 for a in AXES})
     st.setdefault("override_streak", {"axis": None, "n": 0})
@@ -102,7 +171,10 @@ def declare():
             w = {"field": 0.40, "gloria": 0.35, "self": 0.25}
             why.append(f"receptivity middling ({recept}) — field carries, both served")
     else:
-        why.append("Self axis data thin — provisional even weights")
+        # unknown is not low: the middling weights, so her axis is still tried and the data can come (10 November)
+        w = {"field": 0.40, "gloria": 0.35, "self": 0.25}
+        why.append("receptivity unknown (%d settled Gloria-axis verdicts in the last %d days, fewer than %d) — "
+                   "provisional middling weights, field carries" % (hist["gloria"]["n"], RECENT_DAYS, MIN_VERDICTS))
     if hist["self"]["n"] == 0:
         why.append("self weight provisional (0 closed verdicts)")
 
@@ -163,14 +235,23 @@ def declare():
     if fg:
         st["arc"] = {a: round(0.8 * st["arc"].get(a, 0.33) + 0.2 * w[a], 3) for a in AXES}
 
+    # her opportunity: due on the turn after OPPORTUNITY_EVERY - 1 turns of her own without her axis declared.
+    # Low receptivity does not skip it. The counter itself moves in note_selection, after the selection.
+    opp = _opportunity(st)
+    due = bool(fg and eligible and opp["since"] >= OPPORTUNITY_EVERY - 1)
+    if due:
+        opp["opportunities"] += 1
+    st["gloria_opportunity"] = opp
+
     rec = {"ts": datetime.now().isoformat(), "weights": w,
            "mode": "pressure" if forced else "strategic",
-           "receptivity": recept, "why": "; ".join(why), "arc": st["arc"], "foreground": fg}
+           "receptivity": recept, "why": "; ".join(why), "arc": st["arc"], "foreground": fg,
+           "gloria_opportunity": due}
     try:
         with open(LOG, "a") as f: f.write(json.dumps(rec) + "\n")   # immutable, pre-turn
     except Exception: pass
     if fg:
-        json.dump(st, open(STATE, "w"), indent=2)
+        _atomic(STATE, st)
     try:
         json.dump(rec, open(os.path.join(MEM, ".pending-priority.json"), "w"))
     except Exception: pass
@@ -181,8 +262,16 @@ def prompt_block(rec):
     return ("PRIORITY VECTOR for this turn (declared before you, binding): " + d +
             (". Set by pressure, not strategy — an axis you have starved is demanding its turn." if rec["mode"] == "pressure" else ".") +
             " Serve the weights: the dominant axis gets the real move; a deprioritized axis left unserved this turn is NOT a failure — that is the point of declaring. "
-            "Reason: " + rec["why"])
+            "Reason: " + rec["why"] +
+            ((" GLORIA OPPORTUNITY (due this turn, whatever her weight): your axis toward her has gone several turns "
+              "undeclared, and an axis never tried can never be read. Look honestly for ONE small change in her that "
+              "this same move invites - something her next message could show in her own ordinary way - and declare it "
+              "under \"gloria\". Do not invent one to fill the slot: if this move carries none, leave \"gloria\" {} and "
+              "say why in a \"gloria_decline\" field.") if rec.get("gloria_opportunity") else ""))
 
 if __name__ == "__main__":
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == "opportunity-report":
+        print(json.dumps(opportunity_report())); sys.exit(0)   # counts only; declares nothing
     r = declare()
     print(json.dumps(r, indent=2))
