@@ -2292,6 +2292,23 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
             print("[express_want] second-order want -> %s: %s" % (_routed, str(want_text)[:60]), file=__import__("sys").stderr)
             return
     except Exception: pass
+    # A journal want that is the same as a want or a promise from his letters is not a second want (Gloria,
+    # 10 November): the journal becomes context on the email want, or carries the promise it repeats.
+    if _src == "idle-journal" and isinstance(want_text, str):
+        try:
+            import sys as _jf_s; _jf_s.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+            import want_agent as _jf
+            _jf_id = _jf.fold_journal(want_text, {"source_refs": kwargs.get("source_refs"),
+                                                  "source_event_id": source_event_id})
+            if _jf_id:
+                print(f"[express_want] journal context for email want {_jf_id}: {want_text[:60]}", file=__import__("sys").stderr)
+                return {"id": _jf_id, "journal_context_for": _jf_id}
+            _jf_pid = _jf.promise_twin(want_text)
+            if _jf_pid:
+                kwargs["source_refs"] = list(kwargs.get("source_refs") or []) + [{"kind": "commitment", "id": _jf_pid}]
+                print(f"[express_want] journal want carries email promise {_jf_pid}: {want_text[:60]}", file=__import__("sys").stderr)
+        except Exception as _jf_e:
+            print(f"[express_want] journal/email fold skipped: {_jf_e}", file=__import__("sys").stderr)
     # Deduplication — check against existing unfulfilled wants
     _want_words = set(want_text.lower().split())
     for _existing in wants:
@@ -2390,7 +2407,7 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
     if isinstance(kwargs.get("source_refs"), list):
         entry["source_refs"] = [{k: str(r[k])[:256] for k in ("kind", "id", "text_sha256") if k in r}
                                 for r in kwargs["source_refs"][:8] if isinstance(r, dict)
-                                and r.get("kind") in ("email", "journal")]
+                                and r.get("kind") in ("email", "journal", "commitment")]
     if kwargs.get("source_thread_id"):
         entry["source_thread_id"] = str(kwargs["source_thread_id"])[:80]
     if kwargs.get("synthesized_from"):
