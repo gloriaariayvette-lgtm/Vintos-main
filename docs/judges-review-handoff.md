@@ -2027,3 +2027,22 @@ pin is supplied. Taste-profile comparison remains pending Gloria, unimplemented.
 Logs: /tmp/judges-s70-landings.log, /tmp/judges-s70-media.log,
 /tmp/judges-s70-owners.log. Generated reports unchanged; no live changes, model or
 paid calls, merge or deployment. Independent review/full suite remain Claude's.
+
+
+## 2026-11-09 20:33 CST — completion fixture clock regression; ACTIVE
+
+Branch codex/judges-fit-clock-regression, based on integrated 93914752. A synthetic
+2.8-second wall rollback reproduced the reported empty-packet exception at line
+162 of test_witness_fit_completion.py. Success fixtures now pin only the observer
+clock; regressions exercise rollback at both observation boundaries, explicit
+clock rejection and unchanged actual fit/report/parameters/encoder call counts.
+Production observer policy is unchanged: reversed observation clocks cannot
+produce a completion receipt and cannot fail the fit. This is a deterministic
+reproduction consistent with the report, not an independent host-clock diagnosis.
+The synthetic outreach case executes only the existing local history-writer
+block with redirected paths and sockets forbidden, then rates the actual frozen
+message. It has no original turn ID and remains unbound; no broader writer work.
+36 targeted checks pass: fitting completion 16, Landings 20. Logs are
+/tmp/judges-s71-repro.log, /tmp/judges-s71-fit.log and
+/tmp/judges-s71-landings.log. No new private-store counts, live changes, model
+calls, deployment or merge. Independent review/full suite remain Claude's.

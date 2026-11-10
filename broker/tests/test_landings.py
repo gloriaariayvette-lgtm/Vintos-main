@@ -222,6 +222,26 @@ class ReplyBindings(unittest.TestCase):
         self.assertEqual(row["why"], "unchanged reason")
         self.assertNotIn("reply_binding", row)
 
+    def test_actual_initiated_message_writer_has_no_identity_to_bind(self):
+        # Execute only the existing local history-writer block, never the sender.
+        source = Path(ROOT, "bin", "vintos-initiate.sh").read_text()
+        block = source.split("python3 << 'CHAT_INJECT'\n", 1)[1].split("\nCHAT_INJECT", 1)[0]
+        mem = Path(self.tmp.name, ".vintos", "workspace", "memory")
+        (mem/"outreach").mkdir(parents=True)
+        ref = "synthetic-outreach.md"
+        (mem/"outreach"/ref).write_text("# Vintos Initiated — synthetic\n"
+            "**Trigger:** synthetic\n**Emotional state:** synthetic\n\n"+self.text)
+        with patch.dict(os.environ, HOME=self.tmp.name, RESPONSE=self.text, TRIGGER="synthetic"), \
+             patch.object(L, "MEMORY", str(mem)), patch('builtins.print'):
+            exec(compile(block, '<synthetic-outreach-history>', 'exec'), {})
+            row = L.record("message", ref, "landed", "synthetic reason")
+        history = json.loads((mem/"chat-history.json").read_text())
+        self.assertEqual(history[0]["content"], self.text)
+        self.assertNotIn("turn_id", history[0])
+        self.assertEqual(row["piece"]["text"], self.text)
+        self.assertNotIn("reply_binding", row)
+        self.assertFalse(self.socket.called)
+
     def test_old_notes_are_not_backfilled(self):
         self.sources([])
         with patch.object(L, "context", return_value=self.ctx):
