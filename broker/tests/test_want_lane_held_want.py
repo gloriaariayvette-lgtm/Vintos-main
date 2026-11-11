@@ -173,6 +173,8 @@ class Tests(unittest.TestCase):
         self.assertFalse(self.posts)
 
     def test_held_want_gives_its_places_back_after_the_adoption_timeout(self):
+        # a block that can clear by itself waits the 48 h; a stuck one is given back at once (test_want_slots_freed)
+        self.block = {'stuck': 'context_needs_continuation'}
         self.run_pass()
         rid = self.rows[0]['agent_work']['request_id']
         early = self.run_pass(self.now + (A.ADOPT_ANSWER_HOURS - 1) * 3600)
@@ -184,7 +186,7 @@ class Tests(unittest.TestCase):
         item = next(x for x in self.state['room_work']['open'] if x.get('want_request_id') == rid)
         self.assertTrue(room_work.paused(item, later), item)
         self.assertNotIn(item, room_work.in_hand(self.state, later))
-        self.assertEqual(self.current()['stuck']['adoption_released']['reason'], 'blocked_per_want_call_cap')
+        self.assertEqual(self.current()['stuck']['adoption_released']['reason'], 'blocked_context_needs_continuation')
         self.assertTrue(any('gave its room place back' in l for l in lines), lines)
         self.assertTrue(self.current()['stuck']['agent_work'].get('thread'))      # its context and request are kept
 

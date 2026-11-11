@@ -749,12 +749,14 @@ class Tests(unittest.TestCase):
         notices=[]
         def forbidden(*a,**kw):raise AssertionError('provider or room send must not run')
         with patch.object(D,'STATE',str(self.mem/'test-room-state.json')):
+            passes=[]
             for _ in range(2):
-                # the block holds this want only: the pass returns, says so, and makes no call or post
-                lines=D.agent_wants_pass(forbidden,'fixture-channel','fixture-dot',self.state,self.now+2,
+                # the block holds this want only: the pass returns, says so, and makes no call or post; a block that
+                # cannot clear by itself gives its place back, so the second pass leaves it alone (11 November)
+                passes.append(D.agent_wants_pass(forbidden,'fixture-channel','fixture-dot',self.state,self.now+2,
                     rows=[row],writer=forbidden,identity='Fixture',notify=lambda *a:None,complete=lambda *a:None,
-                    block_notify=lambda key,msg:notices.append(key) or {'state':'sent'})
-                self.assertTrue(any('synthetic-want held: ' in l for l in lines), lines)
+                    block_notify=lambda key,msg:notices.append(key) or {'state':'sent'}))
+            self.assertTrue(any('synthetic-want held: ' in l for l in passes[0]), passes)
         self.assertEqual(len(notices),1)
         self.assertTrue(self.current()[0]['agent_work']['blocked']['reason'])
         self.assertIn('Synthetic next report',str(W.load(w,work,self.ws)['events']))

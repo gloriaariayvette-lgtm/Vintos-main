@@ -299,11 +299,21 @@ def lenient_decision(raw):
         decision = json.loads(raw)
     except json.JSONDecodeError:
         text = str(raw or '')
-        start = text.find('{')
+        decoder = json.JSONDecoder()
+        # The decision is the first object that has a "message", not the first brace: on 11 November a reply was
+        # prose (with a brace in it) and then the decision in a ```json fence, and the first brace decoded nothing.
+        start, decision, end = -1, None, 0
+        pos = text.find('{')
+        while pos >= 0:
+            try:
+                obj, used = decoder.raw_decode(text[pos:])
+            except json.JSONDecodeError:
+                pos = text.find('{', pos + 1); continue
+            if isinstance(obj, dict) and any(isinstance(k, str) and k.strip() == 'message' for k in obj):
+                start, decision, end = pos, obj, used; break
+            pos = text.find('{', pos + used)
         if start < 0:
             raise
-        decoder = json.JSONDecoder()
-        decision, end = decoder.raw_decode(text[start:])
         # the objects after it are read only to see whether they decide otherwise (review, 11 November)
         rest, pos = text[start + end:], 0
         for _ in range(4):

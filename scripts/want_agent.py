@@ -461,43 +461,115 @@ def unhold(w, *, ws=None):
     if a.get('blocked') and a.get('request_id'):
         _update(w['id'], a['request_id'], {'blocked': None}, Path(ws or workspace()))
         a['blocked'] = None
+        if str((w.get('adoption_released') or {}).get('reason', '')).startswith('blocked_'):
+            from store_guard import locked_update
+            def back(rows):
+                for row in rows:
+                    if isinstance(row, dict) and row.get('id') == w['id']:
+                        row.pop('adoption_released', None); return rows
+                return None
+            locked_update(str(Path(ws or workspace()) / 'memory/current-wants.json'), back, default=[], reader='want_agent.unhold')
+
+
+# Blocks that cannot clear by themselves: the want's call cap, and a reply or call that needs a person. Such a want
+# gives its places back on the very next pass (11 November: three held or silent wants filled room_work.MAX_OPEN and
+# two adopted promises waited two days for the 48 h release). A context limit or a provider backoff keeps the 48 h.
+STUCK_BLOCKS = ('per_want_call_cap', 'response_needs_review', 'interrupted_call_needs_review')
+QUIET_HOURS = 24          # a bound want whose agent has not answered for this long gives its place back
+RECHECK_HOURS = 6         # a place given back is looked at again after this long (one cheap check, no model call)
+FULL_WHY = 'waiting for a place: the room holds %d works in hand'
+
+
+def _agent_last_at(w, ws):
+    """When its agent last wrote in the want's working thread (or when the request was posted), or None."""
+    a = w.get('agent_work') or {}
+    try:
+        events = json.loads((directory(a['request_id'], ws) / 'working-thread.json').read_text()).get('events', [])
+    except (OSError, ValueError, KeyError, TypeError):
+        events = []
+    times = [float(e.get('at') or 0) for e in events if isinstance(e, dict) and str(e.get('key', '')).startswith('agent:')]
+    if times:
+        return max(times)
+    try:
+        return float(a.get('thread') or a.get('created_at'))
+    except (TypeError, ValueError):
+        return None
 
 
 def release_blocked(state, now, *, ws=None, save_state=None):
-    """A want held on its own block for ADOPT_ANSWER_HOURS gives its places back, as a silent adopted want does: it is
-    marked adoption_released (so it no longer counts toward ADOPT_OPEN), and its room work is paused for that cause
-    (so it no longer takes one of room_work.MAX_OPEN). Its context and request are kept; it moves again when its
-    block is cleared. Log lines."""
+    """Give back the places of wants that cannot move: held on a block that cannot clear by itself (at once), held on
+    another block for ADOPT_ANSWER_HOURS, or bound with no agent reply for QUIET_HOURS. Its room work is paused for
+    that cause (out of room_work.MAX_OPEN) and it is marked adoption_released (out of ADOPT_OPEN); its context, request
+    and single notice are kept. A quiet want comes back the pass its agent answers; a held one is looked at again
+    every RECHECK_HOURS and comes back when its block is gone. Log lines."""
     import room_work
     from store_guard import locked_update
     ws = Path(ws or workspace()); lines = []; board = room_work.board(state); changed = False
-    held = {}
+    give, back = {}, set()
     for w in read(ws / 'memory/current-wants.json', []):
-        a = (w.get('agent_work') or {}) if isinstance(w, dict) else {}
+        if not isinstance(w, dict) or w.get('fulfilled') or w.get('dismissed'):
+            continue
+        a = w.get('agent_work') or {}
         b = a.get('blocked') or {}
-        if (b.get('reason') and b['reason'] not in DAY_WIDE and not w.get('fulfilled') and not w.get('dismissed')
-                and now - float(b.get('since') or now) >= ADOPT_ANSWER_HOURS * 3600):
-            held[w['id']] = (a.get('request_id'), b['reason'])
+        if b.get('reason') and b['reason'] not in DAY_WIDE:
+            wait = 0 if b['reason'] in STUCK_BLOCKS else ADOPT_ANSWER_HOURS * 3600
+            if now - float(b.get('since') or now) >= wait:
+                give[w['id']] = (a.get('request_id'), 'blocked_' + b['reason'])
+            continue
+        if a.get('thread') and a.get('status') == 'in_work':
+            last = _agent_last_at(w, ws)
+            if last is not None and now - last >= QUIET_HOURS * 3600:
+                give[w['id']] = (a.get('request_id'), 'agent_quiet_%dh' % QUIET_HOURS)
+            elif (w.get('adoption_released') or {}).get('reason', '').startswith('agent_quiet'):
+                back.add(w['id'])                    # its agent answered: it takes its place again
     for item in board['open']:
-        for wid, (rid, reason) in held.items():
+        for wid, (rid, why) in give.items():
             if item.get('want_request_id') == rid and not room_work.paused(item, now):
-                item.update(paused_until=float(now) + ADOPT_ANSWER_HOURS * 3600,
-                            pause_why=('held on its own block (%s); its place is given back until the block is '
-                                       'cleared' % reason)[:300])
+                item.update(paused_until=float(now) + RECHECK_HOURS * 3600,
+                            pause_why=('held: %s; its place is given back until that changes' % why)[:300])
                 changed = True
-                lines.append('held want %s gave its room place back: %s' % (wid, reason))
+                lines.append('want %s gave its room place back: %s' % (wid, why))
+        for wid in back:
+            if item.get('want_id') == wid and str(item.get('pause_why', '')).startswith('held: agent_quiet'):
+                if len(room_work.in_hand(state, now)) < room_work.MAX_OPEN:
+                    item.update(paused_until=0, pause_why='')
+                    lines.append('want %s takes its room place again: its agent answered' % wid)
+                else:
+                    item.update(paused_until=float(now) + RECHECK_HOURS * 3600, pause_why=FULL_WHY % room_work.MAX_OPEN)
+                    lines.append('want %s waits for a room place: its agent answered, the room is full' % wid)
+                changed = True
+    # A want that comes back - its block cleared, or the recheck pause it was given ran out - waits while the room is
+    # full: the room never holds more than room_work.MAX_OPEN works in hand (review, 11 November). Only works that gave
+    # their place back are put to wait; the others are never paused here.
+    hand = room_work.in_hand(state, now)
+    if len(hand) > room_work.MAX_OPEN:
+        returning = [x for x in hand if str(x.get('pause_why', '')).startswith(('held:', FULL_WHY[:20]))]
+        for item in returning[:len(hand) - room_work.MAX_OPEN]:
+            item.update(paused_until=float(now) + RECHECK_HOURS * 3600, pause_why=FULL_WHY % room_work.MAX_OPEN)
+            changed = True
+            lines.append('want %s waits for a room place: the room holds %d works in hand' % (item.get('want_id'), room_work.MAX_OPEN))
     if changed and save_state:
         save_state(state)
-    released = []
+    marked = []
     def mutate(rows):
         for w in rows:
-            if isinstance(w, dict) and w.get('id') in held and not w.get('adoption_released'):
-                w['adoption_released'] = {'at': now, 'reason': 'blocked_' + held[w['id']][1], 'hours': ADOPT_ANSWER_HOURS}
-                released.append(w['id'])
-        return rows if released else None
-    if held:
+            if not isinstance(w, dict):
+                continue
+            if w.get('id') in give and not w.get('adoption_released'):
+                w['adoption_released'] = {'at': now, 'reason': give[w['id']][1],
+                                          'hours': 0 if give[w['id']][1][len('blocked_'):] in STUCK_BLOCKS
+                                          else (QUIET_HOURS if give[w['id']][1].startswith('agent_quiet') else ADOPT_ANSWER_HOURS)}
+                if give[w['id']][1].startswith('agent_quiet'):
+                    (w.get('agent_work') or {})['quiet'] = {'since': _agent_last_at(w, ws), 'marked_at': now}
+                marked.append(w['id'])
+            elif w.get('id') in back:
+                w.pop('adoption_released', None)
+                (w.get('agent_work') or {}).pop('quiet', None)
+                marked.append(w['id'])
+        return rows if marked else None
+    if give or back:
         locked_update(str(ws / 'memory/current-wants.json'), mutate, default=[], reader='want_agent.release_blocked')
-    lines += ['held want %s gave its adoption place back after %d h' % (wid, ADOPT_ANSWER_HOURS) for wid in released]
+    lines += ['want %s marked: %s' % (wid, give[wid][1]) for wid in marked if wid in give]
     return lines
 
 
