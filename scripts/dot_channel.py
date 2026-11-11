@@ -3047,13 +3047,27 @@ def agent_wants_pass(api, channel, dot, state, now, rows=(), put=None, notify=No
         if calls_left[0] <= 0:
             raise want_agent.WantHeld('pass_call_limit')
         calls_left[0] -= 1
+        # what this decision really cost, read from the want's own budget (review, 10 November): a shape retry makes
+        # up to SHAPE_RETRIES more calls inside one decision, and a reply re-checked from an earlier pass makes none
+        rid = (w.get('agent_work') or {}).get('request_id')
+        def used():
+            try:
+                from want_work_budget import remaining
+                return remaining(want_agent.workspace(), rid)['used']
+            except Exception:
+                return None
+        used_before = used()
         try:
             chosen = working.generate(w, work, want_agent.workspace(), phase, trigger, instruction,
                                       writer=writer, identity=identity)
         except WorkBlocked as exc:
-            if exc.reason in want_agent.NO_CALL_MADE or (exc.reason == 'interrupted_call_needs_review'
-                                                         and exc.__cause__ is None):
+            used_after = used()
+            if (exc.reason in want_agent.NO_CALL_MADE or (exc.reason == 'interrupted_call_needs_review'
+                                                          and exc.__cause__ is None)
+                    or (used_before is not None and used_after == used_before)):
                 calls_left[0] += 1           # refused before any call was made: the pass keeps its calls (review)
+            elif used_before is not None and used_after is not None and used_after - used_before > 1:
+                calls_left[0] = max(0, calls_left[0] - (used_after - used_before - 1))
             working.notify_block(w, work, want_agent.workspace(), exc.reason, block_notify,
                                  phase=phase, trigger=trigger)
             if exc.reason in want_agent.LANE_WIDE:
@@ -3066,6 +3080,9 @@ def agent_wants_pass(api, channel, dot, state, now, rows=(), put=None, notify=No
                 held_lines.append('bound want %s held: %s (request %s, %d passes); the rest of the lane goes on'
                                   % (w.get('id'), exc.reason, (w.get('agent_work') or {}).get('request_id'), rec['passes']))
             raise want_agent.WantHeld(exc.reason)
+        used_after = used()
+        if used_before is not None and used_after is not None and used_after - used_before > 1:
+            calls_left[0] = max(0, calls_left[0] - (used_after - used_before - 1))   # its shape retries count
         want_agent.unhold(w)
         return chosen
     def post(text, agent, client_id):
