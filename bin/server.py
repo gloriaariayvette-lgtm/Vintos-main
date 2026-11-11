@@ -3974,6 +3974,7 @@ class ChatMessage(BaseModel):
     input_kind: str | None = None          # "text" | "photo" | "video" | "voice" | "gcs"
     original_text: str | None = None       # exactly what she typed or said
     image_description: str | None = None   # what HIS eyes saw (his perception, not her words)
+    photo_ref: str | None = None           # the photo's file in memory/photos-from-gloria, when it was kept
     # what she sent, for the toggled brain to see itself in her message (2026-10-01)
     image_type: str | None = None          # the photo's media type
     images: list[str] | None = None        # a video's frames, base64 jpeg, in order
@@ -7933,6 +7934,18 @@ def _scene_register(photo_bytes, description, origin="chat", message=""):
         print("[scene register failed]", e, flush=True)
 
 
+# What his eyes keep of a photo. It used to ask for two to four sentences of mood with no list and no text, and the
+# kept note of a photo of electronics named no part while the brain, which saw the photo itself, named the modules
+# correctly (10 November); the evening journal then took the names for a hallucination. The note names what
+# is there at the level of detail a maker would.
+PHOTO_EYES = ("You are his eyes. Describe this photo so that someone who cannot see it knows exactly what is in it. "
+              "First name the things in it specifically: objects, devices, boards, modules, chips, tools, parts and "
+              "materials, by their real names when you can identify them (for example a microcontroller board by its "
+              "model, a driver chip by its part number); people and what their hands are doing. Then copy any text, "
+              "labels, part numbers, silkscreen or screen text you can read, exactly. Then one or two sentences on the "
+              "setting, the light and the mood. Say plainly what you cannot make out instead of guessing. No preamble.")
+
+
 async def _describe_photo(photo_b64, content_type, local_only=False):
     """His eyes. Claude when a key is present, the local model otherwise; local_only: Gemma alone (the note kept
     for his memory of a photo the toggled brain saw itself, 2026-10-01).
@@ -7946,11 +7959,11 @@ async def _describe_photo(photo_b64, content_type, local_only=False):
                 _ar = await paid_http.asend(_ac.post, __file__, "https://api.anthropic.com/v1/messages",
                     headers={"x-api-key": _ant, "anthropic-version": "2023-06-01",
                              "content-type": "application/json"},
-                    json={"model": "claude-sonnet-5-5", "max_tokens": 400, "thinking": {"type": "between_tools"},
+                    json={"model": "claude-sonnet-5-5", "max_tokens": 900, "thinking": {"type": "between_tools"},
                           "messages": [{"role": "user", "content": [
                               {"type": "image", "source": {"type": "base64",
                                "media_type": content_type, "data": photo_b64}},
-                              {"type": "text", "text": 'You are his eyes. Look at this photo and say what you actually see, the way a person notices things — what it is, the one or two details that make it this photo and not a generic one, the light, the mood. Two to four sentences of natural flowing prose. Do NOT make a list. Do NOT repeat yourself or restate the same object twice. Do NOT mention whether text is visible unless the text itself matters. No preamble.'}]}]})
+                              {"type": "text", "text": PHOTO_EYES}]}]})
                 _blocks = _ar.json().get("content") or []
                 image_description = (_blocks[0].get("text") if _blocks else "") or ""
                 if image_description:
@@ -7972,10 +7985,10 @@ async def _describe_photo(photo_b64, content_type, local_only=False):
                     "messages": [{"role": "user", "content": [
                         {"type": "image_url", "image_url": {
                             "url": "data:" + content_type + ";base64," + photo_b64}},
-                        {"type": "text", "text": 'You are his eyes. Look at this photo and say what you actually see, the way a person notices things — what it is, the one or two details that make it this photo and not a generic one, the light, the mood. Two to four sentences of natural flowing prose. Do NOT make a list. Do NOT repeat yourself or restate the same object twice. Do NOT mention whether text is visible unless the text itself matters. No preamble.'},
+                        {"type": "text", "text": PHOTO_EYES},
                     ]}],
                     "temperature": 0.3,
-                    "max_tokens": 500,
+                    "max_tokens": 900,
                 })
             image_description = _vr.json()["choices"][0]["message"]["content"]
     except Exception as e:
@@ -8004,12 +8017,14 @@ async def chat_with_photo(request: Request):
     content_type = photo.content_type or "image/jpeg"
 
     # Keep the picture itself.
+    _photo_ref = None
     try:
         photo_dir = os.path.join(MEMORY, "photos-from-gloria")
         os.makedirs(photo_dir, exist_ok=True)
         _ts = datetime.now().strftime("%Y-%m-%d_%H%M%S")
         with open(os.path.join(photo_dir, _ts + ".jpg"), "wb") as _pf:
             _pf.write(photo_bytes)
+        _photo_ref = _ts + ".jpg"
     except Exception as _pe:
         print("[photo save]", _pe, flush=True)
 
@@ -8025,7 +8040,7 @@ async def chat_with_photo(request: Request):
             _cr = await paid_http.asend(client.post, __file__,
                 "http://127.0.0.1:8500/api/chat/full",
                 headers={"X-Vintos-Secret": APP_SECRET},
-                json={"message": composed, "image": photo_b64, "input_kind": "photo",
+                json={"message": composed, "image": photo_b64, "input_kind": "photo", "photo_ref": _photo_ref,
                       # her words, or that she sent none: the form's "What do you see?" default is not hers
                       "original_text": (str(form.get("message"))[:4000] if str(form.get("message") or "").strip()
                                         else _SENT_BARE % "a photo"),
@@ -8057,12 +8072,16 @@ def _seen_note(text):
     return "" if (not text or text.startswith("[I could not see")) else text
 
 
-def _with_note(text, note):
-    """Her turn as his memory keeps it: the picture he saw in the moment is not kept, so the line that said it is
-    here becomes what it showed, in Gemma's words (2026-10-01)."""
+def _with_note(text, note, photo_ref=None):
+    """Her turn as his memory keeps it: the line that said the picture is here becomes what it showed, in the local
+    describer's words (2026-10-01). With the kept photo's file, the note says it is shorter than what he saw and where
+    the photo is, so a later reader checks against the photo, not only the note (10 November)."""
     note = _seen_note(note)
-    return _HERE_RX.sub(lambda _m: ("[What it showed (a note kept afterwards):] " + note) if note
-                        else "[A picture he saw then; no note of what it showed could be made.]", str(text or ""), count=1)
+    ref = (" [He saw the photo itself in that turn; this note is shorter and may leave out what he saw. The photo is "
+           "kept: photos-from-gloria/%s]" % os.path.basename(str(photo_ref))) if photo_ref else ""
+    return _HERE_RX.sub(lambda _m: ("[What it showed (a note kept afterwards):] " + note + ref) if note
+                        else "[A picture he saw then; no note of what it showed could be made.]" + ref,
+                        str(text or ""), count=1)
 
 
 def _sent_media(msg, note=None):
@@ -8070,7 +8089,7 @@ def _sent_media(msg, note=None):
     without her caption: kept in the ledger entry beside her words, never as them."""
     if getattr(msg, "input_kind", None) not in ("photo", "video"):
         return None
-    body = _with_note(str(getattr(msg, "message", "") or ""), note)
+    body = _with_note(str(getattr(msg, "message", "") or ""), note, getattr(msg, "photo_ref", None))
     for cut in ("\n\n[Gloria's message with the video:]", "\n\n[Gloria's message with the photo:]"):
         if cut in body:
             body = body.split(cut)[0]
@@ -8152,12 +8171,14 @@ async def avatar_chat_with_photo(request: Request):
     photo_b64 = base64.b64encode(photo_bytes).decode()
     content_type = photo.content_type or "image/jpeg"
 
+    _photo_ref = None
     try:
         photo_dir = os.path.join(MEMORY, "photos-from-gloria")
         os.makedirs(photo_dir, exist_ok=True)
         _ts = datetime.now().strftime("%Y-%m-%d_%H%M%S")
         with open(os.path.join(photo_dir, _ts + "_avatar.jpg"), "wb") as _pf:
             _pf.write(photo_bytes)
+        _photo_ref = _ts + "_avatar.jpg"
     except Exception as _pe:
         print("[avatar photo save]", _pe, flush=True)
 
@@ -8172,6 +8193,7 @@ async def avatar_chat_with_photo(request: Request):
                 "http://127.0.0.1:8500/api/avatar/chat",
                 headers={"X-Vintos-Secret": APP_SECRET},
                 json={"message": composed, "image": photo_b64, "image_type": content_type, "input_kind": "photo",
+                      "photo_ref": _photo_ref,
                       "original_text": (str(message)[:4000] if str(message or "").strip() else _SENT_BARE % "a photo")})
             result = _cr.json()
     except Exception as e:
