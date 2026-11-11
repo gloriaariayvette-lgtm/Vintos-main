@@ -73,12 +73,51 @@ class Slots(base.Tests):
         self.assertIsNone(self.current()['stuck']['agent_work'].get('blocked'))
         self.assertFalse(self.current()['stuck'].get('adoption_released'))
 
+    def test_a_want_that_comes_back_never_takes_the_room_past_max_open(self):
+        # review: the stuck want gives its place back, another is handed over into it, then the block clears and the
+        # recheck pause runs out; the returning want waits, the room never holds more than MAX_OPEN in hand
+        self.fill_board(); self.run_pass()
+        later = self.now + A.RECHECK_HOURS * 3600 + 60
+        self.block = {}
+        for t in (later, later + 420):
+            self.run_pass(t)
+            self.assertLessEqual(len(room_work.in_hand(self.state, t)), room_work.MAX_OPEN)
+        item = next(x for x in self.state['room_work']['open'] if x.get('want_id') == 'stuck')
+        self.assertTrue(room_work.paused(item, later + 420)); self.assertTrue(item['pause_why'].startswith('waiting for a place'))
+        # a place frees: the returning want takes it on its next look
+        self.state['room_work']['open'] = [x for x in self.state['room_work']['open'] if x.get('id') != 'RW-other000']
+        t = later + (A.RECHECK_HOURS + 1) * 3600
+        self.run_pass(t)
+        self.assertFalse(room_work.paused(item, t + 1))
+        self.assertLessEqual(len(room_work.in_hand(self.state, t)), room_work.MAX_OPEN)
+
+    def test_a_quiet_want_whose_agent_answers_waits_while_the_room_is_full(self):
+        self.block = {}
+        rows = self.current(); w = rows['stuck']; rid = w['agent_work']['request_id']
+        w['agent_work']['thread'] = '%.6f' % (self.now - 25 * 3600); self.write('current-wants.json', list(rows.values()))
+        folder = A.directory(rid, self.ws); folder.mkdir(parents=True, exist_ok=True)
+        thread = folder / 'working-thread.json'
+        thread.write_text(json.dumps({'events': [{'key': 'agent:old', 'at': self.now - 25 * 3600}]}))
+        with unittest.mock.patch.object(W, 'unanswered', lambda *a: []):
+            self.run_pass()
+            self.fill_board()                         # with the want handed over in the first pass: the room is full
+            self.assertEqual(len(room_work.in_hand(self.state, self.now + 420)), room_work.MAX_OPEN)
+            thread.write_text(json.dumps({'events': [{'key': 'agent:new', 'at': self.now + 10}]}))
+            lines = self.run_pass(self.now + 420)
+        item = next(x for x in self.state['room_work']['open'] if x.get('want_request_id') == rid)
+        self.assertTrue(room_work.paused(item, self.now + 420), lines)
+        self.assertLessEqual(len(room_work.in_hand(self.state, self.now + 420)), room_work.MAX_OPEN)
+
     def test_decision_in_a_fence_after_prose_with_a_brace(self):
         raw = ('Synthetic prose that mentions a {placeholder} before the answer.\n\n```json\n'
                + json.dumps({'message': 'Synthetic decision.', 'accept': False}) + '\n```')
         self.assertEqual(W.lenient_decision(raw), {'message': 'Synthetic decision.', 'accept': False})
         with self.assertRaises(ValueError):
             W.lenient_decision('Synthetic prose {not json} only.')
+        # review: a stray brace that IS an object, but not a decision, is passed over too
+        raw2 = ('Synthetic prose quoting {"step": 1} first.\n\n```json\n'
+                + json.dumps({'message': 'Synthetic decision.', 'accept': False}) + '\n```')
+        self.assertEqual(W.lenient_decision(raw2), {'message': 'Synthetic decision.', 'accept': False})
 
 
 del base.Tests     # its own cases run in its own file

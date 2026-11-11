@@ -477,6 +477,7 @@ def unhold(w, *, ws=None):
 STUCK_BLOCKS = ('per_want_call_cap', 'response_needs_review', 'interrupted_call_needs_review')
 QUIET_HOURS = 24          # a bound want whose agent has not answered for this long gives its place back
 RECHECK_HOURS = 6         # a place given back is looked at again after this long (one cheap check, no model call)
+FULL_WHY = 'waiting for a place: the room holds %d works in hand'
 
 
 def _agent_last_at(w, ws):
@@ -530,9 +531,23 @@ def release_blocked(state, now, *, ws=None, save_state=None):
                 lines.append('want %s gave its room place back: %s' % (wid, why))
         for wid in back:
             if item.get('want_id') == wid and str(item.get('pause_why', '')).startswith('held: agent_quiet'):
-                item.update(paused_until=0, pause_why='')
+                if len(room_work.in_hand(state, now)) < room_work.MAX_OPEN:
+                    item.update(paused_until=0, pause_why='')
+                    lines.append('want %s takes its room place again: its agent answered' % wid)
+                else:
+                    item.update(paused_until=float(now) + RECHECK_HOURS * 3600, pause_why=FULL_WHY % room_work.MAX_OPEN)
+                    lines.append('want %s waits for a room place: its agent answered, the room is full' % wid)
                 changed = True
-                lines.append('want %s takes its room place again: its agent answered' % wid)
+    # A want that comes back - its block cleared, or the recheck pause it was given ran out - waits while the room is
+    # full: the room never holds more than room_work.MAX_OPEN works in hand (review, 11 November). Only works that gave
+    # their place back are put to wait; the others are never paused here.
+    hand = room_work.in_hand(state, now)
+    if len(hand) > room_work.MAX_OPEN:
+        returning = [x for x in hand if str(x.get('pause_why', '')).startswith(('held:', FULL_WHY[:20]))]
+        for item in returning[:len(hand) - room_work.MAX_OPEN]:
+            item.update(paused_until=float(now) + RECHECK_HOURS * 3600, pause_why=FULL_WHY % room_work.MAX_OPEN)
+            changed = True
+            lines.append('want %s waits for a room place: the room holds %d works in hand' % (item.get('want_id'), room_work.MAX_OPEN))
     if changed and save_state:
         save_state(state)
     marked = []
