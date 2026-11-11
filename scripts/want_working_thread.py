@@ -290,6 +290,23 @@ def ask(system, user, *, before_attempt=None, observed=None):
 SHAPE_RETRIES = 2      # regenerations of one phase after a well-formed reply in the wrong shape
 
 
+def lenient_decision(raw):
+    """The decision in a reply that is JSON with a slip around it: the first object when more text or a second object
+    follows it, and keys with stray spaces trimmed (11 November: a regenerated reply held its want for review because
+    it was two objects back to back, the first with the key " accept"). Raises when there is no JSON object at all."""
+    try:
+        decision = json.loads(raw)
+    except json.JSONDecodeError:
+        text = str(raw or '')
+        start = text.find('{')
+        if start < 0:
+            raise
+        decision, _ = json.JSONDecoder().raw_decode(text[start:])
+    if isinstance(decision, dict):
+        decision = {(k.strip() if isinstance(k, str) else k): v for k, v in decision.items()}
+    return decision
+
+
 def shape_problem(decision, phase):
     """Why a parsed reply does not have the decision's shape, as a correction he can follow; '' when it does.
     A reply that parses but slips on the shape is not uncertain: it is regenerated with this note (10 November: a
@@ -407,7 +424,7 @@ def generate(want, work, ws, phase, trigger, instruction, writer=ask, identity=N
             # Recovered text is an operator claim, not a provider observation.
             capture.observe(observation, invocation.request_id if invocation and not recovered else None)
         capture.select(raw)
-        decision = json.loads(raw)
+        decision = lenient_decision(raw)
     except Exception as exc:
         raise WorkBlocked('response_needs_review') from exc
     problem = shape_problem(decision, phase)
