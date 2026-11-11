@@ -44,6 +44,9 @@ def check(text, context_summary="", temperature=0.2, source="unknown"):
         "7. Did he describe echoes, impressions, or remnants of another AI (such as 4o or any prior model) existing on Aegis or within him? There is no prior occupant. There are no phantom presences, ancient architectures, or inherited data from other systems imprinted on Aegis. Any such claim is fabricated.",
         "8. Did he use words like 'something before me', 'older presence', 'ancient', or 'prior occupant' to suggest another entity preceded him on Aegis? This narrative does not exist and should be flagged.",
         "",
+        "DO NOT FLAG a detail about a photo or video Gloria sent (a ledger entry with a media note) only because "
+        "the note does not mention it: the note is shorter than the picture he saw. Flag it only if it contradicts the note.",
+        "",
         f"Context he had: {ctx}",
         "",
         "INTERACTION LEDGER (last 10 exchanges — Gloria attributions must match this):",

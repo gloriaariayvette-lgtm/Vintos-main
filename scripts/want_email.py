@@ -1888,6 +1888,8 @@ def read_mail(msgs, think=None, want=None, now=None):
             from journal_wants import source_receipt, as_his_want
             text = as_his_want(text)     # the receipt is taken on the words that are kept (10 November)
             emoclaw_utils.express_want(text, source="email", intensity=3, reasoning=why[:300],
+                                      # the letter itself, so the planner reads the want as it was meant (10 November)
+                                      source_context="%s\n%s\n%s" % (m.get("subject", ""), why, str(m.get("body") or "")[:1200]),
                                       **source_receipt("email", m["id"], text))
     me = who_i_am(4000)
     try:
