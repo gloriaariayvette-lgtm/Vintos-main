@@ -294,6 +294,7 @@ def lenient_decision(raw):
     """The decision in a reply that is JSON with a slip around it: the first object when more text or a second object
     follows it, and keys with stray spaces trimmed (11 November: a regenerated reply held its want for review because
     it was two objects back to back, the first with the key " accept"). Raises when there is no JSON object at all."""
+    others = []
     try:
         decision = json.loads(raw)
     except json.JSONDecodeError:
@@ -301,9 +302,34 @@ def lenient_decision(raw):
         start = text.find('{')
         if start < 0:
             raise
-        decision, _ = json.JSONDecoder().raw_decode(text[start:])
+        decoder = json.JSONDecoder()
+        decision, end = decoder.raw_decode(text[start:])
+        # the objects after it are read only to see whether they decide otherwise (review, 11 November)
+        rest, pos = text[start + end:], 0
+        for _ in range(4):
+            nxt = rest.find('{', pos)
+            if nxt < 0: break
+            try:
+                obj, used = decoder.raw_decode(rest[nxt:])
+            except json.JSONDecodeError:
+                pos = nxt + 1; continue
+            others.append(obj); pos = nxt + used
+    conflict = False
     if isinstance(decision, dict):
-        decision = {(k.strip() if isinstance(k, str) else k): v for k, v in decision.items()}
+        trimmed = {}
+        for k, v in decision.items():
+            t = k.strip() if isinstance(k, str) else k
+            if t in trimmed and trimmed[t] != v:
+                conflict = True           # " accept" and "accept" saying different things
+            trimmed[t] = v
+        decision = trimmed
+        for o in others:
+            if isinstance(o, dict):
+                acc = [v for k, v in o.items() if isinstance(k, str) and k.strip() == 'accept']
+                if acc and 'accept' in decision and acc[0] != decision['accept']:
+                    conflict = True       # a second object decides otherwise: neither is taken (review)
+        if conflict:
+            decision['_conflict'] = True
     return decision
 
 
@@ -314,6 +340,9 @@ def shape_problem(decision, phase):
     reviewer Gloria never sees)."""
     if not isinstance(decision, dict):
         return 'Return one JSON object: {"message": "...", "accept": false}.'
+    if decision.get('_conflict'):
+        # two objects (or two spellings of one key) that decide differently: neither is the decision (review, 11 November)
+        return 'Return exactly one JSON object. Your reply held two decisions that disagree on accept.'
     message = decision.get('message')
     if not isinstance(message, str) or not message.strip() or len(message) > 12000:
         return 'message is required: your actual next message, under 12000 characters.'

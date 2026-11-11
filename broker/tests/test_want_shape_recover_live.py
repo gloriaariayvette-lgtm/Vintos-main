@@ -100,6 +100,22 @@ class Tests(unittest.TestCase):
             self.gen()
         self.assertEqual(self.writes, [])
 
+    def test_two_objects_that_decide_differently_are_regenerated_not_taken(self):
+        # review: the first of two objects is taken only while they agree on accept; when they disagree (or " accept"
+        # and "accept" disagree in one object) the reply goes to the capped retry, and nothing of it is posted
+        for raw in (json.dumps({'message': 'Synthetic, keep going.', 'accept': False}) + '\n'
+                    + json.dumps({'message': 'Synthetic, done.', 'accept': True}),
+                    '{" accept": false, "accept": true, "message": "Synthetic, two spellings."}'):
+            with self.subTest(raw=raw[:30]):
+                self.setUp(); self.writes = []
+                W._mutate(self.want, self.work, self.ws, lambda d: d['generations'][self.key].update(result=reply(raw)))
+                out = self.gen()
+                self.assertEqual(out, {'message': 'Synthetic regenerated.', 'accept': False})
+                self.assertEqual(len(self.writes), 1)
+                self.assertIn('disagree on accept', self.writes[0]['correction'])
+                self.assertNotIn('_conflict', out)
+        self.assertNotIn('_conflict', W.lenient_decision(TWO_OBJECTS))      # the live pair agrees: the first is taken
+
     def test_lenient_reading(self):
         self.assertEqual(W.lenient_decision(TWO_OBJECTS)['accept'], False)
         self.assertEqual(W.lenient_decision('```json\n{"message": "m", "accept": false}\n```'), {'message': 'm', 'accept': False})
