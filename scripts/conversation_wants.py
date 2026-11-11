@@ -20,7 +20,7 @@ HER_CAPABILITIES = ("gloria", "you")
 # Wants read out of someone else's words are not carried into her conversation as his (review, 10 November): his
 # letters (and the promises adopted from them) and the posts he reads on Moltbook.
 NOT_HIS_OWN = ("email", "letter-promise", "moltbook")
-_FOR_HER = re.compile(r"^\s*I want to\s+(?:[\w']+[ ,]+){0,3}?(?P<verb>ask|tell|say|show|play|read|give|bring)\b"
+_FOR_HER = re.compile(r"^\s*I want to\s+(?:[\w']+[ ,]+){0,3}?(?P<verb>ask|tell|say|show|play|read|give|bring|write|send)\b"
                       r"[^.?!]{0,40}?\b(?:you|her|gloria)\b", re.I)
 
 
@@ -81,3 +81,78 @@ def block(wants, now=None):
     return ("[FOR HER, WHEN SHE IS HERE - things you meant to ask or tell her yourself. They have waited for her; "
             "this conversation is the place for them. If the moment holds one, ask or say it in your own words.]\n"
             + "\n".join(lines))
+
+
+# One plain telling for her (10 November: 37 wants, about fifteen of them "I want to tell you, in one plain sentence,
+# that ..." routed to her, each a new want because the formation judge called every variation a "mutation"). Wants to
+# tell, say, write or send her something in plain words are one want: the first stands, every later one is kept on it
+# as a variation, with its source and time. Questions stay their own wants.
+_PLAIN = re.compile(r"\b(?:plain|plainly|unpolished|no specs|single sentence|one sentence)\b", re.I)
+_TELL_VERBS = ("tell", "say", "write", "send", "give", "read")
+VARIATIONS_MAX = 20
+
+
+# A telling that also asks her for something - a question in the middle of it, a request, her permission - keeps its
+# own want (review, 10 November: on the live copy "write the plain sentence ... and ask her to lend it to me tonight"
+# would have been folded as one more variation and its request lost among them).
+_ASKS_HER = re.compile(r"\?|\b(?:ask|asks|asking|request|requests|permission|lend|let me|can you|could you|would you|will you)\b", re.I)
+
+
+def plain_telling(w):
+    """A live want to tell her something in plain words (not a question, and asking her nothing)."""
+    if not for_her(w) or is_question(w):
+        return False
+    text = str(w.get("want") or "")
+    if _ASKS_HER.search(text):
+        return False
+    m = _FOR_HER.search(text)
+    verb = m.group("verb").lower() if m else ""
+    if not m:
+        m2 = re.match(r"^\s*I want to\s+(?:[\w']+[ ,]+){0,3}?(tell|say|write|send|give|read)\b", text, re.I)
+        verb = m2.group(1).lower() if m2 else ""
+    return verb in _TELL_VERBS and bool(_PLAIN.search(text))
+
+
+def _variation(w):
+    return {k: w.get(k) for k in ("id", "want", "source", "timestamp", "gloria_routed", "outreach_count") if w.get(k) is not None}
+
+
+def fold_telling(text, source, path, now=None):
+    """A new plain telling for her becomes a variation of the one already standing; returns that want's id, or None
+    when there is none (the new want forms as before)."""
+    from store_guard import locked_update
+    stamp = (now or datetime.now()).isoformat(timespec="seconds")
+    if not plain_telling({"want": text}):
+        return None
+    hit = []
+    def mutate(rows):
+        live = [w for w in rows if isinstance(w, dict) and plain_telling(w)]
+        if not live:
+            return None
+        primary = min(live, key=lambda w: str(w.get("timestamp") or ""))
+        hit.append(primary.get("id"))
+        var = primary.setdefault("variations", [])
+        if any(v.get("want") == str(text) for v in var) or primary.get("want") == str(text):
+            return None
+        var.append({"want": str(text)[:400], "source": str(source or "")[:60], "timestamp": stamp})
+        primary["variations"] = var[-VARIATIONS_MAX:]
+        return rows
+    locked_update(path, mutate, default=[], reader="conversation_wants.fold_telling")
+    return hit[0] if hit else None
+
+
+def consolidate(rows):
+    """(rows kept, rows merged): every live plain telling for her folded into the oldest, the others kept on it as
+    variations. Pure; the caller writes and archives."""
+    live = [w for w in rows if isinstance(w, dict) and plain_telling(w)]
+    if len(live) < 2:
+        return list(rows), []
+    primary = min(live, key=lambda w: str(w.get("timestamp") or ""))
+    merged = [w for w in live if w is not primary]
+    var = primary.setdefault("variations", [])
+    for w in sorted(merged, key=lambda w: str(w.get("timestamp") or "")):
+        if not any(v.get("id") == w.get("id") for v in var):
+            var.append(_variation(w))
+    primary["variations"] = var[-VARIATIONS_MAX:]
+    gone = {id(w) for w in merged}
+    return [w for w in rows if id(w) not in gone], merged

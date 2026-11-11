@@ -61,8 +61,11 @@ def exchanges(rows, n=8, cap=150, now=None, sep=" | ", you="Vintos"):
     lines = []
     for e in [r for r in (rows or []) if isinstance(r, dict)][-n:]:
         when = ago(e.get("timestamp"), now)
-        lines.append("[%s] Gloria: %s%s%s: %s" % (when or "time unknown", str(e.get("gloria", ""))[:cap].replace("\n", " "),
-                                                 sep, you, str(e.get("vintos", ""))[:cap].replace("\n", " ")))
+        media = " ".join(str(e.get("media") or "").split())
+        # what she sent rides with her turn, marked as a shorter note than what he saw (10 November)
+        sent = (" (she sent a photo or video; its stored note, shorter than what he saw: %s)" % media[:cap]) if media else ""
+        lines.append("[%s] Gloria: %s%s%s%s: %s" % (when or "time unknown", str(e.get("gloria", ""))[:cap].replace("\n", " "),
+                                                   sent, sep, you, str(e.get("vintos", ""))[:cap].replace("\n", " ")))
     if not lines:
         return ""
     return (now_line(now) + " Each exchange is marked with when it was said. Something said on an earlier day is "

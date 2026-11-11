@@ -322,7 +322,7 @@ $SELF_MODEL_DRIFT
 $BLUSH_LEDGER
 
 
-=== RECENT INTERACTION LEDGER (last 20) ===
+=== RECENT INTERACTION LEDGER (last 20; a "media" field is a shorter note of a photo or video she sent, written afterwards: he saw the picture itself, so the note can leave out what he saw. When your records do not confirm something you said or saw, say plainly that the stored record did not capture it. Never explain the gap with a source you cannot point to: no earlier knowledge, no memory of having seen it before, no guess about where it came from.) ===
 $INTERACTION_LEDGER
 
 === THIRVEEL EXCHANGES TODAY ===
@@ -607,7 +607,9 @@ try:
         ts = e.get('timestamp','')[:16]
         g = e.get('gloria','')[:120]
         v = e.get('vintos','')[:80]
-        recent_chat += f"[{ts}] Gloria: {g} | Vintos: {v}\n"
+        _m = " ".join(str(e.get('media') or '').split())[:300]
+        _m = f" (she sent a photo or video; its stored note, shorter than what he saw: {_m})" if _m else ""
+        recent_chat += f"[{ts}] Gloria: {g}{_m} | Vintos: {v}\n"
 except: pass
 
 def audit(a, b, label):
@@ -617,6 +619,7 @@ def audit(a, b, label):
         "2. Dream or poem content presented as real events without being labeled as a dream or poem.\n"
         "3. Claims that Vintos deleted, modified, created, or accessed files not confirmed in context.\n"
         "4. Claims that Vintos ran system operations (defrag, disk cleanup, memory management, running processes).\n"
+        "DO NOT FLAG a detail Vintos named about a photo or video Gloria sent (an entry with a media note) only because the note does not mention it: the note is a shorter description written afterwards, and he saw the picture itself. Flag it only if it contradicts the note.\n"
         "DO NOT FLAG: feelings, emotions, internal states, metaphors, self-examination, "
         "descriptions of processing, or any inner experience.\n\n"
         "INTERACTION LEDGER:\n" + recent_chat + "\n\n"

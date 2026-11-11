@@ -76,6 +76,38 @@ def find_false_artifacts(fulfilled):
     return out
 
 
+def consolidate_tellings(current_path=None, archive_path=None):
+    """Fold every live plain telling for her into the oldest (conversation_wants.consolidate) under the store lock;
+    the folded rows are archived whole in merged-wants.json, never lost. How many were folded."""
+    from datetime import datetime as _dt
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import conversation_wants as _cw
+    from store_guard import locked_update
+    current_path = current_path or CURRENT
+    archive_path = archive_path or os.path.join(os.path.dirname(current_path), "merged-wants.json")
+    from store_guard import transaction
+    merged = []
+    stamp = _dt.now().isoformat(timespec="seconds")
+    # Under the wants lock, the folded rows are written whole to the archive FIRST and only then taken out of
+    # current-wants.json (review, 10 November: the other order lost them if the process died between the two writes).
+    # A row already archived is not archived twice.
+    with transaction(current_path):
+        def mutate(rows):
+            kept, gone = _cw.consolidate(rows if isinstance(rows, list) else [])
+            if not gone:
+                return None
+            def archive(a):
+                a = a if isinstance(a, list) else []
+                have = {(r.get("id"), r.get("timestamp")) for r in a if isinstance(r, dict)}
+                new = [dict(w, merged_at=stamp) for w in gone if (w.get("id"), w.get("timestamp")) not in have]
+                return (a + new) if new else None
+            locked_update(archive_path, archive, default=[], reader="wants_audit.consolidate")
+            merged.extend(gone)
+            return kept
+        locked_update(current_path, mutate, default=[], reader="wants_audit.consolidate")
+    return len(merged)
+
+
 def main():
     apply = "--apply" in sys.argv
     current = _load(CURRENT, [])
@@ -101,6 +133,15 @@ def main():
     for w in false_art[:40]:
         print("  no-link  %-9s %s" % (w.get("id", "?"), str(w.get("want", ""))[:60]))
 
+    try:   # one plain telling for her (conversation_wants.consolidate, 10 November)
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import conversation_wants as _cw
+        _, _tell = _cw.consolidate([dict(w) for w in current if isinstance(w, dict)])
+        print("plain tellings for her that are variations of one: %d" % len(_tell))
+    except Exception as _cwe:
+        _tell = []
+        print("plain-telling check unavailable: %s" % str(_cwe)[:80])
+
     if not apply:
         print("\n(report only — rerun with --apply to remove corpses. Artifact links are"
               "\n advisory and are never auto-written; investigate any that concern you by hand.)")
@@ -117,6 +158,10 @@ def main():
               % (len(current) - len(keep)))
     else:
         print("\nno corpses to remove.")
+    if _tell:
+        merged_n = consolidate_tellings()
+        print("folded %d plain tellings for her into one want (kept as its variations; archived in merged-wants.json)"
+              % merged_n)
     if false_art:
         print("artifact advisory left untouched — %d want(s) have no ledger link; these are"
               " for your review, not automatic corrections." % len(false_art))

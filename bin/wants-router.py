@@ -2187,7 +2187,7 @@ def _ensure_plan(want, force=False):
         steps = generate_steps(
             want.get("want", ""), want.get("possible_approach", ""),
             want.get("reasoning", ""), want.get("self_interpretation", ""),
-            source=want.get("source", ""))
+            source=want.get("source", ""), source_context=want.get("source_context", ""))
         if steps:
             want["steps"] = steps
             want["current_step_index"] = 0

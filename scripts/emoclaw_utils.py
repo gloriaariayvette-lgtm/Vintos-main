@@ -901,7 +901,7 @@ def add_pearl(text, source="wal-graduation", note=""):
 
 # === Wants System ===
 
-def generate_steps(want_text, possible_approach="", reasoning="", self_interpretation="", source=""):
+def generate_steps(want_text, possible_approach="", reasoning="", self_interpretation="", source="", source_context=""):
     """Generate a concrete step plan for a want. Returns list of step dicts."""
     import requests as _gsr, json as _gsj, subprocess as _gss, os as _gso
     LM = _subcon_url("http://100.79.177.103:1234/v1/chat/completions")
@@ -1032,6 +1032,7 @@ def generate_steps(want_text, possible_approach="", reasoning="", self_interpret
     prompt = (
         f"Vintos has a want: {want_text}\n\n"
         + (f"SOURCE OF THIS WANT: {source}\n" if source else "")
+        + _grounding_block(want_text, source_context)
         + ("NON-NEGOTIABLE ROUTE CONTRACT: " + _gsj.dumps(_plan_contract) + "\n"
            "The terminal capability is part of the want's meaning, not an optional flourish. "
            "If evidence_first is true, retrieve the named records before interpreting them.\n\n"
@@ -1097,6 +1098,14 @@ def generate_steps(want_text, possible_approach="", reasoning="", self_interpret
                               **({"params": s["params"]} if isinstance(s.get("params"), dict) else {}),
                               **{k: str(s[k])[:400] for k in ("execution", "expected_output", "acceptance") if k in s}})
         valid = fit_steps_to_hands(valid, _known_caps, _may_commission, source=source)
+        try:   # a want to run or open something of his own is local work: a web search answers another question
+            from want_grounding import drop_web_for_local as _dwl
+            _before = len(valid); valid = _dwl(valid, want_text)
+            if len(valid) != _before:
+                print("[generate_steps] local computation: %d web_search step(s) dropped" % (_before - len(valid)),
+                      file=__import__("sys").stderr)
+        except Exception:
+            pass
         if _normalize_steps:
             valid, _changes = _normalize_steps(want_text, valid)
             if _changes:
@@ -1110,6 +1119,30 @@ def generate_steps(want_text, possible_approach="", reasoning="", self_interpret
 
 
 
+
+
+def _grounding_block(want_text, source_context=""):
+    """The planner's view of where the want came from and how its numbers read (want_grounding.py, 10 November: a
+    want about an energy gap at a bond length written 'A', from a letter on UCCSD energies, was planned as a battery
+    search in amps). '' when nothing applies or the helper is missing."""
+    try:
+        import sys as _gb_s, os as _gb_o
+        _gb_s.path.insert(0, _gb_o.path.join(_gb_o.path.expanduser("~/.vintos/workspace"), "scripts"))
+        import want_grounding as _wg
+    except Exception:
+        return ""
+    ctx = _wg.source_context(source_context)
+    out = ""
+    if ctx:
+        out += "WHAT THIS WANT CAME FROM (his letter or journal, his words and the sender's): " + ctx + "\n"
+    out += _wg.DOMAIN_NOTE + "\n"
+    hint = _wg.units_hint(want_text, ctx)
+    if hint:
+        out += hint + "\n"
+    if _wg.local_computation(want_text):
+        out += ("LOCAL WORK: this want is to run, compute or open something of his own. Plan it as local work "
+                "(local_analysis on his own files, or the step that runs his own code); do NOT plan a web_search.\n")
+    return out + "\n"
 
 
 # Step actions the router runs (wants-router.py ACTION_MAP) that the planner's capability text does not list.
@@ -2309,6 +2342,18 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
                 print(f"[express_want] journal want carries email promise {_jf_pid}: {want_text[:60]}", file=__import__("sys").stderr)
         except Exception as _jf_e:
             print(f"[express_want] journal/email fold skipped: {_jf_e}", file=__import__("sys").stderr)
+    # A want to tell her something in plain words is one want: a new variation is kept on the one already standing
+    # (10 November: about fifteen "I want to tell you, in one plain sentence, ..." wants stood side by side, each
+    # admitted as a "mutation" by the formation judge).
+    try:
+        import sys as _pt_s; _pt_s.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+        import conversation_wants as _pt
+        _pt_id = _pt.fold_telling(str(want_text), source, wants_file)
+        if _pt_id:
+            print(f"[express_want] variation of the plain telling {_pt_id}: {str(want_text)[:60]}", file=__import__("sys").stderr)
+            return {"id": _pt_id, "variation_of": _pt_id}
+    except Exception as _pt_e:
+        print(f"[express_want] plain-telling fold skipped: {_pt_e}", file=__import__("sys").stderr)
     # Deduplication — check against existing unfulfilled wants
     _want_words = set(want_text.lower().split())
     for _existing in wants:
@@ -2431,6 +2476,8 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
     if _rel != "novel" and _rel_id:
         entry["relationship"] = _rel
         entry["related_to"] = _rel_id
+    if kwargs.get("source_context"):
+        entry["source_context"] = " ".join(str(kwargs["source_context"]).split())[:1500]
     if kwargs.get("journal_seeded"):
         entry["journal_seeded"] = True
     if kwargs.get("timer_bypass"):
@@ -2443,6 +2490,7 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
             reasoning=reasoning,
             self_interpretation=kwargs.get("self_interpretation", ""),
             source=source,
+            source_context=entry.get("source_context", ""),
         )
         if steps:
             entry["steps"] = steps
