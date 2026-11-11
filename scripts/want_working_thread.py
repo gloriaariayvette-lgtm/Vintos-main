@@ -287,6 +287,31 @@ def ask(system, user, *, before_attempt=None, observed=None):
     return {'text':text,'observations':observations}
 
 
+SHAPE_RETRIES = 2      # regenerations of one phase after a well-formed reply in the wrong shape
+
+
+def shape_problem(decision, phase):
+    """Why a parsed reply does not have the decision's shape, as a correction he can follow; '' when it does.
+    A reply that parses but slips on the shape is not uncertain: it is regenerated with this note (10 November: a
+    continue reply missing accept, and one with the result marker in it, held a handed-over want for a human
+    reviewer Gloria never sees)."""
+    if not isinstance(decision, dict):
+        return 'Return one JSON object: {"message": "...", "accept": false}.'
+    message = decision.get('message')
+    if not isinstance(message, str) or not message.strip() or len(message) > 12000:
+        return 'message is required: your actual next message, under 12000 characters.'
+    if type(decision.get('accept')) is not bool:
+        return 'accept is required and must be true or false (false outside the result phase).'
+    if phase != 'result' and decision['accept']:
+        return 'accept must be false outside the result phase.'
+    if 'WANT RESULT' in message or 'WORK DONE' in message:
+        # The result phase starts only from the agent's verified result (want_agent.py result, then its WANT RESULT
+        # line); his own marker would be a claim without the files, and WORK DONE is room control.
+        return ('Do not write WANT RESULT or WORK DONE. If you think the work is finished, ask the agent to record '
+                'it with want_agent.py result and post its result line; the result phase starts from that.')
+    return ''
+
+
 def generate(want, work, ws, phase, trigger, instruction, writer=ask, identity=None):
     """Persist call intent and response before parsing; never replay uncertain calls."""
     from want_agent import fingerprint
@@ -304,10 +329,14 @@ def generate(want, work, ws, phase, trigger, instruction, writer=ask, identity=N
         system, history = prompt(want, work, ws, identity)
         from want_work_budget import remaining
         turns = remaining(ws, want['agent_work']['request_id'])
-        user = json.dumps({'phase':phase, 'your_want':want.get('want'),
-                           'turns':{'used':turns['used'], 'left_for_this_want':turns['left'],
-                                    'of':turns['per_want'], 'left_today_all_wants':turns['today_left']},
-                           'working_context':json.loads(history), 'instruction':instruction}, ensure_ascii=False)
+        body = {'phase':phase, 'your_want':want.get('want'),
+                'turns':{'used':turns['used'], 'left_for_this_want':turns['left'],
+                         'of':turns['per_want'], 'left_today_all_wants':turns['today_left']},
+                'working_context':json.loads(history), 'instruction':instruction}
+        if record.get('rejected'):
+            body['correction'] = ('Your last reply for this step was not used: ' + record['rejected'][-1]['problem']
+                                  + ' Write the reply again in the required shape.')
+        user = json.dumps(body, ensure_ascii=False)
         if len(system) + len(RULES) + len(user) > policy(ws)['context_chars']:
             raise WorkBlocked('context_needs_continuation')
         now = time.time(); run = str(uuid.uuid4())
@@ -319,6 +348,7 @@ def generate(want, work, ws, phase, trigger, instruction, writer=ask, identity=N
                 raise WorkBlocked('working_call_already_recorded')
             current['generations'][key] = dict(state='running',request_id=run,at=now,
                                                attempts=old.get('attempts', []),observations=[],
+                                               rejected=old.get('rejected', []),
                                                handler_input=deepcopy(handler_input),
                                                reconciliation_history=old.get('reconciliation_history', [])
                                                + ([old['reconciliation']] if old.get('reconciliation') else []))
@@ -380,12 +410,22 @@ def generate(want, work, ws, phase, trigger, instruction, writer=ask, identity=N
         decision = json.loads(raw)
     except Exception as exc:
         raise WorkBlocked('response_needs_review') from exc
-    if (not isinstance(decision, dict) or not isinstance(decision.get('message'), str)
-            or not decision['message'].strip() or len(decision['message']) > 12000
-            or type(decision.get('accept')) is not bool or (phase != 'result' and decision['accept'])):
-        raise WorkBlocked('response_needs_review')
-    if 'WANT RESULT' in decision['message'] or 'WORK DONE' in decision['message']:
-        raise WorkBlocked('response_needs_review')
+    problem = shape_problem(decision, phase)
+    if problem:
+        # Observed and parsed, only the wrong shape: not uncertain. The rejected reply is kept as an observation and
+        # the same phase is generated again with the correction, at most SHAPE_RETRIES times; each regeneration is a
+        # reserved call on this want's budget. Past that it waits for review.
+        if len(record.get('rejected', [])) >= SHAPE_RETRIES:
+            raise WorkBlocked('response_needs_review')
+        def reject(current):
+            item = current['generations'][key]
+            if item['request_id'] != run or item.get('state') != 'response_observed':
+                raise WorkBlocked('working_request_superseded')
+            item.setdefault('rejected', []).append({'request_id': run, 'problem': problem, 'at': time.time(),
+                                                    'result': deepcopy(result)})
+            item.update(state='shape_rejected')
+        _mutate(want, work, ws, reject)
+        return generate(want, work, ws, phase, trigger, instruction, writer=writer, identity=identity)
     finalized_at = time.time()
     try:
         packet = capture.finalize(decision['message'], finalized_at)

@@ -106,6 +106,40 @@ class Tests(unittest.TestCase):
                 self.assertEqual(self.generated, [('ec-fixture1', 'opening')], lines)
                 self.assertTrue(any('handed to its agent' in l for l in lines), lines)
 
+    def _two_stuck(self):
+        other = json.loads(json.dumps(self.rows[0])); other['id'] = 'stuck2'
+        other['agent_work'].update(request_id='WA-' + 'c' * 24, work_id='RW-stuck002')
+        self.write('current-wants.json', [self.rows[0], other, self.rows[1]])
+        self.state['room_work']['open'].append(dict(self.state['room_work']['open'][0], id='RW-stuck002', want_id='stuck2',
+                                                    want_request_id=other['agent_work']['request_id']))
+
+    def test_a_reply_held_for_review_and_rechecked_without_a_call_keeps_the_pass(self):
+        # review (shape retry): a want held after its third slip is re-checked on every pass from its recorded reply,
+        # with no call; it must not use one of the pass's two working calls
+        self._two_stuck(); self.block = {'stuck': 'response_needs_review', 'stuck2': 'response_needs_review'}
+        with patch.object(W, 'unanswered', lambda w, work, ws: [{'key': 'agent:fixture-1'}] if w['id'].startswith('stuck') else []):
+            lines = self.run_pass()
+        self.assertEqual(self.generated, [('ec-fixture1', 'opening')], lines)
+
+    def test_shape_retries_inside_one_decision_count_against_the_pass(self):
+        # review (shape retry): one decision that made three calls (two regenerations) leaves no call in the pass
+        calls = self.mem / 'want-work-control' / 'calls.json'
+        def generate(w, work, ws, phase, trigger, instruction, writer=None, identity=None):
+            from datetime import datetime
+            from zoneinfo import ZoneInfo
+            day = datetime.fromtimestamp(__import__('time').time(), ZoneInfo('America/Chicago')).date().isoformat()
+            data = json.loads(calls.read_text()) if calls.exists() else {'calls': {}}
+            for i in range(3):
+                data['calls']['%s-%d-%d' % (w['id'], len(data['calls']), i)] = {'request_id': w['agent_work']['request_id'], 'day': day}
+            calls.parent.mkdir(parents=True, exist_ok=True); calls.write_text(json.dumps(data))
+            self.generated.append((w['id'], phase)); return {'message': 'Synthetic reply.', 'accept': False}
+        self.block = {}
+        with patch.object(W, 'generate', generate), patch.object(W, 'unanswered', lambda w, work, ws: [{'key': 'agent:fixture-1'}] if w['id'] == 'stuck' else []), \
+             patch.object(D, 'send_reply', lambda *a, **k: None, create=True):
+            lines = self.run_pass()
+        self.assertEqual([g for g in self.generated if g[1] == 'opening'], [], lines)
+        self.assertTrue(any('not handed over yet: pass_call_limit' in l for l in lines), lines)
+
     def test_attempt_already_reserved_holds_only_that_want(self):
         self.block = {'stuck': 'attempt_already_reserved'}
         lines = self.run_pass()
