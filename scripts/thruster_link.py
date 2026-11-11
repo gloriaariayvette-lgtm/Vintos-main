@@ -19,6 +19,7 @@ def _uri():
     return "ws://192.168.1.66:12345"
 URI = _uri()
 HARD_CAP = 0.60
+PATTERN_CAP = 0.50   # patterns peak lower than a steady level (Gloria, 11 November)
 STATE = os.path.expanduser("~/.vintos/workspace/memory/.thruster-state.json")
 PIDF = "/tmp/thruster-driver.pid"
 LOG = "/tmp/thruster-driver.log"
@@ -36,9 +37,14 @@ def _cap_now():
     except Exception: pass
     return HARD_CAP
 
-def _scalar(level):
+def _scalar(level, pattern=False):
+    """20 maps to the ceiling: HARD_CAP for a steady level, PATTERN_CAP for a pattern step.
+    A live overdrive grant lifts both to OVER_CAP."""
     lv = max(0, min(20, int(level)))
-    return round((lv / 20.0) * _cap_now(), 3)
+    cap = _cap_now()
+    if pattern and cap == HARD_CAP:
+        cap = PATTERN_CAP
+    return round((lv / 20.0) * cap, 3)
 
 def _write(st):
     st["at"] = time.time()
@@ -133,7 +139,7 @@ async def _drive():
                     if time.time() - last_step >= st.get("interval_ms", 250) / 1000.0:
                         seq = st.get("seq") or [0]
                         await send({"ScalarCmd": {"DeviceIndex": 0,
-                            "Scalars": [{"Index": 0, "Scalar": _scalar(seq[seq_i % len(seq)]), "ActuatorType": "Oscillate"}]}})
+                            "Scalars": [{"Index": 0, "Scalar": _scalar(seq[seq_i % len(seq)], pattern=True), "ActuatorType": "Oscillate"}]}})
                         seq_i += 1; last_step = time.time()
                 await asyncio.sleep(0.1)
     except Exception as e:
