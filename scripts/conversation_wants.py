@@ -92,11 +92,19 @@ _TELL_VERBS = ("tell", "say", "write", "send", "give", "read")
 VARIATIONS_MAX = 20
 
 
+# A telling that also asks her for something - a question in the middle of it, a request, her permission - keeps its
+# own want (review, 10 November: on the live copy "write the plain sentence ... and ask her to lend it to me tonight"
+# would have been folded as one more variation and its request lost among them).
+_ASKS_HER = re.compile(r"\?|\b(?:ask|asks|asking|request|requests|permission|lend|let me|can you|could you|would you|will you)\b", re.I)
+
+
 def plain_telling(w):
-    """A live want to tell her something in plain words (not a question)."""
+    """A live want to tell her something in plain words (not a question, and asking her nothing)."""
     if not for_her(w) or is_question(w):
         return False
     text = str(w.get("want") or "")
+    if _ASKS_HER.search(text):
+        return False
     m = _FOR_HER.search(text)
     verb = m.group("verb").lower() if m else ""
     if not m:

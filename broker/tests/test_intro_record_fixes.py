@@ -125,6 +125,31 @@ check("express_want folds a plain telling instead of adding a want", len(json.lo
 check("the twin emoclaw copies match", src("bin/emoclaw_utils.py") == src("scripts/emoclaw_utils.py"))
 
 # ---------------- 3. the planner reads the want with its source ----------------
+# review: a telling that asks her for something keeps its own want
+asks = want(40, "I want to write the plain sentence to Gloria that the fixture failed, and ask her to lend me the probe tonight.",
+            "2026-11-10T09:00:00", gloria_routed=True)
+check("a plain telling that also asks her for something is not folded", not C.plain_telling(asks)
+      and not C.plain_telling(dict(asks, want="I want to tell you plainly that it failed; can you look tonight")))
+# review: the archive is written before the rows leave current-wants.json
+import store_guard as _sg
+path2 = os.path.join(MEM, "current-wants-2.json"); arch2 = os.path.join(MEM, "merged-wants-2.json")
+json.dump([dict(w) for w in rows], open(path2, "w"))
+_real = _sg.save_json
+def _die_on_current(p, value, *a, **k):
+    if os.path.abspath(p) == os.path.abspath(path2): raise OSError("fixture: died before current-wants was written")
+    return _real(p, value, *a, **k)
+_sg.save_json = _die_on_current
+try:
+    try: wants_audit.consolidate_tellings(path2, arch2); died = False
+    except OSError: died = True
+finally:
+    _sg.save_json = _real
+check("a run that dies before current-wants is written has already archived the folded rows whole",
+      died and len(json.load(open(path2))) == len(rows) and len(json.load(open(arch2))) == 2
+      and all("want" in r and "merged_at" in r for r in json.load(open(arch2))), (died, json.load(open(arch2)) if os.path.exists(arch2) else None))
+check("run again it folds them, and archives none twice", wants_audit.consolidate_tellings(path2, arch2) == 2
+      and len(json.load(open(arch2))) == 2 and len(json.load(open(path2))) == len(rows) - 2)
+
 import want_grounding as G
 chem = "I want to see if the 1.11 mHa gap at 2.5 A feels like a wall."
 check("'A' after a number in a chemistry want reads as Angstrom", "Angstrom" in G.units_hint(chem, "LiH UCCSD energies"))

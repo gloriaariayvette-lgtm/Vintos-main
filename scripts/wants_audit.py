@@ -85,18 +85,26 @@ def consolidate_tellings(current_path=None, archive_path=None):
     from store_guard import locked_update
     current_path = current_path or CURRENT
     archive_path = archive_path or os.path.join(os.path.dirname(current_path), "merged-wants.json")
+    from store_guard import transaction
     merged = []
-    def mutate(rows):
-        kept, gone = _cw.consolidate(rows if isinstance(rows, list) else [])
-        if not gone:
-            return None
-        merged.extend(gone)
-        return kept
-    locked_update(current_path, mutate, default=[], reader="wants_audit.consolidate")
-    if merged:
-        stamp = _dt.now().isoformat(timespec="seconds")
-        locked_update(archive_path, lambda a: (a if isinstance(a, list) else []) + [dict(w, merged_at=stamp) for w in merged],
-                      default=[], reader="wants_audit.consolidate")
+    stamp = _dt.now().isoformat(timespec="seconds")
+    # Under the wants lock, the folded rows are written whole to the archive FIRST and only then taken out of
+    # current-wants.json (review, 10 November: the other order lost them if the process died between the two writes).
+    # A row already archived is not archived twice.
+    with transaction(current_path):
+        def mutate(rows):
+            kept, gone = _cw.consolidate(rows if isinstance(rows, list) else [])
+            if not gone:
+                return None
+            def archive(a):
+                a = a if isinstance(a, list) else []
+                have = {(r.get("id"), r.get("timestamp")) for r in a if isinstance(r, dict)}
+                new = [dict(w, merged_at=stamp) for w in gone if (w.get("id"), w.get("timestamp")) not in have]
+                return (a + new) if new else None
+            locked_update(archive_path, archive, default=[], reader="wants_audit.consolidate")
+            merged.extend(gone)
+            return kept
+        locked_update(current_path, mutate, default=[], reader="wants_audit.consolidate")
     return len(merged)
 
 
