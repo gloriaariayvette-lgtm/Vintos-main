@@ -288,6 +288,12 @@ def play(toy, pattern, args=None, dur=None, permit=None, effect_digest=None,
                             if str(a).lower() in ("slow", "medium", "fast")), None)
                 if _tp:
                     _iv = max(1, int(_iv * {"slow": 2.0, "medium": 1.0, "fast": 0.5}[_tp]))
+                # His number is the pattern's peak: "climb 12" tops out at 12, the same
+                # shape scaled down. It used to be ignored, so every preset hit 20 (Gloria, 11 November).
+                _n = next((int(a) for a in (args or []) if str(a).isdigit()), None)
+                if _n is not None and 0 < _n < max(_lv):
+                    _lv = [_c(v * _n / max(_lv)) for v in _lv]
+                    _peak = max(_lv)
             _targets = [t for t in toy_link.TOYS if t != "ferri"] if toy in _SYNC else ([toy] if (toy in toy_link.TOYS or toy == "thruster") else [])
             if not _targets:
                 return False
