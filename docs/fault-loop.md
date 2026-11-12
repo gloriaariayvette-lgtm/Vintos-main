@@ -163,6 +163,15 @@ The wake message:
   call a failure "environment-only" without reading why it failed.** (19 October: a failure filed as container-only
   was a real regression, and it stopped a deploy.)
 - A test that fails without the fix and passes with it — check both.
+- **The code-fix worm can draft the fix (Gloria, 12 November).** It passed its sealed final (checked repair, 40/58
+  vs 7/58 one-shot, no regressions). Once the failing test is written in your clone, hand the fault to it:
+  `python3 ~/.vintos/workspace/scripts/codefix_worm.py hand item.json` with
+  `{"source": "fault"|"forge", "ref": "F-…", "issue", "worktree": "<your clone>", "test_files", "source_files"}`.
+  A fix it verified comes back as a **proposal** (`memory/codefix-worm-proposals.json`, patch under
+  `memory/codefix-worm-patches/`), never applied: read it, apply it in your clone, run every suite, and it goes
+  through the same three messages. "unfixed" and refusals are logged; every call is counted (`--show`).
+  `--candidates` lists the open Forge code-fix entries and known faults. Its writer runs on the Studio; if it is not
+  served the call is refused, not retried.
 - Tests never reach the world: repoint every path the module writes, stub everything that sends, and assert the
   isolation in the suite (see `CLAUDE.md`). Run anything that sends through its **real** gate at least once — a
   stubbed sender let a broken `authority=` pass on 19 October.

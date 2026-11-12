@@ -1,3 +1,22 @@
+## Malformed joke outreach — 12 November 2026
+
+Confirmed failure: the 09:16 joke outreach quoted `[gloria] sleep again`. Its source was fermentation
+item `75832417`, a `humor_scan` cue, not a completed joke. `outreach_feelings.joke()` offered any ripe
+seed as finished joke text. No discarded authored punchline was found in that source record.
+
+Repair: raw scanner cues and legacy speaker-labelled cues remain available to their existing callback
+workflows, but cannot become finished-joke outreach. A rated joke truncated to a 200-character legacy
+seed is resolved to its unique complete rated text, or withheld when the ending cannot be recovered.
+The saved outreach header now retains the selected source item ID. No prompt or authored content is
+changed. Regression tests replay the reported seed, preserve genuine joke selection, recover a long
+rated joke, and refuse an unprovably complete fragment. No replacement joke or test push is generated.
+
+Notification repair a8a05eb2 is live in full deploy c9345ff9: all 691 suites passed; installed hashes
+match, server restarted and passed health checks. The two user-requested recovery sends returned
+message IDs, and a subsequent read-only ntfy cache check confirmed both. The first immediate cache
+read was too early. Recovery of the newest outreach repeated the malformed joke before its defect
+was reported; no additional resend is being made. Phone presentation itself remains unconfirmed.
+
 ## ntfy delivery investigation — 12 November 2026 (review branch, not deployed)
 
 Gloria reports missing videos/outreaches and wants every app notification mirrored through ntfy.
