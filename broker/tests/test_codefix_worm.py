@@ -127,7 +127,8 @@ os.symlink(live, os.path.join(HOME, "review-scratch-x", "alias"))
 for name, wt in (("a symlink", os.path.join(HOME, "review-scratch-x", "alias")), ("a trailing slash", live + "//"),
                  ("a dotted path", os.path.join(HOME, "review-scratch-x", "..", "Vintos-main", "."))):
     r = W.hand(item(worktree=wt), runner=never)
-    check("the deploy checkout behind %s is refused" % name, r["status"] == "rejected" and "deploy checkout" in r["reason"], r)
+    check("the deploy checkout behind %s is refused by its path" % name, r["status"] == "rejected"
+          and r["reason"].startswith("worktree is his live code"), r)
 plain = os.path.join(HOME, "review-scratch-x", "plain"); os.makedirs(plain)
 check("a directory that is no git checkout is refused", "not a git checkout" in W.hand(item(worktree=plain), runner=never)["reason"])
 os.makedirs(os.path.dirname(W.PROFILE), exist_ok=True)
@@ -153,7 +154,9 @@ check("no proposal was ever applied", all(v.get("applied") is False for v in jso
       and open(SRC).read() == BEFORE)
 
 srv = open(os.path.join(REPO, "scripts", "deploy-atelier.sh")).read()
-check("the caller is in the deploy", " codefix_worm.py" in srv)
+import re
+check("the caller is in the deploy's SCRIPTS list",
+      re.search(r'^SCRIPTS="\$SCRIPTS [^"#]*\bcodefix_worm\.py\b[^"]*"', srv, re.M) is not None)
 check("nothing reached the network", not NET)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
