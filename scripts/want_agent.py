@@ -432,12 +432,14 @@ class WantHeld(Exception):
 # Blocks that stop the whole lane (the stop file, a broken policy or budget store); every other block holds one want.
 LANE_WIDE = ('want_lane_stopped', 'invalid_work_policy', 'invalid_work_budget', 'linked_work_budget')
 # The day's call cap stops model calls for the day, not the lane; a handoff that needs a call waits for tomorrow.
-DAY_WIDE = ('daily_call_cap',)
+# The hourly pace (want_work_budget.paced_allowance, 12 November) stops them the same way until the next hour: it
+# is the lane's, never one want's, so it holds no want and ends the pass's calls.
+DAY_WIDE = ('daily_call_cap', 'hourly_call_pace')
 # Blocks raised before any model call (want_working_thread.generate, want_work_budget.reserve): a want held on one of
 # these does not use one of the pass's working calls (review, 10 November: two wants held on such a block, met first
 # every pass, used both calls and left none to prepare a handoff - the lane stuck again, one want at a time).
 # interrupted_call_needs_review is one of these when it is raised on its own, not from a call that just failed.
-NO_CALL_MADE = ('per_want_call_cap', 'attempt_already_reserved', 'daily_call_cap', 'provider_retry_backoff',
+NO_CALL_MADE = ('per_want_call_cap', 'attempt_already_reserved', 'daily_call_cap', 'hourly_call_pace', 'provider_retry_backoff',
                 'context_needs_continuation', 'working_call_already_recorded')
 
 

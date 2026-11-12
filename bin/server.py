@@ -10793,6 +10793,14 @@ async def avatar_chat(msg: ChatMessage, request: Request):
                 _durable_her_block = (_durable_her_block + "\n\n" + _open_between).strip()
         except Exception as _obx:
             print("[avatar] open-between skipped:", _obx, flush=True)
+        try:   # what he means to ask or tell her himself, carried until she is here (conversation_wants.py): her
+            # conversations come through this route, and gather_vintos_context, which carried it, is not read here
+            import conversation_wants as _av_cw
+            _av_cw_block = _av_cw.block_from_file(os.path.join(MEMORY, "current-wants.json"))
+            if _av_cw_block:
+                _durable_her_block = (_durable_her_block + "\n\n" + _av_cw_block).strip()
+        except Exception as _av_cwx:
+            print("[avatar] wants for her skipped:", _av_cwx, flush=True)
         # The room he is in, the renders left today and the devices switched on change from turn to turn; they sit
         # just after [[CACHESPLIT]] so everything fixed above it is one unbroken start that can be cached (2026-10-13).
         system_prompt = f"""{identity}

@@ -1186,14 +1186,17 @@ class IntentFieldsFix(unittest.TestCase):
         self.press(**{A: self.prow(TEXT_A, 4.0), B: self.prow(TEXT_B, 2.0)})
         self.answer = 'no object at all'
         with self.assertRaises(Exception): self.select(resolve=False)
-        self.assertIn('(id %s,' % A, self.prompt()); self.assertEqual(self.rows(), [])     # it had been shown; no turn was recorded
+        # it had been shown; no target was recorded - only her turn, as a failure row with A on it (12 November)
+        self.assertIn('(id %s,' % A, self.prompt())
+        self.assertEqual([(r['status'], r['target']['primary_shown'], r['target']['primary_accounting']) for r in self.rows()],
+                         [('failed', A, 'reserved')])
         state = json.loads(Path(DD._rotation_path()).read_text())
         self.assertEqual((state['id'], state['run'], state['failed_reservations'], state['last_failed_reservation']['id']), (A, 1, 1, A))
         log = Path(E.SELECT_LOG).read_text()
         self.assertEqual(log.count('primary_reserved_turn_failed: primary %s; ' % A), 1); self.assertNotIn('turn-state write', log)
         self.answer = self.target()
         for _ in range(3): self.select(resolve=False)
-        self.assertEqual([p for p, _ in self.shown()], [A, A, B])              # three showings of A in all, the failed one among them
+        self.assertEqual([p for p, _ in self.shown()], [A, A, A, B])           # three showings of A in all, the failed one among them
         state = json.loads(Path(DD._rotation_path()).read_text())
         self.assertEqual((state['id'], state['run'], state['failed_reservations']), (B, 1, 1))
         # a turn that fails with nothing reserved (a device event) records no such failure

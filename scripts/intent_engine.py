@@ -393,8 +393,48 @@ def _salvage_json(txt):
             continue
     return None
 
+class SelectorUnreadable(ValueError):
+    """Nothing usable came back from the selector: no target object could be read from its reply (12 November:
+    two of her twelve turns since the deploy had a reply that was not JSON - one with no brace at all - and left
+    no ledger row). `code` is fixed; the reply itself is only ever in SELECT_LOG."""
+    def __init__(self, code, raw="", detail=""):
+        self.code = code
+        self.raw_chars = len(str(raw or ""))
+        self.had_brace = "{" in str(raw or "")
+        super().__init__("intent selector reply unreadable: " + code + ((" (" + str(detail)[:120] + ")") if detail else ""))
+
+
+_FIELD_KEYS = ("field_state", "goal", "success_criterion")
+
+
+def _trim_keys(obj):
+    return {(k.strip() if isinstance(k, str) else k): v for k, v in obj.items()}
+
+
+def _lenient_target(text):
+    """The target in a reply that is JSON with a slip around it (the want lane's lenient_decision, for the
+    selector): the first object that carries a field key, when prose, a code fence or a second object surrounds
+    it, with stray spaces trimmed from its keys; else what _salvage_json can close of a cut-off object; else
+    None. An inner axis object is never taken for the target."""
+    text = str(text or "")
+    decoder = json.JSONDecoder()
+    pos = text.find("{")
+    while pos >= 0:
+        try:
+            obj, used = decoder.raw_decode(text[pos:])
+        except json.JSONDecodeError:
+            pos = text.find("{", pos + 1); continue
+        if isinstance(obj, dict) and any(isinstance(k, str) and k.strip() in _FIELD_KEYS for k in obj):
+            return _trim_keys(obj)
+        pos = text.find("{", pos + used)
+    s = text.find("{")
+    got = _salvage_json(text[s:]) if s >= 0 else None
+    return _trim_keys(got) if isinstance(got, dict) else None
+
+
 def _ask_selector(messages):
-    """One selector call, parsed. A cut-off answer is logged and salvaged, as before."""
+    """One selector call, parsed. A cut-off answer is logged and salvaged, as before; a reply with a slip around
+    its JSON is read leniently; a reply with no target in it raises SelectorUnreadable."""
     body = json.dumps({"model": MODEL, "messages": messages,
         "temperature": 0.5, "max_tokens": 1600}).encode()   # 800 cut the JSON off mid-field once the three axes and the campaign were asked for (2026-09-05)
     hdr = {"Content-Type": "application/json"}
@@ -412,10 +452,15 @@ def _ask_selector(messages):
             with open(SELECT_LOG, "a") as _f:
                 _f.write("%s %s\n%s\n---\n" % (datetime.now().isoformat(), str(_je)[:120], content[:4000]))
         except Exception: pass
-        _t = _salvage_json(content[s:] if s >= 0 else content)
+        _t = _lenient_target(content)
         if not isinstance(_t, dict) or not _t.get("field_state"):
-            raise
-    return _valid_target(_t), content
+            raise SelectorUnreadable("no_json_object" if s < 0 else "unparsed_json", content) from _je
+    if not isinstance(_t, dict):
+        raise SelectorUnreadable("not_an_object", content)
+    try:
+        return _valid_target(_trim_keys(_t)), content
+    except ValueError as _ve:
+        raise SelectorUnreadable("field_target_incomplete", content, str(_ve)) from _ve
 
 
 def _selection_faults(target, opportunity):
@@ -495,6 +540,11 @@ def select_target(recent_text, resolve=True, step_campaign=True, persist=True, h
     try:
         return _select_target(recent_text, resolve, step_campaign, persist, her_source, _turn)
     except Exception as _err:
+        if (_turn.get("pv_rec") or {}).get("override") and not _turn.get("recorded"):
+            def _refund():
+                from priority_vector import refund_override as _pvro
+                return _pvro(_turn["pv_rec"])
+            _guarded("refund_override", _refund)
         if _turn.get("reserved") and not _turn.get("recorded"):
             # The showing was reserved before the model saw it, and this turn then failed. The reservation
             # COUNTS (round four): it is not handed back, so no number of failing turns can pass the cap; the
@@ -655,6 +705,7 @@ def _select_target(recent_text, resolve, step_campaign, persist, her_source, _tu
             with _pv_background():
                 _pv_rec = _pvd(**_pv_kw)
         _pv_block = _pvb(_pv_rec); _pv_mode = _pv_rec.get("mode", "strategic")
+        if persist: _turn["pv_rec"] = _pv_rec     # an override it spent is given back if this turn fails
     except Exception as _pve:
         # a swallowed declare() silently defaulted the mode to "strategic", which silently
         # disables campaign suspension for the turn — leave a trace instead (Gloria, 2026-09-18)
@@ -722,7 +773,15 @@ def _select_target(recent_text, resolve, step_campaign, persist, her_source, _tu
     if _sg_offer:
         user += "\n\n" + _sg_offer + " For this JSON response use an optional stratagem object field instead of XML."
     _msgs = [{"role": "system", "content": sysp}, {"role": "user", "content": user}]
-    _t, _raw = _ask_selector(_msgs)
+    try:
+        _t, _raw = _ask_selector(_msgs)
+    except SelectorUnreadable as _su:
+        # Her turn is not made invisible by a reply that could not be read (12 November): it is kept as a failure
+        # row - no target, no lead, never judged - and the error goes on to the caller as before.
+        if persist:
+            _guarded("record_failed_selection", lambda: record_failed_selection(
+                _su, _pv_rec, _primary, _acct, _eligible, _tsf), _tsf)
+        raise
     # One re-ask, and only for form: where the criterion shows, or a due opportunity left unanswered. A second
     # faulty answer is not mended here - that axis is left undeclared with its reason; nothing is invented.
     _opp = bool(_pv_rec.get("gloria_opportunity"))
@@ -742,7 +801,7 @@ def _select_target(recent_text, resolve, step_campaign, persist, her_source, _tu
     _check["fault"] = _crit; _check["abstained"] = bool(_crit)
     _t.pop("criterion_abstained", None); _t.pop("gloria_abstained", None)   # ours to set, never the selector's
     _t.pop("axis_abstained", None); _t.pop("lead_axis", None); _t.pop("lead_fallback", None); _t.pop("her_turn", None)
-    _t.pop("primary_accounting", None); _t.pop("turn_state_faults", None)
+    _t.pop("primary_accounting", None); _t.pop("turn_state_faults", None); _t.pop("axis_held", None)
     if _abst:
         # that axis alone is left undeclared, with its reason; the field and the other axis stand as given
         for _ax in _abst: _t[_ax] = {}
@@ -768,7 +827,10 @@ def _select_target(recent_text, resolve, step_campaign, persist, her_source, _tu
     _t["priority"] = _weights(_pv_rec.get("weights") or _t.get("priority"))
     _dominant = max(_t["priority"], key=_t["priority"].get)
     if _dominant != "field" and not _t.get(_dominant) and _dominant not in _abst:
-        raise ValueError("intent selector omitted the dominant axis action: " + _dominant)
+        # The dominant axis left out is HELD with its reason, never judged; the turn goes on, led by the next
+        # declared axis below (12 November: this raised, even after the one re-ask, and her turn left no row).
+        _t["axis_held"] = {_dominant: "dominant_axis_omitted"}
+        _check.setdefault("axis_faults", {})[_dominant] = "dominant_axis_omitted"
     # The lead is an axis that is really declared (10 November). When the dominant axis was emptied after the
     # one re-ask, the lead falls to the next valid axis by the declared weights - the field unless its own
     # criterion was abstained, the other axis if it is declared - or to none. The weights stay as declared.
@@ -1173,12 +1235,55 @@ def record_pending(target, source="conversation", event_id=None, claim_once=Fals
             if isinstance(_axa, dict) and _axa.get(_ax) and not target.get(_ax):
                 realized[_ax] = "NOT_DECLARED"; why[_ax] = "criterion_" + str(_axa[_ax])
         if why: row["not_declared_reason"] = why
+        # an axis the selector left out though it was dominant is HELD from birth with its reason (12 November)
+        _axh = target.get("axis_held")
+        if isinstance(_axh, dict):
+            for _ax, _why in _axh.items():
+                if _ax in ("gloria", "self") and not target.get(_ax):
+                    realized[_ax] = "HELD"; row.setdefault("held_reason", {})[_ax] = str(_why)
         led.append(row)
         write_json(LEDGER, led[-500:])
     # One real selection, counted once, whatever verdict it later gets: the run a primary may lead (10 November).
     # A turn's own selection was counted when it was reserved, a device-only event counts nothing, and a lead
     # prepared in a preview was counted above, before this row was written (round four).
     return True
+
+
+SELECTION_FAILED = {"n": 0}
+FAILED_STATUS = "failed"
+
+
+def record_failed_selection(err, pv_rec=None, primary=None, accounting="", her_turn=True, faults=None):
+    """Her turn whose selector reply could not be read, kept as one counted failure row (12 November). It has no
+    target to lead with and is never judged: its status is "failed", so no resolver takes it up and every report
+    reads it as undelivered; each axis is HELD with the reason. What was declared for the turn and the primary
+    it was shown (its reservation stands, and select_target still notes it as a failed reservation) travel with
+    it. Counts and codes only - the reply itself stays in SELECT_LOG."""
+    from store_guard import transaction, write_json
+    SELECTION_FAILED["n"] += 1
+    pv_rec = pv_rec if isinstance(pv_rec, dict) else {}
+    code = str(getattr(err, "code", "") or type(err).__name__)
+    reason = "selector_failed_" + code
+    target = {"intent_id": uuid.uuid4().hex, "selected_at": datetime.now().isoformat(),
+              "priority": _weights(pv_rec.get("weights")), "priority_provenance": copy.deepcopy(pv_rec),
+              "priority_mode": pv_rec.get("mode", "strategic"),
+              "primary_shown": (primary or {}).get("id"), "primary_required": bool((primary or {}).get("required")),
+              "her_turn": bool(her_turn), "selection_check": {"failed": code}}
+    if accounting: target["primary_accounting"] = accounting
+    if faults: target["turn_state_faults"] = list(faults)
+    row = {"intent_id": target["intent_id"], "target": target, "priority": copy.deepcopy(target["priority"]),
+           "status": FAILED_STATUS, "surface": "conversation", "event_id": None,
+           "realized": {"field": "HELD", "gloria": "HELD", "self": "HELD"},
+           "held_reason": {"field": reason, "gloria": reason, "self": reason},
+           "failure": {"stage": "selector", "code": code, "reply_chars": int(getattr(err, "raw_chars", 0) or 0),
+                       "had_brace": bool(getattr(err, "had_brace", False))},
+           "timestamp": datetime.now().isoformat()}
+    with transaction(LEDGER):
+        led = _load("intent-ledger.json") or []
+        if not isinstance(led, list): led = []
+        led.append(row)
+        write_json(LEDGER, led[-500:])
+    return row
 
 
 # ---- round five: a resolver's result lands only on what it read, and each of its effects happens once ---------

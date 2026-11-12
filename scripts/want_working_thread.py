@@ -207,7 +207,7 @@ def reconcile(want, work, ws, call_id, outcome, evidence, response=None):
 def notify_block(want, work, ws, reason, sender, *, phase=None, trigger=None):
     """The caller supplies deliver; private receipt deduplication survives restarts."""
     from want_agent import fingerprint
-    if reason == 'provider_retry_backoff': return
+    if reason in ('provider_retry_backoff', 'hourly_call_pace'): return   # pacing is the lane working as set, not a want needing her
     data = load(want, work, ws)
     continuation = data.get('continuation')
     revision = fingerprint(json.dumps(continuation, sort_keys=True)) if continuation else 'initial'
