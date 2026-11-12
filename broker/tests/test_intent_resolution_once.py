@@ -51,7 +51,11 @@ class ResolutionOnce(unittest.TestCase):
         def slow_one():
             try: (resolve or (lambda: E.resolve_previous(HER)))()
             except BaseException as exc: errors.append(exc)
-        with patch.object(E, '_judge_realized', side_effect=judge):
+        def sol(packet):    # her axis is Sol's (12 November): the same race, in the rubric's answer
+            v = judge()
+            return {'verdict': v if v in ('YES', 'PARTIAL', 'NO') else 'NOT_JUDGEABLE', 'reason': 'fixture',
+                    'adherence': 'delivered', 'status': 'ok'}
+        with patch.object(E, '_judge_realized', side_effect=judge), patch.object(E, '_sol_judge', side_effect=sol):
             worker = threading.Thread(target=slow_one, name='slow-judge'); worker.start()
             try:
                 self.assertTrue(started.wait(10)); out = meanwhile()

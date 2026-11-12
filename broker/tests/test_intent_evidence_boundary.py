@@ -37,7 +37,9 @@ class IntentEvidenceBoundary(unittest.TestCase):
         for _ in range(3):
             fixtures.E.resolve_previous('GLORIA (now): Synthetic follow-up.')
         row = self.fixture.rows()[-1]
-        self.assertEqual(row['realized'], dict.fromkeys(('field', 'gloria', 'self'), 'HELD'))
+        # her axis is Sol's (12 November): an answer outside the rubric is NOT_JUDGEABLE(error) at once, never HELD
+        self.assertEqual(row['realized'], {'field': 'HELD', 'gloria': 'NOT_JUDGEABLE', 'self': 'HELD'})
+        self.assertEqual(row['gloria_judge']['reason'], 'error')
         self.assertEqual(set(row['held_reason'].values()), {'judge_no_verdict'})
         self.assertTrue(all(h['n'] == 0 for h in fixtures.PV._axis_history().values()))
 

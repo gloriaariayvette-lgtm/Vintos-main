@@ -69,6 +69,13 @@ class IntentFieldsFix(unittest.TestCase):
         self.select_calls = []; self.judge_calls = []
         self.answer = copy.deepcopy(TARGET); self.answers = []; self.verdict = 'NO'; self.verdicts = []
         self.stack.enter_context(patch('urllib.request.urlopen', self.respond))
+        # Her axis goes to Sol (12 November). Here the fixture's one-word judge stands in for it, through the same
+        # queue and the same call list: a verdict word is what Sol answered, anything else is NOT_JUDGEABLE. The
+        # check at selection finds nothing already met.
+        self.stack.enter_context(patch.object(E, '_sol_judge', lambda packet: IntentFieldsFix.sol(self, packet)))
+        self.stack.enter_context(patch.object(E, '_stale_gloria', return_value='not_met'))
+        # the resolver inline, as these tests read it; the background resolver has its own tests (gloria_judge_sol)
+        self.stack.enter_context(patch.object(E, 'RESOLVE_IN_BACKGROUND', False))
         self.stack.enter_context(patch.object(E, '_identity_signals', return_value='my authored wants'))
         self.stack.enter_context(patch.object(E, '_spark_fields', return_value='my authored field'))
         self.stack.enter_context(patch.object(E, '_nudge_valence'))
@@ -100,6 +107,17 @@ class IntentFieldsFix(unittest.TestCase):
             raw = raw if isinstance(raw, str) else json.dumps(raw)
         out = json.dumps({'choices': [{'message': {'content': raw}}]}).encode()
         return contextlib.closing(types.SimpleNamespace(read=lambda: out, close=lambda: None))
+
+    def sol(self, packet):
+        """Sol's stand-in: the packet is kept as the judge saw it, the verdict comes from the fixture's queue."""
+        self.judge_calls.append({'max_tokens': 6, 'sol': True, 'messages': [
+            {'role': 'system', 'content': 'gloria rubric'}, {'role': 'user', 'content': json.dumps(packet)}]})
+        raw = self.verdicts.pop(0) if self.verdicts else self.verdict
+        if isinstance(raw, Exception): raise raw
+        if raw in ('YES', 'PARTIAL', 'NO'):
+            return {'verdict': raw, 'reason': {'YES': 'plain_yes', 'PARTIAL': 'partial_hedged', 'NO': 'not_shown'}[raw],
+                    'codes': [], 'adherence': 'delivered', 'confidence': 'high', 'status': 'ok'}
+        return {'verdict': 'NOT_JUDGEABLE', 'reason': 'error', 'status': 'unparsed'}
 
     def rows(self):
         path = Path(E.LEDGER)
@@ -402,17 +420,20 @@ class IntentFieldsFix(unittest.TestCase):
         self.delivered(gloria=copy.deepcopy(GLORIA))
         E.resolve_previous(BUTTON, source='gcs')
         self.delivered(gloria=copy.deepcopy(GLORIA))                           # my next move, before she has spoken
-        self.verdicts = ['NO', 'YES', 'YES', 'YES']; E.resolve_previous(HER)
+        self.verdicts = ['YES', 'YES', 'YES']; E.resolve_previous(HER)
         early, late = self.rows()
-        self.assertEqual(early['realized'], {'field': 'HELD', 'gloria': 'NO', 'self': 'HELD'})    # the earlier move first, its open axis only
+        # the earlier move first, its open axis only - and her reply came after my next move, so it answers that
+        # one: NOT_JUDGEABLE for the earlier, settled in code with no judge asked (12 November)
+        self.assertEqual(early['realized'], {'field': 'HELD', 'gloria': 'NOT_JUDGEABLE', 'self': 'HELD'})
+        self.assertEqual((early['gloria_judge']['reason'], early['gloria_judge']['later_moves']), ('reply_to_later_move', 1))
         self.assertEqual(late['realized'], {'field': 'YES', 'gloria': 'YES', 'self': 'YES'})
-        self.assertEqual(len(self.judge_calls), 4)
+        self.assertEqual(len(self.judge_calls), 3)
         self.assertNotIn('skipped_observations', late)
         self.verdict = 'NO'; E.resolve_previous(HER); E.resolve_previous('GLORIA (now): And one more thing.')
-        self.assertEqual(len(self.judge_calls), 4); self.assertEqual(self.rows(), [early, late])   # each row once
+        self.assertEqual(len(self.judge_calls), 3); self.assertEqual(self.rows(), [early, late])   # each row once
         self.assertEqual(sys.modules['outcome_join'].record.call_count, 2)
         history = PV._axis_history()['gloria']
-        self.assertEqual((history['n'], history['YES'], history['NO']), (2, 1, 1))
+        self.assertEqual((history['n'], history['YES'], history['NO']), (1, 1, 0))
 
     def test_waiting_axis_expires_held_after_a_day_with_no_judge(self):
         def a_day_on(hours):
@@ -849,7 +870,7 @@ class IntentFieldsFix(unittest.TestCase):
         self.assertEqual(self.select(resolve=False)['axis_abstained'], {'gloria': 'evidence_not_her_response'})
         self.answers = [self.target(gloria=unsaid), self.target(gloria=copy.deepcopy(GLORIA))]   # mended on the re-ask
         t = self.select(resolve=False)
-        self.assertEqual((t['gloria'], t['selection_check']), (GLORIA, {'retry': 1, 'fault': '', 'abstained': False}))
+        self.assertEqual((t['gloria'], t['selection_check']), (GLORIA, {'retry': 1, 'stale': 'not_met', 'fault': '', 'abstained': False}))
         self.assertNotIn('axis_abstained', t); self.assertNotIn('not_declared_reason', self.rows()[-1])
 
     def test_invalid_self_axis_abstains_alone_even_when_it_leads(self):
