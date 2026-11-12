@@ -218,6 +218,40 @@ class EngineOnSol(unittest.TestCase):
         with patch.object(GJ, 'stale_check', side_effect=RuntimeError('fixture')):
             self.assertEqual(STALE_GLORIA(GLORIA, 'yes'), 'error')
 
+    def test_stale_check_is_bounded_on_her_turn_and_fails_open(self):
+        import threading, time
+        release = threading.Event(); self.addCleanup(release.set)
+        def slow(ax, words):
+            release.wait(10); return 'met'
+        with patch.object(GJ, 'stale_check', slow), patch.object(E, 'GLORIA_STALE_BOUND', 0.3):
+            t0 = time.monotonic()
+            self.assertEqual(STALE_GLORIA(GLORIA, 'yes'), 'timeout')
+            self.assertLess(time.monotonic() - t0, 3)
+        self.answer = self.target(gloria=copy.deepcopy(GLORIA))
+        for how in (slow, Mock(side_effect=RuntimeError('fixture: sol is down'))):
+            with self.subTest(how=getattr(how, '__name__', 'raises')), patch.object(E, '_stale_gloria', STALE_GLORIA), \
+                    patch.object(GJ, 'stale_check', how), patch.object(E, 'GLORIA_STALE_BOUND', 0.3):
+                t = self.turn(resolve=False)                                      # her turn goes on, normally
+                self.assertEqual(t['gloria'], GLORIA)
+                self.assertIn(t['selection_check']['stale'], ('timeout', 'error'))
+
+    def test_stale_switch_is_read_from_vintos_env_too(self):
+        with patch.object(GJ, 'stale_check', return_value='met') as sc, \
+                patch.object(GJ, '_env', lambda name, default='': '0' if name == 'GLORIA_STALE_CHECK' else default):
+            self.assertEqual(STALE_GLORIA(GLORIA, 'yes'), 'off')
+        sc.assert_not_called()
+
+    def test_the_packet_carries_the_evidence_and_nothing_else(self):
+        t = self.move(); self.verdict = 'YES'
+        E.resolve_previous(HER)
+        p, = self.sol_calls()
+        self.assertEqual(set(p), {'declared', 'his_reply', 'her_message_he_replied_to', 'her_next_reply', 'facts'})
+        self.assertEqual(set(p['declared']), {'gloria_difference_intended', 'gloria_enactment', 'observation_window',
+                                              'field_state', 'overall_goal', 'overall_success_criterion', 'first_move'})
+        row = self.rows()[-1]; seen = json.dumps(p)
+        for private in (t['intent_id'], str(self.home), 'priority', 'turn_id'):
+            self.assertNotIn(private, seen)
+
     # ---- the landing rate -------------------------------------------------------------------------------
     def test_landing_rate_ignores_not_judgeable_and_expired_rows(self):
         now = datetime.now()
@@ -343,6 +377,16 @@ class SolTransport(unittest.TestCase):
             self.assertEqual(GJ.stale_check({'difference_intended': 'x'}, 'words'), 'budget')
         self.assertEqual(self.sent, [])
         self.assertEqual(GJ.judge(self.packet)['verdict'], 'YES')                # under the default $8
+
+    def test_vintos_env_prices_override_the_estimate(self):
+        log = self.home / '.vintos/logs/openai-usage.jsonl'; log.parent.mkdir(parents=True)
+        import time
+        log.write_text(json.dumps({'ts': time.time(), 'src': 'gloria-judge', 'in': 1_000_000, 'out': 1_000_000, 'cached': 0}) + '\n')
+        self.assertEqual(GJ.spent(GJ.LIVE_SRCS), 45.0)                           # the high default estimate
+        with patch.dict(os.environ, GLORIA_JUDGE_PRICE_IN='1.25', GLORIA_JUDGE_PRICE_OUT='10'):
+            self.assertEqual(GJ.spent(GJ.LIVE_SRCS), 11.25)
+        with patch.dict(os.environ, GLORIA_JUDGE_PRICE_IN='not-a-number'):
+            self.assertEqual(GJ.spent(GJ.LIVE_SRCS), 45.0)                       # a bad value keeps the estimate
 
     def test_stale_check_answers_met_or_not(self):
         for raw, want in (({'already_met': True}, 'met'), ({'already_met': False}, 'not_met'), ({'already_met': 'yes'}, 'error')):

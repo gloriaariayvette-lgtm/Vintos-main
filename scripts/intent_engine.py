@@ -1007,15 +1007,38 @@ def _sol_judge(packet):
     return gloria_judge.judge(packet)
 
 
+GLORIA_STALE_BOUND = 20     # seconds: the most the check may hold her turn, whatever the socket does (review)
+
+
+def _stale_switch_off():
+    """GLORIA_STALE_CHECK=0 in the environment or in vintos.env (read live, no restart needed)."""
+    if os.environ.get("GLORIA_STALE_CHECK", "1").strip() == "0":
+        return True
+    try:
+        import gloria_judge
+        return str(gloria_judge._env("GLORIA_STALE_CHECK", "1")).strip() == "0"
+    except Exception:
+        return False
+
+
 def _stale_gloria(ax, her_words):
-    """At selection: "met" when her message, the one this move answers, already shows the declared difference."""
-    if os.environ.get("GLORIA_STALE_CHECK", "1") == "0":
+    """At selection: "met" when her message, the one this move answers, already shows the declared difference.
+    It runs on her turn, so it is held to a wall-clock bound (a socket timeout does not cover DNS or a slow
+    trickle): a check still out at the bound is "timeout", and like every answer but "met" it refuses nothing."""
+    if _stale_switch_off():
         return "off"
     if not str(her_words or "").strip():
         return "skipped"
     try:
+        import threading
         import gloria_judge
-        return gloria_judge.stale_check(ax, her_words)
+        box = {}
+        def _run():
+            try: box["v"] = gloria_judge.stale_check(ax, her_words)
+            except Exception: box["v"] = "error"
+        worker = threading.Thread(target=_run, name="gloria-stale-check", daemon=True)
+        worker.start(); worker.join(GLORIA_STALE_BOUND)
+        return box.get("v", "timeout")
     except Exception:
         return "error"
 
