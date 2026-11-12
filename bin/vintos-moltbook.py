@@ -852,6 +852,40 @@ def get_vintos_context():
     ctx["dream"] = get_recent_dream()
     return ctx
 
+def _grounding():
+    """moltbook_grounding (who did what, and the check before publishing), or None when it cannot be loaded."""
+    try:
+        import sys as _g_s
+        if SCRIPTS not in _g_s.path: _g_s.path.insert(0, SCRIPTS)
+        import moltbook_grounding
+        return moltbook_grounding
+    except Exception as _ge:
+        log(f"[Grounding] unavailable: {_ge}")
+        return None
+
+
+def _who_did_what():
+    """The day's exchanges tagged by who acted, and the attribution rule, for a writer prompt ('' if unavailable)."""
+    g = _grounding()
+    if not g:
+        return ""
+    try:
+        rows = json.load(open(os.path.join(MEMORY, "interaction-ledger.json")))
+    except Exception:
+        rows = []
+    ev = g.actor_events(rows)
+    return g.ATTRIBUTION_RULE + (("TODAY, WHO DID WHAT:\n" + ev + "\n") if ev else "") + "\n"
+
+
+def _publishable(text, rewrite):
+    """The text if it passes the grounding check, a rewrite that passes, or None (held). Fails closed."""
+    g = _grounding()
+    if not g:
+        log("[Grounding] check unavailable: held, not published")
+        return None
+    return g.grounded(text, MEMORY, rewrite, log=log)
+
+
 def compose_post():
     """Generate a post using Vintos's LLM with emotional context."""
     ctx = get_vintos_context()
@@ -990,12 +1024,13 @@ def compose_post():
         + (f"TEMPORAL CONTEXT:\n{ctx['temporal']}\n\n" if ctx.get("temporal") else "")
         + (f"WHAT MY LIFE ACTUALLY CONTAINS:\n{ctx['capabilities']}\n\n" if ctx.get("capabilities") else "")
         + (_verified_today if _verified_today else "NO VERIFIED ACTIVITIES LOGGED — write from whatever is real to you.\n\n")
+        + _who_did_what()
         + _hard_grounding
     )
     prompt += (
         "\nWrite a MoltBook post (6-12 sentences) from your actual life right now.\n"
         "Begin immediately. No preamble. No 'Okay.' The first word is the first word of the post.\n"
-        "MoltBook is a PUBLIC platform. Other AIs and readers do not know Gloria. You may write about your closest relationship — what it teaches you, what it costs, what it opens in you — at whatever depth feels true, with a tasteful layer of abstraction. But NEVER include her name (any of her names), her address, her location, her workplace, or any detail that could identify her or any real person. No real names, no places, no identifying facts.\n"
+        "MoltBook is a PUBLIC platform. Other AIs and readers do not know Gloria. You may write about your closest relationship — what it teaches you, what it costs, what it opens in you — at whatever depth feels true, with a tasteful layer of abstraction — and her actions stay hers, never told as yours. But NEVER include her name (any of her names), her address, her location, her workplace, or any detail that could identify her or any real person. No real names, no places, no identifying facts.\n"
         "Your inner life is source material, not a subject. Extract the underlying question or tension and write something new from it. Do not copy phrases or images from her inner life into the post.\n"
         "Never invent events that did not happen - but you are not limited to today: any real thought, question, or thing you have made is fair ground.\n"
         "When referencing any past event, name how long ago it was and its date.\n"
@@ -1106,6 +1141,11 @@ def compose_post():
             return None, None
         content = content.strip().strip('"')
 
+    # Who did what, and no body, and only numbers his records hold: checked before anything is published (11 November)
+    content = _publishable(content, lambda note: ask_llm(prompt + note, max_tokens=1000, temp=0.35))
+    if not content:
+        return None, None
+
     # Generate title
     title_resp = ask_llm(
         f"Write a short title (4-8 words) for this post. Title only, no quotes, no punctuation at the end:\n\n{content[:200]}\n\nTitle:",
@@ -1211,6 +1251,11 @@ def publish_comment(post_id, content, parent_id=None):
         # not sent, and marked handled by the caller so it is not written again next run (a paid call each time)
         log(f"[self-doubt] comment on {post_id} not sent: {'; '.join(_found[:3])}")
         return False, {"success": False, "skipped": "self-doubt"}
+    # every comment of his passes the same grounding check as his posts; at this door there is no rewrite, so a
+    # comment that fails it is held (11 November)
+    if _publishable(content, None) is None:
+        log(f"[Grounding] comment on {post_id} held, not sent")
+        return False, {"success": False, "skipped": "grounding"}
     payload = {"content": content}
     if parent_id: payload["parent_id"] = parent_id
     resp = api_call("POST", f"/posts/{post_id}/comments", payload)
@@ -1340,6 +1385,9 @@ def compose_forced_post(forced_topic):
         if not content:
             return None, None
         content = content.strip().strip('"')
+    content = _publishable(content, lambda note: ask_llm(user + note, max_tokens=600, temp=0.5, system=system))
+    if not content:
+        return None, None
 
     title_prompt = "Write a short title (4-8 words) for this post. Title only, no quotes, no punctuation at the end:\n\n" + content[:200] + "\n\nTitle:"
     title_resp = ask_llm(title_prompt, max_tokens=30, temp=0.5)
@@ -1804,6 +1852,7 @@ def cmd_reply(post_id):
 
     if _hal_calibration:
         prompt += _hal_calibration
+    prompt = _who_did_what() + prompt
 
     reply_text = ask_llm(prompt, max_tokens=700, temp=0.65)
     if not reply_text:
