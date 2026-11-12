@@ -115,13 +115,19 @@ class IntentSource(unittest.TestCase):
     def test_incomplete_target_is_not_recorded_or_advanced(self):
         self.answer = {'field_state': 'a mood without an action'}
         with self.assertRaisesRegex(ValueError, 'omitted goal'): self.select(resolve=False)
-        self.assertEqual(self.rows(), []); self.campaign.step.assert_not_called(); self.spawn.assert_not_called()
+        # no target is recorded or led with; her turn is kept only as a failure row (12 November), never judged
+        self.assertEqual([(r['status'], r['failure']['code']) for r in self.rows()], [('failed', 'field_target_incomplete')])
+        self.campaign.step.assert_not_called(); self.spawn.assert_not_called()
 
     def test_missing_dominant_axis_cannot_silently_become_a_field_only_intent(self):
+        # 12 November: it is held with its reason, never judged, and the lead says what it fell to - the turn is
+        # no longer dropped
         self.pv.declare = lambda: {'weights': {'field': .1, 'gloria': .8, 'self': .1}, 'mode': 'strategic'}
         self.answer['gloria'] = {}
-        with self.assertRaisesRegex(ValueError, 'dominant axis'): self.select(resolve=False)
-        self.assertEqual(self.rows(), [])
+        t = self.select(resolve=False)
+        self.assertEqual(t['lead_fallback'], {'from': 'gloria', 'to': 'field'})
+        row, = self.rows()
+        self.assertEqual((row['status'], row['realized']['gloria'], row['held_reason']), ('selected', 'HELD', {'gloria': 'dominant_axis_omitted'}))
 
     def test_complete_core_survives_truncation_but_missing_goal_does_not(self):
         self.answer = json.dumps(TARGET)[:-1] + ', "campaign": {"destination": "unfinished'

@@ -249,8 +249,9 @@ def _declare(eligible=True):
         for a in AXES:
             st["neglect"][a] = round(max(0.0, st["neglect"][a] + (0.33 - w[a])), 3)
     heavy = max(AXES, key=lambda a: st["neglect"][a])
+    spent = None
     if st["neglect"][heavy] >= 1.5:
-        forced = heavy
+        forced = heavy; spent = st["neglect"][heavy]
         w = {a: (0.6 if a == heavy else 0.2) for a in AXES}
         why.append(f"GRAVITATIONAL OVERRIDE: '{heavy}' neglected too long (pressure {st['neglect'][heavy]}) — it needs to matter now, strategy set aside")
         if fg:
@@ -270,8 +271,9 @@ def _declare(eligible=True):
         old = st.get("override_streak") or {}
         counts = {a: (int(old.get("n") or 0) if old.get("axis") == a else 0) for a in AXES}
     stk = st.get("override_streak") or {"axis": None, "n": 0}
+    counted = False
     if forced and fg:
-        counts[forced] = int(counts.get(forced, 0) or 0) + 1
+        counts[forced] = int(counts.get(forced, 0) or 0) + 1; counted = True
         stk = {"axis": forced, "n": counts[forced]}
         if counts[forced] >= 3:
             try:
@@ -289,7 +291,7 @@ def _declare(eligible=True):
                     json.dump(d, open(p, "w"), indent=2)
                     _queue_bring_up(q)
                 why.append("override count graduated to causality head")
-                counts[forced] = 0
+                counts[forced] = 0; counted = False
                 stk = {"axis": None, "n": 0}
             except Exception: pass
     st["override_counts"] = counts
@@ -311,6 +313,10 @@ def _declare(eligible=True):
            "mode": "pressure" if forced else "strategic",
            "receptivity": recept, "why": "; ".join(why), "arc": st["arc"], "foreground": fg,
            "gloria_opportunity": due}
+    if forced and fg:
+        # what refund_override gives back if the turn fails: the neglect spent, and the count it added (unless
+        # that count already graduated to a question, which stays asked)
+        rec["override"] = {"axis": forced, "pressure": spent, "counted": counted}
     try:
         with open(LOG, "a") as f: f.write(json.dumps(rec) + "\n")   # immutable, pre-turn
     except Exception: pass
@@ -320,6 +326,35 @@ def _declare(eligible=True):
         json.dump(rec, open(os.path.join(MEM, ".pending-priority.json"), "w"))
     except Exception: pass
     return rec
+
+def refund_override(rec):
+    """A gravitational override spent on a turn whose selection then failed is given back (12 November: the one
+    turn of her axis's override since the 10th was a turn that failed and left no ledger row; the neglect was
+    spent on it and the next turn was self-heavy again). The axis's neglect is restored to at least what was
+    spent, so the next real turn carries that override. The override count it added is taken back too, so a run
+    of failing turns cannot pile up overrides that never took a turn (review, 12 November: three failures in a
+    row asked the causality head why the axis keeps being starved). One record is given back once.
+    Returns the axis, or None when there was none."""
+    o = (rec or {}).get("override") if isinstance(rec, dict) else None
+    if not _foreground() or not isinstance(o, dict) or o.get("axis") not in AXES or o.get("refunded"):
+        return None
+    try: p = float(o.get("pressure") or 0)
+    except (TypeError, ValueError): return None
+    with _turn_state(STATE):
+        st = _jload(STATE, {})
+        if not isinstance(st, dict): st = {}
+        neg = st.get("neglect") if isinstance(st.get("neglect"), dict) else {a: 0.0 for a in AXES}
+        neg[o["axis"]] = round(max(float(neg.get(o["axis"], 0) or 0), p), 3)
+        st["neglect"] = neg
+        counts = st.get("override_counts")
+        if o.get("counted") and isinstance(counts, dict) and int(counts.get(o["axis"], 0) or 0) > 0:
+            counts[o["axis"]] = int(counts[o["axis"]]) - 1
+            stk = st.get("override_streak")
+            if isinstance(stk, dict) and stk.get("axis") == o["axis"]:
+                stk["n"] = counts[o["axis"]]
+        _atomic(STATE, st)
+    o["refunded"] = True
+    return o["axis"]
 
 def prompt_block(rec):
     d = ", ".join(f"{a} {rec['weights'][a]}" for a in AXES)

@@ -83,6 +83,19 @@ def block(wants, now=None):
             + "\n".join(lines))
 
 
+def block_from_file(path, now=None):
+    """block() over the wants store at `path`, or '' when it cannot be read. The avatar chat reads it this way
+    (12 November: all twelve of her conversations since the deploy came through /api/avatar/chat, whose prompt is
+    built apart from the chat context and had no section for these). Same caps, same rules, read only."""
+    import json
+    try:
+        with open(path) as f:
+            wants = json.load(f)
+    except (OSError, ValueError):
+        return ""
+    return block(wants if isinstance(wants, list) else [], now)
+
+
 # One plain telling for her (10 November: 37 wants, about fifteen of them "I want to tell you, in one plain sentence,
 # that ..." routed to her, each a new want because the formation judge called every variation a "mutation"). Wants to
 # tell, say, write or send her something in plain words are one want: the first stands, every later one is kept on it
