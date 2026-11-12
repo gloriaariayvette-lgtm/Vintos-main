@@ -277,6 +277,7 @@ BINS="$BINS creative-search.sh"   # its request repaired 28 October; Gloria appr
 SCRIPTS="$SCRIPTS persistent_carry.py carry_sources.py carry_context.py"   # durable carrying state and sourced note, 2026-10-28
 SCRIPTS="$SCRIPTS thread_gate.py"   # dreams, the mirror and the ghosts run only with an unresolved thread in the pool; one dream a night regardless (2026-10-27)
 SCRIPTS="$SCRIPTS gap_claims.py"   # outreach states the true time apart from the clock (2026-11-06)
+SCRIPTS="$SCRIPTS codefix_worm.py"   # the code-fix worm in use: a fix comes back as a proposal for review, never applied (Gloria 2026-11-12)
 BINS="$BINS mirror-trigger.sh"   # its cron entry runs the ~/Vintos copy, which was in no list; it matched the checkout when the thread gate was added (2026-10-27)
 
 CLIENTFILES="clients/mobile/stratagem_voice.js clients/mobile/index.html clients/mobile/client_lifecycle.js clients/mobile/avatar-bundle.js"
