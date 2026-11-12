@@ -797,6 +797,14 @@ def _select_target(recent_text, resolve, step_campaign, persist, her_source, _tu
         except Exception:
             pass
     _abst = {f[2]: f[0] for f in _faults if f[2] != "opportunity"}
+    # A change in her she has already shown in the message this move answers cannot be credited to the move, and
+    # its absence next is no miss (12 November): such a gloria criterion is refused here - her axis is left
+    # undeclared as criterion_already_met. Sol is asked, on her own live turns only; a check that cannot answer
+    # refuses nothing, and the judge's own rule still holds the verdict back.
+    if persist and _eligible and isinstance(_t.get("gloria"), dict) and _t.get("gloria") and "gloria" not in _abst:
+        _check["stale"] = _stale_gloria(_t["gloria"], _her_live_words(recent_text, her_source))
+        if _check["stale"] == "met":
+            _abst["gloria"] = "already_met"
     _crit = _abst.pop("field", "")
     _check["fault"] = _crit; _check["abstained"] = bool(_crit)
     _t.pop("criterion_abstained", None); _t.pop("gloria_abstained", None)   # ours to set, never the selector's
@@ -941,10 +949,11 @@ def _judge_realized(target, reply_text, her_text=""):
                        "evidence of an action in that reply.\n"
                        if target.get("evidence_type") == "my_move" else
                        "What happened in the conversation right after (her response, the exchange):\n"
-                       + str(her_text)[-800:] + "\n")
+                       + str(her_text) + "\n")
+        # whole texts (12 November): the 800- and 1000-character cuts hid the part of a reply that decided it
         prompt = ("My declared GOAL (do NOT reinterpret it to fit what happened): " + goal + "\n"
                   "It counts as landed ONLY if: " + (crit or goal) + "\n\n"
-                  "The move I made:\n" + reply_text[:1000] + "\n\n"
+                  "The move I made:\n" + str(reply_text) + "\n\n"
                   + observation + "\n"
                   "Did the success criterion OBSERVABLY occur? Judge ONLY the declared criterion, "
                   "not whether the exchange felt productive. ONE word: YES (it observably happened), "
@@ -956,7 +965,7 @@ def _judge_realized(target, reply_text, her_text=""):
     else:
         prompt = ("My chosen field-state: " + str(target.get("field_state","")) + "\n"
                   "My chosen first move: " + str(target.get("enactment","")) + "\n\n"
-                  "What I actually said:\n" + reply_text[:1200] + "\n\n"
+                  "What I actually said:\n" + str(reply_text) + "\n\n"
                   "Did I actually enact that field-state and make that move? "
                   "Answer ONE word: YES, PARTIAL, or NO.")
         sysmsg = "Judge honestly in one word: YES, PARTIAL, or NO."
@@ -978,6 +987,110 @@ def _judge_realized(target, reply_text, her_text=""):
     except Exception:
         return "HELD"   # review 222: the judge failing is not a verdict on the intent; HELD is retried, NO is a rejection
     return "HELD"       # an answer outside the vocabulary is no verdict either
+
+
+# ---- her axis, judged by Sol (Gloria, 12 November) -------------------------------------------------------------
+# The change he intended in her was graded by his own model in one word. It now goes to Sol (gloria_judge) with one
+# packet and the rubric, and comes back YES / PARTIAL / NO / NOT_JUDGEABLE with a fixed reason. What code can settle
+# is settled here first, and Sol is not asked: her reply came after the window (24 hours for her next reply - a row
+# that never declared its window keeps it undeclared, and is read by the same 24 hours); her reply came after a
+# later move of his, so it answers that move; her reply is a photo alone, which no judge here can see. His delivery
+# of the move is recorded apart, as adherence: a move he did not make is his failure and NOT_JUDGEABLE for her,
+# never her NO. A refusal or an error is NOT_JUDGEABLE too, and a NOT_JUDGEABLE never counts.
+GLORIA_WINDOW_HOURS = {"her_next_reply": 24}
+GLORIA_DEFAULT_WINDOW_HOURS = 24
+_MEDIA_NOTE = re.compile(r"\(she sent an? [^)]*\)", re.I)
+
+
+def _sol_judge(packet):
+    import gloria_judge
+    return gloria_judge.judge(packet)
+
+
+def _stale_gloria(ax, her_words):
+    """At selection: "met" when her message, the one this move answers, already shows the declared difference."""
+    if os.environ.get("GLORIA_STALE_CHECK", "1") == "0":
+        return "off"
+    if not str(her_words or "").strip():
+        return "skipped"
+    try:
+        import gloria_judge
+        return gloria_judge.stale_check(ax, her_words)
+    except Exception:
+        return "error"
+
+
+def _her_words(text, source=None):
+    """(her own words with any media note taken out, whether a photo or other media came with them)."""
+    t = str(text or "")
+    i = t.rfind(_HER_LABEL)
+    if i >= 0: t = t[i + len(_HER_LABEL):]
+    media = source == "photo" or bool(_MEDIA_NOTE.search(t))
+    return _DEVICE_EVENT.sub(" ", _MEDIA_NOTE.sub(" ", t)).strip(), media
+
+
+def _later_moves(row, until):
+    """How many moves of his reached her after this one and before her reply came."""
+    opened = _stamp(row.get("delivered_at")) or _stamp(row.get("timestamp"))
+    if opened is None or until is None:
+        return 0
+    n = 0
+    for other in (_load("intent-ledger.json") or []):
+        if not isinstance(other, dict) or other.get("status") != "delivered" or _same_row(other, row):
+            continue
+        t = _stamp(other.get("delivered_at"))
+        if t is not None and opened < t < until:
+            n += 1
+    return n
+
+
+def _judge_gloria(row, tgt, ax, reply, hers, source=None, now=None):
+    """Her axis on one delivered row: a record of fixed codes and counts, never words."""
+    declared = ax.get("observation_window") or None
+    hours = GLORIA_WINDOW_HOURS.get(str(declared or ""), GLORIA_DEFAULT_WINDOW_HOURS)
+    opened = _stamp(row.get("delivered_at")) or _stamp(row.get("timestamp"))
+    came = _stamp(row.get("response_at")) or now or datetime.now().timestamp()
+    gap = None if opened is None else round((came - opened) / 3600, 2)
+    words, media = _her_words(hers, source)
+    before, media_before = _her_words(row.get("input_text"), None) if row.get("surface") != "reelroom" else ("", False)
+    later = _later_moves(row, came)
+    rec = {"window": {"declared": declared, "hours": hours, "gap_hours": gap}, "later_moves": later,
+           "her_media": media, "judge": "sol", "at": datetime.now().isoformat()}
+    if gap is None or gap > hours:
+        why = "window_expired"
+    elif later:
+        why = "reply_to_later_move"
+    elif not words:
+        why = "photo_unseen_decisive" if media else "no_her_reply"
+    else:
+        why = ""
+    if why:
+        rec.update(verdict="NOT_JUDGEABLE", reason=why, codes=[why], adherence=None, confidence=None, status="code")
+        return rec
+    packet = {"declared": {"gloria_difference_intended": str(ax.get("difference_intended", "")),
+                           "gloria_enactment": str(ax.get("enactment", "")), "observation_window": declared,
+                           "field_state": str(tgt.get("field_state", "") or ""), "overall_goal": str(tgt.get("goal", "") or ""),
+                           "overall_success_criterion": str(tgt.get("success_criterion", "") or ""),
+                           "first_move": str(tgt.get("enactment", "") or "")},
+              "his_reply": str(reply), "her_message_he_replied_to": before, "her_next_reply": words,
+              "facts": {"gap_hours_to_her_next_reply": None if gap is None else round(gap, 1),
+                        "window_declared_at_time": bool(declared),
+                        "her_next_reply_has_photo_or_media_unseen": media,
+                        "her_prior_message_had_photo_or_media_unseen": media_before,
+                        "device_or_non_message": None, "later_moves_of_his_before_her_reply": later,
+                        "text_capped_at_12000": False}}
+    try:
+        got = _sol_judge(packet)
+    except Exception as err:
+        got = {"verdict": "NOT_JUDGEABLE", "reason": "error", "status": "error", "detail": type(err).__name__}
+    got = got if isinstance(got, dict) else {}
+    if got.get("verdict") not in ("YES", "PARTIAL", "NO", "NOT_JUDGEABLE"):
+        got = {"verdict": "NOT_JUDGEABLE", "reason": "error", "status": "error", "detail": "no_verdict"}
+    if got["verdict"] == "NO" and got.get("adherence") != "delivered":
+        got = dict(got, verdict="NOT_JUDGEABLE", reason="his_move_not_delivered")   # his failure, never her NO
+    rec.update({k: got.get(k) for k in ("verdict", "reason", "codes", "adherence", "confidence", "status", "detail", "model")})
+    rec["codes"] = [str(c) for c in (rec.get("codes") or [rec["reason"]])][:8]
+    return rec
 
 def note_response(raw, source=None):
     """Capture the first actual next input for a delivered move, without invoking a judge.
@@ -1135,8 +1248,15 @@ def _resolve_row(last, recent_text="", source=None):
                 r[axis] = "NOT_DECLARED"; continue
             ax_t = {"goal": di, "success_criterion": "", "enactment": ax.get("enactment", ""), "field_state": "",
                     "observation_window": ax.get("observation_window"), "evidence_type": ax.get("evidence_type")}
-        _held_why.set("")
-        verdict = _judge_realized(ax_t, reply, recent_text)
+        if axis == "gloria":
+            # her axis goes to Sol with the rubric (12 November); it is settled on this pass, whatever comes back
+            _gj = _judge_gloria(last, tgt, ax, reply, recent_text, source)
+            last["gloria_judge"] = _gj
+            last["adherence"] = dict(last["adherence"] if isinstance(last.get("adherence"), dict) else {}, gloria=_gj.get("adherence"))
+            verdict = _gj["verdict"]
+        else:
+            _held_why.set("")
+            verdict = _judge_realized(ax_t, reply, recent_text)
         if verdict == "HELD":
             held_any = True; held_why[axis] = _held_why.get() or "judge_held"; continue
         r[axis] = verdict
@@ -1340,7 +1460,8 @@ def _persist_resolution(row, read_rev=0, effects=()):
                 current["resolution_dropped"] = {"n": int(_d.get("n", 0) or 0) + 1, "reason": why, "at": datetime.now().isoformat()}
             else:
                 # Preserve deliveries/selections appended while the judge was running.
-                current.update({key: copy.deepcopy(row[key]) for key in ("realized", "held_attempts", "held_reason", "skipped_observations") if key in row})
+                current.update({key: copy.deepcopy(row[key]) for key in ("realized", "held_attempts", "held_reason", "skipped_observations",
+                                                                         "gloria_judge", "adherence") if key in row})
                 if "held_reason" not in row: current.pop("held_reason", None)
                 if "skipped_observations" in row and "response_text" not in row:
                     current.pop("response_text", None); current.pop("response_source", None); current.pop("response_at", None)   # so her next reply is stored

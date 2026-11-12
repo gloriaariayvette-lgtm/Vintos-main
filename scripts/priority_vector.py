@@ -76,11 +76,34 @@ def _when(e):
         except Exception: pass
     return None
 
+WINDOW_EXPIRED = "her_reply_window_expired"   # intent_engine.WINDOW_EXPIRED, not imported: that module imports this one
+HER_REPLY_HOURS = 24                           # intent_engine.DEVICE_WAIT_HOURS and its gloria window
+
+def _not_counted(e, a):
+    """A verdict on this axis that is no landing and no miss (12 November): one its judge says was NOT_JUDGEABLE,
+    one whose axis expired, and one on her reply that came after the window - whatever an older judge wrote."""
+    why = e.get("held_reason") if isinstance(e.get("held_reason"), dict) else {}
+    if why.get(a) == WINDOW_EXPIRED:
+        return True
+    gj = e.get("gloria_judge")
+    if a == "gloria" and isinstance(gj, dict) and gj.get("verdict") == "NOT_JUDGEABLE":
+        return True
+    tgt = e.get("target") if isinstance(e.get("target"), dict) else {}
+    on_her_reply = a == "gloria" or (a == "field" and str(tgt.get("evidence_type") or "") == "her_response")
+    if on_her_reply and e.get("response_at"):
+        try:
+            opened = datetime.fromisoformat(str(e.get("delivered_at") or e.get("timestamp"))).timestamp()
+            came = datetime.fromisoformat(str(e["response_at"])).timestamp()
+            return came - opened > HER_REPLY_HOURS * 3600
+        except Exception:
+            return False
+    return False
+
 def _axis_history(now=None):
     """Per-axis verdict counts from the intent ledger — the data the strategy leans on. Only settled
     YES / PARTIAL / NO verdicts on turns of the last RECENT_DAYS count, and of those the latest MAX_VERDICTS
-    per axis: HELD, NOT_DECLARED and pending rows are neither a landing nor a miss, and a row with no readable
-    time cannot be called recent."""
+    per axis: HELD, NOT_DECLARED, NOT_JUDGEABLE, expired and pending rows are neither a landing nor a miss
+    (_not_counted), and a row with no readable time cannot be called recent."""
     led = _jload(os.path.join(MEM, "intent-ledger.json"), [])
     hist = {a: {"YES": 0, "PARTIAL": 0, "NO": 0, "n": 0} for a in AXES}
     now = now or time.time()
@@ -93,7 +116,7 @@ def _axis_history(now=None):
         r = e.get("realized")
         r = r if isinstance(r, dict) else ({"field": r} if isinstance(r, str) else {})
         for a in AXES:
-            if r.get(a) in ("YES", "PARTIAL", "NO"):
+            if r.get(a) in ("YES", "PARTIAL", "NO") and not _not_counted(e, a):
                 seen[a].append((t, r[a]))
     for a in AXES:
         for _t, v in sorted(seen[a], key=lambda x: x[0])[-MAX_VERDICTS:]:
