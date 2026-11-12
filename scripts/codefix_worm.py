@@ -22,7 +22,8 @@ the outcome.
 
 The writer is started only for a call (Gloria, 12 November: no always-on writer). Inside the nightly loop's lock,
 and only when the Studio's train.lock is free, serve_writer2.sh starts it on the Studio; its PID is recorded in
-memory/codefix-writer.json and that PID - no other - is stopped when the call ends, whatever the outcome. A writer
+memory/codefix-writer.json with the process's start time, and that PID - no other: same start time, the writer's own
+command line - is stopped when the call ends, whatever the outcome (SIGTERM included). A writer
 already serving that this call did not start is used and left running. A busy Studio is a refusal, never a wait.
 
 The result goes back on the fault item the fault-fix Claude already works: a fault's own thread in #fault-fix,
@@ -60,6 +61,16 @@ WRITER_RECORD = os.path.join(MEM, "codefix-writer.json")
 STUDIO_TRAIN_LOCK = "~/physics-lab/train.lock"
 WRITER_MATCH = "qwen38-writer --host 127.0.0.1 --port 8871"    # serve_writer2.sh's own command line
 SLACK_PATCH_CHARS = 3000      # a longer patch is named by its file on Aegis, its head shown
+_LSTART = re.compile(r"[A-Za-z]{3} [A-Za-z]{3} \d{1,2} \d{2}:\d{2}:\d{2} \d{4}")    # ps -o lstart=, normalised
+# credentials the sweep's own patterns miss: a whole private-key block (not just its BEGIN line), more token shapes,
+# and a quoted literal assigned to a secret-sounding name (code like `self.token = token` keeps its shape)
+_PEM_BLOCK = re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*?(?:-----END [A-Z0-9 ]*PRIVATE KEY-----|\Z)", re.S)
+_MORE_TOKENS = re.compile(r"(?:xapp-[A-Za-z0-9-]{10,}|github_pat_[A-Za-z0-9_]{20,}|gh[opsur]_[A-Za-z0-9]{20,}|"
+                          r"hf_[A-Za-z0-9]{20,}|AIza[0-9A-Za-z_-]{30,}|glpat-[A-Za-z0-9_-]{20,}|"
+                          r"[rs]k_(?:live|test)_[A-Za-z0-9]{16,}|npm_[A-Za-z0-9]{30,}|"
+                          r"eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,})")
+_QUOTED_SECRET = re.compile(r"(?i)\b([a-z0-9_.-]*(?:api[_-]?key|access[_-]?key|secret|token|password|passwd|pwd|"
+                            r"credential|auth)[a-z0-9_.-]*[\"']?\s*[:=]\s*)([\"'])[^\"'\s]{6,}\2")
 
 
 def _protected():
@@ -216,12 +227,21 @@ class StudioWriter:
     def __init__(self, run=None):
         self.run = run or subprocess.run
         self.pid = None
+        self.lstart = None          # the process's own start time on the Studio: a reused PID never matches it
 
     def __enter__(self):
-        left = (_load(WRITER_RECORD, {}) or {}).get("pid")
-        if isinstance(left, int) and left > 0:
+        rec = _load(WRITER_RECORD, {})
+        rec = rec if isinstance(rec, dict) else {}
+        left, when = rec.get("pid"), rec.get("lstart")
+        if isinstance(left, int) and not isinstance(left, bool) and left > 0:
             self.pid = left
-            if not self._stop():
+            self.lstart = when if isinstance(when, str) and _LSTART.fullmatch(when) else None
+            if self.lstart is None:
+                # a record with no start time cannot prove the PID is still the process it named: never kill on it
+                self.pid = None
+                _atomic(WRITER_RECORD, {"pid": None, "left_unverified": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                                        "last_pid": left})
+            elif not self._stop():
                 raise WriterUnavailable("a writer this side started earlier (PID %d) could not be stopped" % left)
         try:
             free = _ssh_studio("lockf -s -t 0 %s true" % STUDIO_TRAIN_LOCK, self.run)
@@ -240,8 +260,9 @@ class StudioWriter:
         started = re.search(r"^started (\d+)", out, re.M)
         if started:
             self.pid = int(started.group(1))
-            _atomic(WRITER_RECORD, {"pid": self.pid, "started": time.strftime("%Y-%m-%dT%H:%M:%S"),
-                                    "by": "codefix_worm.py"})
+            self.lstart = self._started_at(self.pid)
+            _atomic(WRITER_RECORD, {"pid": self.pid, "lstart": self.lstart,
+                                    "started": time.strftime("%Y-%m-%dT%H:%M:%S"), "by": "codefix_worm.py"})
             if not re.search(r"^healthy$", out, re.M):
                 self._stop()
                 raise WriterUnavailable("the writer started but never answered its health check; stopped again")
@@ -256,11 +277,23 @@ class StudioWriter:
             self._stop()
         return False
 
-    def _stop(self):
-        """Stop the recorded PID, and only if it is still the writer. True when it is gone."""
-        pid = int(self.pid)
+    def _started_at(self, pid):
+        """The Studio's start time for `pid` (ps lstart, whitespace-normalised), or None when it cannot be read."""
         try:
-            got = _ssh_studio("ps -o command= -p %d | grep -qF -- '%s' && kill %d" % (pid, WRITER_MATCH, pid), self.run)
+            got = _ssh_studio("ps -o lstart= -p %d" % int(pid), self.run)
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        s = " ".join(str(got.stdout or "").split()) if got.returncode == 0 else ""
+        return s if _LSTART.fullmatch(s) else None
+
+    def _stop(self):
+        """Stop the recorded PID, and only if it is still the writer this side started: same start time (when it
+        was read) and the writer's own command line. True when it is gone."""
+        pid = int(self.pid)
+        same = ("set -- $(ps -o lstart= -p %d); [ \"$*\" = '%s' ] && " % (pid, self.lstart)) if self.lstart else ""
+        try:
+            got = _ssh_studio("%sps -o command= -p %d | grep -qF -- '%s' && kill %d" % (same, pid, WRITER_MATCH, pid),
+                              self.run)
             gone = got.returncode != 255          # killed, or no longer the writer: either way not ours to keep
         except (OSError, subprocess.TimeoutExpired):
             gone = False
@@ -268,8 +301,8 @@ class StudioWriter:
             self.pid = None
             _atomic(WRITER_RECORD, {"pid": None, "stopped": time.strftime("%Y-%m-%dT%H:%M:%S"), "last_pid": pid})
         else:
-            _atomic(WRITER_RECORD, {"pid": pid, "stop_failed": time.strftime("%Y-%m-%dT%H:%M:%S"),
-                                    "by": "codefix_worm.py"})
+            _atomic(WRITER_RECORD, {"pid": pid, "lstart": self.lstart,
+                                    "stop_failed": time.strftime("%Y-%m-%dT%H:%M:%S"), "by": "codefix_worm.py"})
         return gone
 
 
@@ -278,13 +311,20 @@ WRITER = StudioWriter
 
 # --- the result, on the fault item the fault-fix Claude works ------------------------------------------------------
 
-def _redact(text):
-    """A patch keeps its shape; anything that looks like a credential is taken out (the sweep's own patterns)."""
+def _scrub(text):
+    """Anything that looks like a credential is taken out: the sweep's own patterns and the ones above."""
     import fault_sweep as FS
-    t = FS._SECRET.sub("[redacted]", str(text or ""))
+    t = _PEM_BLOCK.sub("[redacted private key]", str(text or ""))
+    t = FS._SECRET.sub("[redacted]", t)
+    t = _MORE_TOKENS.sub("[redacted]", t)
     t = FS._URL_USERINFO.sub(r"\1[redacted]@", t)
     t = FS._URL_QUERY_SECRET.sub(r"\1[redacted]", t)
-    return t.replace("```", "'''")
+    return _QUOTED_SECRET.sub(r"\1\2[redacted]\2", t)
+
+
+def _redact(text):
+    """A patch keeps its shape; anything that looks like a credential is taken out."""
+    return _scrub(text).replace("```", "'''")
 
 
 def handoff_text(row, patch=""):
@@ -293,7 +333,7 @@ def handoff_text(row, patch=""):
         body = _redact(patch)
         if len(body) > SLACK_PATCH_CHARS:
             body = body[:SLACK_PATCH_CHARS] + "\n... (cut here; the whole patch is in the file named above)"
-        summary = " ".join(str(row.get("summary") or "").split())[:300]
+        summary = " ".join(_redact(row.get("summary")).split())[:300]       # the worm's words are scrubbed too
         return ("[code-fix worm] *%s* - worm's checked patch attached, tests pass.\n"
                 "The failing tests pass and every regression test that was green stays green (%s repair round%s). "
                 "Not applied anywhere. Review it, apply it in your clone, run every suite, then the usual proposal, "
@@ -305,7 +345,7 @@ def handoff_text(row, patch=""):
         return ("[code-fix worm] *%s* - worm couldn't fix it: no checked patch after %s repair round%s. "
                 "Fix it by hand as docs/fault-loop.md says." % (ref, row.get("rounds"), "" if row.get("rounds") == 1 else "s"))
     return ("[code-fix worm] *%s* - worm ran and gave no result: %s. Fix it by hand, or hand it again later."
-            % (ref, " ".join(str(row.get("reason") or "").split())[:240]))
+            % (ref, " ".join(_redact(row.get("reason")).split())[:240]))
 
 
 def post_to_fault(ref, text):
@@ -436,6 +476,11 @@ def main(argv):
                 item = json.load(f)
         except (OSError, ValueError) as e:     # still a call: refused and counted
             item = {"source": "manual", "ref": None, "issue": "unreadable item file (%s)" % type(e).__name__}
+        # a caller's timeout (SIGTERM/SIGHUP) unwinds through the writer's `with`, so the PID it started is stopped
+        # now rather than left serving until the next call
+        import signal
+        for sig in (signal.SIGTERM, signal.SIGHUP):
+            signal.signal(sig, lambda signum, frame: sys.exit(128 + signum))
         row = hand(item)
         print(json.dumps(row, indent=1, sort_keys=True))
         return 0 if row["status"] != "rejected" else 2

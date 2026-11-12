@@ -32,8 +32,10 @@ FS.urllib.request.urlopen = no_slack
 
 class Studio:
     """A fake `run`: answers ssh and serve_writer2.sh as the Studio would, records every command."""
-    def __init__(self, lock_rc=0, serve_out="started 4242\nhealthy\n", kill_rc=0, ssh_down=False):
+    def __init__(self, lock_rc=0, serve_out="started 4242\nhealthy\n", kill_rc=0, ssh_down=False,
+                 lstart="Thu Nov  5 09:05:03 2026\n"):
         self.lock_rc, self.serve_out, self.kill_rc, self.ssh_down = lock_rc, serve_out, kill_rc, ssh_down
+        self.lstart = lstart
         self.cmds = []
 
     def __call__(self, cmd, **kw):
@@ -49,6 +51,8 @@ class Studio:
             return types.SimpleNamespace(returncode=self.lock_rc, stdout="", stderr="")
         if " kill " in remote:
             return types.SimpleNamespace(returncode=self.kill_rc, stdout="", stderr="")
+        if remote.startswith("ps -o lstart= -p "):
+            return types.SimpleNamespace(returncode=0 if self.lstart else 1, stdout=self.lstart or "", stderr="")
         raise AssertionError("unexpected remote %r" % remote)
 
     def served(self): return [c for c in self.cmds if c[0] == "bash"]
@@ -65,8 +69,31 @@ with W.StudioWriter(run=st) as w:
     check("only after the Studio's train.lock was found free",
           st.cmds[0][0] == "ssh" and st.cmds[0][-1].startswith("lockf -s -t 0 ~/physics-lab/train.lock"), st.cmds)
     check("its PID is recorded while it serves", record().get("pid") == 4242 and w.pid == 4242, record())
-check("it is stopped by that PID, and only while it is still the writer",
-      st.kills() == ["ps -o command= -p 4242 | grep -qF -- '%s' && kill 4242" % W.WRITER_MATCH], st.kills())
+    check("with the process's own start time, normalised", record().get("lstart") == "Thu Nov 5 09:05:03 2026",
+          record())
+check("it is stopped by that PID, and only while it is still the process it started and still the writer",
+      st.kills() == ["set -- $(ps -o lstart= -p 4242); [ \"$*\" = 'Thu Nov 5 09:05:03 2026' ] && "
+                     "ps -o command= -p 4242 | grep -qF -- '%s' && kill 4242" % W.WRITER_MATCH], st.kills())
+
+# the stop command itself, run by a real shell against a fake ps: only the same process, only the writer, is killed
+BIN = os.path.join(HOME, "fakebin"); os.makedirs(BIN, exist_ok=True)
+with open(os.path.join(BIN, "ps"), "w") as f:
+    f.write('#!/bin/sh\ncase "$2" in lstart=) echo "$FAKE_LSTART";; command=) echo "$FAKE_CMD";; esac\n')
+os.chmod(os.path.join(BIN, "ps"), 0o755)
+STOP_CMD = st.kills()[0]
+def shell_kills(lstart, cmd):
+    env = dict(os.environ, PATH=BIN + os.pathsep + os.environ.get("PATH", ""), FAKE_LSTART=lstart, FAKE_CMD=cmd)
+    out = subprocess.run(["bash", "-c", "kill() { echo KILLED \"$@\"; }; " + STOP_CMD], capture_output=True,
+                         text=True, env=env).stdout
+    return "KILLED 4242" in out
+WCMD = "/opt/homebrew/bin/llama-server -m x.gguf --alias " + W.WRITER_MATCH + " -c 393216"
+check("real shell: the writer it started (same start time, padded or not) is killed",
+      shell_kills("Thu Nov  5 09:05:03 2026", WCMD) and shell_kills("Thu Nov 5 09:05:03 2026", WCMD))
+check("real shell: a reused PID (another start time) is never killed, even if it is a writer",
+      not shell_kills("Thu Nov 12 01:00:00 2026", WCMD))
+check("real shell: the same start time but not the writer (AEON's :8840, anything else) is never killed",
+      not shell_kills("Thu Nov  5 09:05:03 2026", "/opt/homebrew/bin/llama-server --host 127.0.0.1 --port 8840")
+      and not shell_kills("", ""))
 check("the record says it stopped", record().get("pid") is None and record().get("last_pid") == 4242, record())
 check("never a pattern kill", not any("pkill" in " ".join(c) or "killall" in " ".join(c) for c in st.cmds))
 
@@ -106,12 +133,21 @@ except W.WriterUnavailable as e:
 check("a busy port is a refusal, nothing killed", raised and "8871 busy" in raised and not st.kills(), raised)
 
 # a call that died before stopping its writer: the next call stops that PID first
-W._atomic(W.WRITER_RECORD, {"pid": 3131, "by": "codefix_worm.py"})
+W._atomic(W.WRITER_RECORD, {"pid": 3131, "lstart": "Wed Nov 11 23:00:00 2026", "by": "codefix_worm.py"})
 st = Studio(serve_out="started 3232\nhealthy\n")
 with W.StudioWriter(run=st):
     pass
 check("a writer left by an earlier call is stopped first, then the new one after",
       [k.split()[-1] for k in st.kills()] == ["3131", "3232"], st.kills())
+check("the left one only if it is still the process that call started (its recorded start time)",
+      "[ \"$*\" = 'Wed Nov 11 23:00:00 2026' ]" in st.kills()[0], st.kills())
+
+for stale in ({"pid": 3131, "by": "codefix_worm.py"}, {"pid": True, "lstart": "Wed Nov 11 23:00:00 2026"},{"pid": 3131, "lstart": "x'; kill -9 1; '"}, [3131]):
+    W._atomic(W.WRITER_RECORD, stale)
+    st = Studio(serve_out="already running 999\n")
+    with W.StudioWriter(run=st):
+        pass
+    check("a record that cannot prove its process (%r) kills nothing" % (stale,), not st.kills(), st.kills())
 
 # the stop cannot reach the Studio: the PID stays recorded for the next call
 st = Studio()
@@ -121,7 +157,14 @@ check("a stop that cannot reach the Studio keeps the PID recorded", record().get
 st2 = Studio(serve_out="started 6000\nhealthy\n")
 with W.StudioWriter(run=st2):
     pass
-check("and the next call stops it", "kill 4242" in st2.kills()[0], st2.kills())
+check("and the next call stops it, by its start time", "kill 4242" in st2.kills()[0]
+      and "'Thu Nov 5 09:05:03 2026'" in st2.kills()[0], st2.kills())
+
+st = Studio(lstart=None)
+with W.StudioWriter(run=st):
+    pass
+check("a start time that cannot be read: the call still stops its own writer by its command line",
+      st.kills() == ["ps -o command= -p 4242 | grep -qF -- '%s' && kill 4242" % W.WRITER_MATCH], st.kills())
 
 # --- hand(): the writer inside the call, the result on the fault's thread ---------------------------------------------
 def git(*a, cwd=None):
@@ -230,6 +273,57 @@ row = W.hand(item(), runner=lambda req: {"status": "fixed", "patch": long_patch,
 check("a long patch is cut in the thread and named by its file",
       len(SLACK[-1]["text"]) < W.SLACK_PATCH_CHARS + 1500 and "cut here" in SLACK[-1]["text"]
       and open(row["patch_file"]).read() == long_patch, len(SLACK[-1]["text"]))
+
+# credential shapes (synthetic, built in pieces): none reaches the thread, from the patch, the summary or a reason
+SHAPES = {
+    "openai": ("sk-proj-" + "A1b2C3d4E5f6G7h8I9j0" * 2, "A1b2C3d4E5f6"),
+    "anthropic": ("sk-ant-api03-" + "Zz9Yy8Xx7Ww6" * 3, "Zz9Yy8Xx7Ww6"),
+    "slack bot": ("xoxb-" + "123456789012-1234567890123-AbCdEfGhIjKlMnOp", "AbCdEfGhIjKlMn"),
+    "slack app": ("xapp-" + "1-A0123456-1234567890123-abcdef0123456789", "abcdef0123456789"),
+    "bearer": ("Authorization: Bearer " + "abcDEF123ghiJKL456", "abcDEF123ghiJKL456"),
+    "ghp": ("ghp_" + "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789", "QrStUvWxYz0123"),
+    "github_pat": ("github_pat_" + "11ABCDEFG0123456789_abcdefghijklmnopqrstuvwxyz", "abcdefghijklmnopqrst"),
+    "gho": ("gho_" + "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789", "QrStUvWxYz0123"),
+    "hf": ("hf_" + "AbCdEfGhIjKlMnOpQrStUvWxYz01234567", "QrStUvWxYz0123"),
+    "google": ("AIza" + "SyA1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q", "A1b2C3d4E5f6G7"),
+    "jwt": ("eyJ" + "hbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.SflKxwRJSMeKKF2QT4fw", "SflKxwRJSMeKKF2QT4"),
+    "assigned": ("aws_secret_access_key = '" + "wJalrXUtnFEMI/K7MDENG/bPxRfiCY" + "'", "bPxRfiCY"),
+    "password": ("PASSWORD = \"" + "hunter2-correct-horse" + "\"", "hunter2"),
+    "url": ("https://user:" + "s3cretpw" + "@example.com/x", "s3cretpw"),
+    "private key": ("-----BEGIN " + "OPENSSH PRIVATE KEY-----\n+b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAE\n"
+                    "+c2VjcmV0a2V5Ym9keXNlY3JldGtleWJvZHk\n+-----END " + "OPENSSH PRIVATE KEY-----", "c2VjcmV0a2V5"),
+    "private key, cut": ("-----BEGIN " + "RSA PRIVATE KEY-----\n+MIIEowIBAAKCAQEA0Z3VS5JJcds3xfn", "0Z3VS5JJcds3xfn"),
+}
+for name, (secret, tell) in SHAPES.items():
+    patch = "--- a/x.py\n+++ b/x.py\n@@ -1 +1 @@\n+" + secret + "\n"
+    texts = (W.handoff_text({"ref": "F-x", "status": "fixed", "rounds": 1, "id": "CF-1", "summary": "uses " + secret},
+                            patch),
+             W.handoff_text({"ref": "F-x", "status": "rejected", "reason": "RuntimeError: " + secret}))
+    check("a %s credential never reaches the thread" % name, all(tell not in t for t in texts), texts)
+code = "+    self.token = token\n+    password = getpass()\n+def check_api_key(key):\n"
+check("code that only names a secret keeps its shape", W._redact(code) == code, W._redact(code))
+
+# a caller's timeout: SIGTERM becomes SystemExit, which still unwinds through the writer and stops its PID
+st = Studio(); W.WRITER = lambda: W.StudioWriter(run=st)
+def killed_mid_call(req): raise SystemExit(143)
+try:
+    W.hand(item(), runner=killed_mid_call); exited = False
+except SystemExit:
+    exited = True
+check("a call ended by SystemExit (SIGTERM) still stops the writer it started",
+      exited and st.kills() and "kill 4242" in st.kills()[-1] and record().get("pid") is None, (st.cmds, record()))
+import signal
+seen = {}
+real_hand, W.hand = W.hand, lambda it: seen.update(term=signal.getsignal(signal.SIGTERM),
+                                                   hup=signal.getsignal(signal.SIGHUP)) or {"status": "rejected"}
+old = signal.getsignal(signal.SIGTERM), signal.getsignal(signal.SIGHUP)
+try:
+    W.main(["hand", os.path.join(HOME, "no-such-item.json")])
+finally:
+    W.hand = real_hand; signal.signal(signal.SIGTERM, old[0]); signal.signal(signal.SIGHUP, old[1])
+check("`hand` turns SIGTERM and SIGHUP into an exit that unwinds",
+      callable(seen.get("term")) and seen["term"] not in (signal.SIG_DFL, signal.SIG_IGN) and callable(seen.get("hup")),
+      seen)
 
 check("the sweep's own posts are unchanged: no thread_ts unless asked",
       (lambda got: "thread_ts" not in got)(

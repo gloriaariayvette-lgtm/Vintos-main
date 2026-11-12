@@ -180,8 +180,10 @@ The wake message:
   you by the call and not posted. Every call is counted and logged (`--show`); `memory/codefix-worm-proposals.json`
   is the record behind the replies. `--candidates` lists the open Forge code-fix entries and known faults.
   **No writer runs between calls:** the call starts it on the Studio (`serve_writer2.sh`) only when the Studio's
-  `train.lock` is free, records its PID in `memory/codefix-writer.json`, and stops that PID when it ends. A held
-  lock is a refusal, never a wait; don't retry it on the same wake.
+  `train.lock` is free, records its PID and start time in `memory/codefix-writer.json`, and stops that PID when it
+  ends (only while it is still that process and still the writer; a timeout's SIGTERM stops it too). A held lock is
+  a refusal, never a wait; don't retry it on the same wake. Credentials are scrubbed from the patch, summary and
+  reason before the reply is posted.
 - Tests never reach the world: repoint every path the module writes, stub everything that sends, and assert the
   isolation in the suite (see `CLAUDE.md`). Run anything that sends through its **real** gate at least once — a
   stubbed sender let a broken `authority=` pass on 19 October.
