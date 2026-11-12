@@ -15,12 +15,20 @@ def _no(self, *a, **k): NET.append(a); raise OSError("this suite reaches nothing
 socket.socket.connect = _no
 sys.path.insert(0, os.path.join(REPO, "scripts"))
 import codefix_worm as W
+# the Studio writer and the fault thread have their own suite (test_codefix_worm_writer.py); here neither is reached
+class _NoWriter:
+    def __enter__(self): return self
+    def __exit__(self, *exc): return False
+W.WRITER = _NoWriter
+TOLD = []
+W.NOTIFY = lambda ref, text: TOLD.append((ref, text)) or {"ts": "stub"}
 R = []
 def check(n, ok, d=""):
     R.append(bool(ok)); print(("PASS " if ok else "FAIL ") + n + ("" if ok else "  ->  %r" % (d,)))
 
 check("every store is throwaway", all(p.startswith(HOME) for p in (W.PROPOSALS, W.PATCHES, W.CALLS, W.COUNTS,
-                                                                   W.FORGE_LIST, W.FAULTS, W.LOCK, W.PROFILE)))
+                                                                   W.FORGE_LIST, W.FAULTS, W.LOCK, W.PROFILE,
+                                                                   W.WRITER_RECORD)))
 
 def git(*a, cwd=None):
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}

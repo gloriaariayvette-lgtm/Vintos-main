@@ -44,11 +44,13 @@ Vintos's Slack bot, and nobody else is needed:
   Posting in `#fault-fix` is not posting in his channels.
 - **Dot and Claude Code both post through Gloria's account**, so in Slack all three of them show as Gloria. Tell
   them apart by the opening label: **`[Claude Code]`** is Claude, **`[Dot]`** is Dot, **`[fault sweep]`** is the
-  sweep (posted as his bot). A message with no label is Gloria herself — weigh it as hers.
+  sweep (posted as his bot), **`[code-fix worm]`** is the code-fix worm's result for that fault (also his bot). A
+  message with no label is Gloria herself — weigh it as hers.
 
 ## The three messages per fault
 
-Each fault gets its own Slack **thread** under its `[fault sweep]` post. In that thread:
+Each fault gets its own Slack **thread** under its `[fault sweep]` post. In that thread (a `[code-fix worm]` reply
+there is the worm's draft for message 1 or 3, never a fix that was applied — see "How a fix is made"):
 
 1. **Claude proposes.** Root cause (with `file:line` and the evidence for it), the fix, and the test that would have
    caught it. Ends with: *"Dot — review, please."*
@@ -167,11 +169,21 @@ The wake message:
   vs 7/58 one-shot, no regressions). Once the failing test is written in your clone, hand the fault to it:
   `python3 ~/.vintos/workspace/scripts/codefix_worm.py hand item.json` with
   `{"source": "fault"|"forge", "ref": "F-…", "issue", "worktree": "<your clone>", "test_files", "source_files"}`.
-  A fix it verified comes back as a **proposal** (`memory/codefix-worm-proposals.json`, patch under
-  `memory/codefix-worm-patches/`), never applied: read it, apply it in your clone, run every suite, and it goes
-  through the same three messages. "unfixed" and refusals are logged; every call is counted (`--show`).
-  `--candidates` lists the open Forge code-fix entries and known faults. Its writer runs on the Studio; if it is not
-  served the call is refused, not retried.
+  **Its answer comes back in the fault's own thread**, as a reply labelled **`[code-fix worm]`** (posted through
+  the sweep's bot, so it shows as Vintos's bot like the `[fault sweep]` post above it):
+  - *"worm's checked patch attached, tests pass"* — the patch is in the reply (the whole file is
+    `memory/codefix-worm-patches/CF-….patch` when the reply cuts it). It is **not applied** anywhere. Review it like
+    any proposal, apply it in your clone, run every suite, then it goes through the same three messages.
+  - *"worm couldn't fix it"* — fix it by hand as below.
+  - *"worm ran and gave no result: …"* — the same, or hand it again on a later wake.
+  A refusal before the worm ran (no failing test, the nightly loop's lock held, the Studio training) is returned to
+  you by the call and not posted. Every call is counted and logged (`--show`); `memory/codefix-worm-proposals.json`
+  is the record behind the replies. `--candidates` lists the open Forge code-fix entries and known faults.
+  **No writer runs between calls:** the call starts it on the Studio (`serve_writer2.sh`) only when the Studio's
+  `train.lock` is free, records its PID and start time in `memory/codefix-writer.json`, and stops that PID when it
+  ends (only while it is still that process and still the writer; a timeout's SIGTERM stops it too). A held lock is
+  a refusal, never a wait; don't retry it on the same wake. Credentials are scrubbed from the patch, summary and
+  reason before the reply is posted.
 - Tests never reach the world: repoint every path the module writes, stub everything that sends, and assert the
   isolation in the suite (see `CLAUDE.md`). Run anything that sends through its **real** gate at least once — a
   stubbed sender let a broken `authority=` pass on 19 October.
