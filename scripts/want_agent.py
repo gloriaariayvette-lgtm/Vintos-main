@@ -480,20 +480,39 @@ RECHECK_HOURS = 6         # a place given back is looked at again after this lon
 FULL_WHY = 'waiting for a place: the room holds %d works in hand'
 
 
-def _agent_last_at(w, ws):
-    """When its agent last wrote in the want's working thread (or when the request was posted), or None."""
+def _thread_events(w, ws):
     a = w.get('agent_work') or {}
     try:
-        events = json.loads((directory(a['request_id'], ws) / 'working-thread.json').read_text()).get('events', [])
+        return json.loads((directory(a['request_id'], ws) / 'working-thread.json').read_text()).get('events', [])
     except (OSError, ValueError, KeyError, TypeError):
-        events = []
-    times = [float(e.get('at') or 0) for e in events if isinstance(e, dict) and str(e.get('key', '')).startswith('agent:')]
+        return []
+
+
+def _agent_last_at(w, ws):
+    """When its agent last wrote in the want's working thread (or when the request was made), or None. This is the
+    quiet spell's identity: a new agent message starts a new spell."""
+    a = w.get('agent_work') or {}
+    times = [float(e.get('at') or 0) for e in _thread_events(w, ws)
+             if isinstance(e, dict) and str(e.get('key', '')).startswith('agent:')]
     if times:
         return max(times)
     try:
-        return float(a.get('thread') or a.get('created_at'))
+        return float(a.get('created_at') or a.get('thread'))
     except (TypeError, ValueError):
         return None
+
+
+def _quiet_since(w, ws):
+    """Since when the thread has been quiet: the latest word in it from either side, the request, its posting, or its
+    re-ping (the latest of them; a transport timestamp that is not a time only loses the max)."""
+    a = w.get('agent_work') or {}
+    times = [float(e.get('at') or 0) for e in _thread_events(w, ws) if isinstance(e, dict)]
+    for v in (a.get('created_at'), a.get('thread'), (a.get('reping') or {}).get('at')):   # thread: when it was posted
+        try:
+            times.append(float(v))
+        except (TypeError, ValueError):
+            pass
+    return max(times) if times else _agent_last_at(w, ws)
 
 
 def reping_due(w, ws, now):
@@ -504,8 +523,8 @@ def reping_due(w, ws, now):
     if (not a.get('thread') or a.get('status') != 'in_work' or a.get('blocked') or w.get('fulfilled')
             or w.get('dismissed')):
         return None
-    last = _agent_last_at(w, ws)
-    if last is None or now - last < QUIET_HOURS * 3600:
+    last, since = _agent_last_at(w, ws), _quiet_since(w, ws)
+    if last is None or since is None or now - since < QUIET_HOURS * 3600:
         return None
     if (a.get('reping') or {}).get('spell') == last:
         return None
@@ -541,11 +560,8 @@ def release_blocked(state, now, *, ws=None, save_state=None):
                 give[w['id']] = (a.get('request_id'), 'blocked_' + b['reason'])
             continue
         if a.get('thread') and a.get('status') == 'in_work':
-            last = _agent_last_at(w, ws)
-            rp = a.get('reping') or {}
-            if rp.get('spell') == last and last is not None and now - float(rp.get('at') or 0) < QUIET_HOURS * 3600:
-                back.add(w['id'])                    # re-pinged in this spell: it holds its place for a day
-            elif last is not None and now - last >= QUIET_HOURS * 3600:
+            since = _quiet_since(w, ws)          # a re-ping restarts the day it holds its place for
+            if since is not None and now - since >= QUIET_HOURS * 3600:
                 give[w['id']] = (a.get('request_id'), 'agent_quiet_%dh' % QUIET_HOURS)
             elif (w.get('adoption_released') or {}).get('reason', '').startswith('agent_quiet'):
                 back.add(w['id'])                    # its agent answered: it takes its place again
