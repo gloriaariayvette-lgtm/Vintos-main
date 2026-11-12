@@ -351,11 +351,13 @@ def _token():
     except OSError: return ""
 
 
-def post(channel, text, token=None, opener=None):
+def post(channel, text, token=None, opener=None, thread_ts=None):
+    """`thread_ts` replies in a fault's own thread (codefix_worm.py hands the worm's result back there)."""
     token = token or _token()
     if not token: raise RuntimeError("no Slack token on Aegis")
-    req = urllib.request.Request("https://slack.com/api/chat.postMessage",
-                                 data=json.dumps({"channel": channel, "text": text, "unfurl_links": False}).encode(),
+    body = {"channel": channel, "text": text, "unfurl_links": False}
+    if thread_ts: body["thread_ts"] = thread_ts
+    req = urllib.request.Request("https://slack.com/api/chat.postMessage", data=json.dumps(body).encode(),
                                  headers={"Authorization": "Bearer " + token,
                                           "Content-Type": "application/json; charset=utf-8"})
     with (opener or urllib.request.urlopen)(req, timeout=20) as r:
