@@ -3238,8 +3238,10 @@ def agent_wants_pass(api, channel, dot, state, now, rows=(), put=None, notify=No
                                'quiet_since': spell})
         except want_agent.WantHeld:
             continue
-        send_reply(w, work, chosen['message'], ':reping:' + want_agent.fingerprint(str(spell)))
+        # recorded BEFORE it is sent (review, 12 November): a process that dies between the post and its record must
+        # not ping again on the next pass - a ping lost to a crash is better than two
         want_agent.mark_repinged(w, spell, now)
+        send_reply(w, work, chosen['message'], ':reping:' + want_agent.fingerprint(str(spell)))
         if (str(work.get('pause_why', '')).startswith('held: agent_quiet')
                 and len(room_work.in_hand(state, now)) < room_work.MAX_OPEN):
             work.update(paused_until=0, pause_why=''); save(state)    # its place again, only while the room has one

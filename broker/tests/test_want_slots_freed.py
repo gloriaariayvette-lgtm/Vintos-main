@@ -89,6 +89,25 @@ class Slots(base.Tests):
         self.assertFalse(self.current()['stuck'].get('adoption_released'))
         self.assertEqual(self.mine(), ['reping'])
 
+    def test_a_crash_between_the_ping_and_its_record_never_pings_twice(self):
+        # review (12 November): the spell is recorded before the ping is sent, so a pass that dies after the post does
+        # not ping again on the next one
+        rid, thread = self.quiet_setup()
+        real = D.agent_wants_pass
+        class Died(Exception): pass
+        def api(method, payload):
+            r = self.api(method, payload)
+            if payload.get('thread_ts'): raise Died('fixture: the process dies after the post')
+            return r
+        with unittest.mock.patch.object(W, 'unanswered', lambda *a: []):
+            try:
+                D.agent_wants_pass(api, 'fixture-channel', 'fixture-dot', self.state, self.now,
+                                   block_notify=lambda key, message: {'state': 'sent'}, identity=lambda: 'Synthetic identity')
+            except Died:
+                pass
+            self.run_pass(self.now + 420)
+        self.assertEqual(len([p for p in self.posts if p.get('thread_ts')]), 1)
+
     def test_a_new_quiet_spell_gets_its_own_one_ping(self):
         rid, thread = self.quiet_setup()
         with unittest.mock.patch.object(W, 'unanswered', lambda *a: []):

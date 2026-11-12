@@ -2566,7 +2566,15 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
         # A want an agent is working, or that carries a promise he owes, is never the cap's to dismiss (12 November:
         # the cap dismissed an adopted promise-want in work, and its promise stayed "in work" with no want).
         _aw = w.get("agent_work") if isinstance(w.get("agent_work"), dict) else {}
-        if (_aw or w.get("adopted_from") or _aw.get("commitment_ids") or _aw.get("promise_ids")
+        # ... while that work or promise is live: finished agent work, a promise kept another way, or a place given
+        # back more than two weeks ago no longer protects (review, 12 November: the protected set must not grow for ever)
+        _rel = w.get("adoption_released") if isinstance(w.get("adoption_released"), dict) else {}
+        _rel_old = False
+        try: _rel_old = bool(_rel) and (__import__("time").time() - float(_rel.get("at") or 0)) > 14 * 86400
+        except (TypeError, ValueError): pass
+        if (_aw.get("status") in ("completed", "dropped") or _rel.get("reason") == "kept_another_way" or _rel_old):
+            _aw = {}
+        elif (_aw or w.get("adopted_from") or _aw.get("commitment_ids") or _aw.get("promise_ids")
                 or any(isinstance(r, dict) and r.get("kind") in ("commitment", "promise") for r in (w.get("source_refs") or []))):
             return True
         if any(isinstance(s, dict) and str(s.get("capability") or "").lower() in ("gloria", "you")

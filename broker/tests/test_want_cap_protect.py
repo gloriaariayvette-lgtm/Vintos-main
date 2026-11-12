@@ -36,7 +36,13 @@ promised = {"id": "jw-fix2", "want": "I want to run the fixture parser.", "sourc
 for_her = {"id": "gf-fix3", "want": "I want to ask you which fixture sketch reads better.", "source": "mirror",
            "timestamp": "2026-11-01T09:00:00", "fulfilled": False, "outreach_count": 1,
            "steps": [{"capability": "gloria", "status": "pending"}]}
-put("current-wants.json", [adopted, promised, for_her] + [plain(i) for i in range(14)])
+done_work = {"id": "ec-fix4", "want": "I want to clean the archived parser batch once.", "source": "email", "adopted_from": "EC-fix4",
+             "timestamp": "2026-11-01T09:00:00", "fulfilled": False,
+             "agent_work": {"request_id": "WA-" + "4" * 24, "status": "dropped", "thread": "1.0"}}
+kept_else = {"id": "ec-fix5", "want": "I want to export the retired tables once.", "source": "email", "adopted_from": "EC-fix5",
+             "timestamp": "2026-11-01T09:00:00", "fulfilled": False,
+             "adoption_released": {"at": time.time(), "reason": "kept_another_way", "hours": 0}}
+put("current-wants.json", [done_work, kept_else, adopted, promised, for_her] + [plain(i) for i in range(14)])
 E.express_want("I want to compose a fixture study for strings tonight.", source="curiosity", intensity=3,
                candidate_kind="current_desire", present_pull="fixture study")
 left = {w["id"] for w in get("current-wants.json")}
@@ -45,6 +51,7 @@ check("the cap still prunes the unprotected", len(gone) >= 4, gone)
 check("an in-work adopted promise-want is never dismissed by the cap", "ec-fix1" in left and "ec-fix1" not in gone)
 check("a want carrying a promise is never dismissed", "jw-fix2" in left and "jw-fix2" not in gone)
 check("a want routed to her with her step pending is never dismissed", "gf-fix3" in left and "gf-fix3" not in gone)
+check("finished agent work and a promise kept another way are the cap's again (review)", {"ec-fix4", "ec-fix5"} <= gone, gone)
 
 # ---- 2. a promise left in work whose want is gone ----
 WHAT = "run the fixture comparison and export it"
