@@ -1017,7 +1017,9 @@ def main():
     log("he wants to send [%s / scene:%r / ground:%s / still:%s] -> prompt=%r  say=%r"
         % (kind, (d.get("scene") or "-")[:80], os.path.basename(d["scene_ref"]) if d.get("scene_ref") else "no",
            d.get("still") or "-", prompt[:110], caption))
-    fname = generate_clip(prompt, kind, d.get("still"), d.get("scene", ""), d.get("scene_ref", ""), keep=d)
+    fname = d.get("rendered_file")
+    if not fname or os.path.basename(fname) != fname or not os.path.isfile(os.path.join(VID_DIR, fname)):
+        fname = generate_clip(prompt, kind, d.get("still"), d.get("scene", ""), d.get("scene_ref", ""), keep=d)
     if not fname:
         if _skey and not DRY:
             d["render_failures"] = int(d.get("render_failures") or 0) + 1
@@ -1033,11 +1035,14 @@ def main():
         log("no clip produced — nothing sent"); return
     if DRY:
         log("[dry] would deliver + remember; stopping before any side effect"); return
-    if _skey: _stage.done(STAGE_ORGAN, _skey, outcome=fname)
+    if _skey:
+        d["rendered_file"] = fname
+        _stage.save(STAGE_ORGAN, _skey, d, note="rendered clip kept until its notification is accepted")
     _rc = deliver(fname, caption, authority=lambda: (d.get("decision") == "YES" and not DRY, "his decision was %s" % d.get("decision")))
     if _rc.get("state") != "sent":
         # the clip exists and its record says delivery=failed; it is not remembered as a send (288)
         log("not sent — clip kept: %s" % fname); return
+    if _skey: _stage.done(STAGE_ORGAN, _skey, outcome=fname)
     remember(caption, prompt, fname, kind=kind)
     try: open(COOLDOWN_FILE, "w").write(datetime.now().isoformat())
     except Exception: pass

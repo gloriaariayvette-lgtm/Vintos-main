@@ -31,7 +31,18 @@ TIMEOUT_S = 15
 def _post_http(url, data, headers, timeout):
     import requests
     r = requests.post(url, data=data, headers=headers, timeout=timeout)
-    return r.status_code
+    # Keep the provider receipt, not merely the transport status. Never retain the
+    # topic, message, attachment URL or credentials in the delivery ledger.
+    code = r.status_code
+    if not 200 <= code < 300:
+        return {"status": code}
+    try:
+        body = r.json()
+    except (ValueError, TypeError):
+        body = {}
+    if not isinstance(body, dict) or body.get("event") != "message" or not body.get("id"):
+        return {"status": code, "invalid_receipt": True}
+    return {"status": code, "provider_id": body["id"], "provider_time": body.get("time")}
 
 POST = _post_http          # tests replace this
 SLEEP = time.sleep         # and this
@@ -80,7 +91,12 @@ def deliver(artifact_id, channel, message, title="Vintos", click=None, attach=No
     if prev and prev.get("state") in ("sent", "acknowledged"):
         out = dict(prev); out["resent"] = False; out["repeat"] = True
         return out
-    headers = {"Title": title or "Vintos"}
+    from email.header import Header
+    # HTTP headers cannot contain arbitrary Unicode; ntfy accepts RFC 2047 titles.
+    safe_title = " ".join(str(title or "Vintos").splitlines())
+    try: safe_title.encode("ascii")
+    except UnicodeEncodeError: safe_title = Header(safe_title, "utf-8").encode(maxlinelen=100000)
+    headers = {"Title": safe_title}
     if tags: headers["Tags"] = tags
     if click: headers["Click"] = click
     if attach: headers["Attach"] = attach
@@ -88,19 +104,25 @@ def deliver(artifact_id, channel, message, title="Vintos", click=None, attach=No
     if actions: headers["Actions"] = actions      # ntfy action buttons ("http, Coming, <url>, method=POST; ...")
     data = (message or "I made you something.").encode("utf-8")
     n = int(retries if retries is not None else RETRIES)
-    attempts = 0; last = ""
+    attempts = 0; last = ""; accepted = None
     _record(artifact_id, channel, "queued", 0, "")
     while attempts < n:
         attempts += 1
         try:
-            code = POST(CHANNELS[channel], data, headers, TIMEOUT_S)
-            if code is None or int(code) < 400:
-                return _record(artifact_id, channel, "sent", attempts, "http %s" % code)
-            last = "http %s" % code
+            result = POST(CHANNELS[channel], data, headers, TIMEOUT_S)
+            code = result.get("status") if isinstance(result, dict) else result
+            if code is not None and 200 <= int(code) < 300 and not (isinstance(result, dict) and result.get("invalid_receipt")):
+                provider = {k: result[k] for k in ("provider_id", "provider_time") if k in result} if isinstance(result, dict) else {}
+                accepted = (code, provider)
+                break
+            last = "http %s%s" % (code, " without ntfy message receipt" if isinstance(result, dict) and result.get("invalid_receipt") else "")
         except Exception as e:
             last = "%s: %s" % (type(e).__name__, str(e)[:120])
         if attempts < n:
             SLEEP(BACKOFF_S * attempts)
+    if accepted is not None:
+        code, provider = accepted
+        return _record(artifact_id, channel, "sent", attempts, "http %s" % code, **provider)
     return _record(artifact_id, channel, "failed", attempts, last or "no attempt succeeded")
 
 def acknowledge(artifact_id, channel, evidence):
@@ -111,16 +133,18 @@ def acknowledge(artifact_id, channel, evidence):
     return _record(artifact_id, channel, "acknowledged", prev.get("attempts", 0),
                    "evidence: %s" % str(evidence)[:160])
 
-def _record(artifact_id, channel, state, attempts, why):
-    d = load_receipts()
+def _record(artifact_id, channel, state, attempts, why, **provider):
+    from store_guard import locked_update
     k = receipt_key(artifact_id, channel)
-    prev = d.get(k) or {}
-    rec = {"artifact_id": artifact_id, "channel": channel, "state": state,
-           "attempts": attempts, "at": _now(), "why": why, "resent": False,
-           "first_at": prev.get("first_at") or _now()}
-    d[k] = rec
-    try:
-        _save(d)
-    except Exception:
-        pass
-    return dict(rec)
+    def mutate(d):
+        if not isinstance(d, dict):
+            raise ValueError("delivery receipts must be an object")
+        prev = d.get(k) or {}
+        rec = {"artifact_id": artifact_id, "channel": channel, "state": state,
+               "attempts": attempts, "at": _now(), "why": why, "resent": False,
+               "first_at": prev.get("first_at") or _now()}
+        rec.update({name: prev[name] for name in ("provider_id", "provider_time") if name in prev})
+        rec.update(provider)
+        d[k] = rec
+        return d
+    return dict(locked_update(_receipts_path(), mutate, default={}, reader="deliver")[k])
