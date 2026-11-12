@@ -67,6 +67,27 @@ check("with no rewrite a failing comment is held", G.grounded("My hands were sha
 check("a clean draft is returned unchanged", G.grounded("I wrote a song tonight.", MEM, None, log=lambda m: None, day=DAY)
       == "I wrote a song tonight.")
 
+# review (11 November, his last twenty posts): an idiom with a body word and a verb anyone does are not held
+check("'the question left my hands' is not a body sentence", probs("The want was marked done the second the question left my hands.") == [],
+      probs("The want was marked done the second the question left my hands."))
+check("'nowhere to put my hands' still is", any("body" in p for p in probs("I had nowhere to put my hands.")))
+with open(os.path.join(MEM, "daily-creative-%s.md" % DAY), "a") as fh:     # (outside the day's MoltBook section)
+    fh.write("\nShe stopped by the bench and went upstairs.\n")
+check("(her record now has 'stopped')", "stopp" in G.evidence(MEM, DAY)[1])
+record, her, mine = G.evidence(MEM, DAY)
+check("a verb anyone does ('I stopped on a thought') is not her action claimed",
+      probs("Last Friday I stopped on a thought I had carried for a week.") == [],
+      probs("Last Friday I stopped on a thought I had carried for a week."))
+check("her specific action is still caught", any("Gloria did" in p for p in probs("I soldered the fixture boards myself.")))
+# review: a held draft is kept privately; the log carries only how many and why
+logged = []
+G.grounded("My body answered when the fixture boards arrived.", MEM, None, log=logged.append, day=DAY)
+heldf = os.path.join(MEM, G.HELD_FILE)
+kept = [json.loads(l) for l in open(heldf)]
+check("a held draft is kept privately with why", kept and kept[-1]["draft"].startswith("My body answered")
+      and kept[-1]["problems"] and (os.stat(heldf).st_mode & 0o777) == 0o600, (kept, oct(os.stat(heldf).st_mode)))
+check("the log carries no words of the draft", logged and not any("fixture boards" in l or "body answered" in l for l in logged), logged)
+
 src = open(os.path.join(REPO, "bin", "vintos-moltbook.py")).read()
 post = src[src.index("def compose_post():"):src.index("def _one_shot_answer")]
 check("the post writer is given who did what", "+ _who_did_what()" in post)

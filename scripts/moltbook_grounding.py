@@ -31,7 +31,14 @@ _NUMBER = re.compile(r"(?<![\w.])\d+\.\d+(?![\w.])|\b\d+(?:\.\d+)?%")
 _SENT = re.compile(r"(?:[^.!?\n]|[.!?](?=[^\s]))+[.!?]?")   # a decimal point does not end a sentence
 _SKIP_VERBS = {"want", "need", "think", "feel", "fe", "wonder", "notic", "realiz", "learn", "remember", "read", "see",
                "saw", "look", "watch", "ask", "answer", "repli", "repl", "wait", "hop", "lik", "lov", "us", "start", "keep",
-               "kept", "tri", "mean", "meant", "say", "said", "know", "writ", "post", "talk", "tell", "told"}
+               "kept", "tri", "mean", "meant", "say", "said", "know", "writ", "post", "talk", "tell", "told",
+               # verbs anyone does all day: on his last twenty posts "I stopped on a thought" was held as her action
+               # (review, 11 November); her actions worth guarding are the specific ones (wiring, soldering, building)
+               "stopp", "stop", "turn", "mov", "going", "go", "went", "com", "cam", "carri", "carr", "find", "found",
+               "get", "got", "put", "lef", "leav", "stay", "stai", "sitt", "sat", "walk", "call", "wak", "slep", "sleep"}
+# Idioms with a body word that say nothing about a body: "it left my hands", "out of my hands" (review, 11 November:
+# "the second the question left my hands" was held as a body sentence)
+_IDIOM = re.compile(r"\b(?:out of|left|leaves|leaving|leave|in|into|off|on|from) my hands?\b", re.I)
 
 
 def _stem(word):
@@ -126,7 +133,7 @@ def problems(text, record, her_stems, my_stems):
         s = s.strip()
         if not s:
             continue
-        if _BODY.search(s):
+        if _BODY.search(_IDIOM.sub(" ", s)):
             out.append(("body or sensation: he has no body", s))
             continue
         for m in _I_DID.finditer(s):
@@ -145,8 +152,25 @@ def note(found):
             + "\nHer actions stay hers. No body or sensation. Use only numbers your records hold, or none.\n")
 
 
+HELD_FILE = "moltbook-held.jsonl"
+
+
+def _keep_held(memory, text, found, again=None):
+    """A held draft is kept, privately, in his memory (0600), with why; the log says only how many and why."""
+    try:
+        from datetime import datetime
+        path = os.path.join(memory, HELD_FILE)
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        with os.fdopen(fd, "a") as f:
+            f.write(json.dumps({"at": datetime.now().isoformat(timespec="seconds"), "draft": str(text or ""),
+                                "rewrite": again, "problems": [w for w, _ in found]}, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+
+
 def grounded(text, memory, rewrite, log=print, day=None):
-    """The draft if it passes; else one rewrite (rewrite(note) -> text) if that passes; else None (held)."""
+    """The draft if it passes; else one rewrite (rewrite(note) -> text) if that passes; else None (held, and the draft
+    kept privately in HELD_FILE)."""
     record, her, mine = evidence(memory, day)
     found = problems(text, record, her, mine)
     if not found:
@@ -159,6 +183,8 @@ def grounded(text, memory, rewrite, log=print, day=None):
         if not left:
             return again
         log("[Grounding] rewrite still has %d problem(s); held, not published" % len(left))
+        _keep_held(memory, text, left, again)
     else:
         log("[Grounding] no rewrite; held, not published")
+        _keep_held(memory, text, found)
     return None
