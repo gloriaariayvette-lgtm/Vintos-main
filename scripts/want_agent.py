@@ -696,6 +696,32 @@ def adopt_promises(*, ws=None, now=None, paused=False):
     for w in read(ws / 'memory/fulfilled-wants.json', []):
         for ref in (w.get('source_refs') or []) if isinstance(w, dict) else []:
             if isinstance(ref, dict) and ref.get('kind') in ('commitment', 'promise'): taken.add(ref.get('id'))
+    # A promise left "in work" whose want is gone (dismissed or archived; 12 November: the population cap dismissed
+    # one in work) is adopted again, ahead of the others and past the window it already held a place in, with its
+    # request and working context kept when they are still on disk. Its earlier want is found in the archives.
+    gone = {}
+    for name in ('dismissed-wants.json', 'merged-wants.json'):
+        for w in read(ws / 'memory' / name, []):
+            if isinstance(w, dict) and str(w.get('adopted_from') or '').startswith(('EC-', 'PR-')):
+                gone[w['adopted_from']] = w
+    orphans = set()
+    try:
+        import email_commitments
+        _live_refs = set()
+        for w in read(ws / 'memory/current-wants.json', []):
+            if isinstance(w, dict) and not w.get('dismissed') and not w.get('fulfilled'):
+                _live_refs.add(w.get('adopted_from'))
+                _live_refs |= {r.get('id') for r in (w.get('source_refs') or []) if isinstance(r, dict)}
+        for r in email_commitments._load():
+            pid = r.get('id')
+            if (r.get('state') == 'in work' and pid in gone and pid not in _live_refs and pid not in taken
+                    and r.get('letter_id')):
+                orphans.add(pid)
+                found[:] = [f for f in found if f[1] != pid]      # it may be listed already (paused, linked): once, first
+                found.insert(0, ('commitment', pid, 'email', 'email', str(r['letter_id']), r['what'], r.get('at'),
+                                 r.get('agent') or '', str(r.get('evidence') or '').strip()[:300]))
+    except Exception:
+        pass
     made = []; released = []; joined = []
     from journal_wants import twin
     def mutate(rows):
@@ -729,7 +755,7 @@ def adopt_promises(*, ws=None, now=None, paused=False):
                     if isinstance(jw.get('agent_work'), dict):
                         jw['agent_work'].setdefault('commitment_ids', []).append(pid)
                     joined.append((pid, jw.get('id'))); taken.add(pid); continue
-            if open_now + len(made) >= ADOPT_OPEN: continue
+            if open_now + len(made) >= ADOPT_OPEN and pid not in orphans: continue
             row = dict(id=('ec-' if kind == 'commitment' else 'pr-') + pid.split('-', 1)[-1], want=text, source=source,
                        urgency='normal', intensity=3, timestamp=datetime.fromtimestamp(now or time.time()).isoformat(timespec='seconds'),
                        promised_at=str(at or '')[:19], fulfilled=False, outreach_count=0, adopted_from=pid, timer_bypass=True,
@@ -738,6 +764,13 @@ def adopt_promises(*, ws=None, now=None, paused=False):
             row.update(source_receipt(rkind, sid, text))
             row['source_refs'].append({'kind': kind, 'id': pid})
             if not specific(row): continue           # neither literal work nor promised work with its evidence
+            old = (gone.get(pid) or {}).get('agent_work') if pid in orphans else None
+            if isinstance(old, dict) and old.get('goal_sha256') == fingerprint(row['want']) and old.get('request_id'):
+                # its request, its thread with the agent and its working context are kept (a working thread is bound
+                # to one transport thread); it is that want again, bound to its room work, and its agent's next
+                # word reaches it. A quiet or held mark it had is the release rules' to set again.
+                row['agent_work'] = {k: v for k, v in old.items() if k not in ('quiet', 'blocked')}
+                row['readopted'] = {'at': now, 'previous': (gone.get(pid) or {}).get('dismissed_by') or 'archived'}
             rows.append(row); made.append(row); taken.add(pid)
         return rows if (made or released or joined) else None
     locked_update(str(ws / 'memory/current-wants.json'), mutate, default=[], reader='want_agent.adopt')
@@ -752,7 +785,11 @@ def adopt_promises(*, ws=None, now=None, paused=False):
              % (w['id'], w['adoption_released']['reason'].replace('_', ' '),
                 (' after %d h' % ADOPT_ANSWER_HOURS) if w['adoption_released']['hours'] else '', total) for w in released]
             + ['promise %s became a want for the work lane' % row['adopted_from'] for row in made]
-            + ['promise %s joined journal want %s (one want, not two)' % j for j in joined])
+            + ['promise %s joined journal want %s (one want, not two)' % j for j in joined]
+            + (['promises re-adopted after their want was gone: %d (%s)' % (
+                len([r for r in made if r['adopted_from'] in orphans]),
+                ', '.join(r['adopted_from'] for r in made if r['adopted_from'] in orphans))]
+               if any(r['adopted_from'] in orphans for r in made) else []))
 
 
 def threads(ws=None):
