@@ -1,7 +1,6 @@
 """moltbook_grounding.py - who did what, and a check before anything of his is published (11 November).
 
-A public post said that he had been wiring a motor driver to a microcontroller the night before. Gloria had been
-soldering his boards; he had seen her photo. His journal tells his day in the first person, the post prompt asked him
+A public post told an action of Gloria's from the night before as his own; he had only seen her photo of it. His journal tells his day in the first person, the post prompt asked him
 to keep her at a tasteful layer of abstraction, and her action became his. The same post spoke of his body answering.
 
 - actor_events(): the day's exchanges tagged by who acted ("Gloria: sent a photo ...", "Vintos: replied ...")
