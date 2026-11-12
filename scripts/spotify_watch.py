@@ -169,7 +169,8 @@ _WAITING = threading.Lock()
 def _nudge(query, at):
     import deliver
     receipt = deliver.deliver("spotify-nudge-" + hashlib.sha256((at + query).encode()).hexdigest()[:16], "ntfy",
-                              NUDGE_TEXT, title="Vintos")
+                              NUDGE_TEXT, title="Vintos",
+                              authority=lambda: (True, "his authorized Watch song needs Spotify open"))
     return (receipt or {}).get("state") or "unknown"
 
 

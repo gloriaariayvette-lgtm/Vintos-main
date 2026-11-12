@@ -6,6 +6,7 @@ import os, sys, json, tempfile, importlib.util
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, "..", ".."))
+sys.path.insert(0, os.path.join(REPO, "scripts"))
 HOME = tempfile.mkdtemp(prefix="vintos-deliv-")
 os.environ["HOME"] = HOME
 MEM = os.path.join(HOME, ".vintos", "workspace", "memory"); os.makedirs(MEM, exist_ok=True)
@@ -119,5 +120,48 @@ for f, needles in (("bin/vintos-send-video.py", ("artifact_manifest", "reflectio
 check("dream-art twins identical", open(os.path.join(REPO, "scripts", "dream-art.py"), "rb").read() == open(os.path.join(REPO, "bin", "dream-art.py"), "rb").read())
 check("nothing sent to the real ntfy", all(u == "http://ntfy.test/topic" for u, _, _ in posts))
 
+# A captured ntfy response shape: only receipt metadata is kept, never its topic/body.
+import types, socket, multiprocessing
+import store_guard
+store_guard.LOG = os.path.join(MEM, "quarantine.jsonl")
+def no_network(*a, **k): raise AssertionError("offline suite")
+socket.socket.connect = no_network
+response = types.SimpleNamespace(status_code=200, json=lambda: {
+    "id": "w4Q4OZkNJra3", "event": "message", "time": 1794496578,
+    "topic": "fixture-private", "title": "Vintos", "message": "fixture"})
+requests_stub = types.SimpleNamespace(post=lambda *a, **k: response)
+sys.modules["requests"] = requests_stub
+DL.POST = DL._post_http
+rc = DL.deliver("provider-proof", "ntfy", "fixture", title="His song — here", authority=lambda: True)
+check("ntfy provider ID/time survive in the receipt", rc.get("provider_id") == "w4Q4OZkNJra3" and rc.get("provider_time") == 1794496578)
+check("receipt does not store topic or message", "fixture-private" not in json.dumps(rc) and "message" not in rc)
+response.json = lambda: {"ok": True}
+check("HTTP 200 without a message receipt is not called sent", DL.deliver("not-a-receipt", "ntfy", "x", authority=lambda: True)["state"] == "failed")
+DL.POST = lambda *a: None
+check("no status is not called sent", DL.deliver("no-status", "ntfy", "x", authority=lambda: True)["state"] == "failed")
+DL.POST = lambda *a: 302
+check("redirect is not called sent", DL.deliver("redirect", "ntfy", "x", authority=lambda: True)["state"] == "failed")
+DL.POST = lambda u,d,h,t: (h["Title"].encode("ascii"), 200)[1]
+check("Unicode titles can cross an HTTP header", DL.deliver("unicode-title", "ntfy", "x", title="His song — here", authority=lambda: True)["state"] == "sent")
+# Saving evidence must never cause a second POST after acceptance.
+record = DL._record; accepted_posts=[]
+DL.POST = lambda *a: (accepted_posts.append(1), 200)[1]
+def disk_failure(aid, channel, state, *args, **kwargs):
+    if aid == "disk-fault" and state == "sent": raise OSError("scratch fault")
+    return record(aid, channel, state, *args, **kwargs)
+DL._record = disk_failure
+try:
+    DL.deliver("disk-fault", "ntfy", "fixture", authority=lambda: True)
+except OSError: pass
+finally: DL._record = record
+check("receipt disk failure does not resend an accepted notification", len(accepted_posts) == 1)
+def record_parallel(i):
+    for j in range(8): DL._record("parallel-%d-%d" % (i,j), "ntfy", "sent", 1, "fixture")
+ctx = multiprocessing.get_context("fork")
+workers = [ctx.Process(target=record_parallel, args=(i,)) for i in range(8)]
+for worker in workers: worker.start()
+for worker in workers: worker.join(20)
+check("64 concurrent receipt writes preserve every artifact", all(w.exitcode == 0 for w in workers) and sum(k.startswith("parallel-") for k in DL.load_receipts()) == 64)
+check("all receipt/quarantine paths and senders isolated", DL.RECEIPTS.startswith(HOME) and store_guard.LOG.startswith(HOME) and sys.modules["requests"] is requests_stub and socket.socket.connect is no_network)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

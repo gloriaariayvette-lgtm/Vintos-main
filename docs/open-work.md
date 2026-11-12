@@ -1,3 +1,41 @@
+## ntfy delivery investigation — 12 November 2026 (review branch, not deployed)
+
+Gloria reports missing videos/outreaches and wants every app notification mirrored through ntfy.
+Read-only production audit: all 34 November outreach files and six November shared video records
+have HTTP 200 ntfy receipts. Today's 09:16 outreach was independently present in ntfy's cached
+JSON as a message event. The cache contained only 17 recent messages despite a 72-hour request;
+older absence is not evidence a publish failed. The two most recent video files return HTTP 206.
+These are server-acceptance facts, not proof of iPhone presentation. No test notifications sent.
+
+Confirmed separate failure: the 2 November Spotify Watch nudge was refused with `no authority given`.
+Its caller omitted the authority callback, although the user-authorized song flow requested the nudge.
+
+Prepared in `codex/ntfy-delivery-receipts`:
+- `scripts/deliver.py`: retain ntfy's message ID/time, require a valid message receipt from the
+  production transport, accept only 2xx, encode Unicode header titles, and lock receipt mutations
+  so simultaneous writers preserve one another. Do not retry an accepted POST because saving its
+  receipt failed. Server acceptance remains distinct from acknowledgement.
+- `scripts/spotify_watch.py`: pass the existing song-flow authority for its Spotify-open nudge.
+- `bin/vintos-send-video.py`: retain a completed clip with its staged decision until notification
+  acceptance; retry the same bytes on the next scheduled tick without another render or model call.
+
+Still open: identify a specific notification missing on the phone; an optional question is pending.
+No evidence yet establishes why iOS missed an accepted notification. No iPhone setting changed.
+Several other producers (Atelier reveals, make_thing, approval cards) still have independent sends;
+this patch does not claim universal app/ntfy parity or install a catch-all for private memory.
+Further routing needs explicit producer contracts and offline tests; never send sealed journal/private
+inner-life material merely because a gallery or memory file exists.
+
+Verification: five notification suites passed on the Mac and then in a disposable Aegis source
+copy: artifact delivery 48/48, video retry 11/11, Spotify Watch 32/32, want-video delivery 7/7,
+outreach postcards 54/54 (152 assertions total). Regression fixtures use the real ntfy message-event
+shape observed read-only, rather than treating a model-completion response as a publish receipt.
+Ownership/entry/untested documents regenerated; entry ownership 11/11, closure checks 13/13,
+store guard 32/32 passed locally. Full repository suite has not been run; it remains a deploy gate.
+
+Deployment is pending the repository's required main-thread review and Gloria-run deploy. No live
+source/store edits, service restarts, model calls, notifications or historical replays were made.
+
 ## 9 November — the fault loop: what was left unanswered from 3 to 8 November
 
 - **F-e53e4db887 (Study fix did not land: the Forge install needed sudo, 3 November) — resolved.** `01ae74d0` made the

@@ -67,5 +67,20 @@ check("Atlas's model can be named in a file, for when one is retired, and a plac
       "~/.vintos/atlas-model" in open(os.path.join(ROOT, "bin", "vintos-send-video.py")).read()
       and V.re.fullmatch(r"[\w.\-]+/[\w.\-]+(?:/[\w.\-]+)*", "MODEL-NAME-FROM-ATLAS") is None
       and V.re.fullmatch(r"[\w.\-]+/[\w.\-]+(?:/[\w.\-]+)*", "atlascloud/wan-2.2-turbo-spicy/image-to-video"))
+# A completed render must survive a failed notification without spending on another render.
+STAGES.clear(); rendered=[]; remembered=[]; delivery_attempts=[]
+os.makedirs(V.VID_DIR, exist_ok=True)
+def render_once(*a, **k):
+    rendered.append(1); name="kept-render.mp4"; open(os.path.join(V.VID_DIR,name),"wb").write(b"fixture"); return name
+V.generate_clip=render_once
+V.remember=lambda *a, **k: remembered.append(a)
+def send_clip(*a, **k):
+    delivery_attempts.append(a); return {"state":"failed" if len(delivery_attempts)==1 else "sent"}
+V.deliver=send_clip
+V.main()
+check("failed send keeps the existing rendered clip pending", len(rendered)==1 and not remembered and list(STAGES.values())[0]["state"]=="pending" and list(STAGES.values())[0]["payload"].get("rendered_file")=="kept-render.mp4")
+V.main()
+check("next pass sends the same clip without another render", len(rendered)==1 and len(delivery_attempts)==2 and len(remembered)==1 and list(STAGES.values())[0]["state"]=="done")
+check("send and renderer remain stubs, every video store scratch", V.deliver is send_clip and V.generate_clip is render_once and all(getattr(V,k).startswith(HOME) for k in ("VID_DIR","GALLERY","COOLDOWN_FILE","RECORD_DIR")))
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

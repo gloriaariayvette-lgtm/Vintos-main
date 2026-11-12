@@ -141,7 +141,7 @@ check("a reply without the tag is untouched", S.take("plain [HOME: spotify a - b
 # moment it appears, or is written down after the wait. Never the phone. Nothing is sent for real.
 import types
 NUDGES = []
-sys.modules["deliver"] = types.SimpleNamespace(deliver=lambda aid, ch, msg, title=None, **k: (NUDGES.append((aid, ch, msg)), {"state": "sent"})[1])
+sys.modules["deliver"] = types.SimpleNamespace(deliver=lambda aid, ch, msg, title=None, **k: (NUDGES.append((aid, ch, msg, k)), {"state": "sent"})[1])
 WATCH = {"id": "w1", "type": "Smartwatch", "name": "Apple Watch", "is_active": True}
 DEVICES[:] = [d for d in DEVICES if d["type"] != "Watch"]
 T = [0.0]; polls = []
@@ -151,6 +151,7 @@ def fake_sleep(s):
 n = len(CALLS)
 row = S.play("Enjoy the Silence - Depeche Mode", nudge=True, sleep=fake_sleep, clock=lambda: T[0])
 check("Watch closed: she gets one notification asking her to open Spotify on it", len(NUDGES) == 1
+      and NUDGES[0][3]["authority"]()[0] is True
       and NUDGES[0][1] == "ntfy" and "Open Spotify on your Watch" in NUDGES[0][2] and row.get("nudged") == "sent", NUDGES)
 check("the song plays on the Watch the moment it appears, never the phone", row["played"] and "Apple Watch" in row["device"]
       and row["waited_s"] == 15 and not any("device_id=ph1" in c[1] for c in CALLS[n:]), row)

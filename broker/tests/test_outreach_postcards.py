@@ -24,7 +24,7 @@ os.environ["HOME"] = HOME; os.environ["SPARK_WORKSPACE"] = WS
 os.environ.pop("XAI_API_KEY", None)
 os.environ["VINTOS_SERVE_BASE"] = "http://house.test:8500"
 for f in ("outreach_postcards.py", "artifact_manifest.py", "outreach_feelings.py", "resonance_felt.py",
-          "deliver.py", "effect_authority.py", "paid_http.py"):
+          "deliver.py", "store_guard.py", "effect_authority.py", "paid_http.py"):
     shutil.copy(os.path.join(REPO, "scripts", f), os.path.join(SCR, f))
 sys.path.insert(0, SCR)
 import outreach_postcards as PC
@@ -140,7 +140,7 @@ open(os.path.join(FAKE, "requests.py"), "w").write(
     "import json, os\n"
     "class _R:\n"
     "    def __init__(s, t, code=200): s.t = t; s.status_code = code\n"
-    "    def json(s): return {'choices': [{'message': {'content': s.t}}]}\n"
+    "    def json(s): return {'id':'fixture-ntfy-id','event':'message','time':1794496578} if not s.t else {'choices': [{'message': {'content': s.t}}]}\n"
     "def post(url, **k):\n"
     "    j = k.get('json') or {}\n"
     "    rec = {'url': url, 'headers': dict(k.get('headers') or {}),\n"
