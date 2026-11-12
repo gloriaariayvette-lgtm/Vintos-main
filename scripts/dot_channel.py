@@ -3223,6 +3223,31 @@ def agent_wants_pass(api, channel, dot, state, now, rows=(), put=None, notify=No
         send_reply(w, work, chosen['message'], ':reply:' + want_agent.fingerprint(trigger))
         lines.append('bound want answered with its retained working context')
         break
+    # One re-opening message in its own thread for a want whose agent has been quiet a day (a re-adopted want comes
+    # here too): one model call, counted, recorded for the spell, never repeated until the agent writes (12 November).
+    import room_work
+    for w in want_agent.read(want_agent.workspace() / 'memory/current-wants.json', []):
+        spell = want_agent.reping_due(w, want_agent.workspace(), now)
+        if spell is None: continue
+        work = working.binding(w, state, respect_pause=False)
+        if not work: continue
+        try:
+            chosen = decision(w, work, 'reping', w['agent_work']['request_id'] + ':reping:' + str(spell),
+                              {'next': 'Your agent has not answered for a day. Write one short message in this same '
+                                       'thread: where the work stands and the one thing you need from it next.',
+                               'quiet_since': spell})
+        except want_agent.WantHeld:
+            continue
+        # recorded BEFORE it is sent (review, 12 November): a process that dies between the post and its record must
+        # not ping again on the next pass - a ping lost to a crash is better than two
+        want_agent.mark_repinged(w, spell, now)
+        send_reply(w, work, chosen['message'], ':reping:' + want_agent.fingerprint(str(spell)))
+        if (str(work.get('pause_why', '')).startswith('held: agent_quiet')
+                and len(room_work.in_hand(state, now)) < room_work.MAX_OPEN):
+            work.update(paused_until=0, pause_why=''); save(state)    # its place again, only while the room has one
+        lines.append('quiet want %s re-pinged once in its thread' % w['id'])
+        break
+
     def prepare(w, work, contract):
         return decision(w, work, 'opening', w['agent_work']['request_id'],
                         {'next':'Plan this exact task and write your request to its agent.', 'contract':contract})['message']

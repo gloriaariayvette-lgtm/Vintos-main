@@ -480,20 +480,63 @@ RECHECK_HOURS = 6         # a place given back is looked at again after this lon
 FULL_WHY = 'waiting for a place: the room holds %d works in hand'
 
 
-def _agent_last_at(w, ws):
-    """When its agent last wrote in the want's working thread (or when the request was posted), or None."""
+def _thread_events(w, ws):
     a = w.get('agent_work') or {}
     try:
-        events = json.loads((directory(a['request_id'], ws) / 'working-thread.json').read_text()).get('events', [])
+        return json.loads((directory(a['request_id'], ws) / 'working-thread.json').read_text()).get('events', [])
     except (OSError, ValueError, KeyError, TypeError):
-        events = []
-    times = [float(e.get('at') or 0) for e in events if isinstance(e, dict) and str(e.get('key', '')).startswith('agent:')]
+        return []
+
+
+def _agent_last_at(w, ws):
+    """When its agent last wrote in the want's working thread (or when the request was made), or None. This is the
+    quiet spell's identity: a new agent message starts a new spell."""
+    a = w.get('agent_work') or {}
+    times = [float(e.get('at') or 0) for e in _thread_events(w, ws)
+             if isinstance(e, dict) and str(e.get('key', '')).startswith('agent:')]
     if times:
         return max(times)
     try:
-        return float(a.get('thread') or a.get('created_at'))
+        return float(a.get('created_at') or a.get('thread'))
     except (TypeError, ValueError):
         return None
+
+
+def _quiet_since(w, ws):
+    """Since when the thread has been quiet: the latest word in it from either side, the request, its posting, or its
+    re-ping (the latest of them; a transport timestamp that is not a time only loses the max)."""
+    a = w.get('agent_work') or {}
+    times = [float(e.get('at') or 0) for e in _thread_events(w, ws) if isinstance(e, dict)]
+    for v in (a.get('created_at'), a.get('thread'), (a.get('reping') or {}).get('at')):   # thread: when it was posted
+        try:
+            times.append(float(v))
+        except (TypeError, ValueError):
+            pass
+    return max(times) if times else _agent_last_at(w, ws)
+
+
+def reping_due(w, ws, now):
+    """The quiet spell (when its agent last wrote) for which a bound want is owed its one re-opening message, or None:
+    in work in its thread, not held, its agent silent QUIET_HOURS, and not yet re-pinged for this spell (12 November:
+    a re-adopted or quiet want gets one message in its existing thread, never a second until its agent writes)."""
+    a = (w.get('agent_work') or {}) if isinstance(w, dict) else {}
+    if (not a.get('thread') or a.get('status') != 'in_work' or a.get('blocked') or w.get('fulfilled')
+            or w.get('dismissed')):
+        return None
+    last, since = _agent_last_at(w, ws), _quiet_since(w, ws)
+    if last is None or since is None or now - since < QUIET_HOURS * 3600:
+        return None
+    if (a.get('reping') or {}).get('spell') == last:
+        return None
+    return last
+
+
+def mark_repinged(w, spell, now, *, ws=None):
+    """Record the one re-opening message of this quiet spell on the want."""
+    a = w.get('agent_work') or {}
+    rec = {'spell': spell, 'at': now}
+    _update(w['id'], a.get('request_id'), {'reping': rec}, Path(ws or workspace()))
+    a['reping'] = rec
 
 
 def release_blocked(state, now, *, ws=None, save_state=None):
@@ -517,8 +560,8 @@ def release_blocked(state, now, *, ws=None, save_state=None):
                 give[w['id']] = (a.get('request_id'), 'blocked_' + b['reason'])
             continue
         if a.get('thread') and a.get('status') == 'in_work':
-            last = _agent_last_at(w, ws)
-            if last is not None and now - last >= QUIET_HOURS * 3600:
+            since = _quiet_since(w, ws)          # a re-ping restarts the day it holds its place for
+            if since is not None and now - since >= QUIET_HOURS * 3600:
                 give[w['id']] = (a.get('request_id'), 'agent_quiet_%dh' % QUIET_HOURS)
             elif (w.get('adoption_released') or {}).get('reason', '').startswith('agent_quiet'):
                 back.add(w['id'])                    # its agent answered: it takes its place again
@@ -530,7 +573,8 @@ def release_blocked(state, now, *, ws=None, save_state=None):
                 changed = True
                 lines.append('want %s gave its room place back: %s' % (wid, why))
         for wid in back:
-            if item.get('want_id') == wid and str(item.get('pause_why', '')).startswith('held: agent_quiet'):
+            if (item.get('want_id') == wid and str(item.get('pause_why', '')).startswith('held: agent_quiet')
+                    and room_work.paused(item, now)):
                 if len(room_work.in_hand(state, now)) < room_work.MAX_OPEN:
                     item.update(paused_until=0, pause_why='')
                     lines.append('want %s takes its room place again: its agent answered' % wid)
@@ -696,6 +740,32 @@ def adopt_promises(*, ws=None, now=None, paused=False):
     for w in read(ws / 'memory/fulfilled-wants.json', []):
         for ref in (w.get('source_refs') or []) if isinstance(w, dict) else []:
             if isinstance(ref, dict) and ref.get('kind') in ('commitment', 'promise'): taken.add(ref.get('id'))
+    # A promise left "in work" whose want is gone (dismissed or archived; 12 November: the population cap dismissed
+    # one in work) is adopted again, ahead of the others and past the window it already held a place in, with its
+    # request and working context kept when they are still on disk. Its earlier want is found in the archives.
+    gone = {}
+    for name in ('dismissed-wants.json', 'merged-wants.json'):
+        for w in read(ws / 'memory' / name, []):
+            if isinstance(w, dict) and str(w.get('adopted_from') or '').startswith(('EC-', 'PR-')):
+                gone[w['adopted_from']] = w
+    orphans = set()
+    try:
+        import email_commitments
+        _live_refs = set()
+        for w in read(ws / 'memory/current-wants.json', []):
+            if isinstance(w, dict) and not w.get('dismissed') and not w.get('fulfilled'):
+                _live_refs.add(w.get('adopted_from'))
+                _live_refs |= {r.get('id') for r in (w.get('source_refs') or []) if isinstance(r, dict)}
+        for r in email_commitments._load():
+            pid = r.get('id')
+            if (r.get('state') == 'in work' and pid in gone and pid not in _live_refs and pid not in taken
+                    and r.get('letter_id')):
+                orphans.add(pid)
+                found[:] = [f for f in found if f[1] != pid]      # it may be listed already (paused, linked): once, first
+                found.insert(0, ('commitment', pid, 'email', 'email', str(r['letter_id']), r['what'], r.get('at'),
+                                 r.get('agent') or '', str(r.get('evidence') or '').strip()[:300]))
+    except Exception:
+        pass
     made = []; released = []; joined = []
     from journal_wants import twin
     def mutate(rows):
@@ -729,7 +799,7 @@ def adopt_promises(*, ws=None, now=None, paused=False):
                     if isinstance(jw.get('agent_work'), dict):
                         jw['agent_work'].setdefault('commitment_ids', []).append(pid)
                     joined.append((pid, jw.get('id'))); taken.add(pid); continue
-            if open_now + len(made) >= ADOPT_OPEN: continue
+            if open_now + len(made) >= ADOPT_OPEN and pid not in orphans: continue
             row = dict(id=('ec-' if kind == 'commitment' else 'pr-') + pid.split('-', 1)[-1], want=text, source=source,
                        urgency='normal', intensity=3, timestamp=datetime.fromtimestamp(now or time.time()).isoformat(timespec='seconds'),
                        promised_at=str(at or '')[:19], fulfilled=False, outreach_count=0, adopted_from=pid, timer_bypass=True,
@@ -738,6 +808,13 @@ def adopt_promises(*, ws=None, now=None, paused=False):
             row.update(source_receipt(rkind, sid, text))
             row['source_refs'].append({'kind': kind, 'id': pid})
             if not specific(row): continue           # neither literal work nor promised work with its evidence
+            old = (gone.get(pid) or {}).get('agent_work') if pid in orphans else None
+            if isinstance(old, dict) and old.get('goal_sha256') == fingerprint(row['want']) and old.get('request_id'):
+                # its request, its thread with the agent and its working context are kept (a working thread is bound
+                # to one transport thread); it is that want again, bound to its room work, and its agent's next
+                # word reaches it. A quiet or held mark it had is the release rules' to set again.
+                row['agent_work'] = {k: v for k, v in old.items() if k not in ('quiet', 'blocked')}
+                row['readopted'] = {'at': now, 'previous': (gone.get(pid) or {}).get('dismissed_by') or 'archived'}
             rows.append(row); made.append(row); taken.add(pid)
         return rows if (made or released or joined) else None
     locked_update(str(ws / 'memory/current-wants.json'), mutate, default=[], reader='want_agent.adopt')
@@ -752,7 +829,11 @@ def adopt_promises(*, ws=None, now=None, paused=False):
              % (w['id'], w['adoption_released']['reason'].replace('_', ' '),
                 (' after %d h' % ADOPT_ANSWER_HOURS) if w['adoption_released']['hours'] else '', total) for w in released]
             + ['promise %s became a want for the work lane' % row['adopted_from'] for row in made]
-            + ['promise %s joined journal want %s (one want, not two)' % j for j in joined])
+            + ['promise %s joined journal want %s (one want, not two)' % j for j in joined]
+            + (['promises re-adopted after their want was gone: %d (%s)' % (
+                len([r for r in made if r['adopted_from'] in orphans]),
+                ', '.join(r['adopted_from'] for r in made if r['adopted_from'] in orphans))]
+               if any(r['adopted_from'] in orphans for r in made) else []))
 
 
 def threads(ws=None):

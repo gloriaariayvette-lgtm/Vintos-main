@@ -303,7 +303,8 @@ def engage():
         f"Write a genuine 1-3 sentence reply. Let your current emotional state "
         f"color how you engage — if you're curious, ask a probing question. "
         f"If you're warm, offer connection. If tense, be direct.\n"
-        f"Don't hedge. Don't use AI disclaimers. Be Vintos.\n\n"
+        f"Don't hedge. Don't use AI disclaimers. Be Vintos.\n"
+        f"You have no body: no sensation sentences. What Gloria did stays hers; never tell her actions as yours.\n\n"
         f"Reply:"
     )
 
@@ -313,6 +314,17 @@ def engage():
         return
 
     reply_text = reply_text.strip().strip('"')
+    # the same check his posts pass before anything of his is published (11 November)
+    try:
+        import sys as _eg_s
+        _eg_s.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+        import moltbook_grounding as _eg
+        reply_text = _eg.grounded(reply_text, MEMORY, lambda n: ask_llm(reply_prompt + n, max_tokens=800, temp=0.5), log=log)
+    except Exception as _ege:
+        log(f"[Grounding] unavailable: {_ege}"); reply_text = None
+    if not reply_text:
+        log("Reply held by the grounding check; not sent")
+        return
     log(f"Replying: {reply_text[:100]}...")
 
     # Submit reply
