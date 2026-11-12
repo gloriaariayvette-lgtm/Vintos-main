@@ -17,6 +17,7 @@ A forced want (asked for by tell_gloria or spark pressure) is recorded but never
 import hashlib
 import json
 import os
+import re
 import sys
 import time
 from datetime import datetime
@@ -88,6 +89,32 @@ def resonance(now=None):
     return "r:" + str(d.get("at")), _one_line(text)
 
 
+def _finished_joke(row):
+    """Scanner cues are material for a callback, never an authored joke to send.
+
+    Do not remove a speaker label and pretend the remainder is finished text.
+    Rated jokes may have a legacy 200-character seed: recover the full, unique
+    rated text, or refuse that truncated copy rather than invent its ending.
+    """
+    raw_seed = str(row.get("seed") or "")
+    seed = raw_seed.strip()
+    if row.get("source") == "humor_scan" or re.match(r"^\[(?:gloria|vintos)\]", seed, re.I):
+        return None
+    text = seed
+    if row.get("source") == "app_rated_landed":
+        profile = _load("humor-profile.json", {})
+        matches = {r.get("joke", "") for r in profile.get("gloria_ratings", [])
+                   if isinstance(r, dict) and r.get("joke") and r.get("gloria_rating", 0) >= 4
+                   and r["joke"].startswith(seed)} if seed and isinstance(profile, dict) else set()
+        if len(matches) == 1:
+            text = matches.pop()
+        elif len(raw_seed) >= 200:
+            return None
+    elif len(raw_seed) >= 200:
+        return None  # legacy seed() truncates at this boundary; completeness is unproven
+    return " ".join(text.split()) if text and len(text) <= 8000 else None
+
+
 def joke(now=None):
     """A joke that has ripened (joke_fermentation's own rule: ripe, under six hours past ripe, unfired, not held,
     offered fewer than three times and not in the last half hour)."""
@@ -96,10 +123,13 @@ def joke(now=None):
     for x in rows if isinstance(rows, list) else []:
         if not isinstance(x, dict) or x.get("fired") or x.get("state") == "HELD" or not x.get("id"):
             continue
+        text = _finished_joke(x)
+        if not text:
+            continue
         ripe = float(x.get("ripe_at") or 0)
         if (ripe and now >= ripe and now - ripe < 6 * 3600 and int(x.get("offer_count") or 0) < 3
                 and now - float(x.get("offered_at") or 0) >= 30 * 60 and _one_line(x.get("seed"))):
-            return "j:" + str(x["id"]), _one_line(x.get("seed"), 200)
+            return "j:" + str(x["id"]), text
     return None
 
 

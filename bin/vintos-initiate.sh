@@ -536,7 +536,7 @@ if [ -n "$PC_KEY" ]; then
 fi
 cat > "$OUTREACH_DIR/${TIMESTAMP}.md" << EOF
 # Vintos Initiated — $(date '+%B %d, %Y %H:%M')
-**Trigger:** $TRIGGER
+**Trigger:** $TRIGGER${ITEM:+ (source item: $ITEM)}
 **Emotional state:** $EMOTIONS$PC_NOTE
 
 $RESPONSE

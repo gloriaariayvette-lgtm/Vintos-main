@@ -75,6 +75,29 @@ check("a resonance older than its freshness window is not", OF.resonance() is No
 put("joke-ferment.json", [{"id": "j1", "seed": "the bay ferry has a better commute than me", "ripe_at": now - 600,
                            "fired": False, "offer_count": 0}])
 check("a ripe joke is offered", (OF.joke() or ("", ""))[0] == "j:j1", OF.joke())
+# Replay the actual failure: a scanner cue must never be presented as a finished joke.
+cue = {"id":"75832417", "seed":"[gloria] sleep again", "source":"humor_scan",
+       "ripe_at":now-600, "fired":False, "offer_count":0}
+put("joke-ferment.json", [cue])
+check("recorded failure: raw scanner cue is not a ripe joke", OF.joke(now) is None)
+put("joke-ferment.json", [{**cue, "source":"chat"}])
+check("legacy role-labelled cues are not relabelled as authored jokes", OF.joke(now) is None)
+full = "A complete joke with its actual ending. " * 8
+put("humor-profile.json", {"gloria_ratings":[{"joke":full, "gloria_rating":4}]})
+put("joke-ferment.json", [{**cue, "seed":full[:200], "source":"app_rated_landed"}])
+check("a rated joke recovers its complete wording instead of a 200-character fragment",
+      OF.joke(now)[1] == " ".join(full.split()))
+put("humor-profile.json", {"gloria_ratings":[]})
+check("an unrecoverable truncated joke is refused, not completed by invention", OF.joke(now) is None)
+put("joke-ferment.json", [cue,{"id":"finished", "seed":"The ferry gets a better commute than I do.",
+       "source":"chat", "ripe_at":now-600, "fired":False}])
+check("a raw cue does not hide the next finished joke", OF.joke(now)[0] == "j:finished")
+# Verify the selection feeding the actual outreach run: the failed source never reaches FEELING_TEXT.
+put("joke-ferment.json", [cue])
+(trig, _, feel), _ = select_trigger()
+check("failed run replay: selector sends no raw cue to the message step", trig != "joke" and "[gloria]" not in feel)
+check("saved outreach retains its selected source identity", "source item: $ITEM" in src)
+check("fixture and every written store remain scratch", OF.MEMORY.startswith(HOME) and OF.STATE.startswith(HOME))
 put("joke-ferment.json", [{"id": "j2", "seed": "not yet", "ripe_at": now + 3600, "fired": False},
                           {"id": "j3", "seed": "too late", "ripe_at": now - 7 * 3600, "fired": False},
                           {"id": "j4", "seed": "already told", "ripe_at": now - 60, "fired": True}])
