@@ -211,9 +211,83 @@ class SelectorFailures(unittest.TestCase):
         self.assertEqual(t['priority_mode'], 'pressure')
         st = json.loads(Path(PV.STATE).read_text())
         self.assertEqual(st['override_counts']['gloria'], 1)                    # the one real override, counted once
-        rec = {'override': {'axis': 'gloria', 'pressure': 2.0, 'counted': True}}
+        rec = {'override': {'axis': 'gloria', 'pressure': 2.0, 'counted': True, 'id': 'r1'}}
         self.assertEqual(PV.refund_override(rec), 'gloria'); self.assertIsNone(PV.refund_override(rec))
         self.assertEqual(json.loads(Path(PV.STATE).read_text())['override_counts']['gloria'], 0)
+
+    # follow-up coverage (12 November): how a turn fails, how often it is given back, restarts, device turns
+    def pressed(self):
+        Path(PV.STATE).write_text(json.dumps({'neglect': {'field': 0.0, 'gloria': 1.6, 'self': 0.0}}))
+
+    def state(self):
+        return json.loads(Path(PV.STATE).read_text())
+
+    def failing_transport(self, exc):
+        def down(req, timeout=None):
+            if json.loads(req.data).get('max_tokens') == 6: return self.respond(req, timeout)
+            raise exc
+        return patch('urllib.request.urlopen', down)
+
+    def test_timeout_and_network_failures_give_the_override_back(self):
+        import socket, urllib.error
+        for exc in (socket.timeout('synthetic timeout'), TimeoutError('synthetic'), urllib.error.URLError('synthetic down')):
+            with self.subTest(exc=type(exc).__name__):
+                self.pressed()
+                with self.failing_transport(exc), self.assertRaises(type(exc)): self.select(resolve=False)
+                st = self.state()
+                self.assertGreaterEqual(st['neglect']['gloria'], 1.5)
+                self.assertEqual(st['override_counts']['gloria'], 0)
+                self.assertEqual(len(st['override_refunds']), 1); Path(PV.STATE).unlink()
+        self.assertEqual(self.rows(), [])            # a transport failure is no selector reply: no failure row
+
+    def test_exactly_one_refund_per_failed_turn(self):
+        self.pressed(); calls = []
+        real = PV.refund_override
+        def counted(rec): out = real(rec); calls.append(out); return out
+        self.answer = 'no object at all'
+        with patch.object(PV, 'refund_override', counted):
+            for _ in range(3):
+                with self.assertRaises(E.SelectorUnreadable): self.select(resolve=False)
+            self.answer = self.target(**{'gloria': copy.deepcopy(F.GLORIA)})
+            self.select(resolve=False)                                          # a turn that succeeds: none
+        self.assertEqual(calls, ['gloria'] * 3)
+        self.assertEqual(len(set(self.state()['override_refunds'])), 3)
+
+    def test_a_restart_and_retry_never_give_back_twice(self):
+        self.pressed()
+        self.answer = 'no object at all'
+        with self.assertRaises(E.SelectorUnreadable): self.select(resolve=False)
+        rec = self.rows()[0]['target']['priority_provenance']                  # the record as it was declared
+        self.assertNotIn('refunded', rec['override'])
+        before = self.state()
+        # a restart forgets everything in memory; the same record offered again gives nothing back
+        self.assertIsNone(PV.refund_override(copy.deepcopy(rec)))
+        self.assertEqual(self.state(), before)
+        # the turn retried after the crash is a new turn with its own record; its failure is given back once,
+        # and the first record still only once
+        with self.assertRaises(E.SelectorUnreadable): self.select(resolve=False)
+        after = self.state()
+        self.assertEqual(len(after['override_refunds']), 2); self.assertIn(rec['override']['id'], after['override_refunds'])
+        self.assertEqual(after['override_counts']['gloria'], 0)
+        self.assertIsNone(PV.refund_override(copy.deepcopy(rec)))
+        self.assertEqual(self.state(), after)
+
+    def test_device_and_background_turns_give_nothing_back(self):
+        self.pressed()
+        self.answer = 'no object at all'
+        with self.assertRaises(E.SelectorUnreadable): self.select(F.BUTTON, resolve=False, her_source='gcs')
+        st = self.state()
+        self.assertLess(st['neglect']['gloria'], 1.5)                           # spent, as before, and kept spent
+        self.assertNotIn('override_refunds', st)
+        self.assertNotIn('override', self.rows()[0]['target']['priority_provenance'])
+        self.pressed()
+        with PV.background():
+            rec = PV.declare()
+            self.assertIsNone(PV.refund_override(dict(rec, override={'axis': 'gloria', 'pressure': 2.0, 'id': 'bg'})))
+        self.assertNotIn('override', rec)
+        with self.assertRaises(E.SelectorUnreadable): self.select(resolve=False, persist=False)   # a preview
+        self.assertNotIn('override_refunds', self.state())
+        self.assertIsNone(PV.refund_override({'override': {'axis': 'gloria', 'pressure': 2.0}}))  # no id: none
 
     def test_no_override_means_nothing_to_give_back(self):
         self.assertIsNone(PV.refund_override({'weights': {}, 'mode': 'strategic'}))

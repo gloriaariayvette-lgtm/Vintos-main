@@ -13,6 +13,7 @@ The voice route's background lead recompute (every ~120 s, off the hot path) run
 it declares inside `background()`, which reads the vector without accumulating neglect, consuming an
 override, or moving the streak or the arc. Before this the override followed call frequency.
 """
+import uuid
 import json, os, time, threading, contextlib
 from datetime import datetime
 
@@ -313,10 +314,11 @@ def _declare(eligible=True):
            "mode": "pressure" if forced else "strategic",
            "receptivity": recept, "why": "; ".join(why), "arc": st["arc"], "foreground": fg,
            "gloria_opportunity": due}
-    if forced and fg:
+    if forced and fg and eligible:
         # what refund_override gives back if the turn fails: the neglect spent, and the count it added (unless
-        # that count already graduated to a question, which stays asked)
-        rec["override"] = {"axis": forced, "pressure": spent, "counted": counted}
+        # that count already graduated to a question, which stays asked). A device or room event (not eligible)
+        # is not one of her turns: its override is never given back. The id makes the give-back once only.
+        rec["override"] = {"axis": forced, "pressure": spent, "counted": counted, "id": uuid.uuid4().hex}
     try:
         with open(LOG, "a") as f: f.write(json.dumps(rec) + "\n")   # immutable, pre-turn
     except Exception: pass
@@ -338,11 +340,18 @@ def refund_override(rec):
     o = (rec or {}).get("override") if isinstance(rec, dict) else None
     if not _foreground() or not isinstance(o, dict) or o.get("axis") not in AXES or o.get("refunded"):
         return None
+    if not isinstance(o.get("id"), str) or not o["id"]:
+        return None                  # only a record this module declared for one of her turns is given back
     try: p = float(o.get("pressure") or 0)
     except (TypeError, ValueError): return None
     with _turn_state(STATE):
         st = _jload(STATE, {})
         if not isinstance(st, dict): st = {}
+        done = st.get("override_refunds") if isinstance(st.get("override_refunds"), list) else []
+        if o["id"] in done:          # given back already, by this process or one before a restart
+            o["refunded"] = True
+            return None
+        st["override_refunds"] = (done + [o["id"]])[-50:]
         neg = st.get("neglect") if isinstance(st.get("neglect"), dict) else {a: 0.0 for a in AXES}
         neg[o["axis"]] = round(max(float(neg.get(o["axis"], 0) or 0), p), 3)
         st["neglect"] = neg
