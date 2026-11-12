@@ -496,6 +496,30 @@ def _agent_last_at(w, ws):
         return None
 
 
+def reping_due(w, ws, now):
+    """The quiet spell (when its agent last wrote) for which a bound want is owed its one re-opening message, or None:
+    in work in its thread, not held, its agent silent QUIET_HOURS, and not yet re-pinged for this spell (12 November:
+    a re-adopted or quiet want gets one message in its existing thread, never a second until its agent writes)."""
+    a = (w.get('agent_work') or {}) if isinstance(w, dict) else {}
+    if (not a.get('thread') or a.get('status') != 'in_work' or a.get('blocked') or w.get('fulfilled')
+            or w.get('dismissed')):
+        return None
+    last = _agent_last_at(w, ws)
+    if last is None or now - last < QUIET_HOURS * 3600:
+        return None
+    if (a.get('reping') or {}).get('spell') == last:
+        return None
+    return last
+
+
+def mark_repinged(w, spell, now, *, ws=None):
+    """Record the one re-opening message of this quiet spell on the want."""
+    a = w.get('agent_work') or {}
+    rec = {'spell': spell, 'at': now}
+    _update(w['id'], a.get('request_id'), {'reping': rec}, Path(ws or workspace()))
+    a['reping'] = rec
+
+
 def release_blocked(state, now, *, ws=None, save_state=None):
     """Give back the places of wants that cannot move: held on a block that cannot clear by itself (at once), held on
     another block for ADOPT_ANSWER_HOURS, or bound with no agent reply for QUIET_HOURS. Its room work is paused for
@@ -518,7 +542,10 @@ def release_blocked(state, now, *, ws=None, save_state=None):
             continue
         if a.get('thread') and a.get('status') == 'in_work':
             last = _agent_last_at(w, ws)
-            if last is not None and now - last >= QUIET_HOURS * 3600:
+            rp = a.get('reping') or {}
+            if rp.get('spell') == last and last is not None and now - float(rp.get('at') or 0) < QUIET_HOURS * 3600:
+                back.add(w['id'])                    # re-pinged in this spell: it holds its place for a day
+            elif last is not None and now - last >= QUIET_HOURS * 3600:
                 give[w['id']] = (a.get('request_id'), 'agent_quiet_%dh' % QUIET_HOURS)
             elif (w.get('adoption_released') or {}).get('reason', '').startswith('agent_quiet'):
                 back.add(w['id'])                    # its agent answered: it takes its place again
@@ -530,7 +557,8 @@ def release_blocked(state, now, *, ws=None, save_state=None):
                 changed = True
                 lines.append('want %s gave its room place back: %s' % (wid, why))
         for wid in back:
-            if item.get('want_id') == wid and str(item.get('pause_why', '')).startswith('held: agent_quiet'):
+            if (item.get('want_id') == wid and str(item.get('pause_why', '')).startswith('held: agent_quiet')
+                    and room_work.paused(item, now)):
                 if len(room_work.in_hand(state, now)) < room_work.MAX_OPEN:
                     item.update(paused_until=0, pause_why='')
                     lines.append('want %s takes its room place again: its agent answered' % wid)
