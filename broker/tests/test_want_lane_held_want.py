@@ -58,7 +58,7 @@ class Tests(unittest.TestCase):
                 (W, 'load', lambda *a, **k: {'events': [], 'generations': {}}), (W, 'append', lambda *a, **k: None),
                 (W, 'answered', lambda *a, **k: None),
                 (W, 'unanswered', lambda w, work, ws: [{'key': 'agent:fixture-1'}] if w['id'] == 'stuck' else []),
-                (W, 'binding', lambda w, state: {'id': (w.get('agent_work') or {}).get('work_id') or 'RW-x'}
+                (W, 'binding', lambda w, state, *a, **k: {'id': (w.get('agent_work') or {}).get('work_id') or 'RW-x'}
                                                  if (w.get('agent_work') or {}).get('thread') else None),
                 (A, 'receive', lambda rows, **k: []), (A, 'finish', lambda *a, **k: []),
                 (D, 'STATE', str(self.mem / 'room.json')), (D, '_guarded', lambda s: [])):

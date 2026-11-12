@@ -2563,6 +2563,23 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
     def _is_protected(w):
         if w.get("board") or w.get("gloria_routed") or w.get("manually_routed"):
             return True       # her silence is never a no; after a week it parks off the board instead (want_board)
+        # A want an agent is working, or that carries a promise he owes, is never the cap's to dismiss (12 November:
+        # the cap dismissed an adopted promise-want in work, and its promise stayed "in work" with no want).
+        _aw = w.get("agent_work") if isinstance(w.get("agent_work"), dict) else {}
+        # ... while that work or promise is live: finished agent work, a promise kept another way, or a place given
+        # back more than two weeks ago no longer protects (review, 12 November: the protected set must not grow for ever)
+        _rel = w.get("adoption_released") if isinstance(w.get("adoption_released"), dict) else {}
+        _rel_old = False
+        try: _rel_old = bool(_rel) and (__import__("time").time() - float(_rel.get("at") or 0)) > 14 * 86400
+        except (TypeError, ValueError): pass
+        if (_aw.get("status") in ("completed", "dropped") or _rel.get("reason") == "kept_another_way" or _rel_old):
+            _aw = {}
+        elif (_aw or w.get("adopted_from") or _aw.get("commitment_ids") or _aw.get("promise_ids")
+                or any(isinstance(r, dict) and r.get("kind") in ("commitment", "promise") for r in (w.get("source_refs") or []))):
+            return True
+        if any(isinstance(s, dict) and str(s.get("capability") or "").lower() in ("gloria", "you")
+               and s.get("status") != "completed" for s in (w.get("steps") or [])) and w.get("outreach_count"):
+            return True       # routed to her with a step only she can answer still pending
         try:
             done = [datetime.fromisoformat(str(h.get("completed_at"))[:26]) for h in (w.get("step_history") or [])
                     if isinstance(h, dict) and h.get("completed_at")]
@@ -2577,6 +2594,9 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
     protected = [w for w in wants if not w.get("fulfilled") and not w.get("dismissed") and _is_protected(w)]
     unprotected = [w for w in wants if not w.get("fulfilled") and not w.get("dismissed") and not _is_protected(w)]
     _evicted_now = unprotected[:-10]
+    if _evicted_now:
+        print(f"[express_want] population cap: {len(_evicted_now)} dismissed, {len(protected)} protected "
+              f"(agent work, promises, routed to her, worked lately or parked)", file=__import__("sys").stderr)
     if _evicted_now:
         _dw_file = wants_file.replace("current-wants", "dismissed-wants")
         try:
