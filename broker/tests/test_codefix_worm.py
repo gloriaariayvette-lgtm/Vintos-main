@@ -22,7 +22,11 @@ def check(n, ok, d=""):
 check("every store is throwaway", all(p.startswith(HOME) for p in (W.PROPOSALS, W.PATCHES, W.CALLS, W.COUNTS,
                                                                    W.FORGE_LIST, W.FAULTS, W.LOCK, W.PROFILE)))
 
-WT = os.path.join(HOME, "review-scratch-x", "clone"); os.makedirs(os.path.join(WT, "scripts"))
+def git(*a, cwd=None):
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", *a], cwd=cwd, check=True, capture_output=True, env=env)
+WT = os.path.realpath(os.path.join(HOME, "review-scratch-x", "clone")); os.makedirs(os.path.join(WT, "scripts"))
+git("init", "-q", WT)
 SRC = os.path.join(WT, "scripts", "thing.py")
 with open(SRC, "w") as f: f.write("def f():\n    return 1\n")
 BEFORE = open(SRC).read()
@@ -111,6 +115,42 @@ out = subprocess.run([sys.executable, os.path.join(REPO, "scripts", "codefix_wor
 shown = json.loads(out.stdout)
 check("--show lists the proposals waiting for review", out.returncode == 0 and len(shown["proposed"]) == 2
       and shown["counts"]["calls"] == 11, out.stderr[-300:])
+
+# review: the guard cannot be walked around. The profile runs from its own directory, so the path it gets must be the
+# path that was checked; a linked worktree of the deploy checkout writes into his repository; GIT_DIR steers nothing.
+git("init", "-q", live); git("commit", "-q", "--allow-empty", "-m", "i", cwd=live)
+linked = os.path.join(HOME, "review-scratch-x", "linked"); git("worktree", "add", "-q", "--detach", linked, cwd=live)
+r_linked = W.hand(item(worktree=linked), runner=never)
+check("a linked worktree of the deploy checkout is refused", r_linked["status"] == "rejected"
+      and "repository of his live code" in r_linked["reason"], r_linked)
+os.symlink(live, os.path.join(HOME, "review-scratch-x", "alias"))
+for name, wt in (("a symlink", os.path.join(HOME, "review-scratch-x", "alias")), ("a trailing slash", live + "//"),
+                 ("a dotted path", os.path.join(HOME, "review-scratch-x", "..", "Vintos-main", "."))):
+    r = W.hand(item(worktree=wt), runner=never)
+    check("the deploy checkout behind %s is refused" % name, r["status"] == "rejected" and "deploy checkout" in r["reason"], r)
+plain = os.path.join(HOME, "review-scratch-x", "plain"); os.makedirs(plain)
+check("a directory that is no git checkout is refused", "not a git checkout" in W.hand(item(worktree=plain), runner=never)["reason"])
+os.makedirs(os.path.dirname(W.PROFILE), exist_ok=True)
+with open(W.PROFILE, "w") as f:
+    f.write("import json,os,sys\nfrom pathlib import Path\nreq=json.load(open(sys.argv[1]))\n"
+            "print(json.dumps({'status':'unfixed','rounds':0,'reason':str(Path(req['worktree']).resolve())+'|'+"
+            "str(os.environ.get('GIT_DIR'))}))\n")
+here = os.getcwd(); os.chdir(os.path.dirname(WT))
+os.environ["GIT_DIR"] = os.path.join(live, ".git")
+try:
+    r_rel = W.hand(item(worktree=os.path.basename(WT)), runner=W.call_profile)
+finally:
+    os.chdir(here); del os.environ["GIT_DIR"]
+check("a relative worktree reaches the profile as the checked absolute path, with no GIT_DIR",
+      r_rel["status"] == "unfixed" and r_rel["reason"] == WT + "|None", r_rel)
+check("a runner with no result is a counted rejection", W.hand(item(), runner=lambda req: None)["status"] == "rejected")
+bad = os.path.join(HOME, "bad-item.json"); open(bad, "w").write("{not json")
+out = subprocess.run([sys.executable, os.path.join(REPO, "scripts", "codefix_worm.py"), "hand", bad], capture_output=True,
+                     text=True, env=dict(os.environ))
+check("an unreadable item file is a counted refusal", out.returncode == 2 and json.loads(out.stdout)["status"] == "rejected"
+      and json.load(open(W.COUNTS))["calls"] == 11 + 8, (out.stdout[-300:], out.stderr[-300:]))
+check("no proposal was ever applied", all(v.get("applied") is False for v in json.load(open(W.PROPOSALS)).values())
+      and open(SRC).read() == BEFORE)
 
 srv = open(os.path.join(REPO, "scripts", "deploy-atelier.sh")).read()
 check("the caller is in the deploy", " codefix_worm.py" in srv)

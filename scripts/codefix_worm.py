@@ -44,9 +44,37 @@ SOURCES = ("fault", "forge", "manual")
 
 
 def _protected():
-    """His live code and the deploy checkout: the worm reads a worktree but is never pointed at these."""
-    home = os.path.expanduser("~")
-    return [os.path.realpath(os.path.join(home, p)) for p in ("Vintos-main", "Vintos", ".vintos")]
+    """His live code and the deploy checkout: the worm reads a worktree but is never pointed at these.
+    Both the HOME in the environment and the account's own home, so a changed HOME does not move them."""
+    homes = {os.path.expanduser("~")}
+    try:
+        import pwd
+        homes.add(pwd.getpwuid(os.getuid()).pw_dir)
+    except (ImportError, KeyError):
+        pass
+    return sorted({os.path.realpath(os.path.join(h, p)) for h in homes for p in ("Vintos-main", "Vintos", ".vintos")})
+
+
+def _inside(path, roots):
+    for p in roots:
+        if path == p or path.startswith(p + os.sep):
+            return p
+    return ""
+
+
+def _git_env():
+    """The caller's GIT_DIR / GIT_WORK_TREE / GIT_INDEX_FILE never steer git to another repository."""
+    return {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+
+
+def _git_common_dir(real):
+    """The repository a worktree writes into (a linked worktree shares its main checkout's .git), or None."""
+    try:
+        out = subprocess.run(["git", "-C", real, "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                             capture_output=True, text=True, timeout=30, env=_git_env())
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return os.path.realpath(out.stdout.strip()) if out.returncode == 0 and out.stdout.strip() else None
 
 
 def _load(path, default):
@@ -95,10 +123,17 @@ def refusal(item):
     wt = item.get("worktree")
     if not wt or not os.path.isdir(wt):
         return "worktree missing"
-    real = os.path.realpath(wt)
-    for p in _protected():
-        if real == p or real.startswith(p + os.sep):
-            return "worktree is his live code or the deploy checkout (%s); use a review clone" % p
+    real = os.path.realpath(wt)      # symlinks, "..", trailing slashes and relative paths all end here
+    protected = _protected()
+    p = _inside(real, protected)
+    if p:
+        return "worktree is his live code or the deploy checkout (%s); use a review clone" % p
+    common = _git_common_dir(real)
+    if not common:
+        return "worktree is not a git checkout"
+    p = _inside(common, protected)
+    if p:     # a linked worktree of the deploy checkout: the worm would write objects and worktrees into his repo
+        return "worktree belongs to the repository of his live code or the deploy checkout (%s); use a review clone" % p
     return ""
 
 
@@ -111,7 +146,7 @@ def call_profile(request):
         json.dump(request, f)
     try:
         out = subprocess.run([sys.executable, PROFILE, path], capture_output=True, text=True, timeout=TIMEOUT_S,
-                             cwd=os.path.dirname(PROFILE))
+                             cwd=os.path.dirname(PROFILE), env=_git_env())
     except subprocess.TimeoutExpired:
         return {"status": "rejected", "reason": "profile timed out after %ds" % TIMEOUT_S}
     finally:
@@ -138,6 +173,8 @@ def parse_result(stdout):
 
 def hand(item, runner=call_profile, now=None):
     """One call to the worm. Returns the row logged for it. A fixed result is queued for review, never applied."""
+    if not isinstance(item, dict):
+        item = {}
     now = now or time.time()
     at = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(now))
     source = item.get("source") if item.get("source") in SOURCES else "manual"
@@ -147,17 +184,20 @@ def hand(item, runner=call_profile, now=None):
     res = None
     lock = None
     if not why:
-        lock = open(LOCK, "a")
         try:
+            lock = open(LOCK, "a")
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError:
-            why = "busy: the code-fix worm's nightly loop is running; hand it again later"
+            why = "busy: the code-fix worm's nightly loop is running (or its lock %s cannot be taken); hand it again later" % LOCK
     try:
         if why:
             res = {"status": "rejected", "reason": why}
         else:
             request = {k: item[k] for k in ("issue", "worktree", "test_files", "source_files", "regression_tests",
                                             "max_rounds") if k in item}
+            # the path that was checked is the path the worm gets: the profile runs from its own directory, where a
+            # relative path (or one through a symlink swapped since) would name another checkout
+            request["worktree"] = os.path.realpath(item["worktree"])
             try:
                 res = runner(request)
             except Exception as e:      # the worm failing is an outcome to count, not a crash of the caller
@@ -165,6 +205,25 @@ def hand(item, runner=call_profile, now=None):
     finally:
         if lock:
             lock.close()
+    if not isinstance(res, dict):
+        res = {"status": "rejected", "reason": "the worm returned no result"}
+    with _store_lock():
+        return _record(item, res, row, cid, at, source)
+
+
+class _store_lock:
+    """One writer at a time for the proposals, the call log and the counts."""
+    def __enter__(self):
+        os.makedirs(MEM, exist_ok=True)
+        self.f = open(os.path.join(MEM, ".codefix-worm.lock"), "a")
+        fcntl.flock(self.f, fcntl.LOCK_EX)
+        return self
+
+    def __exit__(self, *exc):
+        self.f.close()
+
+
+def _record(item, res, row, cid, at, source):
     status = res.get("status") if res.get("status") in ("fixed", "unfixed", "rejected") else "rejected"
     if status == "fixed" and not str(res.get("patch") or "").strip():
         status, res = "rejected", dict(res, reason="worm said fixed but returned no patch")
@@ -174,10 +233,10 @@ def hand(item, runner=call_profile, now=None):
         os.makedirs(PATCHES, exist_ok=True)
         patch_path = os.path.join(PATCHES, cid + ".patch")
         with open(patch_path, "w") as f:
-            f.write(res["patch"])
+            f.write(str(res["patch"]))
         props = _load(PROPOSALS, {})
         props[cid] = {"at": at, "source": source, "ref": item.get("ref"), "issue": row["issue"],
-                      "patch_file": patch_path, "worktree": item.get("worktree"),
+                      "patch_file": patch_path, "worktree": os.path.realpath(item["worktree"]),
                       "test_files": list(item.get("test_files") or []), "source_files": list(item.get("source_files") or []),
                       "rounds": res.get("rounds"), "task_id": res.get("task_id"), "checked": res.get("checked"),
                       "summary": str(res.get("summary") or "")[:1200], "writer_adapter": res.get("writer_adapter"),
@@ -207,8 +266,12 @@ def candidates():
 
 def main(argv):
     if argv[:1] == ["hand"] and len(argv) == 2:
-        with open(argv[1]) as f:
-            row = hand(json.load(f))
+        try:
+            with open(argv[1]) as f:
+                item = json.load(f)
+        except (OSError, ValueError) as e:     # still a call: refused and counted
+            item = {"source": "manual", "ref": None, "issue": "unreadable item file (%s)" % type(e).__name__}
+        row = hand(item)
         print(json.dumps(row, indent=1, sort_keys=True))
         return 0 if row["status"] != "rejected" else 2
     if argv == ["--show"]:
