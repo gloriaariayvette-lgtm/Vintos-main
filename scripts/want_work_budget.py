@@ -8,6 +8,22 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 DEFAULTS = {'per_want_calls': 8, 'daily_calls': 16, 'context_chars': 120000}   # his identity alone may be 60000
+# The day's calls are paced over the day (12 November: all 16 went between 00:02 and 00:37, then about 120 passes sat
+# idle while five agent wants waited some 23 hours). By the end of each hour of the day at most
+# ceil(daily_calls x hours begun / 24) + PACE_BURST calls may have been made; an hour left unused carries over to
+# the next. The daily cap itself is unchanged and still the last word. PACE_BURST lets one decision with its shape
+# retries or its fallback lane finish in the hour it starts.
+PACE_BURST = 2
+ZONE = 'America/Chicago'
+
+
+def _hour(now):
+    return datetime.fromtimestamp(now, ZoneInfo(ZONE)).hour
+
+
+def paced_allowance(daily, now):
+    """How many of the day's calls may have been made by the end of the hour `now` falls in."""
+    return min(daily, -(-daily * (_hour(now) + 1) // 24) + PACE_BURST)
 
 
 class WorkBlocked(RuntimeError):
@@ -77,8 +93,11 @@ def reserve(ws, request_id, attempt_id, lane, now=None):
         if attempt_id in calls: raise WorkBlocked('attempt_already_reserved')
         if sum(c['request_id'] == request_id for c in calls.values()) >= limits['per_want_calls']:
             raise WorkBlocked('per_want_call_cap')
-        if sum(c['day'] == day for c in calls.values()) >= limits['daily_calls']:
+        today = sum(c['day'] == day for c in calls.values())
+        if today >= limits['daily_calls']:
             raise WorkBlocked('daily_call_cap')
+        if today >= paced_allowance(limits['daily_calls'], now):
+            raise WorkBlocked('hourly_call_pace')     # this hour's share is used; the next hour adds to it
         calls[attempt_id] = {'request_id':request_id,'day':day,'lane':lane,'at':now,'state':'intent'}
         temp = root / ('.calls-' + uuid.uuid4().hex)
         try:

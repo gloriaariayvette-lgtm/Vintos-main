@@ -3074,7 +3074,9 @@ def agent_wants_pass(api, channel, dot, state, now, rows=(), put=None, notify=No
                 raise
             if exc.reason in want_agent.DAY_WIDE:
                 calls_left[0] = 0
-                held_lines.append('want lane: the day\'s working calls are used; no more calls today')
+                held_lines.append('want lane: this hour\'s share of the day\'s working calls is used; more next hour'
+                                  if exc.reason == 'hourly_call_pace' else
+                                  'want lane: the day\'s working calls are used; no more calls today')
             else:
                 rec = want_agent.hold(w, exc.reason, now)
                 held_lines.append('bound want %s held: %s (request %s, %d passes); the rest of the lane goes on'

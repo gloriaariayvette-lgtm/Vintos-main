@@ -54,7 +54,7 @@ b2=C.body('claude-haiku-5-5',D.for_claude(ctx,'\n','fixed rules'),'new room',150
 assert b['system'][0]==b2['system'][0] and b['system'][1]!=b2['system'][1]
 sys.modules['model_router']=types.SimpleNamespace(current_claude_model=lambda:'claude-opus-4-8')
 assert L.voice('s','u')[1]=='claude-sonnet-5-5'
-sys.modules['model_router'].current_claude_model=lambda:'claude-fable-5-1'
+sys.modules['model_router'].current_claude_model=lambda:'claude-fable-5-2'
 assert L.voice('s','u')[1]=='gpt-6-astra'
 r={"model":"claude-haiku-5-5","in":100000,"cache_write":0,"cache_read":0,"out":0}
 assert abs(C.cost(r)-0.01)<1e-9
