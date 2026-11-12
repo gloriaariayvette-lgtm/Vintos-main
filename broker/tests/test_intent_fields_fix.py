@@ -74,6 +74,8 @@ class IntentFieldsFix(unittest.TestCase):
         # check at selection finds nothing already met.
         self.stack.enter_context(patch.object(E, '_sol_judge', lambda packet: IntentFieldsFix.sol(self, packet)))
         self.stack.enter_context(patch.object(E, '_stale_gloria', return_value='not_met'))
+        # the resolver inline, as these tests read it; the background resolver has its own tests (gloria_judge_sol)
+        self.stack.enter_context(patch.object(E, 'RESOLVE_IN_BACKGROUND', False))
         self.stack.enter_context(patch.object(E, '_identity_signals', return_value='my authored wants'))
         self.stack.enter_context(patch.object(E, '_spark_fields', return_value='my authored field'))
         self.stack.enter_context(patch.object(E, '_nudge_valence'))

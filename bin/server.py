@@ -9410,8 +9410,10 @@ def _voice_lead_kick(turns_source=None):
                 def _ld_work():
                     try:
                         import sys as _lds; _lds.path.insert(0, os.path.join(WORKSPACE, "scripts"))
-                        from intent_engine import select_target as _seltgt, resolve_previous as _resolve_spoken_intent
-                        _resolve_spoken_intent()  # only inputs captured on actual voice admission, never this reply itself
+                        from intent_engine import select_target as _seltgt, _kick_resolver as _resolve_spoken_intent
+                        # only inputs captured on actual voice admission, never this reply itself; through the one
+                        # background resolver, so a voice pass and a chat pass never judge the same move twice
+                        _resolve_spoken_intent()
                         _turns = (turns_source() or [])[-6:]
                         _recent = "\n".join(("Gloria: " + (t.get("gloria") or "") + "\nVintos: " + (t.get("vintos") or "")) for t in _turns)
                         # background lead recompute reads campaign state but does NOT step it —

@@ -225,7 +225,7 @@ class EngineOnSol(unittest.TestCase):
             release.wait(10); return 'met'
         with patch.object(GJ, 'stale_check', slow), patch.object(E, 'GLORIA_STALE_BOUND', 0.3):
             t0 = time.monotonic()
-            self.assertEqual(STALE_GLORIA(GLORIA, 'yes'), 'timeout')
+            self.assertEqual(STALE_GLORIA(GLORIA, 'yes'), 'pending')
             self.assertLess(time.monotonic() - t0, 3)
         self.answer = self.target(gloria=copy.deepcopy(GLORIA))
         for how in (slow, Mock(side_effect=RuntimeError('fixture: sol is down'))):
@@ -233,7 +233,101 @@ class EngineOnSol(unittest.TestCase):
                     patch.object(GJ, 'stale_check', how), patch.object(E, 'GLORIA_STALE_BOUND', 0.3):
                 t = self.turn(resolve=False)                                      # her turn goes on, normally
                 self.assertEqual(t['gloria'], GLORIA)
-                self.assertIn(t['selection_check']['stale'], ('timeout', 'error'))
+                self.assertIn(t['selection_check']['stale'], ('pending', 'error'))
+
+    def test_a_late_stale_answer_follows_the_move_and_settles_it_in_code(self):
+        import threading, time
+        release = threading.Event(); self.addCleanup(release.set)
+        def slow(ax, words):
+            release.wait(10); return 'met'
+        self.answer = self.target(gloria=copy.deepcopy(GLORIA))
+        with patch.object(E, '_stale_gloria', STALE_GLORIA), patch.object(GJ, 'stale_check', slow), \
+                patch.object(E, 'GLORIA_STALE_BOUND', 0.3):
+            t0 = time.monotonic(); t = self.turn(resolve=False)
+            self.assertLess(time.monotonic() - t0, 3)
+        self.assertEqual((t['gloria'], t['selection_check']['stale']), (GLORIA, 'pending'))   # nothing refused on her turn
+        self.assertEqual(E._stale_late(t['intent_id']), '')
+        release.set()
+        for _ in range(100):
+            if E._stale_late(t['intent_id']): break
+            time.sleep(0.05)
+        self.assertEqual(E._stale_late(t['intent_id']), 'met')                  # kept under the move's id
+        with self.sol(SOL_YES):
+            E.resolve_previous('GLORIA (now): a synthetic answer.')
+            self.assertEqual(self.packets, [])                                    # settled in code, Sol not asked
+        row = self.rows()[-1]
+        self.assertEqual((row['realized']['gloria'], row['gloria_judge']['reason']), ('NOT_JUDGEABLE', 'criterion_already_met'))
+        self.assertEqual(PV._axis_history()['gloria']['n'], 0)
+
+    # ---- the judge off her turn --------------------------------------------------------------------------
+    def blocking_sol(self, release):
+        """A Sol that holds its answer until `release`; its packets are kept in self.packets."""
+        self.packets = []
+        def judge(packet):
+            self.packets.append(packet)
+            if not release.wait(10): raise AssertionError('fixture release timed out')
+            return copy.deepcopy(SOL_YES)
+        return patch.object(E, '_sol_judge', judge)
+
+    def test_her_turn_never_waits_on_sol_and_each_verdict_lands_once(self):
+        import threading, time
+        release = threading.Event(); self.addCleanup(release.set); self.addCleanup(E.resolver_wait, 15)
+        self.answer = self.target(gloria=copy.deepcopy(GLORIA)); self.verdict = 'YES'
+        first = self.move()
+        with self.blocking_sol(release), patch.object(E, 'RESOLVE_IN_BACKGROUND', True):
+            t0 = time.monotonic()
+            self.turn(HER)                                                        # Sol is out on the earlier move
+            self.turn('GLORIA (now): a second synthetic line.')                   # and a second turn meanwhile
+            took = time.monotonic() - t0
+            self.assertLess(took, 3)                                              # her turns did not wait on it
+            rows = self.rows()
+            self.assertEqual(rows[0]['intent_id'], first['intent_id'])
+            self.assertIsNone(rows[0]['realized']['gloria'])                      # pending, her reply on it
+            self.assertTrue(rows[0]['response_text'] and rows[0]['response_at'])
+            self.assertEqual(len(self.packets), 1)                                # one resolver at a time
+            release.set()
+            self.assertTrue(E.resolver_wait(15))
+            rows = self.rows()
+            self.assertEqual([r['realized']['gloria'] for r in rows], ['YES', 'YES', None])   # each move once, the last waits
+            self.assertEqual(len(self.packets), 2)
+            self.assertFalse(any('resolution_dropped' in r for r in rows))
+            E._kick_resolver(''); self.assertTrue(E.resolver_wait(15))           # nothing judged again
+            self.assertEqual(len(self.packets), 2)
+        keys = [c.args[3]['effect_key'] for c in sys.modules['outcome_join'].record.call_args_list]
+        for r in rows[:2]:
+            self.assertEqual(sum(k.startswith(r['intent_id'] + ':outcome') for k in keys), 1)
+        self.assertEqual(PV._axis_history()['gloria']['YES'], 2)
+
+    def test_a_restart_while_the_verdict_is_pending_judges_it_once_after(self):
+        import signal, threading, time
+        self.answer = self.target(gloria=copy.deepcopy(GLORIA)); self.verdict = 'YES'
+        first = self.move()
+        pid = os.fork()
+        if pid == 0:                                                              # the process that goes down
+            try:
+                signal.alarm(60); done = threading.Event()
+                def dying(packet):
+                    done.wait(10); os._exit(7)                                    # it stops with Sol still out
+                with patch.object(E, '_sol_judge', dying), patch.object(E, 'RESOLVE_IN_BACKGROUND', True):
+                    self.turn(HER); done.set(); time.sleep(20)
+                os._exit(9)
+            finally:
+                os._exit(10)
+        self.assertEqual(os.waitstatus_to_exitcode(os.waitpid(pid, 0)[1]), 7)
+        rows = self.rows()
+        self.assertEqual(len(rows), 2)
+        self.assertIsNone(rows[0]['realized']['gloria']); self.assertTrue(rows[0]['response_text'])   # still pending
+        with self.sol(SOL_YES), patch.object(E, 'RESOLVE_IN_BACKGROUND', True):  # the process that comes back
+            self.turn('GLORIA (now): after the restart.')
+            self.assertTrue(E.resolver_wait(15))
+            self.assertEqual([r['realized']['gloria'] for r in self.rows()], ['YES', 'YES', None])   # both, on that one pass
+            E._kick_resolver(''); self.assertTrue(E.resolver_wait(15))
+        rows = self.rows()
+        self.assertEqual(rows[0]['realized']['gloria'], 'YES')
+        self.assertEqual(sum(p['his_reply'] == rows[0]['reply'] and p['her_next_reply'] == E._her_live_words(HER)
+                             for p in self.packets), 1)                           # judged on her reply then, once
+        keys = [c.args[3]['effect_key'] for c in sys.modules['outcome_join'].record.call_args_list]
+        self.assertEqual(sum(k.startswith(first['intent_id'] + ':outcome') for k in keys), 1)
 
     def test_stale_switch_is_read_from_vintos_env_too(self):
         with patch.object(GJ, 'stale_check', return_value='met') as sc, \

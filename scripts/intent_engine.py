@@ -567,7 +567,15 @@ def _select_target(recent_text, resolve, step_campaign, persist, her_source, _tu
     # message remains the thing that resolves it.
     _tsf = []     # this selection's turn-state writes that failed or went unprotected
     if resolve and persist:
-        _guarded("resolve_previous", lambda: resolve_previous(recent_text, **({"source": her_source} if her_source else {})), _tsf, whole=True)
+        if RESOLVE_IN_BACKGROUND:
+            # Her turn never waits on a judge (review, 12 November): her reply is noted on the waiting move now -
+            # before this turn's own move can be delivered - and the judging (Sol for her axis) runs in the one
+            # background resolver. A verdict already settled is used; one still out lands later and counts from
+            # the next turn on, and this selection reads the weights as they stand.
+            _guarded("note_response", lambda: note_response(recent_text, **({"source": her_source} if her_source else {})), _tsf)
+            _guarded("resolve_previous", lambda: _kick_resolver(recent_text, her_source), _tsf, whole=True)
+        else:
+            _guarded("resolve_previous", lambda: resolve_previous(recent_text, **({"source": her_source} if her_source else {})), _tsf, whole=True)
     try:
         from discourse_direction import get_direction_hint as _dd_gdh
         _dd_gdh(recent_text[-300:])   # updates direction AND records his drift - every chat surface
@@ -801,8 +809,9 @@ def _select_target(recent_text, resolve, step_campaign, persist, her_source, _tu
     # its absence next is no miss (12 November): such a gloria criterion is refused here - her axis is left
     # undeclared as criterion_already_met. Sol is asked, on her own live turns only; a check that cannot answer
     # refuses nothing, and the judge's own rule still holds the verdict back.
+    _iid = uuid.uuid4().hex
     if persist and _eligible and isinstance(_t.get("gloria"), dict) and _t.get("gloria") and "gloria" not in _abst:
-        _check["stale"] = _stale_gloria(_t["gloria"], _her_live_words(recent_text, her_source))
+        _check["stale"] = _stale_gloria(_t["gloria"], _her_live_words(recent_text, her_source), intent_id=_iid)
         if _check["stale"] == "met":
             _abst["gloria"] = "already_met"
     _crit = _abst.pop("field", "")
@@ -824,7 +833,7 @@ def _select_target(recent_text, resolve, step_campaign, persist, her_source, _tu
             _check["gloria_opportunity"] = "abstained"
             _t["gloria_abstained"] = "declined" if str(_t.get("gloria_decline") or "").strip() else "no_answer"
     _t["selection_check"] = _check
-    _t["intent_id"] = uuid.uuid4().hex
+    _t["intent_id"] = _iid
     _t["selected_at"] = datetime.now().isoformat()
     _sg_candidate = _t.pop("stratagem", None)
     if persist and isinstance(_sg_candidate, dict):
@@ -1007,7 +1016,29 @@ def _sol_judge(packet):
     return gloria_judge.judge(packet)
 
 
-GLORIA_STALE_BOUND = 20     # seconds: the most the check may hold her turn, whatever the socket does (review)
+GLORIA_STALE_BOUND = 2      # seconds her turn may wait on the check; a later answer is kept for the move (review)
+GLORIA_STALE_LATE = "gloria-stale-late.json"   # {intent_id: {"result", "at"}}: answers that came after the bound
+
+
+def _stale_late(intent_id):
+    """The check's answer that came after its move was chosen, or ""."""
+    try:
+        d = _load(GLORIA_STALE_LATE) if intent_id else None
+        return str(((d if isinstance(d, dict) else {}).get(str(intent_id)) or {}).get("result") or "")
+    except Exception:
+        return ""
+
+
+def _stale_late_put(intent_id, result):
+    try:
+        from store_guard import transaction, write_json
+        path = os.path.join(MEM, GLORIA_STALE_LATE)
+        with transaction(path):
+            d = _load(GLORIA_STALE_LATE); d = d if isinstance(d, dict) else {}
+            d[str(intent_id)] = {"result": str(result), "at": datetime.now().isoformat()}
+            write_json(path, dict(list(d.items())[-200:]))
+    except Exception:
+        pass
 
 
 def _stale_switch_off():
@@ -1021,10 +1052,11 @@ def _stale_switch_off():
         return False
 
 
-def _stale_gloria(ax, her_words):
+def _stale_gloria(ax, her_words, intent_id=None):
     """At selection: "met" when her message, the one this move answers, already shows the declared difference.
-    It runs on her turn, so it is held to a wall-clock bound (a socket timeout does not cover DNS or a slow
-    trickle): a check still out at the bound is "timeout", and like every answer but "met" it refuses nothing."""
+    Her turn waits on it GLORIA_STALE_BOUND seconds at most (a wall clock: a socket timeout does not cover DNS or a
+    slow trickle). A check still out then is "pending" and refuses nothing; its answer, when it comes, is kept
+    under the move's id, and a "met" settles that move's her-axis verdict in code as criterion_already_met."""
     if _stale_switch_off():
         return "off"
     if not str(her_words or "").strip():
@@ -1032,13 +1064,21 @@ def _stale_gloria(ax, her_words):
     try:
         import threading
         import gloria_judge
-        box = {}
+        box = {}; guard = threading.Lock()
         def _run():
-            try: box["v"] = gloria_judge.stale_check(ax, her_words)
-            except Exception: box["v"] = "error"
+            try: v = gloria_judge.stale_check(ax, her_words)
+            except Exception: v = "error"
+            with guard:
+                box["v"] = v; late = box.get("late")
+            if late and intent_id:
+                _stale_late_put(intent_id, v)
         worker = threading.Thread(target=_run, name="gloria-stale-check", daemon=True)
         worker.start(); worker.join(GLORIA_STALE_BOUND)
-        return box.get("v", "timeout")
+        with guard:
+            if "v" in box:
+                return box["v"]
+            box["late"] = True
+        return "pending"
     except Exception:
         return "error"
 
@@ -1085,6 +1125,8 @@ def _judge_gloria(row, tgt, ax, reply, hers, source=None, now=None):
         why = "reply_to_later_move"
     elif not words:
         why = "photo_unseen_decisive" if media else "no_her_reply"
+    elif _stale_late(row.get("intent_id")) == "met":
+        why = "criterion_already_met"      # the check at selection answered after the move was chosen
     else:
         why = ""
     if why:
@@ -1142,8 +1184,57 @@ def note_response(raw, source=None):
             write_json(LEDGER, led[-500:])
 
 
-def resolve_previous(recent_text="", source=None):
-    if str(recent_text).strip():
+# ---- the one background resolver (review, 12 November) -----------------------------------------------------------
+# Her turn notes her reply and goes on; the judging runs here, in one thread per process. A turn that comes while it
+# is out asks for one more pass, run after it - so two turns never judge the same row at once. Rows still carry the
+# round-five guarantees on every pass: a result lands only on the revision it read, each effect once, and a pass
+# that dies (a restart) leaves the row pending, with her reply on it, for the next pass to judge.
+RESOLVE_IN_BACKGROUND = True
+_RESOLVER = {"thread": None, "again": None}
+_RESOLVER_GUARD = __import__("threading").Lock()
+
+
+def _kick_resolver(recent_text="", source=None):
+    with _RESOLVER_GUARD:
+        running = _RESOLVER.get("thread")
+        if running is not None and running.is_alive():
+            _RESOLVER["again"] = (recent_text, source)
+            return running
+        _RESOLVER["again"] = None
+        def _work(text=recent_text, src=source):
+            while True:
+                _guarded("resolve_previous", lambda: resolve_previous(text, src, note=False, every=True), whole=True)
+                with _RESOLVER_GUARD:
+                    nxt = _RESOLVER.get("again")
+                    if nxt is None:
+                        _RESOLVER["thread"] = None
+                        return
+                    _RESOLVER["again"] = None
+                text, src = nxt
+        import threading
+        worker = threading.Thread(target=_work, name="intent-resolver", daemon=True)
+        _RESOLVER["thread"] = worker
+        worker.start()
+        return worker
+
+
+def resolver_wait(timeout=30):
+    """Wait for the background resolver to go idle; True when it did."""
+    import time as _rt
+    end = _rt.monotonic() + timeout
+    while True:
+        with _RESOLVER_GUARD:
+            worker = _RESOLVER.get("thread")
+        if worker is None:
+            return True
+        worker.join(max(0.0, end - _rt.monotonic()))
+        if _rt.monotonic() >= end:
+            with _RESOLVER_GUARD:
+                return _RESOLVER.get("thread") is None
+
+
+def resolve_previous(recent_text="", source=None, note=True, every=False):
+    if note and str(recent_text).strip():
         note_response(recent_text, **({"source": source} if source else {}))
     # effects an accepted verdict left unapplied - a process that died after it was written, a write that failed -
     # are applied first, each once (round five)
@@ -1166,7 +1257,9 @@ def resolve_previous(recent_text="", source=None):
     # An earlier move still waiting on her next reply after a device event is settled by this same follow-up:
     # those rows first, oldest first, then the latest move as before. A row is settled once - a settled row is
     # no candidate again (10 November).
-    for row in sorted((c for c in candidates if c is not last and isinstance(c.get("skipped_observations"), dict)), key=_order):
+    # The background resolver (every=True) settles every move her replies have reached, oldest first: a pass
+    # that died with one out (a restart), or turns that came while one was out, leave more than one waiting.
+    for row in sorted((c for c in candidates if c is not last and (every or isinstance(c.get("skipped_observations"), dict))), key=_order):
         _guarded("resolve_previous.waiting_row", lambda row=row: _resolve_row(row, recent_text, source), whole=True)
     _resolve_row(last, recent_text, source)
 
