@@ -23,7 +23,7 @@ def check(n, ok, d=""):
 
 OFF = {"claude-opus-4-8": {"type": "disabled"}, "claude-sonnet-5": {"type": "disabled"},
        "claude-haiku-5-5": {"type": "disabled"}, "claude-sonnet-5-5": {"type": "between_tools"},
-       "claude-opus-5-5": None, "claude-fable-5-1": None}
+       "claude-opus-5-5": None, "claude-fable-5-1": None, "claude-fable-5-2": None}
 for m, want in OFF.items():
     check("%s: %s" % (m, want or "cannot be switched off"), GR.thinking_off(m) == want == C.thinking_off(m),
           (GR.thinking_off(m), C.thinking_off(m)))

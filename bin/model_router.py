@@ -86,7 +86,7 @@ CLAUDE_MODEL = "claude-opus-4-8"
 # sunsets it — his current voice is not being replaced out from under him.
 CLAUDE_MODELS = {"claude": "claude-opus-4-8",
                  "opus55": "claude-opus-5-5",   # replaced the Sonnet 5 slot (Gloria, 2026-09-24)
-                 "fable": "claude-fable-5-1"}
+                 "fable": "claude-fable-5-2"}   # Fable 5.2 (Gloria, 2026-11-12)
 LEGACY_MODES = {"sonnet": "opus55"}   # a toggle saved as "sonnet" before the swap now means Opus 5.5
 def current_mode():
     m = read_mode().get("mode", "claude")

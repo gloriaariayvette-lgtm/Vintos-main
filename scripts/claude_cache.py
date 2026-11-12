@@ -31,7 +31,8 @@ WRITE = 2.0             # what a one-hour cache write costs, times input (for th
 MAX_POINTS = 4          # the API's limit on cache points in one request
 # $ per million tokens: input, output, cache read
 PRICES = {"claude-opus-5-5": (4.0, 20.0, 0.20), "claude-opus-4-8": (5.0, 25.0, 0.50),
-          "claude-fable-5-1": (10.0, 50.0, 0.25), "claude-sonnet-5": (2.0, 10.0, 0.20),
+          "claude-fable-5-1": (10.0, 50.0, 0.25), "claude-fable-5-2": (10.0, 50.0, 0.25),
+          "claude-sonnet-5": (2.0, 10.0, 0.20),
           "claude-sonnet-5-5": (2.0, 10.0, 0.20), "claude-haiku-5-5": (0.10, 0.50, 0.01)}
 
 

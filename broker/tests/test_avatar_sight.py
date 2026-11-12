@@ -78,7 +78,7 @@ def route(mode):
     return asyncio.run(MR.route_reply_result("avatar", "You are Vintos.", CONVO, {"max_tokens": 300},
                                              "http://shim.test/v1/chat/completions", {}, "grok-4.20-0309-non-reasoning"))
 
-for mode, model in (("claude", "claude-opus-4-8"), ("opus55", "claude-opus-5-5"), ("fable", "claude-fable-5-1")):
+for mode, model in (("claude", "claude-opus-4-8"), ("opus55", "claude-opus-5-5"), ("fable", "claude-fable-5-2")):
     res = route(mode)
     body = SENT[0][1] if SENT else {}
     blocks = body.get("messages", [{}])[-1].get("content", []) if body else []

@@ -36,7 +36,7 @@ class ModelLocations(unittest.TestCase):
                 self.assertEqual(self.mr.location_model(place), "claude-opus-5-5", (mode, place))
             self.assertEqual(self.mr.location_model("lab"), "claude-sonnet-5-5", mode)   # Lab planning stepped down
         self.toggle("opus55"); self.assertEqual(self.mr.current_claude_model(), "claude-opus-5-5")
-        self.toggle("fable"); self.assertEqual(self.mr.current_claude_model(), "claude-fable-5-1")
+        self.toggle("fable"); self.assertEqual(self.mr.current_claude_model(), "claude-fable-5-2")
         self.toggle("claude"); self.assertEqual(self.mr.current_claude_model(), "claude-opus-4-8")
 
     def test_in_the_moment_is_whatever_the_chat_holds(self):
@@ -64,7 +64,7 @@ class ModelLocations(unittest.TestCase):
 
     def test_fable_and_opus_4_8_remain_in_the_toggle(self):
         self.assertEqual(self.mr.CLAUDE_MODELS["claude"], "claude-opus-4-8")
-        self.assertEqual(self.mr.CLAUDE_MODELS["fable"], "claude-fable-5-1")
+        self.assertEqual(self.mr.CLAUDE_MODELS["fable"], "claude-fable-5-2")
 
     def test_one_place_can_be_set_without_moving_another(self):
         json.dump({"atelier": "claude-fable-5-1"}, open(self.mr._LOCATIONS_FILE, "w"))

@@ -230,7 +230,7 @@ def voice(system, user, state=None):
     except Exception:
         model = D.OPUS_MODEL
     # Gloria's Slack cost allocation does not change her avatar/chat selector.
-    model = {"claude-opus-4-8": "claude-sonnet-5-5", "claude-fable-5-1": "gpt-6-astra"}.get(model, model)
+    model = {"claude-opus-4-8": "claude-sonnet-5-5", "claude-fable-5-1": "gpt-6-astra", "claude-fable-5-2": "gpt-6-astra"}.get(model, model)
     if model == D.KICKOFF_MODEL:
         model = D.HAIKU_MODEL if D.slack_lens("opus55", state if state is not None else {}) == "haiku55" else model
     try:
@@ -248,7 +248,7 @@ def voice(system, user, state=None):
 def _label(model):
     if model == "gemma":
         return "Gemma"
-    return {"claude-haiku-5-5": "Haiku 5.5", "claude-sonnet-5-5": "Sonnet 5.5", "gpt-6-astra": "Astra", "claude-opus-4-8": "Opus 4.8", "claude-opus-5-5": "Opus 5.5", "claude-fable-5-1": "Fable 5.1"}.get(model, model)
+    return {"claude-haiku-5-5": "Haiku 5.5", "claude-sonnet-5-5": "Sonnet 5.5", "gpt-6-astra": "Astra", "claude-opus-4-8": "Opus 4.8", "claude-opus-5-5": "Opus 5.5", "claude-fable-5-1": "Fable 5.1", "claude-fable-5-2": "Fable 5.2"}.get(model, model)
 
 
 def tick(api=None, think=None, now=None, put=None):
