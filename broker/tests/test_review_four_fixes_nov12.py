@@ -64,6 +64,17 @@ class CarrierInAvatarChat(unittest.TestCase):
         self.assertNotIn('letter question', block); self.assertNotIn('old question', block)
         self.assertEqual(block, C.block(asks + tells + [letter, old], self.NOW))     # the one rule, not a copy of it
 
+    def test_only_his_own_wants_reach_her_chat(self):
+        # review: with room under every cap, a want read out of someone else's words is still never carried
+        mine = self.want(1, 'I want to ask you about the synthetic frame.', 2)
+        others = [self.want(2, 'I want to ask you the synthetic email question.', 1, source='email'),
+                  self.want(3, 'I want to tell you the synthetic letter promise.', 1, source='letter-promise'),
+                  self.want(4, 'I want to tell you the synthetic post I read.', 1, source='moltbook'),
+                  self.want(5, 'I want to ask you the synthetic adopted question.', 1, adopted_from='EC-00000000')]
+        block = C.block_from_file(self.store([mine] + others), self.NOW)
+        self.assertEqual([l for l in block.splitlines() if l.startswith('- (since')],
+                         ['- (since 12 Nov 07:00) I want to ask you about the synthetic frame.'])
+
     def test_missing_or_broken_store_gives_nothing(self):
         self.assertEqual(C.block_from_file('/nonexistent/current-wants.json', self.NOW), '')
         d = tempfile.TemporaryDirectory(); self.addCleanup(d.cleanup)
@@ -109,7 +120,7 @@ class SelectorFailures(unittest.TestCase):
         self.answer = 'A synthetic reply in prose, with no object in it.'
         with self.assertRaisesRegex(E.SelectorUnreadable, 'no_json_object'): self.select(resolve=False)
         row, = self.rows()
-        self.assertEqual(row['status'], E.FAILED_STATUS)
+        self.assertEqual(row['status'], 'failed'); self.assertEqual(E.FAILED_STATUS, 'failed')
         self.assertEqual(row['realized'], {'field': 'HELD', 'gloria': 'HELD', 'self': 'HELD'})
         self.assertEqual(set(row['held_reason'].values()), {'selector_failed_no_json_object'})
         self.assertEqual((row['failure']['code'], row['failure']['had_brace']), ('no_json_object', False))
@@ -144,6 +155,15 @@ class SelectorFailures(unittest.TestCase):
         with self.assertRaisesRegex(E.SelectorUnreadable, 'unparsed_json'): self.select(resolve=False)
         self.assertEqual(self.rows()[0]['failure']['had_brace'], True)
 
+    def test_cut_off_target_is_salvaged_not_its_inner_axis_object(self):
+        # review: a reply cut off after a complete axis object is the outer target salvaged, as before - the
+        # complete inner object is never read as the target
+        body = json.dumps(dict(self.target(), **{'gloria': copy.deepcopy(F.GLORIA)}))
+        self.answer = body[:-1] + ', "campaign": {"destination": "unfinished'
+        t = self.select(resolve=False)
+        self.assertEqual((t['goal'], t['field_state']), (F.TARGET['goal'], F.TARGET['field_state']))
+        self.assertEqual([r['status'] for r in self.rows()], ['selected'])
+
     def test_dominant_axis_left_out_is_held_with_its_reason(self):
         self.low_receptivity()                                                   # self carries 0.6: the dominant axis
         answer = self.target(gloria=copy.deepcopy(F.GLORIA)); answer['self'] = {}
@@ -174,6 +194,26 @@ class SelectorFailures(unittest.TestCase):
         # and a turn that succeeds keeps it spent: nothing is given back twice
         self.select(resolve=False)
         self.assertEqual(self.rows()[-1]['target']['priority_mode'], 'strategic')
+
+    def test_failing_turns_cannot_pile_up_override_counts(self):
+        # review: each failed turn re-forces the axis; its count is taken back, so three failures in a row neither
+        # graduate a question nor leave counts behind, and one record is never given back twice
+        Path(PV.STATE).write_text(json.dumps({'neglect': {'field': 0.0, 'gloria': 1.6, 'self': 0.0}}))
+        self.answer = 'no object at all'
+        for _ in range(3):
+            with self.assertRaises(E.SelectorUnreadable): self.select(resolve=False)
+        st = json.loads(Path(PV.STATE).read_text())
+        self.assertEqual(st['override_counts']['gloria'], 0)
+        self.assertGreaterEqual(st['neglect']['gloria'], 1.5)
+        self.assertNotIn('graduated', ''.join(r['target']['priority_provenance'].get('why', '') for r in self.rows()))
+        self.answer = self.target(**{'gloria': copy.deepcopy(F.GLORIA)})
+        t = self.select(resolve=False)
+        self.assertEqual(t['priority_mode'], 'pressure')
+        st = json.loads(Path(PV.STATE).read_text())
+        self.assertEqual(st['override_counts']['gloria'], 1)                    # the one real override, counted once
+        rec = {'override': {'axis': 'gloria', 'pressure': 2.0, 'counted': True}}
+        self.assertEqual(PV.refund_override(rec), 'gloria'); self.assertIsNone(PV.refund_override(rec))
+        self.assertEqual(json.loads(Path(PV.STATE).read_text())['override_counts']['gloria'], 0)
 
     def test_no_override_means_nothing_to_give_back(self):
         self.assertIsNone(PV.refund_override({'weights': {}, 'mode': 'strategic'}))
