@@ -22,6 +22,8 @@ SOFT_TOKEN_CHOICES = (70, 140, 280)
 RETAIN_FRAMES = 16           # ~16 x 72 tokens: older frames are already outside the 1,024-token local window
 RETAIN_AUDIO_TOKENS = 200    # eight seconds of 40 ms audio tokens, the audio candidate's live window
 AUDIO_SPAN_TOKENS = 50       # an audio span closes every two seconds so eviction stays granular
+AUDIO_FLUSH_TOKENS = 10      # audio enters the mind in 400 ms steps (or sooner when a frame or question closes it)
+WINDOW_TOKENS = 1024         # the checkpoint's local (sliding) attention window
 CONTEXT = 8192
 ANSWER_RESERVE = 640         # question plus answer budget kept free at all times
 PREFIX, QUERY = -1, -2       # owners of the open-turn prefix and of a rolled-back question/answer
@@ -98,35 +100,14 @@ def stream_masks(layers, caches, length, window, vision, hidden=None, mx=None):
     return [sliding if layer.layer_type == "sliding_attention" else full for layer in layers]
 
 
-def _cubic(x, a):
-    x = np.abs(x)
-    return np.where(x <= 1, ((a + 2) * x - (a + 3)) * x * x + 1,
-                    np.where(x < 2, ((a * x - 5 * a) * x + 8 * a) * x - 4 * a, 0.))
-
-
-def _axis_weights(n_in, n_out):
-    """Resampling matrix [n_out, n_in] as torch computes bicubic with antialias=True at every scale (the
-    PIL-compatible kernel: a=-0.5, support widened only when shrinking, taps normalised, edges cut)."""
-    scale = n_out / float(n_in)
-    s = min(scale, 1.)
-    support = 2. / s
-    w = np.zeros((n_out, n_in), dtype=np.float64)
-    for i in range(n_out):
-        center = (i + .5) / scale
-        lo, hi = max(int(center - support + .5), 0), min(int(center + support + .5), n_in)
-        taps = _cubic((np.arange(lo, hi) - center + .5) * s, -.5)
-        w[i, lo:hi] = taps / taps.sum()
-    return w
-
-
 def resize_like_hf(rgb, height, width):
-    """The HF/CUDA reference resize (torchvision bicubic, antialias=True) in numpy, rounded back to uint8."""
-    x = np.asarray(rgb, dtype=np.float64)
+    """The reference resize: antialiased bicubic (the kernel torch's antialias path shares with PIL), done by
+    PIL's native code, back to uint8."""
+    x = np.asarray(rgb, dtype=np.uint8)
     if x.shape[:2] == (height, width):
-        return np.asarray(rgb, dtype=np.uint8)
-    x = np.einsum("oh,hwc->owc", _axis_weights(x.shape[0], height), x)
-    x = np.einsum("pw,owc->opc", _axis_weights(x.shape[1], width), x)
-    return np.clip(np.rint(x), 0, 255).astype(np.uint8)
+        return x
+    from PIL import Image
+    return np.asarray(Image.fromarray(x).resize((width, height), Image.BICUBIC), dtype=np.uint8)
 
 
 class AppleStream:
@@ -240,6 +221,8 @@ class LiveSession:
         self.boi, self.eoi = self._ids(tok.boi_token), self._ids(tok.eoi_token)
         self.boa, self.eoa = self._ids(getattr(tok, "boa_token", "<|audio>")), self._ids(getattr(tok, "eoa_token", "<audio|>"))
         self.cache = stream.new_cache()
+        self.next_pos = 0              # absolute position of the next committed token (rolled-back questions excluded)
+        self.window_tokens = int(getattr(stream, "window", WINDOW_TOKENS))
         self.owner = np.empty(0, dtype=np.int64)
         self.segments = {}             # id -> provenance of one frame or audio span
         self.next_id = 0
@@ -261,6 +244,7 @@ class LiveSession:
             raise ValueError("Context exceeds the existing 8192 token budget")
         self.scores = self.stream.forward(embeds, self.cache, vision)
         self.owner = np.concatenate([self.owner, np.full(n, owner, dtype=np.int64)])
+        self.next_pos += n
 
     def _text(self, ids, owner):
         if ids:
@@ -311,6 +295,7 @@ class LiveSession:
         self._forward(embeds, segment, vision=True)
         self._tap("frame", at, embeds, ref)
         self.segments[segment]["visual_tokens"] = int(embeds.shape[1])
+        self.segments[segment]["end_pos"] = self.next_pos - 1
         self.pending_close = (self.eoi, segment)
         self.frames += 1
         evicted = self._evict()
@@ -333,6 +318,8 @@ class LiveSession:
         span["digest"].update(x.tobytes())
         self.audio_tail = np.concatenate([self.audio_tail, x])
         n = len(self.audio_tail) // FRAME
+        if n < AUDIO_FLUSH_TOKENS:
+            n = 0   # held until 400 ms are ready (or a frame/question closes the span): one model pass, not five
         while n:
             take = min(n, AUDIO_SPAN_TOKENS - span["audio_tokens"])
             frames = self.audio_tail[:take * FRAME].reshape(take, FRAME)
@@ -359,10 +346,13 @@ class LiveSession:
             return
         span = self.segments[self.audio_span]
         if pad and len(self.audio_tail):
-            frame = np.pad(self.audio_tail, (0, FRAME - len(self.audio_tail))).reshape(1, FRAME)
-            self._forward(self.stream.audio(frame), self.audio_span)
-            span["audio_tokens"] += 1
-            self.audio_tokens += 1
+            n = -(-len(self.audio_tail) // FRAME)
+            frames = np.pad(self.audio_tail, (0, n * FRAME - len(self.audio_tail))).reshape(n, FRAME)
+            embeds = self.stream.audio(frames)
+            self._forward(embeds, self.audio_span)
+            self._tap("audio", span["at"] + span["audio_tokens"] * FRAME / SAMPLE_RATE, embeds, "span:%d" % self.audio_span)
+            span["audio_tokens"] += n
+            self.audio_tokens += n
         if pad:
             self.audio_tail = np.empty(0, dtype=np.float32)
         span["audio_ref"] = "sha256:" + span.pop("digest").hexdigest()
@@ -384,6 +374,10 @@ class LiveSession:
         doomed = []
         frames = sorted(i for i, s in self.segments.items() if s["kind"] == "frame")
         doomed += frames[:max(0, len(frames) - self.retain_frames)]
+        # A frame that has slid out of the local attention window leaves the global layers too, so every
+        # layer sees the same retained past.
+        horizon = self.next_pos - self.window_tokens
+        doomed += [i for i in frames if i not in doomed and self.segments[i].get("end_pos", horizon) < horizon]
         spans = sorted((i for i, s in self.segments.items() if s["kind"] == "audio" and i != self.audio_span), reverse=True)
         kept = sum(self.segments[i].get("audio_tokens", 0) for i in self.segments
                    if i == self.audio_span)

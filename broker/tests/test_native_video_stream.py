@@ -194,15 +194,45 @@ except ValueError:
     pass
 check('errors raised on the inference thread reach the caller unchanged', True)
 
-from native_video_runtime import resize_like_hf, _axis_weights
+from native_video_runtime import resize_like_hf
 const = np.full((192, 192, 3), 77, np.uint8)
+same = frame(5)
 check('the reference resize keeps a flat image flat and leaves same-size frames untouched',
-      (resize_like_hf(const, 384, 384) == 77).all() and resize_like_hf(frame(5), 48, 64) is not None
-      and np.allclose(_axis_weights(192, 384).sum(1), 1) and np.allclose(_axis_weights(640, 384).sum(1), 1))
+      (resize_like_hf(const, 384, 384) == 77).all() and resize_like_hf(same, 48, 64) is same)
 ramp = np.tile(np.linspace(0, 255, 192).astype(np.uint8)[None, :, None], (192, 1, 3))
-pil = np.asarray(Image.fromarray(ramp).resize((384, 384), Image.BICUBIC), dtype=np.int16)
-ours = resize_like_hf(ramp, 384, 384).astype(np.int16)
-check('the reference resize is the antialiased bicubic kernel torch shares with PIL', np.abs(ours - pil).max() <= 2)
+check('the reference resize is the antialiased bicubic kernel (PIL native code)',
+      (resize_like_hf(ramp, 384, 432) == np.asarray(Image.fromarray(ramp).resize((432, 384), Image.BICUBIC))).all())
+
+# Window-boundary eviction: a frame outside the local window leaves the global layers too.
+class Narrow(Backend):
+    window = 40
+narrow = LiveSession(mind, Narrow(), retain_frames=64, clock=lambda: 0.)
+for i in range(12):
+    narrow.frame(frame(i * 9), at=i)
+kept = [s for s in narrow.window() if s['kind'] == 'frame']
+check('frames that slid out of the local window are evicted even under a large frame cap',
+      len(kept) < 12 and all(s['end_pos'] >= narrow.next_pos - 40 for s in kept) and narrow.evicted_frames == 12 - len(kept))
+q_before = narrow.next_pos
+narrow.ask('still there?', max_tokens=2)
+check('a rolled-back question does not move the window', narrow.next_pos == q_before + len(Tokenizer().encode('I>')))
+
+# Audio enters in 400 ms steps; a frame or question flushes what is waiting.
+held = LiveSession(mind, Backend(), clock=lambda: 0.)
+r = held.audio(np.zeros(3200, np.float32), at=0)
+check('a 200 ms packet waits for the 400 ms step', r['audio_tokens'] == 0 and r['pending_samples'] == 3200)
+held.audio(np.zeros(3200, np.float32), at=.2)
+check('two packets enter the mind together', held.audio_tokens == 10 and held.audio_tail.size == 0)
+held.audio(np.zeros(1000, np.float32), at=.4)
+held.frame(frame(3), at=.5)
+check('a frame flushes the waiting audio first, padded to whole tokens', held.audio_tokens == 12)
+
+# The sampler triggers on the largest block change, so a small moving object counts.
+t = [0.]
+small = client.AdaptiveSampler(idle_fps=.5, burst_fps=2, change=.04, clock=lambda: t[0])
+scene_a = np.full((480, 640, 3), 60, np.uint8)
+scene_b = scene_a.copy(); scene_b[100:140, 300:340] = (230, 40, 40)
+small.offer(scene_a); t[0] = .6
+check('a 40-pixel object moving on a 640x480 scene triggers a burst', small.offer(scene_b) == 'change')
 try:
     pcm16(base64.b64encode(b'\0').decode()); raise AssertionError('odd PCM accepted')
 except ValueError:

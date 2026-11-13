@@ -49,20 +49,17 @@ def verify():
 def _small_gray(rgb):
     """32x32 mean-pooled luminance of an RGB uint8 array, for change detection only."""
     import numpy as np
-    x = np.asarray(rgb, dtype=np.float32)
-    g = x[..., 0] * .299 + x[..., 1] * .587 + x[..., 2] * .114
-    h, w = g.shape
-    ys = (np.arange(33) * h) // 32
-    xs = (np.arange(33) * w) // 32
-    return np.array([[g[ys[i]:max(ys[i + 1], ys[i] + 1), xs[j]:max(xs[j + 1], xs[j] + 1)].mean()
-                      for j in range(32)] for i in range(32)], dtype=np.float32)
+    from PIL import Image
+    gray = Image.fromarray(np.asarray(rgb, dtype=np.uint8)).convert("L")
+    return np.asarray(gray.resize((32, 32), Image.BOX), dtype=np.float32)
 
 
 class AdaptiveSampler:
     """Low rate when the scene is still, bursts on change, never over the token budget per second.
 
     A frame is sent when the idle interval has passed (a heartbeat at ``idle_fps``) or when it differs from the
-    last sent frame by ``change`` (mean absolute luminance difference, 0..1) and the burst interval has passed.
+    last sent frame by ``change`` (the largest change of any of 32x32 luminance blocks, 0..1) and the burst
+    interval has passed.
     Both need tokens in a bucket refilled at ``tokens_per_second`` (capacity two seconds' worth)."""
 
     def __init__(self, idle_fps=.5, burst_fps=2., change=.04, tokens_per_second=160, frame_tokens=FRAME_TOKENS,
@@ -88,7 +85,8 @@ class AdaptiveSampler:
             reason = "first"
         else:
             elapsed = now - self.last_sent
-            delta = float(abs(small - self.last_small).mean()) / 255
+            # The largest block change: a small moving object counts, which a whole-frame mean would wash out.
+            delta = float(abs(small - self.last_small).max()) / 255
             reason = ("idle" if elapsed >= self.idle else
                       "change" if delta >= self.change and elapsed >= self.burst else None)
         if reason is None or self.tokens < self.cost:
