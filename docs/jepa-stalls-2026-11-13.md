@@ -120,3 +120,16 @@ After deploy: `/tmp/jepa-self-on-message.log` shows `after-reply` lines; history
 
 Neither shared head's confidence is useful today (self is inverted too), and the served readout's confidence
 does not beat decode similarity on its 23 prospective targets. P1 will judge it on after-reply forecasts.
+
+## Follow-up the same day: retrain and confidence readout (Gloria approved)
+
+* **Retrain held.** The live checkpoint was backed up (`memory/jepa-predictor.pt.bak-preretrain-20261113`, sha `7dce0795…`).
+  The R1 candidate (sha `d268be74…`, kept at `~/jepa-candidates/jepa-predictor-r1-m1-20261113.pt`) passes on confidence
+  (−.529 vs −.298) but its ranking regresses on the same 78 turns: MRR .437 vs the live .513, and it no longer beats
+  the controls. Not swapped.
+* **Separate confidence readout held.** Pre-registered in `e13e7ecd` before fitting
+  ([prereg](review-evidence/jepa-stalls-20261113/gloria-confidence-prereg.json)). Ridge on five forecast-time features,
+  fit on the first 39 rows and scored once on the last 39 (10–26 October). Confidence vs error −.368 (the old relative
+  log-variance is +.357 on the same rows), but decode similarity is −.770, so the readout misses the 0.10 margin by a wide gap.
+  MRR is unchanged at .536 (the forecast is untouched). [Result](review-evidence/jepa-stalls-20261113/gloria-confidence-result.json).
+  The serving hook was removed again; nothing is installed. On this data, decode similarity itself is the better confidence signal.
