@@ -532,6 +532,44 @@ def presence_holdout_audit(net, enc, schema, trained_at, checkpoint_id, turns=No
     return rec
 
 
+GLORIA_CONFIDENCE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "jepa_gloria_confidence.json")
+GLORIA_CONFIDENCE_SCHEMA = "fitted-error-readout-v1"
+
+
+def _unit_rows(a):
+    import numpy as np
+    a = np.asarray(a, dtype="float64")
+    return a / np.maximum(np.linalg.norm(a, axis=-1, keepdims=True), 1e-12)
+
+
+def gloria_confidence_features(lv_g, pred, ctx, past):
+    """Forecast-time inputs only (13 November): the head's own log-variance, how far its forecast sits from
+    the context and from her last twelve turns (best match and the latest one), and how close the context
+    is to her latest turn. No candidate or target information."""
+    import numpy as np
+    p, c = _unit_rows(pred), _unit_rows(ctx)
+    P = _unit_rows(past) if len(past) else None
+    if P is None:
+        return [float(lv_g), float(p @ c), 0.0, 0.0, 0.0]
+    return [float(lv_g), float(p @ c), float(np.max(P @ p)), float(P[-1] @ p), float(P[-1] @ c)]
+
+
+def gloria_confidence(features, checkpoint, path=None):
+    """1 - expected cosine error / 2 from a ridge fitted on held-out errors of THIS checkpoint, or None
+    (no fit, or a fit for other weights). The forecast embedding is never touched."""
+    import numpy as np
+    try:
+        with open(path or GLORIA_CONFIDENCE) as f:
+            m = json.load(f)
+    except Exception:
+        return None
+    if m.get("schema") != GLORIA_CONFIDENCE_SCHEMA or m.get("checkpoint") != checkpoint:
+        return None
+    z = (np.asarray(features, dtype="float64") - np.asarray(m["mean"])) / np.asarray(m["scale"])
+    expected = float(m["bias"] + z @ np.asarray(m["weights"]))
+    return round(float(np.clip(1.0 - expected / 2.0, 0.0, 1.0)), 4)
+
+
 def _conf(lv):
     import numpy as np
     lv = max(-6.0, min(6.0, float(lv)))
@@ -716,6 +754,16 @@ def _predict(model_path, out_path, history_path, shadow, enc, trigger, side_feed
         if _lv_mean_sp is None: return "unavailable"
         return "unqualified_spreadless"
     _cg = _relconf(0)
+    _cg_source = "relative-logvar"
+    if not shadow:   # the fitted error readout replaces the relative logvar, for its own checkpoint only
+        try:
+            _past = [str(t.get("content", ""))[:300] for t in turns if t.get("role") == "user"][-12:]
+            _pe = np.asarray(enc.encode(_past, show_progress_bar=False), dtype="float32") if _past else []
+            _fcg = gloria_confidence(gloria_confidence_features(lv[0], g, xe[0], _pe), loaded_checkpoint)
+            if _fcg is not None:
+                _cg, _cg_source = _fcg, GLORIA_CONFIDENCE_SCHEMA
+        except Exception as exc:
+            log("fitted gloria confidence unavailable: %s" % type(exc).__name__)
     _cs, _cp = _relconf_sp(1), _relconf_sp(2)
     # The SELF triple comes from its own head (jepa_self_head.py: his ledger replies, forecast-time context,
     # his own recent replies) once that head has a checkpoint; until then the shared-trunk self above stands
@@ -853,6 +901,7 @@ def _predict(model_path, out_path, history_path, shadow, enc, trigger, side_feed
                      "context_schema": _schema,
                      "context_emb": [round(float(x), 4) for x in xe[0]],
                      "gloria": {"confidence": gloria["confidence"], "confidence_placeholder": _cg is None,
+                                "confidence_source": (_cg_source if _gloria_fc is None else "readout"),
                                 "decode_similarity": gloria["decode_similarity"],
                                 "novelty": gloria["novelty"], "emb": [round(float(x), 4) for x in g]},
                      "self": {"confidence": self_h["confidence"], "confidence_placeholder": self_h["confidence_placeholder"],
@@ -862,7 +911,7 @@ def _predict(model_path, out_path, history_path, shadow, enc, trigger, side_feed
         if _gloria_fc is not None:
             hist_line["gloria"].update({k: _gloria_fc[k] for k in ("source", "checkpoint_id")})
             _lg_near, _lg_sim = _decode(_legacy_g, gloria_turns, enc)
-            hist_line["legacy_gloria"] = {"checkpoint_id": _ck_id, "confidence": _legacy_cg,
+            hist_line["legacy_gloria"] = {"checkpoint_id": _ck_id, "confidence": _legacy_cg, "confidence_source": _cg_source,
                 "confidence_placeholder": _legacy_cg is None, "decode_similarity": _lg_sim,
                 "emb": [round(float(x), 4) for x in _legacy_g]}
         if _self_fc is not None:   # what the self eval needs to find the reply this forecast is about
