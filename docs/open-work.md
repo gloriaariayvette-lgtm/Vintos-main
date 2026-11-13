@@ -1,3 +1,25 @@
+## 13 November — the fault loop: wakes lost from 9 to 12 November, and what they missed
+
+- **Why nothing woke the thread.** Its own CronCreate job (77ebcd1e) is listed but never fired after 9 November; why
+  is not known. A second waker, the app's scheduled task `fault-loop-wake`, ran four times on 13 November, and each
+  run stopped at the approval prompt for sending into this session: nobody is there at night to approve it.
+  **Replaced 13 November** by a cloud scheduled task, `Fault-loop wake` (trig_01D42Wc583wxs3UvtMDGJSk4, 22:50,
+  00:50, 02:50, 04:50 Central), bound to this thread itself, so it shows in Gloria's Scheduled tasks on her phone and
+  needs no in-session timer and no cross-session send. The in-session job 77ebcd1e is deleted.
+- **F-2d7df745e8 and F-10fafd26b6 (a Lab finish refused 37–41 times per investigation) — proposed, waiting on Dot.**
+  A relay instrument's step left `outcome_unknown` when its sending process ended (a deploy restarted the Lab
+  mid-step on 12 November; on 10 November the relay command failed after sending). Its receipt can only be written
+  by that process, so it can never be reconciled, and every finish is refused until the investigation stalls.
+  Proposal in the fault's thread: settle such a step as `unretained`, never re-sent and never assumed to succeed.
+- **F-c5f807d8ac, F-a5bdc50b89, F-3a06e99133, F-6bef554e37, F-cf3b93ab6b, F-fca5b8bf5c, F-042d7e4986 (deployed code
+  differed from the 12 November 14:34 release) — settled.** The files were installed by hand between 16:10 and
+  20:48; the 22:37 deploy replaced all seven, and each now matches the deploy branch.
+- **Gloria's:** F-2fac041dde again, now from the Mac Studio's address (the Studio's bridge key); adding it to
+  `known_ssh_addresses` is her change. F-debbaf8d62 (openai, 21/min, `gloria_judge.py`) and F-17b4874bc7
+  (anthropic, 22/min, `claude_cache.py`), one minute each, not scheduled runs.
+- **No code change:** F-5b77a7d9d5, F-5c99185652, F-32eeb61081 (upstream 502, dropped connection, one unparsable
+  model reply); F-6e524b9971 (the Lab refusing an ambiguous alias, H5, as designed).
+
 ## Malformed joke outreach — 12 November 2026
 
 Confirmed failure: the 09:16 joke outreach quoted `[gloria] sleep again`. Its source was fermentation
