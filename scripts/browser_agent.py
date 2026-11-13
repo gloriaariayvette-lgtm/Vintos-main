@@ -120,7 +120,7 @@ Answer with one JSON object only:
 {{"observed":"...","notes":"...","action":"done","summary":"what in the page state proves it"}}
 {{"observed":"...","notes":"...","action":"fail","reason":"...","evidence":"exact words from the page that prove it"}}
 Fail is for a wall the PAGE shows: its visible text or a pop-up saying sign-in/log-in is required for this action, an error message, a missing feature. A "Log In" link in a header is not a wall; a form you have not yet tried is not a wall. Quote the page in "evidence"; a fail without page evidence is rejected."""
-        body = json.dumps({"model": self.model, "temperature": 0.1, "max_tokens": 320,
+        body = json.dumps({**DA.GEMMA_EXTRA, "model": self.model, "temperature": 0.1, "max_tokens": 320,
                            "messages": [{"role": "user", "content": prompt}]}).encode("utf-8")
         req = urlrequest.Request(self.endpoint, data=body, headers={"Content-Type": "application/json"})
         with paid_http.send(urlrequest.urlopen, 'scripts/browser_agent.py', req, timeout=self.timeout) as r:
@@ -197,7 +197,8 @@ def run(task: str, browser, planner: Callable[..., Dict[str, Any]], max_steps: i
             tx = browser.text(); text = tx.get("text", ""); outline = tx.get("outline") or []
         except Exception as exc:
             return DA.RunResult("failed", "browser read failed: " + str(exc)[:200], step - 1, calls, job_id)
-        page_hash = hashlib.sha256((str(st.get("url")) + "|" + str(st.get("title")) + "|" + (text or "")[:3000] + "|" + str(int(st.get("scrollY", 0) or 0) // 200)).encode()).hexdigest()[:16]
+        editor_state = json.dumps([(e.get("kind"), e.get("value"), e.get("selected"), e.get("disabled")) for e in elements], sort_keys=True)
+        page_hash = hashlib.sha256((str(st.get("url")) + "|" + str(st.get("title")) + "|" + (text or "")[:3000] + "|" + str(int(st.get("scrollY", 0) or 0) // 200) + "|" + editor_state).encode()).hexdigest()[:16]
         # did the last action change anything? the model is told plainly, and the same dead action is not tried forever
         if step > 1:
             if page_hashes and page_hash == page_hashes[-1] and not last_result.startswith(("DONE REJECTED", "FAIL REJECTED", "ACTION ERROR", "PLANNER ERROR", "RE-PLANNED")) and not last_result.startswith("waited"):
@@ -367,7 +368,7 @@ class GemmaReflector:
                 return "".join(b.get("text", "") for b in payload.get("content", []))
             except Exception:
                 pass   # fall through to Gemma
-        body = json.dumps({"model": self.model, "temperature": 0.2, "max_tokens": 700, "messages": [{"role": "user", "content": prompt}]}).encode("utf-8")
+        body = json.dumps({**DA.GEMMA_EXTRA, "model": self.model, "temperature": 0.2, "max_tokens": 700, "messages": [{"role": "user", "content": prompt}]}).encode("utf-8")
         with paid_http.send(urlrequest.urlopen, 'scripts/browser_agent.py', urlrequest.Request(self.endpoint, data=body, headers={"Content-Type": "application/json"}), timeout=self.timeout) as r:
             payload = json.loads(r.read())
         return (((payload.get("choices") or [{}])[0].get("message") or {}).get("content") or "").strip()
@@ -446,7 +447,7 @@ class GemmaPageVerifier:
                   f"SECTIONS OF THE PAGE (which are on screen now):\n{secs}\nTEXT VISIBLE ON SCREEN NOW:\n{(text or '')[:3000]}\n\n"
                   "Does the page state show that the claim is true and the task is complete? Any error, wrong page, or missing result means NO. "
                   'Answer one JSON object only: {"verified": true|false, "seen": "one sentence"}')
-        body = json.dumps({"model": self.model, "temperature": 0.0, "max_tokens": 120, "messages": [{"role": "user", "content": prompt}]}).encode("utf-8")
+        body = json.dumps({**DA.GEMMA_EXTRA, "model": self.model, "temperature": 0.0, "max_tokens": 120, "messages": [{"role": "user", "content": prompt}]}).encode("utf-8")
         try:
             with paid_http.send(urlrequest.urlopen, 'scripts/browser_agent.py', urlrequest.Request(self.endpoint, data=body, headers={"Content-Type": "application/json"}), timeout=self.timeout) as r:
                 payload = json.loads(r.read())
@@ -469,8 +470,9 @@ def planner_for_house():
 
 
 def run_task(task: str, max_steps: int = DA.DEFAULT_MAX_STEPS, job_id: Optional[str] = None) -> DA.RunResult:
-    import browser_winpy
-    return run(task, browser_winpy.EdgeBrowser(), planner_for_house(), max_steps, job_id=job_id,
+    import browser_winpy, browser_mac
+    browser = browser_mac.MacBrowser() if browser_mac.selected() else browser_winpy.EdgeBrowser()
+    return run(task, browser, planner_for_house(), max_steps, job_id=job_id,
                progress=lambda step, calls: DA._state(step=step, gemma_calls=calls, mode="browser"), verifier=GemmaPageVerifier(), reflector=GemmaReflector())
 
 

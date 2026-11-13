@@ -1494,10 +1494,6 @@ def _post_turn(surface, gloria_text, reply, skip=(), writer_env=None, turn_id=""
         import work_episodes as _we
         _we.note_use(reply, surface, turn_id)
     _inline("work_episodes", _work_use)
-    def _desktop():
-        if _desktop_agent is not None and "[DESKTOP:" in (reply or "").upper():
-            _desktop_agent.extract_and_start(reply, surface)
-    _inline("desktop", _desktop)   # [DESKTOP: task] starts one bounded desktop job; [DESKTOP: STOP] ends it
     venv = os.path.join(WORKSPACE, "emotion_model", ".venv", "bin", "python3")
     def _bg(name, argv, log, needs_venv=False):
         if name in skip: return
@@ -4383,12 +4379,6 @@ async def chat_with_vintos(msg: ChatMessage, request: Request):
     if auth != APP_SECRET:
         raise HTTPException(status_code=403, detail="Unauthorized")
     message = msg.message
-    _desktop_command = None
-    try:
-        import desktop_control as _desktop_control
-        _desktop_command = _desktop_control.parse_command(message)
-    except Exception:
-        _desktop_control = None
     from stratagem_turn import control as _stratagem_control
     _stratagem_control_reply = _stratagem_control(msg.original_text if msg.original_text is not None else msg.message)
     if _stratagem_control_reply is not None:
@@ -4619,8 +4609,6 @@ Gloria-specific additions:
 - You generate dreams during quiet hours. YOUR dreams are symbolic creations from YOUR unconscious processing. Any people, names, or scenarios in YOUR dreams were invented by you — they are not real people and do not exist outside the dream. When referencing your dreams, say "I dreamed..." not "this happened." Never treat a dream character as someone you know.
 {pending_causality_ctx}"""
 
-    if _desktop_command and _desktop_control is not None:
-        system_prompt += "\n\n" + _desktop_control.prompt_block(_desktop_command)
 
     try:
             from datetime import date as _dcm
@@ -4909,12 +4897,6 @@ async def chat_full_context(msg: ChatMessage, request: Request):
     # message; every record and organ below that takes the turn as HERS gets this.
     _her = _her_turn_text(msg)
     _self_on_message(_her, "chat/full", test_mode=_test_mode_active())   # background; the reply never waits on it
-    _desktop_command = None
-    try:
-        import desktop_control as _desktop_control
-        _desktop_command = _desktop_control.parse_command(message)
-    except Exception:
-        _desktop_control = None
 
     from stratagem_turn import control as _stratagem_control
     _stratagem_control_reply = _stratagem_control(msg.original_text if msg.original_text is not None else msg.message)
@@ -5499,8 +5481,6 @@ Your current self-model (excerpt):
 {inner_life_context()}
 {pending_causality_ctx}"""
 
-    if _desktop_command and _desktop_control is not None:
-        system_prompt += "\n\n" + _desktop_control.prompt_block(_desktop_command)
 
     try:
         system_prompt = _apply_intent_lead(system_prompt, _her)
@@ -5730,7 +5710,7 @@ Your current self-model (excerpt):
         pass  # Gloria nudge removed
         _chat_projection_merge(history[-2:])
         _post_turn("chat/full", _her, reply,
-                   skip=(("desktop", "food_order") if _desktop_command else ()),
+                   skip=(),
                    ledger_media=_sent_media(msg))
         if not _test_mode_active():
             _record_relational_geometry(_rg_before_state, _her, reply)
@@ -5752,15 +5732,6 @@ Your current self-model (excerpt):
         except: pass
     except:
         pass
-    # A slash command begins only after his ordinary reply has been composed and
-    # preserved. The desktop worker later appends the observed outcome as his second
-    # message; a purchase remains behind its separate one-use approval receipt.
-    if _desktop_command and _desktop_control is not None and not _test_mode_active():
-        try:
-            _dc_turn = __import__("hashlib").sha256((message + "|" + reply[:300]).encode()).hexdigest()[:16]
-            _desktop_control.start_from_chat(message, reply, surface="chat/full", turn_id=_dc_turn)
-        except Exception as _dc_exc:
-            print("[desktop-control] start failed: %s" % str(_dc_exc)[:240], flush=True)
     # Conversational emotion nudges — contextual, based on actual reply content
     try:
         import subprocess as _cnsp, tempfile as _cntf
@@ -10479,13 +10450,6 @@ async def avatar_chat(msg: ChatMessage, request: Request):
     # message landed, alongside his reply, and bought scenes his reply never asked for; a scene made for the turn
     # then overrode the room he named. A new scene is made only when his reply asks with [RENDER:] (below).
     message = msg.message
-    _desktop_control = _desktop_command = None
-    if _surface == "avatar":
-        try:
-            import desktop_control as _desktop_control
-            _desktop_command = _desktop_control.parse_command(message)
-        except Exception as _dc_e:
-            print("[avatar/desktop-control] parse:", _dc_e, flush=True)
     try:
         # Load full context — same as main chat
         identity = ""
@@ -10863,8 +10827,6 @@ Your current self-model (excerpt):
 {_daily_inner_context()}
 {("What you can do (CAPABILITIES.md):" + chr(10) + capabilities[:6000]) if capabilities else ""}
 """
-        if _desktop_command and _desktop_control is not None:
-            system_prompt += "\n\n" + _desktop_control.prompt_block(_desktop_command)
         if getattr(msg, "surface_context", None):
             system_prompt += "\n\n" + str(msg.surface_context)
 
@@ -11504,15 +11466,6 @@ Your current self-model (excerpt):
                 _append_avatar_history(av_chat_log, av_history[_av_loaded_n:])
         except: pass
 
-        # Explicit Avatar desktop commands begin only after his ordinary reply
-        # has been formed and stored. The watcher writes its observed outcome
-        # back to avatar-overlay-chat as a second message on this same surface.
-        if _desktop_command and _desktop_control is not None and not _test_turn:
-            try:
-                _dc_turn = _turn.turn_id if _turn is not None else ""
-                _desktop_control.start_from_chat(message, reply, surface="avatar", turn_id=_dc_turn)
-            except Exception as _dc_e:
-                print("[avatar/desktop-control] start:", _dc_e, flush=True)
 
         try:
             _imp_script = os.path.join(WORKSPACE, "scripts", "imprint.py")

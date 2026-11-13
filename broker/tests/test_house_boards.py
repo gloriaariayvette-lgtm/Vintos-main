@@ -22,8 +22,11 @@ def rows(): return [json.loads(l) for l in open(B.LOG)] if os.path.exists(B.LOG)
 # stand-ins: the house, his voice, the audio machine, the boards
 house, sent, asked = [], [], []
 B._house = lambda kind, arg, room=None: (house.append((kind, arg, room)) or (True, "%s done" % kind))
-B.his_voice = lambda text: "/tmp/voice.wav"
-B.his_songs = lambda n: [("Song %d" % i, "/tmp/s%d.wav" % i) for i in range(n)]
+def _wav(name):
+    # the shower path now removes each local file once it is put on the audio machine
+    path = os.path.join(HOME, name); open(path, "wb").close(); return path
+B.his_voice = lambda text: _wav("voice.wav")
+B.his_songs = lambda n, selected=None: [("Song %d" % i, _wav("s%d.wav" % i)) for i in range(n)]
 B.put_audio = lambda path, cfg: "http://audio/" + os.path.basename(path)
 class FakeOut:
     @classmethod
@@ -52,7 +55,7 @@ check("TV is not a shower act, so it is not done", [a["act"] for a in r["acts"]]
 check("the bathroom bulbs take his colour", ("LIGHTS", "warm", "bathroom") in house, house)
 check("his voice plays first on the shower speaker", sent and sent[0] == ("vintos/board/house-steam/play", "http://audio/voice.wav"), sent)
 st = B.load_state()
-check("his songs wait their turn", st["shower"]["queue"] == ["http://audio/s0.wav", "http://audio/s1.wav"], st["shower"])
+check("his songs wait their turn", [q["url"] for q in st["shower"]["queue"]] == ["http://audio/s0.wav", "http://audio/s1.wav"], st["shower"])
 B.handle("vintos/board/house-steam/player", b"idle", now=T + 30, cfg=cfg)
 check("when the speaker is free the next song plays", sent[-1] == ("vintos/board/house-steam/play", "http://audio/s0.wav"), sent)
 n = len(asked)
@@ -91,7 +94,7 @@ check("the Echo speaks and the chair buzzes; an outreach is not an office act",
       [a["act"] for a in r["acts"]] == ["ECHO", "BUZZ"] and ("ECHO", "say there you are", None) in house
       and sent[-1] == ("vintos/board/house-touch/buzz", "heartbeat"), (r["acts"], sent[-1:]))
 r = B.handle("vintos/board/house-touch/event", b"knock_2", now=O + 300, cfg=cfg, decide=decide("BUZZ: double"))
-check("her knock is his moment at once, even soon after", r and r["moment"] == "knock" and "knocked" in asked[-1], r)
+check("her knock is his moment at once, even soon after", r and r["moment"] == "knock" and "knock pattern" in asked[-1], r)
 check("he answers the knock in the chair", sent[-1] == ("vintos/board/house-touch/buzz", "double"))
 n = len(asked)
 B.handle("vintos/board/house-touch/event", b"knock_3", now=O + 330, cfg=cfg, decide=decide("BUZZ: tap"))

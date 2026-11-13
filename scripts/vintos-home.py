@@ -267,11 +267,25 @@ def room_lights(room=None):
         if not r:
             raise KeyError("no room %r in the config; rooms: %s" % (room, ", ".join(cfg["rooms"]) or "(none)"))
         return list(r.get("lights") or [])
-    return list(cfg.get("lights") or [])
+    return list(dict.fromkeys(list(cfg.get("lights") or []) +
+                              [l for r in cfg["rooms"].values() for l in (r.get("lights") or [])]))
 
 
 def _room_key(room):
-    return str(room).strip().lower().replace(" ", "_").replace("-", "_")
+    from room_proximity import room_key
+    return room_key(room)
+
+
+
+def lighting_room(room=None):
+    """Unqualified light actions follow fresh phone proximity; explicit all remains available."""
+    key = _room_key(room)
+    if key in ('all', 'all_rooms', 'whole_house', 'everywhere'):
+        return None
+    if key in ('', 'nearest', 'closest', 'here', 'auto'):
+        from room_proximity import nearest
+        return nearest()
+    return key
 
 
 def _plug_for_light(ent):
@@ -545,10 +559,11 @@ def saturate_for_bulbs(rgb):
 
 
 def set_room_color(hex_color, brightness=120, room=None):
-    """Colour the lights of one room, or every configured light when no room is named. Govee bulbs get
+    """Colour an explicit room, or the nearest freshly detected room when omitted. Govee bulbs get
     the exact colour; the muting step is for the old HA bulbs that flattened anything saturated.
     Success is any bulb lit: a bulb that is not in a lamp is not a failure of the room."""
     exact = hex_to_rgb(hex_color); muted = saturate_for_bulbs(exact)
+    room = lighting_room(room)
     lights = room_lights(room)
     _ensure_plugs(lights)
     ok = 0
@@ -564,6 +579,7 @@ def set_room_color(hex_color, brightness=120, room=None):
 def flicker(room=None, times=1):
     """White, white, back to a low violet: a colour flicker (the strength is never changed, 8 November). Mischief, not a scare: bounded and short. One pass by default:
     the Govee cloud reaches bulbs one at a time, so two passes over three bulbs read as a storm."""
+    room = lighting_room(room)
     lights = room_lights(room)
     _ensure_plugs(lights)
     for _ in range(times):

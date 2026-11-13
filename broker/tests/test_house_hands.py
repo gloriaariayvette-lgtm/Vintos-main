@@ -115,7 +115,7 @@ clock[0] = datetime(2026, 10, 5, 12, 0)
 reset()
 # --- the lights -----------------------------------------------------------------------------------------------------
 check("a colour by name", H.do("LIGHTS", "violet bedroom", home=home)[0] and ("color", "#9b59ff", "bedroom") in home.calls)
-check("a colour by hex", H.do("LIGHTS", "#112233", home=home)[0] and ("color", "#112233", None) in home.calls)
+check("a colour by hex", H.do("LIGHTS", "#112233", home=home)[0] and ("color", "#112233", "all") in home.calls)
 check("an unknown colour says which ones it knows", "not a colour I know" in H.do("LIGHTS", "chartreuse-ish", home=home)[1])
 check("a flicker", H.do("LIGHTS", "flicker office", home=home)[0] and ("flicker", "office") in home.calls)
 

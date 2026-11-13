@@ -290,6 +290,7 @@ STEP: {step}
 SCREENSHOT PIXELS: {image_size[0]} x {image_size[1]}
 ACTIVE WINDOW TITLE: {desktop.get('active_window') or 'unknown'}   (a YouTube watch page is titled "<video title> - YouTube"; a results page is titled "<search> - YouTube")
 DESKTOP: {json.dumps(desktop, ensure_ascii=False)}
+PLATFORM RULE: {"This is macOS. Use Command shortcuts and macOS applications; Windows app aliases are translated by the Mac adapter." if desktop.get("platform") == "macOS" else "Use the platform shown in DESKTOP."}
 LAST RESULT: {last_result or 'none'}
 RECENT ACTIONS: {json.dumps(recent[-5:], ensure_ascii=False)}
 
@@ -512,6 +513,10 @@ def _exclusive_run():
 def pick_backend() -> DesktopBackend:
     """Aegis is WSL: the desktop Gloria sees is Windows, which no Linux display can reach. When powershell.exe
     is reachable the Windows backend drives it; otherwise the PyAutoGUI backend (a real Linux session)."""
+    import browser_mac
+    if browser_mac.selected():
+        import desktop_mac
+        return desktop_mac.RemoteMacBackend()
     if os.environ.get("VINTOS_DESKTOP_BACKEND", "").lower() == "pyautogui":
         return PyAutoGUIBackend()
     forced = os.environ.get("VINTOS_DESKTOP_BACKEND", "").lower()
@@ -530,8 +535,14 @@ def pick_backend() -> DesktopBackend:
     return PyAutoGUIBackend()
 
 
+def _routing_text(task: str) -> str:
+    # Classify the goal, not prose added by an older long-lived chat wrapper.
+    return task.split("\nWork through the ordinary visible desktop", 1)[0]
+
+
 def run_task(task: str, max_steps: int = DEFAULT_MAX_STEPS, interval: float = .25,
              dry_run: bool = False, job_id: Optional[str] = None) -> RunResult:
+    import browser_mac
     job_id = job_id or uuid.uuid4().hex[:12]
     with _exclusive_run():
         # A directly-invoked run clears an old stop. A server-spawned child
@@ -545,15 +556,19 @@ def run_task(task: str, max_steps: int = DEFAULT_MAX_STEPS, interval: float = .2
             if not dry_run and os.environ.get("VINTOS_DESKTOP_MODE", "").lower() != "pixels":
                 try:
                     import browser_agent, browser_winpy
-                    use_browser = browser_agent.looks_like_web(task) and browser_winpy.available()
+                    import browser_mac
+                    if browser_mac.selected():
+                        use_browser = browser_agent.looks_like_web(_routing_text(task))
+                    else:
+                        use_browser = browser_agent.looks_like_web(_routing_text(task)) and browser_winpy.available()
                 except Exception:
                     use_browser = False
             if use_browser:
                 # a task about the web is driven by the page's structure, not by pixels (2026-09-06)
-                _state(mode="browser")
+                _state(mode="browser", target="imac" if browser_mac.selected() else "aegis")
                 result = browser_agent.run_task(task, max_steps, job_id=job_id)
             else:
-                _state(mode="pixels")
+                _state(mode="pixels", target="imac" if browser_mac.selected() else "aegis")
                 result = run_loop(task, pick_backend(), GemmaPlanner(), max_steps,
                                   interval, dry_run, job_id=job_id,
                                   progress=lambda step, calls: _state(step=step, gemma_calls=calls),

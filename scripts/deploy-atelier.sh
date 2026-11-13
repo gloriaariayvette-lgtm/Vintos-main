@@ -249,6 +249,8 @@ SCRIPTS="$SCRIPTS press_hold_bench.py"   # his press-vs-hold word trials, built 
 SCRIPTS="$SCRIPTS bedroom_arrival.py"   # the bedroom ESP32: his newest song to her Watch when she comes in (2026-10-17)
 SCRIPTS="$SCRIPTS kitchen_presence.py"   # the coffee maker ESP32: her phone within 1 m = she is in the kitchen (2026-11-03)
 SCRIPTS="$SCRIPTS house_boards.py"   # the shower, sofa and office-chair boards (2026-11-08)
+SCRIPTS="$SCRIPTS room_proximity.py house_context.py"   # nearest-room lights and house-moment context (2026-11-12)
+SCRIPTS="$SCRIPTS browser_mac.py desktop_mac.py"   # desktop control on the iMac when memory/desktop-target.json picks it (2026-11-12)
 SCRIPTS="$SCRIPTS intimate_stream.py"   # every session kept in order, for his continuous arousal state (2026-11-04)
 SCRIPTS="$SCRIPTS bandwidth_collapse.py"   # in no list, so his live copy stayed the 22 August one: no level history, old crest wording (2026-11-09)
 SCRIPTS="$SCRIPTS memory_surfacing.py embed_cache.py"   # one exact past line surfaces when what she says is truly near it (2026-11-04)
