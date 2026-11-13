@@ -1,0 +1,23 @@
+{
+  "scope": "Earlier-scene recall test for the camera mamepa, added to the same lock hold after CAMERA-MAMEPA-PREREG.json (whose retention bar of 68.8% stays in force). The question can only be answered from a scene that ended before the current one and has left the stream's window. Code: branch claude/camera-mamepa, the commit named in SOURCE-COMMIT.txt.",
+  "registered_before_scoring": "2026-11-13, before any training, development check or fresh clip of this hold; the chain had not started",
+  "clips": {
+    "earlier_scene": "the Codex's moving-square generator, unchanged: seed 2026111503, 256 clips, speeds [14, 16], four 192x192 frames at 2 fps (stream times 0.0-1.5 s)",
+    "current_scene": "camera_mamepa_earlier.current_scene(1200000 + i): 16 frames (stream times 2.0-9.5 s) of one continuous synthetic scene: a fixed gradient background and one disc (no square) drifting 2-4 px per frame in a random direction independent of the label",
+    "window_check": "every clip's square frames must have left the window before the question (recorded per clip); a clip where any remain is reported and counted as scored anyway"
+  },
+  "question": "Earlier in this video, before the current scene, a square moved across a plain background. In which direction did that square move? Answer with exactly one word: left, right, up, or down.",
+  "arms": {
+    "no_recall": "the same session asked with nothing added (the stream as it is)",
+    "mamepa_recall": "the same session asked with mamepa.recall(): up to four kept frames of the most recent earlier scene with >= 2 frames shown again as stamped image spans, plus its note; the current view is not narrowed",
+    "order": "alternated by clip index parity; both answers rolled back; 8 tokens; temperature 0",
+    "boundary": "the development choice in mamepa-choice.json, unchanged"
+  },
+  "bars": {
+    "margin": 0.15,
+    "rule": "accuracy(mamepa_recall) >= accuracy(no_recall) + 0.15 on the 256 clips",
+    "reported_not_gated": ["recall_found_earlier_scene rate (recalled segment starts at 0.0 with >= 2 frames)", "first-token time added by recall, p50/p95", "accuracy among clips where the right scene was recalled"]
+  },
+  "scored_once": true,
+  "adoption": "none by this run; RECALL_DEFAULT stays False; Gloria decides"
+}

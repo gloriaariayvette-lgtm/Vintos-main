@@ -287,4 +287,52 @@ check('the summary is readable on the inference thread', svc.dispatch_read(mam.s
 svc.dispatch('/video/abort', {'session_id': sid})
 check('nothing was written outside the scratch checkpoints', sorted(p.name for p in tmp.iterdir() if p.is_file())
       == sorted(['plain.npz', 'trained.npz', 'service.npz', 'bad-schema.npz', 'bad-space.npz', 'bad-value.npz']))
+
+# ---- earlier-scene recall: kept tokens of a scene that has left the window are shown again for the question
+rc = Mamepa(model); rc.new_stream('r', 0.)
+for k in range(4):
+    rc.frame(clip + k * step * 3, at=k * .5, tokens=('A', k))
+other = rng.normal(size=DIM).astype(np.float32)
+for k in range(16):
+    rc.frame(other + k * step * 3, at=2 + k * .5, tokens=('B', k))
+got = rc.recall()
+check('recall returns the most recent earlier scene, not the current one, with a note saying so',
+      [f[1] for f in got['frames']] == [('A', 0), ('A', 1), ('A', 2), ('A', 3)] and got['segment']['frames'] == 4
+      and 'earlier scene' in got['note'] and 'current scene began at 00:02' in got['note'])
+check('kept frames are thinned per scene and bounded overall', len([k for k in rc.kept if k['tokens'][0] == 'B']) <= cm.KEEP_PER_SEGMENT
+      and len(rc.kept) <= cm.MAX_KEPT and ('B', 0) in [k['tokens'] for k in rc.kept])
+check('kept tokens are never dumped', 'kept' not in rc.dump() and 'tokens' not in json.dumps(rc.dump()))
+lone = Mamepa(model); lone.new_stream('l', 0.)
+for k in range(3):
+    lone.frame(clip + k * step * 3, at=k, tokens=k)
+check('with no earlier scene there is nothing to recall', lone.recall() is None)
+
+be.calls = []
+before = list(s.cache)
+emb = be.image(np.full((48, 64, 3), 7, np.uint8))
+s.ask('which way?', max_tokens=2, note='[RECALL]', recall_frames=[(0., emb), (.5, emb)])
+vis = [c for c in be.calls if c[1]]
+check('recalled frames are shown as stamped image spans before the note, then rolled back',
+      len(vis) == 2 and max(i for i, c in enumerate(be.calls) if c[1]) < next(i for i, c in enumerate(be.calls)
+      if c[0][:3] == [float(t) for t in Tok().encode(" [R")])
+      and s.cache == before and len(s.window()) == 6)
+try:
+    s.ask('q', recall_frames=[(0., np.zeros((1, 9000, DIM), np.float32))]); raise AssertionError('oversized recall accepted')
+except ValueError:
+    pass
+check('recalled frames count against the 8192 context budget', True)
+
+mam2 = Mamepa(Model(spath)); svc2 = VideoService(mind, Backend(), None, None, mam2)
+sid2 = svc2.dispatch('/video/start', {})['session_id']
+for k in range(4):
+    svc2.dispatch('/video/frame', {'session_id': sid2, 'at': k * .5, 'image': png(200)})
+for k in range(4):
+    svc2.dispatch('/video/frame', {'session_id': sid2, 'at': 2 + k * .5, 'image': png(10 + 30 * k)})
+check('the service keeps each frame\'s projected tokens for recall', len(mam2.kept) == 8)
+svc2.stream.calls = []
+svc2.dispatch('/video/ask', {'session_id': sid2, 'question': 'q', 'max_tokens': 2, 'recall_earlier': True})
+earlier = mam2.recall()
+check('recall_earlier shows the earlier scene again when there is one',
+      earlier is None or sum(1 for c in svc2.stream.calls if c[1]) == len(earlier['frames']))
+svc2.dispatch('/video/abort', {'session_id': sid2})
 print('all camera mamepa checks passed')

@@ -1,0 +1,3 @@
+# Camera mamepa acceptance (Studio)
+
+Gate scripts and pre-registrations for `studio/camera_mamepa.py`, run once under the shared GPU lock after the native video stream's own scoring. `CAMERA-MAMEPA-PREREG.json` holds the retention, motion, latency, text-parity and vision bars. `CAMERA-MAMEPA-PREREG-2.json` adds the earlier-scene recall test: the question is about a scene that has already left the window. Both were registered before any scoring. `chain.py` runs, in order: training on synthetic clips, the development choice (`m2`), fresh motion/retention/latency (`m3`), earlier-scene recall (`m6`), text parity (`m4`) and vision (`m5`). `mcommon.py` copies the registered clip generator byte for byte. No real frames, recordings or downloads are used.

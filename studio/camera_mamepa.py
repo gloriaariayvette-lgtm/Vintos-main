@@ -34,6 +34,8 @@ BOUNDARY = 10.                     # surprise (error / calibrated scale) that op
 MIN_VIEW_FRAMES = 2                # an adaptive view never shows fewer frames than this
 MAX_SEGMENTS = 64
 MAX_EPISODES = 16                  # remembered sightings per tag key
+KEEP_PER_SEGMENT = 8               # frames' projected tokens kept per scene for recall (memory only)
+MAX_KEPT = 32                      # across scenes; the oldest scene's frames go first
 MAX_SEEN = 8192
 NOTE_CHARS = 900                   # the summary line budget (well inside the answer reserve)
 RECORD_CHARS = 240
@@ -178,6 +180,8 @@ class Mamepa:
         self.segments = []
         self.episodes = {}
         self.records = {}
+        self.kept = []                             # [{'sid', 'at', 'tokens'}]: opaque embeddings, never dumped
+        self.next_sid = 0
         if payload:
             self.load(payload)
 
@@ -209,6 +213,7 @@ class Mamepa:
         self.seen = [tuple(s) if isinstance(s, list) else s for s in p['seen']][-MAX_SEEN:]
         self._seen = set(self.seen)
         self.segments = [dict(s) for s in p['segments']][-MAX_SEGMENTS:]
+        self.next_sid = max([int(s.get('sid') or 0) for s in self.segments] + [0])
         self.episodes = {k: list(v)[-MAX_EPISODES:] for k, v in p['episodes'].items()}
 
     def _mark_seen(self, key):
@@ -251,12 +256,42 @@ class Mamepa:
         self.stream = stream
         self.at = None
         self.segments.append({'start': float(at), 'end': float(at), 'frames': 0, 'stream': stream, 'tags': [],
-                              'change': 0., 'peak': None, 'opened_by': 'stream'})
+                              'change': 0., 'peak': None, 'opened_by': 'stream', 'sid': self._sid()})
         del self.segments[:-MAX_SEGMENTS]
         self.records = {}
         if t is not None and self.t is not None:
             self._decay(min(max(float(t) - self.t, 0.), MAX_STEP))
         self.t = t if t is not None else self.t
+
+    def _sid(self):
+        self.next_sid += 1
+        return self.next_sid
+
+    def _keep(self, sid, at, tokens):
+        mine = [k for k in self.kept if k['sid'] == sid]
+        if len(mine) >= KEEP_PER_SEGMENT:   # thin a long scene evenly: drop every second kept frame, keep the first
+            drop = {id(k) for k in mine[1::2]}
+            self.kept = [k for k in self.kept if id(k) not in drop]
+        self.kept.append({'sid': sid, 'at': float(at), 'tokens': tokens})
+        while len(self.kept) > MAX_KEPT:
+            oldest = self.kept[0]['sid']
+            self.kept = [k for k in self.kept if k['sid'] != oldest] or self.kept[1:]
+
+    def recall(self, max_frames=4, min_frames=2):
+        """The most recent earlier scene of this stream (not the current one) with at least ``min_frames``
+        frames and kept tokens: up to ``max_frames`` of its frames (evenly spaced) and a note saying what they
+        are. None when there is no such scene."""
+        segs = self.current()
+        for seg in reversed(segs[:-1]):
+            frames = [(k['at'], k['tokens']) for k in self.kept if k['sid'] == seg.get('sid')]
+            if seg['frames'] >= min_frames and len(frames) >= min_frames:
+                pick = np.unique(np.linspace(0, len(frames) - 1, min(max_frames, len(frames))).round().astype(int))
+                note = ('[CAMERA MEMORY RECALL: the frames stamped %s-%s just above are from an earlier scene '
+                        '(%d frames), shown again from memory; the current scene began at %s.]' % (
+                            stamp(seg['start']), stamp(seg['end']), seg['frames'], stamp(segs[-1]['start'])))
+                return {'frames': [frames[i] for i in pick], 'note': note,
+                        'segment': {k: seg[k] for k in ('start', 'end', 'frames')}}
+        return None
 
     def _decay(self, dt):
         """Pure passage of time with nothing seen: levels hold, the realized-error memory fades."""
@@ -264,9 +299,10 @@ class Mamepa:
         self.L *= w
         self.M *= w
 
-    def frame(self, vec, at, t=None, key=None):
+    def frame(self, vec, at, t=None, key=None, tokens=None):
         """Ingest one frame vector at stream time ``at`` (seconds). Returns raw errors of the preceding state's
-        forecast (``None`` for a duplicate)."""
+        forecast (``None`` for a duplicate). ``tokens`` (optional, opaque) are the frame's projected soft tokens,
+        kept in memory per scene so an earlier scene can be shown again after it has left the window."""
         if self._mark_seen(key):
             return None
         at = float(at)
@@ -303,6 +339,8 @@ class Mamepa:
         if t is not None:
             self.t = float(t)
         self._segment(at, x, surprise)
+        if tokens is not None:
+            self._keep(self.segments[-1]['sid'], at, tokens)
         result['segment_start'] = self.segments[-1]['start']
         result['boundary'] = self.segments[-1]['frames'] == 1 and self.segments[-1]['opened_by'] == 'surprise'
         return result
@@ -311,7 +349,7 @@ class Mamepa:
         cur = self.segments[-1] if self.segments and self.segments[-1]['stream'] == self.stream else None
         if cur is None or (cur['frames'] and surprise is not None and surprise >= self.boundary):
             cur = {'start': at, 'end': at, 'frames': 0, 'stream': self.stream, 'tags': [], 'change': 0.,
-                   'peak': None if surprise is None else round(surprise, 3),
+                   'sid': self._sid(), 'peak': None if surprise is None else round(surprise, 3),
                    'opened_by': 'surprise' if surprise is not None else 'stream'}
             self.segments.append(cur)
             del self.segments[:-MAX_SEGMENTS]

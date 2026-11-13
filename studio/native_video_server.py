@@ -173,7 +173,7 @@ class VideoService:
                 if self.mamepa is not None:
                     self.mamepa.new_stream(stream_id or uuid.uuid4().hex[:12], 0., time.time())
                 if self.tap is not None or self.mamepa is not None:
-                    on_embedding = lambda kind, at, e, ref: self._sense(kind, at, to_numpy(e), ref)
+                    on_embedding = lambda kind, at, e, ref: self._sense(kind, at, to_numpy(e), ref, e)
                 session = LiveSession(self.mind, self.stream, body.get("instruction"),
                                       int(body.get("retain_frames", RETAIN_FRAMES)), on_embedding=on_embedding,
                                       scene_markers=bool(body.get("scene_markers", SCENE_MARKERS_DEFAULT)))
@@ -212,15 +212,20 @@ class VideoService:
                 if self.answer is not None:
                     raise BlockingIOError("An answer is already being decoded")
                 recent = body.get("recent_seconds", RECENT_SECONDS_DEFAULT)
-                view_from = note = None
+                view_from = note = recalled = None
                 if self.mamepa is not None and body.get("recall", RECALL_DEFAULT):
                     memory = self.mamepa.summary()
                     note = memory.get("text")
                     if body.get("recall_view", True):
                         view_from = memory.get("onset")
+                if self.mamepa is not None and body.get("recall_earlier"):
+                    # an earlier scene, shown again; the current view is not narrowed for such a question
+                    earlier = self.mamepa.recall()
+                    if earlier:
+                        recalled, note, view_from = earlier["frames"], earlier["note"], None
                 steps = session.ask_steps(str(body["question"]), min(int(body.get("max_tokens", 128)), LIVE_ANSWER_TOKENS),
                                           float(body.get("temperature", 0)), None,
-                                          None if recent is None else float(recent), view_from, note)
+                                          None if recent is None else float(recent), view_from, note, recalled)
                 return _Answer(steps)   # decoded token by token between arrivals; the reply waits for the end
             elif path == "/video/finish":
                 window = session.window()
@@ -232,14 +237,14 @@ class VideoService:
             return dict(result, raw_frames_retained=False)
 
 
-    def _sense(self, kind, at, embeds, ref):
+    def _sense(self, kind, at, embeds, ref, raw=None):
         """One encoded frame or audio packet, as it entered the mind: to the tap ring and (frames) the mamepa."""
         if self.tap is not None:
             self.tap.embedding(kind, at, embeds, ref)
         if self.mamepa is not None and kind == "frame":
             started = time.perf_counter()
             x = np.asarray(embeds, dtype=np.float32)
-            self.mamepa.frame(x.reshape(-1, x.shape[-1]).mean(axis=0), at, time.time())
+            self.mamepa.frame(x.reshape(-1, x.shape[-1]).mean(axis=0), at, time.time(), tokens=raw)
             self.mamepa_seconds += time.perf_counter() - started
 
 

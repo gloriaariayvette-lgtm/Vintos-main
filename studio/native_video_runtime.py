@@ -444,9 +444,10 @@ class LiveSession:
         return [dict({k: v for k, v in s.items() if k != "digest"}, segment=i) for i, s in sorted(self.segments.items())]
 
     def ask(self, question, max_tokens=128, temperature=0, on_text=None, recent_seconds=None, view_from=None,
-            note=None):
+            note=None, recall_frames=None):
         """Answer from the retained window, then roll the question and answer back out of the cache."""
-        steps = self.ask_steps(question, max_tokens, temperature, on_text, recent_seconds, view_from, note)
+        steps = self.ask_steps(question, max_tokens, temperature, on_text, recent_seconds, view_from, note,
+                               recall_frames)
         while True:
             try:
                 next(steps)
@@ -454,14 +455,16 @@ class LiveSession:
                 return done.value
 
     def ask_steps(self, question, max_tokens=128, temperature=0, on_text=None, recent_seconds=None, view_from=None,
-                  note=None):
+                  note=None, recall_frames=None):
         """The same answer one token per step, so a caller can take in arrivals between tokens: while it runs,
         frames are encoded and audio held, and both enter the timeline right after the answer is rolled back.
         ``recent_seconds`` limits the answer to frames from the last N seconds before the question (older
         frames are masked for the question and answer only; they stay in the window). ``view_from`` does the
         same from an absolute stream time (e.g. where the camera mamepa says the present happening began), and
-        ``note`` is a short text (e.g. the camera mamepa's summary) placed before the question; both are rolled
-        back with the answer."""
+        ``note`` is a short text (e.g. the camera mamepa's summary) placed before the question.
+        ``recall_frames`` is a list of (stream seconds, projected embeddings) kept by the camera mamepa from an
+        earlier scene that has left the window; each is shown again as a stamped image span just before the note.
+        All of these are rolled back with the answer."""
         if self.closed:
             raise ValueError("Session is closed")
         if not 1 <= int(max_tokens) <= 512 or not 0 <= float(temperature) <= 2:
@@ -480,6 +483,10 @@ class LiveSession:
         question_ids = self._ids((" " + note if note else "") + (" " + question if question else "") + self.closing)
         if len(question_ids) + int(max_tokens) > ANSWER_RESERVE:
             raise ValueError("Question and answer exceed the reserved budget")
+        recall_frames = list(recall_frames or [])
+        recall_tokens = sum(int(e.shape[1]) + 8 for _, e in recall_frames)
+        if self.stream.length(self.cache) + recall_tokens + ANSWER_RESERVE > CONTEXT:
+            raise ValueError("Recalled frames exceed the existing 8192 token budget")
         hidden = None
         frames = [s for s in self.segments.values() if s["kind"] == "frame"]
         horizons = []
@@ -494,14 +501,18 @@ class LiveSession:
         tokens, finish_reason, first = [], "length", None
         self.answering = True
 
-        def forward(embeds):
+        def forward(embeds, vision=False):
             self.stream.hidden = hidden
             try:
-                return self.stream.forward(embeds, self.cache, False)
+                return self.stream.forward(embeds, self.cache, vision)
             finally:
                 self.stream.hidden = None
 
         try:
+            for at, embeds in recall_frames:
+                forward(self.stream.text(self._ids(" " + stamp(at) + " ") + self.boi))
+                forward(embeds, vision=True)
+                forward(self.stream.text(self.eoi))
             self.scores = forward(self.stream.text(question_ids))
             for _ in range(int(max_tokens)):
                 token = self._choose(float(temperature))
