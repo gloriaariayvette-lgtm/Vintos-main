@@ -274,10 +274,12 @@ class SelectorFailures(unittest.TestCase):
 
     def test_device_and_background_turns_give_nothing_back(self):
         self.pressed()
+        before = self.state()
         self.answer = 'no object at all'
         with self.assertRaises(E.SelectorUnreadable): self.select(F.BUTTON, resolve=False, her_source='gcs')
         st = self.state()
-        self.assertLess(st['neglect']['gloria'], 1.5)                           # spent, as before, and kept spent
+        # a device turn never spends the override (13 November), so there is nothing to give back either
+        self.assertEqual(st['neglect'], before['neglect'])
         self.assertNotIn('override_refunds', st)
         self.assertNotIn('override', self.rows()[0]['target']['priority_provenance'])
         self.pressed()
