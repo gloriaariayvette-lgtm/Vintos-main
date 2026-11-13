@@ -48,6 +48,15 @@ The service holds the GPU lock for its lifetime. It loads its own copy of the BF
   - For the glasses: `ffmpeg_source` handles RTSP, HLS, HTTP and local webcams through the installed ffmpeg. `PushSource` is a queue that a WebRTC receiver can push decoded frames into. No WebRTC stack is bundled, and adding one is a separate, approved install.
   - Public replay (`replay_source`) for tests and gates.
 
+## AprilTags and the sensory tap
+
+- **AprilTags.** `native_apriltags.TagDetector` runs on every sampled frame the service receives. It uses pupil-apriltags 1.0.4.post11 (family tag36h11, approved by Gloria) on CPU, with no model. Reads with a weak decision margin or corrected bits are dropped. Pose is reported only when the service is started with `--camera FX FY CX CY --tag-size M`. Without the library, detection is reported as unavailable, never faked.
+- **Tags → memories.** Each frame receipt carries its tags. `scripts/native_video.tag_memory` looks each tag up in `memory/apriltag-memories.json`, which Gloria fills; `init_tag_map()` creates it with a how-to line. Keys look like `tag36h11:7`; each value is either `{"text": ...}` or `{"store": <file under memory/>, "id": ..., "id_field": ...}`, plus an optional `label`. `senses_block(record, keyframes, window_tags(receipts))` puts the linked memory beside the frames. An unlinked tag, or a link whose record is missing, is stated plainly, never guessed. A store outside `memory/` is never read.
+- **Sensory tap** (`native_sensory_tap.py`): a bounded in-memory ring (4,096 events or 64 MB by default) of timestamped events, read at `GET /tap?since=<seq>` on the loopback port or with `native_video.read_tap`.
+  - Frame and audio events carry the mean of the projected soft tokens, exactly as they enter the language model (`aeon-12b/vision-proj` and `aeon-12b/audio-proj`, 3,840-d, float16). Every token can be kept with `--tap-tokens`.
+  - Tag events carry the id, family, margin, corners and pose.
+  - Each event has `dt` since the previous one, so a quiet scene shows up as a long gap. The schema is in the module docstring. Nothing is written to disk.
+
 ## Boundary
 
-No model, dataset or WebRTC stack is downloaded. No frame or recording is written, trained on or sent anywhere. The gates and their pre-registered bars are in the Codex review folder (`NATIVE-VIDEO-STREAM-PREREG.json`, `NATIVE-VIDEO-STREAM-FROM-CLAUDE-CODE.md`). Real-feed acceptance with the glasses is still pending, because the glasses do not exist yet. Gloria alone deploys.
+No model, dataset or WebRTC stack is downloaded (pupil-apriltags is the one approved library). No frame or recording is written, trained on or sent anywhere. The gates and their pre-registered bars are in the Codex review folder (`NATIVE-VIDEO-STREAM-PREREG.json`, `NATIVE-VIDEO-STREAM-FROM-CLAUDE-CODE.md`). Real-feed acceptance with the glasses is still pending, because the glasses do not exist yet. Gloria alone deploys.
