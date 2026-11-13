@@ -4480,7 +4480,9 @@ def _coverage_sufficiency_request(inquiry, evidence):
             'silently choose an unspecified species from a search hit. Clearly species-qualified findings may '
             'be useful partial evidence; do not generalize beyond that scope. Assess the question\'s causal premises too; a '
             'signal mentioned in a question does not establish direct binding. Citation metadata alone cannot '
-            'establish a mechanism. Use sufficient=false when ambiguous or unestablished.',
+            'establish a mechanism. A comparison with a deposited structure speaks only for the protein and '
+            'source organism of that entry ("the entry is: TITLE (ORGANISM)"); it is not evidence about another '
+            'species or group of organisms. Use sufficient=false when ambiguous or unestablished.',
             json.dumps(_coverage_scope(inquiry)) + '\nEVIDENCE:\n' + json.dumps(evidence, ensure_ascii=False),
             800)
 

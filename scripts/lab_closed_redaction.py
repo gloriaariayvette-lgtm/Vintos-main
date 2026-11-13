@@ -49,6 +49,12 @@ _TOPIC_STOP = set('the and for with from that this what which does are was were 
                   'between within across over under per via each other more most less such these those there here'.split())
 
 
+def is_placeholder(text):
+    """True for PLACEHOLDER or its topic-words form: a withheld question, which is never itself a question. The planner
+    has echoed it back as one (12 November, I-f3a37ef61f5b: it opened, and its finding was a raw UniProt sequence)."""
+    return str(text or '').strip().startswith(PLACEHOLDER[:-1])
+
+
 def enabled():
     """The flag: on unless repeat-fix.json says {"redact_closed_questions": false}."""
     try:

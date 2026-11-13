@@ -198,12 +198,55 @@ def _brave_key():
     return ""
 
 
+def _ddg_search(query, count=6):
+    """DuckDuckGo's plain HTML results: free, no key, no quota (13 November: Brave's free plan ran out)."""
+    import html as _h, re as _re, requests
+    from urllib.parse import parse_qs, unquote, urlparse
+    r = requests.post("https://html.duckduckgo.com/html/", data={"q": query}, timeout=15,
+                      headers={"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36"})
+    if r.status_code != 200:
+        return []
+    clean = lambda x: _h.unescape(_re.sub(r"<[^>]+>", "", x or "")).strip()
+    def url(u):
+        u = _h.unescape(u)
+        if u.startswith("//"): u = "https:" + u
+        q = parse_qs(urlparse(u).query)
+        return unquote(q["uddg"][0]) if "uddg" in q else u
+    out = []
+    for b in _re.split(r'<div class="result results_links', r.text)[1:]:
+        a = _re.search(r'class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>', b, _re.S)
+        if not a or "result--ad" in b:
+            continue
+        sn = _re.search(r'class="result__snippet"[^>]*>(.*?)</a>', b, _re.S)
+        out.append({"title": clean(a.group(2)), "url": url(a.group(1)), "description": clean(sn.group(1) if sn else "")})
+        if len(out) >= count:
+            break
+    return out
+
+
 def web_search(query, count=6):
+    """His own SearXNG on Aegis first (free, no quota); then Brave; when Brave refuses (its free monthly quota ran
+    out about 6 November), DuckDuckGo."""
     import requests
-    r = paid_http.send(requests.get, __file__, "https://api.search.brave.com/res/v1/web/search", params={"q": query, "count": count},
-                     headers={"X-Subscription-Token": _brave_key(), "Accept": "application/json"}, timeout=15)
-    return [{"title": x.get("title", ""), "url": x.get("url", ""), "description": x.get("description", "")}
-            for x in ((r.json().get("web") or {}).get("results") or [])[:count]]
+    try:
+        r = requests.get(os.environ.get("SEARXNG_URL", "http://127.0.0.1:8888/search"), params={"q": query, "format": "json"}, timeout=30)
+        if r.status_code == 200:
+            hits = [{"title": x.get("title", ""), "url": x.get("url", ""), "description": x.get("content", "")}
+                    for x in (r.json().get("results") or [])[:count]]
+            if hits:
+                return hits
+    except Exception:
+        pass
+    try:
+        r = paid_http.send(requests.get, __file__, "https://api.search.brave.com/res/v1/web/search", params={"q": query, "count": count},
+                         headers={"X-Subscription-Token": _brave_key(), "Accept": "application/json"}, timeout=15)
+        data = r.json()
+        if r.status_code == 200 and not (isinstance(data, dict) and data.get("type") == "ErrorResponse"):
+            return [{"title": x.get("title", ""), "url": x.get("url", ""), "description": x.get("description", "")}
+                    for x in ((data.get("web") or {}).get("results") or [])[:count]]
+    except Exception:
+        pass
+    return _ddg_search(query, count)
 
 
 def research(recipient, about, search=None, fetch=None, pages=2):

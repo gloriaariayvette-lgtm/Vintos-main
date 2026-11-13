@@ -268,8 +268,13 @@ def _declare(eligible=True):
 
     # gravitational pull — neglect accumulates when an axis is deprioritized, once per real turn
     fg = _foreground()
+    # a real turn is a foreground turn of her own: a device or room event (not eligible) is read like a
+    # background run - it may show a due override, but it accrues no neglect, spends no override, counts
+    # nothing and moves neither the arc nor her opportunity (13 November: a device-only turn spent a due
+    # override and accrued neglect, because only the foreground flag was looked at here)
+    real = bool(fg and eligible)
     forced = None
-    if fg:
+    if real:
         for a in AXES:
             st["neglect"][a] = round(max(0.0, st["neglect"][a] + (0.33 - w[a])), 3)
     heavy = max(AXES, key=lambda a: st["neglect"][a])
@@ -278,8 +283,8 @@ def _declare(eligible=True):
         forced = heavy; spent = st["neglect"][heavy]
         w = {a: (0.6 if a == heavy else 0.2) for a in AXES}
         why.append(f"GRAVITATIONAL OVERRIDE: '{heavy}' neglected too long (pressure {st['neglect'][heavy]}) — it needs to matter now, strategy set aside")
-        if fg:
-            st["neglect"][heavy] = 0.0     # a background read shows the override; only a real turn spends it
+        if real:
+            st["neglect"][heavy] = 0.0     # a background read or a device event shows the override; only her turn spends it
 
     # normalize
     tot = sum(w.values()) or 1.0
@@ -296,7 +301,7 @@ def _declare(eligible=True):
         counts = {a: (int(old.get("n") or 0) if old.get("axis") == a else 0) for a in AXES}
     stk = st.get("override_streak") or {"axis": None, "n": 0}
     counted = False
-    if forced and fg:
+    if forced and real:
         counts[forced] = int(counts.get(forced, 0) or 0) + 1; counted = True
         stk = {"axis": forced, "n": counts[forced]}
         if counts[forced] >= 3:
@@ -322,13 +327,13 @@ def _declare(eligible=True):
     st["override_streak"] = stk
 
     # the arc — same shape as self_drift's direction vector, one level up (real turns only)
-    if fg:
+    if real:
         st["arc"] = {a: round(0.8 * st["arc"].get(a, 0.33) + 0.2 * w[a], 3) for a in AXES}
 
     # her opportunity: due on the turn after OPPORTUNITY_EVERY - 1 turns of her own without her axis declared.
     # Low receptivity does not skip it. The counter itself moves in note_selection, after the selection.
     opp = _opportunity(st)
-    due = bool(fg and eligible and opp["since"] >= OPPORTUNITY_EVERY - 1)
+    due = bool(real and opp["since"] >= OPPORTUNITY_EVERY - 1)
     if due:
         opp["opportunities"] += 1
     st["gloria_opportunity"] = opp
@@ -337,7 +342,7 @@ def _declare(eligible=True):
            "mode": "pressure" if forced else "strategic",
            "receptivity": recept, "why": "; ".join(why), "arc": st["arc"], "foreground": fg,
            "gloria_opportunity": due}
-    if forced and fg and eligible:
+    if forced and real:
         # what refund_override gives back if the turn fails: the neglect spent, and the count it added (unless
         # that count already graduated to a question, which stays asked). A device or room event (not eligible)
         # is not one of her turns: its override is never given back. The id makes the give-back once only.
@@ -345,7 +350,7 @@ def _declare(eligible=True):
     try:
         with open(LOG, "a") as f: f.write(json.dumps(rec) + "\n")   # immutable, pre-turn
     except Exception: pass
-    if fg:
+    if real:
         _atomic(STATE, st)
     try:
         json.dump(rec, open(os.path.join(MEM, ".pending-priority.json"), "w"))

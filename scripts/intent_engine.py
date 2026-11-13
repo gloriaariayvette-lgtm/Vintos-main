@@ -1167,17 +1167,28 @@ def note_response(raw, source=None):
     text = str(raw or "").strip()
     if not text:
         return
+    # Is this input her own words? A device event or room event is noted on an empty slot as before (the resolver
+    # counts it as a skipped observation and clears it), but it never keeps her reply out: her first words after a
+    # device event take the slot from it, here, under the ledger lock, so they are on the row durably before any
+    # resolver runs and survive a restart (13 November: a device input sitting in the slot made her next turn's
+    # words unrecordable, and the background resolver's rerun kept only the latest input, so her first reply was
+    # lost behind the device event). Her words, once there, are never replaced.
+    hers = not _her_follow_up(text, source)[1]
     from store_guard import transaction, write_json
     with transaction(LEDGER):
         led = _load("intent-ledger.json") or []
         changed = False
         for row in led:
-            if row.get("status") == "delivered" and not row.get("response_text"):
+            held = row.get("response_text")
+            if held and hers and _her_follow_up(held, row.get("response_source"))[1] in ("device_event_only", "not_her_words"):
+                held = None      # only a device or room event is given way; her reply already there stays
+            if row.get("status") == "delivered" and not held:
                 verdict = row.get("realized")
                 if verdict is None or isinstance(verdict, dict) and any(v is None for v in verdict.values()):
                     row["response_text"] = text
                     row["response_at"] = datetime.now().isoformat()   # when it came: the window is read against this, not against a later grading
                     if source: row["response_source"] = str(source)
+                    else: row.pop("response_source", None)            # a device event's source never stays beside her words
                     row["resolution_rev"] = int(row.get("resolution_rev", 0) or 0) + 1   # what a resolver reads has changed (round five)
                     changed = True
         if changed:

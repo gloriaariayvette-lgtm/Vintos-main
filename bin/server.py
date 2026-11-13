@@ -12773,9 +12773,13 @@ def _coffee_line():
     _m = _vintos_home()
     if not _m.named_device("coffee"):
         return ""
+    _last = ""
+    try: _last = _m.coffee_status()
+    except Exception: pass
     return ("THE NESPRESSO in the kitchen has a Fingerbot on its button: [HOME: coffee] starts it. Only while "
             "Gloria is home (her phone on the house Wi-Fi); when she is out it will not run. "
-            + ("She is home now." if _m._she_is_home() else "She is not home now."))
+            + ("She is home now." if _m._she_is_home() else "She is not home now.")
+            + ((" " + _last) if _last else ""))
 
 
 def _home_tags(reply):
