@@ -587,6 +587,11 @@ def _atomic_json(path, obj):
     with open(_tmp, "w") as _f: json.dump(obj, _f, indent=2)
     os.replace(_tmp, path)
 
+class SearchUnavailable(RuntimeError):
+    """Brave refused the search (quota, rate limit, key): not an answer of zero results (13 November: the
+    monthly quota ran out about 6 November and every search since read as 'No search results')."""
+
+
 def brave_search(query, count=8):
     """Search via Brave Search API."""
     try:
@@ -599,6 +604,12 @@ def brave_search(query, count=8):
             "Accept": "application/json"
         }, timeout=15)
         data = r.json()
+        if getattr(r, "status_code", 200) != 200 or (isinstance(data, dict) and data.get("type") == "ErrorResponse"):
+            err = (data.get("error") or {}) if isinstance(data, dict) else {}
+            meta = err.get("meta") or {}
+            raise SearchUnavailable("%s %s%s" % (getattr(r, "status_code", "?"), err.get("code") or err.get("detail") or "error",
+                (" (plan %s, %s of %s used)" % (meta.get("plan"), meta.get("quota_current"), meta.get("quota_limit"))
+                 if meta.get("quota_limit") else "")))
         results = []
         for item in data.get("web", {}).get("results", [])[:count]:
             results.append({
@@ -607,6 +618,8 @@ def brave_search(query, count=8):
                 "description": " ".join([item.get("description", "")] + list(item.get("extra_snippets") or [])[:3])[:900]
             })
         return results
+    except SearchUnavailable:
+        raise
     except Exception as e:
         log(f"Brave search error: {e}")
         return []
@@ -834,6 +847,11 @@ def main():
     for _att in range(_max_att):
         try:
             _res = brave_search(_aq); _tool_status = "ok"
+        except SearchUnavailable as _su:
+            # A refused search is not an unanswered question: no session outcome, no curiosity debt, no message to
+            # Gloria. The question stays his and is tried again on the next run.
+            log("SEARCH UNAVAILABLE - Brave refused the search: %s. Not searching today; the question is kept." % _su)
+            return
         except Exception as _bse:
             _res = []; _tool_status = "error: %s" % str(_bse)[:80]
         _cls = "ZERO_RESULTS" if not _res else "RESULTS_%d" % len(_res)
