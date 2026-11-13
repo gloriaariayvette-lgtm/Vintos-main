@@ -19,10 +19,7 @@ ROOT = os.path.join(MEMORY, "desktop-control")
 STORE = os.path.join(ROOT, "requests.json")
 EVENTS = os.path.join(ROOT, "events.jsonl")
 LOCK = os.path.join(ROOT, ".lock")
-CHAT = os.path.join(MEMORY, "chat-history.json")
-AVATAR_CHAT = os.path.join(MEMORY, "avatar-overlay-chat.json")
-CANON = os.path.join(MEMORY, "chat-canonical.jsonl")
-CHAT_LOCK = os.path.join(MEMORY, ".chat-history.lock")
+FOLLOWUPS = os.path.join(ROOT, "followups.jsonl")
 MODEL_URL = os.environ.get("VINTOS_DESKTOP_MODEL_URL", "http://100.79.177.103:1234/v1/chat/completions")
 MODEL_NAME = os.environ.get("VINTOS_GEMMA_MODEL", "")
 WATCH_SECONDS = int(os.environ.get("VINTOS_DESKTOP_WATCH_SECONDS", "1800"))
@@ -99,7 +96,7 @@ def prompt_block(command):
 
 def _wrapped_task(task, commerce=False):
     base = ("Gloria asked from Vintos chat: %s\nWork through the ordinary visible desktop and verify the result. "
-            "Never invent a page state." % task)
+            "Never invent an observed state." % task)
     if not commerce: return base
     return base + ("\nThis is PREPARATION ONLY. Choose one restaurant and one or two requested items, add them "
         "to the cart, then stop before every Place order, Confirm order, Pay now, Buy now, or equivalent "
@@ -125,6 +122,8 @@ def _latest_open(db, requested=""):
 
 
 def start_from_chat(user_text, reply="", surface="chat/full", turn_id=""):
+    if surface not in ("house-boards", "desktop-control"):
+        return {"accepted": False, "state": "disabled_in_chat"}
     command = parse_command(user_text)
     if not command: return {"state": "not_requested"}
     sys.path.insert(0, str(Path(__file__).resolve().parent)); import desktop_agent as da
@@ -195,9 +194,11 @@ def _model(prompt, max_tokens=300):
 
 def _page_text():
     try:
-        import browser_winpy
-        if not browser_winpy.available(): return ""
-        value = browser_winpy.EdgeBrowser().text()
+        import browser_winpy, browser_mac
+        if browser_mac.selected():
+            if not browser_mac.available(): return ""
+        elif not browser_winpy.available(): return ""
+        value = (browser_mac.MacBrowser() if browser_mac.selected() else browser_winpy.EdgeBrowser()).text()
         return str(value.get("text") or "")[:24000]
     except Exception: return ""
 
@@ -238,16 +239,11 @@ def _followup(rec, terminal, page=""):
 
 
 def _write_chat(text, rid, surface="chat/full"):
-    row = {"role":"assistant", "content":str(text)[:4000], "timestamp":_now(),
-           "source":"desktop-control", "desktop_request_id":rid}
-    chat_path = AVATAR_CHAT if surface == "avatar" else CHAT
-    if surface == "avatar": row["ts"] = time.time()
-    lock = _locked(CHAT_LOCK)
-    try:
-        try: history = json.load(open(chat_path, encoding="utf-8"))
-        except Exception: history = []
-        if not any(x.get("desktop_request_id") == rid and x.get("content") == row["content"] for x in history if isinstance(x, dict)):
-            history.append(row); _atomic(chat_path, history[-50:]); _append(CANON, dict(row, surface=surface))
+    """Compatibility entry point: receipts stay in the private desktop task log."""
+    row = {"content":str(text)[:4000], "timestamp":_now(),
+           "source":"desktop-control", "desktop_request_id":rid, "surface":surface}
+    lock = _locked(os.path.join(ROOT, ".followups.lock"))
+    try: _append(FOLLOWUPS, row)
     finally: lock.close()
     return row
 
@@ -267,7 +263,7 @@ def settle(rid, terminal=None):
     lock = _locked()
     try: db = _load(); db[rid] = rec; _atomic(STORE, db)
     finally: lock.close()
-    _event("followup_written", rid, state=rec.get("state"), desktop_status=rec.get("desktop_status"))
+    _event("followup_recorded", rid, state=rec.get("state"), desktop_status=rec.get("desktop_status"))
     return rec
 
 

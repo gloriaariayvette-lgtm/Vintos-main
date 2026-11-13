@@ -111,17 +111,19 @@ def _recent(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return out
 
 
-def _space(state: Dict[str, Any], elements: List[Dict[str, Any]]) -> tuple[Dict[str, str], Dict[str, Dict[str, Dict[str, Any]]], List[Dict[str, Any]]]:
+def _space(state: Dict[str, Any], elements: List[Dict[str, Any]], satisfied=()) -> tuple[Dict[str, str], Dict[str, Dict[str, Dict[str, Any]]], List[Dict[str, Any]]]:
     public = []
     click, fill = {}, {}
     for n, e in enumerate(elements[:80]):
         if e.get("marker"): continue
-        item = {"index": str(n), "kind": str(e.get("kind") or "control"), "label": str(e.get("text") or "")[:140],
+        item = {"index": str(n), "kind": str(e.get("kind") or "control"), "label": str((e.get("label") or "input field") if e.get("kind") == "field" else (e.get("text") or ""))[:140],
                 "selected": bool(e.get("selected")), "disabled": bool(e.get("disabled")),
                 "filled": bool(e.get("value")), "on_screen": bool(e.get("ontop", True))}
         public.append(item)
         if e.get("disabled") or purchase_target(e): continue
-        if e.get("kind") == "field": fill[str(n)] = item
+        if e.get("kind") == "field":
+            item["filled_as_requested"] = str(n) in satisfied
+            if str(n) not in satisfied: fill[str(n)] = item
         else: click[str(n)] = item
     operations: Dict[str, str] = {}
     targets: Dict[str, Dict[str, Dict[str, Any]]] = {}
@@ -159,7 +161,9 @@ class JevPlanner:
                   (task[:1600], json.dumps(field, ensure_ascii=False), str(state.get("title") or "")[:300],
                    (text or "")[:2500], json.dumps(_recent(recent), ensure_ascii=False)[:1500], notes[:1200]))
         _url, _model = _subcon_route(getattr(self.fallback, "endpoint"), getattr(self.fallback, "model", "aeon-gemma-4-12b"))
-        body = json.dumps({"model": _model, "temperature": 0.0,
+        import desktop_agent as DA
+        extra = DA.GEMMA_EXTRA if _model == getattr(self.fallback, "model", None) else {}
+        body = json.dumps({**extra, "model": _model, "temperature": 0.0,
                            "max_tokens": 180, "messages": [{"role": "user", "content": prompt}]}).encode("utf-8")
         req = urlrequest.Request(_url, data=body, headers={"Content-Type": "application/json"})
         with HTTP(req, timeout=getattr(self.fallback, "timeout", 60.0)) as response: payload = json.loads(response.read())
@@ -173,7 +177,15 @@ class JevPlanner:
                     state: Dict[str, Any], elements: List[Dict[str, Any]], text: str, outline: List[Dict[str, Any]]) -> Dict[str, Any]:
         if private_surface(state, elements, text):
             return self._slow(task, summary, step, last_result, recent, notes, "private_surface_local_only")
-        operations, targets, public = _space(state, elements)
+        satisfied = set()
+        for row in recent:
+            a = row.get("action") or {}
+            n = a.get("n")
+            if a.get("action") == "type" and isinstance(n, int) and 0 <= n < len(elements):
+                wanted = " ".join(str(a.get("text", "")).split())
+                seen = " ".join(str(elements[n].get("value", "")).split())
+                if wanted and seen == wanted: satisfied.add(str(n))
+        operations, targets, public = _space(state, elements, satisfied)
         questions: Dict[str, Any] = {"operation": {"type": "choice", "criteria": operations,
             "instructions": {"goal": task[:1800], "rules": NEXT_ACTION, "last_result": last_result[:400], "plan": notes[:1600]}}}
         for operation, choices in targets.items():
