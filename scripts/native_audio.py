@@ -34,7 +34,8 @@ def verify():
     with opener.open(base + "/health", timeout=5) as response:
         receipt = json.load(response)
     if (receipt.get("checkpoint_sha256") != ANCHOR_SHA256 or receipt.get("native_audio") is not True
-            or receipt.get("max_audio_seconds") != 8 or receipt.get("raw_audio_retained") is not False):
+            or receipt.get("max_audio_seconds") != 8 or receipt.get("max_voice_audio_seconds") != 30
+            or receipt.get("raw_audio_retained") is not False):
         raise RuntimeError("Native audio service does not match the frozen local checkpoint contract")
     return base
 
@@ -50,8 +51,8 @@ def require_stage(base):
 def content(audio_b64, sample_rate):
     rate = int(sample_rate or 24000)
     raw = base64.b64decode(audio_b64, validate=True)
-    if rate not in (16000, 24000, 48000) or not raw or len(raw) % 2 or len(raw) > 8 * rate * 2:
-        raise ValueError("Native audio accepts at most eight seconds of mono PCM16 at 16, 24 or 48 kHz")
+    if rate not in (16000, 24000, 48000) or not raw or len(raw) % 2 or len(raw) > 30 * rate * 2:
+        raise ValueError("Native voice accepts at most thirty seconds of mono PCM16 at 16, 24 or 48 kHz")
     return [{"type": "text", "text": "Reply to the recording itself. Its transcript in the turn record is only an index."},
             {"type": "input_audio", "input_audio": {"data": audio_b64, "format": "pcm16", "sample_rate": rate}}]
 

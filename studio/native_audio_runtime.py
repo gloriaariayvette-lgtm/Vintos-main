@@ -12,6 +12,7 @@ import numpy as np
 FRAME = 640
 SAMPLE_RATE = 16000
 MAX_SAMPLES = 8 * SAMPLE_RATE
+MAX_VOICE_SAMPLES = 30 * SAMPLE_RATE
 MARKER = "[[NATIVE_WAVEFORM]]"
 
 
@@ -108,15 +109,18 @@ class NativeMind:
             raise ValueError("Unknown backend")
         self.backend = (TorchBackend if backend == "torch" else AppleBackend)(path)
 
-    def session(self, messages, max_tokens=128, temperature=0):
-        return AudioSession(self, messages, max_tokens, temperature)
+    def session(self, messages, max_tokens=128, temperature=0, sample_limit=MAX_SAMPLES):
+        return AudioSession(self, messages, max_tokens, temperature, sample_limit)
 
 
 class AudioSession:
-    def __init__(self, mind, messages, max_tokens=128, temperature=0):
+    def __init__(self, mind, messages, max_tokens=128, temperature=0, sample_limit=MAX_SAMPLES):
         if not 1 <= max_tokens <= 512 or not 0 <= temperature <= 2:
             raise ValueError("Invalid generation budget")
         self.mind, self.backend = mind, mind.backend
+        if not isinstance(sample_limit, int) or not 1 <= sample_limit <= MAX_VOICE_SAMPLES:
+            raise ValueError("Invalid audio window budget")
+        self.sample_limit = sample_limit
         self.max_tokens, self.temperature = max_tokens, temperature
         prompt = mind.tokenizer.apply_chat_template(messages, tokenize=False,
                                                    add_generation_prompt=True, enable_thinking=False)
@@ -126,7 +130,8 @@ class AudioSession:
         left, right = prompt.split(MARKER) if self.requires_audio else (prompt, "")
         self.left = mind.tokenizer.encode(left, add_special_tokens=False)
         self.right = mind.tokenizer.encode(right, add_special_tokens=False)
-        if len(self.left) + len(self.right) + 200 + max_tokens > 8192:
+        audio_budget = (sample_limit + FRAME - 1) // FRAME if self.requires_audio else 0
+        if len(self.left) + len(self.right) + audio_budget + max_tokens > 8192:
             raise ValueError("Context exceeds the existing 8192 token budget")
         self.cache = self.backend.new_cache()
         self.length = 0
@@ -149,8 +154,8 @@ class AudioSession:
         x = np.asarray(samples, dtype=np.float32)
         if x.ndim != 1 or not len(x) or not np.isfinite(x).all() or np.max(np.abs(x)) > 1:
             raise ValueError("Expected nonempty finite mono waveform in [-1, 1]")
-        if self.samples + len(x) > MAX_SAMPLES:
-            raise ValueError("Audio exceeds the eight-second window")
+        if self.samples + len(x) > self.sample_limit:
+            raise ValueError("Audio exceeds the session window")
         self.samples += len(x)
         self.pending = np.concatenate([self.pending, x])
         n = len(self.pending) // FRAME

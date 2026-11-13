@@ -16,7 +16,7 @@ import numpy as np
 from native_audio_runtime import MARKER, MAX_SAMPLES, NativeMind
 
 
-def waveform(data, sample_rate=16000, audio_format="pcm16"):
+def waveform(data, sample_rate=16000, audio_format="pcm16", max_seconds=8):
     raw = base64.b64decode(data, validate=True)
     if audio_format == "pcm16":
         if sample_rate not in (16000, 24000, 48000) or len(raw) % 2:
@@ -25,19 +25,19 @@ def waveform(data, sample_rate=16000, audio_format="pcm16"):
     elif audio_format == "wav":
         import soundfile as sf
         with sf.SoundFile(io.BytesIO(raw)) as f:
-            if f.channels != 1 or f.samplerate not in (16000, 24000, 48000) or f.frames > 8 * f.samplerate:
-                raise ValueError("Expected a mono WAV of at most eight seconds")
+            if f.channels != 1 or f.samplerate not in (16000, 24000, 48000) or f.frames > max_seconds * f.samplerate:
+                raise ValueError("WAV exceeds the mono recording budget")
             x = f.read(dtype="float32"); sample_rate = f.samplerate
     else:
         raise ValueError("Unsupported audio format")
-    if not 0 < len(x) <= 8 * sample_rate or not np.isfinite(x).all() or np.max(np.abs(x)) > 1:
-        raise ValueError("Invalid waveform or eight-second budget exceeded")
+    if not 0 < len(x) <= max_seconds * sample_rate or not np.isfinite(x).all() or np.max(np.abs(x)) > 1:
+        raise ValueError("Invalid waveform or recording budget exceeded")
     if sample_rate != 16000:
         from scipy.signal import resample_poly
         divisor = math.gcd(sample_rate, 16000)
         x = resample_poly(x, 16000 // divisor, sample_rate // divisor).astype(np.float32)
         x = np.clip(x, -1, 1)
-    if len(x) > MAX_SAMPLES:
+    if len(x) > max_seconds * 16000:
         raise ValueError("Resampled audio exceeds the window budget")
     return x
 
@@ -118,7 +118,7 @@ class Service:
             if self.active:
                 raise BlockingIOError("A stream is active")
             if path == "/listen":
-                x = waveform(body["audio"], int(body.get("sample_rate", 24000)), body.get("format", "pcm16"))
+                x = waveform(body["audio"], int(body.get("sample_rate", 24000)), body.get("format", "pcm16"), max_seconds=30)
                 messages = self.messages({})
             else:
                 messages = []
@@ -132,18 +132,18 @@ class Service:
                                 parts.append(part["text"])
                             elif part.get("type") == "input_audio" and x is None:
                                 audio = part["input_audio"]
-                                x = waveform(audio["data"], int(audio.get("sample_rate", 16000)), audio["format"])
+                                x = waveform(audio["data"], int(audio.get("sample_rate", 16000)), audio["format"], max_seconds=30)
                                 parts.append("<|audio>" + MARKER + "<audio|>")
                             else:
                                 raise ValueError("Exactly one audio part and text parts are supported")
                         content = " ".join(parts)
                     messages.append({"role": message["role"], "content": content})
-            session = self.mind.session(messages, int(body.get("max_tokens", 128)), float(body.get("temperature", 0)))
+            default_tokens = min(512, max(128, math.ceil(len(x) / 16000 * 12))) if path == "/listen" else 128
+            session = self.mind.session(messages, int(body.get("max_tokens", default_tokens)), float(body.get("temperature", 0)),
+                                        sample_limit=len(x) if x is not None else MAX_SAMPLES)
             try:
-                # Exercise the same cache path for complete recordings and live chunks.
                 if x is not None:
-                    for i in range(0, len(x), 3200):
-                        session.push(x[i:i + 3200])
+                    session.push(x)
                 result = session.finish(on_text=on_text)
             finally:
                 session.abort()
@@ -183,6 +183,7 @@ def handler(service):
                 return self.reply(404, {"error": "Unknown endpoint"})
             self.reply(200, {"checkpoint_sha256": service.mind.sha, "native_audio": True,
                              "audio_tokens_per_second": 25, "max_audio_seconds": 8,
+                             "max_voice_audio_seconds": 30,
                              "raw_audio_retained": False})
 
         def do_POST(self):
@@ -203,7 +204,7 @@ def handler(service):
                 sent = stable
             try:
                 length = int(self.headers.get("Content-Length", 0))
-                if not 0 < length <= 2 * 1024 * 1024:
+                if not 0 < length <= 8 * 1024 * 1024:
                     raise ValueError("Invalid request size")
                 body = json.loads(self.rfile.read(length))
                 if not isinstance(body, dict):

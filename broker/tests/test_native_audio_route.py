@@ -45,13 +45,15 @@ audio = base64.b64encode(b'\x00\x01' * 3200).decode()
 parts = na.content(audio, 16000)
 check('original bytes are preserved as an audio part', parts[1]['input_audio']['data'] == audio)
 for invalid, rate in [('bad!', 16000), (audio, 44100), (base64.b64encode(b'x').decode(), 16000),
-                      (base64.b64encode(b'\0\0' * 128001).decode(), 16000)]:
+                      (base64.b64encode(b'\0\0' * 480001).decode(), 16000)]:
     try:
         na.content(invalid, rate)
         raise AssertionError('invalid audio accepted')
     except ValueError:
         pass
 check('invalid and over-budget recordings fail explicitly', True)
+check('voice preserves the existing thirty-second recording limit',
+      na.content(base64.b64encode(b'\0\0' * 480000).decode(), 16000)[1]['input_audio']['sample_rate'] == 16000)
 
 calls = []
 def post(url, body, timeout):

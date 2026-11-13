@@ -50,8 +50,8 @@ class Mind:
     suppress = []
     tokenizer = Tokenizer()
     backend = Backend()
-    def session(self, messages, max_tokens=2, temperature=0):
-        return AudioSession(self, messages, max_tokens, temperature)
+    def session(self, messages, max_tokens=2, temperature=0, **kwargs):
+        return AudioSession(self, messages, max_tokens, temperature, **kwargs)
 
 
 mind = Mind()
@@ -85,6 +85,15 @@ session.push(np.zeros(128000, dtype=np.float32))
 check('eight-second audio uses exactly 200 tokens', session.audio_tokens == 200)
 session.abort()
 check('abort releases waveform tail and cache', session.cache is None and not len(session.pending))
+voice_session = mind.session(messages, sample_limit=480000)
+voice_session.push(np.zeros(480000, dtype=np.float32))
+check('complete thirty-second voice recording keeps every frame', voice_session.finish()['audio_tokens'] == 750)
+try:
+    mind.session([{'role': 'user', 'content': 'x' * 7600 + MARKER}], sample_limit=480000)
+    raise AssertionError('long audio exceeded the shared context budget')
+except ValueError:
+    pass
+check('long voice reserves its actual audio context budget', True)
 text = mind.session([{'role': 'user', 'content': 'ready'}]).finish()
 check('text warmup needs no fake waveform', not text['native_audio'] and text['audio_tokens'] == 0)
 
@@ -106,6 +115,8 @@ service.expires = time.monotonic() - 1
 service.expire()
 check('idle expiry aborts the cache', service.active is None and old.closed and old.cache is None)
 check('idle expiry cancels its cleanup timer', service._expiry_timer is None)
+complete = service.dispatch('/listen', {'audio': base64.b64encode(b'\0\0' * 480000).decode(), 'sample_rate': 16000})
+check('complete voice endpoint retains all thirty seconds', complete['audio_tokens'] == 750 and service.active is None)
 for invalid in ['bad!', base64.b64encode(b'x').decode()]:
     try:
         waveform(invalid); raise AssertionError('invalid PCM accepted')
