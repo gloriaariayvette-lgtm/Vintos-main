@@ -416,7 +416,9 @@ def audit(enc, memory=None):
             except Exception:
                 pass
         cutoff = checkpoint_mtime if head == 'self' else path.stat().st_mtime
-        measured=ra.evaluate(adapted,ledger,audit_enc,checkpoint=ck,trained_before=cutoff)
+        _arrivals=getattr(ra,'load_arrivals',None)   # a stubbed audit module may not carry it
+        extra={'arrivals':_arrivals(str(mem/'jepa-self-forecasts.jsonl'))} if _arrivals else {}
+        measured=ra.evaluate(adapted,ledger,audit_enc,checkpoint=ck,trained_before=cutoff,**extra)
         report[mode]={'checkpoint':ck,'ranking':ra._summary(measured,head)}
     ra._atomic(str(mem/'jepa-readout-audit.json'),report)
     return report

@@ -1072,7 +1072,7 @@ def on_message_job(pending_path, enc=None, model_path=SELF_MODEL, out_path=None,
     try:
         if load_model(model_path) is None and not os.path.exists(os.path.join(MEMORY, "jepa-readouts", "self_on_message.npz")):
             log("no self checkpoint; no on-message forecast"); return None
-        enc = enc or _jp().encoder()
+        enc = enc or _encoder()
         token = _forecast_witness("begin_self_forecast", pending_observation)
         try:
             fc = forecast(enc, model_path=model_path, mode="on_message", her=p.get("her"), arrived_at=arrived)
@@ -1097,6 +1097,29 @@ def on_message_job(pending_path, enc=None, model_path=SELF_MODEL, out_path=None,
         if lk is not None:
             try: lk.close()
             except Exception: pass
+
+
+_ENC = {}
+
+
+def _encoder():
+    """One encoder per background process: the on-message forecast and the after-reply forecast share it."""
+    if "enc" not in _ENC:
+        _ENC["enc"] = _jp().encoder()
+    return _ENC["enc"]
+
+
+def after_reply_job(pending, now=None):
+    """Second half of the on-message job, after its lock is released: once his reply to this message lands,
+    the production (and shadow) JEPA forecast her next turn (jepa_predictor.after_reply). Never raises."""
+    try:
+        arrived = float((pending or {}).get("arrived_at") or 0)
+        if not arrived or (time.time() if now is None else now) - arrived > PENDING_MAX_AGE:
+            return None
+        return _jp().after_reply(arrived, enc=_ENC.get("enc"), encoder_factory=_encoder)
+    except Exception as e:
+        log("after-reply forecast not made: %s" % type(e).__name__)
+        return None
 
 
 # ---------------------------------------------------------------- the held-out evaluation
@@ -1261,5 +1284,8 @@ if __name__ == "__main__":
     elif cmd == "train-force": train(force=True)
     elif cmd == "eval": run_eval()
     elif cmd == "sources": print(json.dumps(sources_report(), indent=2))
-    elif cmd == "on-message" and len(sys.argv) > 2: on_message_job(sys.argv[2])
+    elif cmd == "on-message" and len(sys.argv) > 2:
+        _pending = _load_json(sys.argv[2], {})   # read before the job removes it
+        on_message_job(sys.argv[2])
+        after_reply_job(_pending)
     else: print("usage: jepa_self_head.py train|train-force|eval|sources|on-message <pending>")

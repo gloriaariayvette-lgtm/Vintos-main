@@ -96,6 +96,39 @@ def realized_ledger():
     return [{"timestamp": x["ts"], "gloria": x["her"], "vintos": x["his"]} for x in exchanges()]
 
 
+SELF_FORECASTS = os.path.join(MEM, "jepa-self-forecasts.jsonl")
+ARRIVAL_WINDOW = 1800   # her message reaches the door at most this long before the exchange is recorded
+
+
+def load_arrivals(path=None):
+    """her_key -> when her message reached a door, from the on-message log. An exchange is recorded at
+    his reply's time, so this is the only record of when she actually sent it."""
+    out = {}
+    for r in _jsonl(path or SELF_FORECASTS):
+        try:
+            if r.get("her_key") and r.get("arrived_at"):
+                out.setdefault(r["her_key"], []).append(float(r["arrived_at"]))
+        except Exception:
+            continue
+    return out
+
+
+def gloria_target_known(forecast, target_ts, target_text, arrivals):
+    """True when a forecast cannot have been ahead of the Gloria turn it would be scored on: its window
+    ended on her message, or that message had already arrived when the forecast was made."""
+    if forecast.get("context_last_role") == "user":
+        return True
+    if not arrivals:
+        return False
+    try:
+        from jepa_self_head import her_key
+        key = her_key(target_text)
+    except Exception:
+        return False
+    fts = float(forecast.get("ts", 0) or 0)
+    return any(target_ts - ARRIVAL_WINDOW <= a <= fts for a in arrivals.get(key, ()))
+
+
 def _cos(a, b):
     a, b = [float(x) for x in a], [float(x) for x in b]
     den = math.sqrt(sum(x * x for x in a) * sum(x * x for x in b))
@@ -119,10 +152,11 @@ def _rank(scores):
     return sum(v >= scores[0] - 1e-12 for v in scores)
 
 
-def evaluate(history, ledger, enc, checkpoint=None, trained_before=0.0, pool_size=POOL_SIZE):
+def evaluate(history, ledger, enc, checkpoint=None, trained_before=0.0, pool_size=POOL_SIZE, arrivals=None):
     """Return prospective ranking rows. One forecast is kept per realized target so a
     cron firing repeatedly before one reply cannot manufacture sample size."""
     streams = _turns(ledger)
+    arrivals = load_arrivals() if arrivals is None else arrivals
     cache = {}
     def encode(texts):
         missing = list(dict.fromkeys(t for t in texts if t not in cache))
@@ -148,6 +182,8 @@ def evaluate(history, ledger, enc, checkpoint=None, trained_before=0.0, pool_siz
             future = [t for t in streams[head] if t["ts"] > fts]
             past = [t for t in streams[head] if t["ts"] <= fts]
             if not future or len(past) < 2:
+                continue
+            if head == "gloria" and gloria_target_known(forecast, future[0]["ts"], future[0]["text"], arrivals):
                 continue
             # The wrong pool is deliberately same-speaker but not one undifferentiated sample:
             # later futures test temporal selection, the immediate echo catches retrieval, a

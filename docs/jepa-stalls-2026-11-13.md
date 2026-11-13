@@ -21,7 +21,8 @@ the sealed week of 31 October). Counts only; no conversation text.
    cron (`50 */2`) and only when the window changed (`jepa_predictor.py`, `unchanged_forecast`). Each forecast
    joins one target (`jepa_calibration_audit.py`, `joined_rows`: first turn after the forecast), so the 96
    exchanges with no preceding forecast never become outcomes. The gate needs the latest third ≥ 30, i.e. about
-   89 joined outcomes (`jepa_predictor.py`, `retrain_readiness`; `calibration.holdout`).
+   89 joined outcomes (`jepa_predictor.py`, `retrain_readiness`; `calibration.holdout`). The structured
+   shadow (ranking 20/20 of 30) starves the same way on its own two-hourly cron.
 2. **Gloria confidence is non-monotone.** (a) Wrong target window: because forecasts come from the cron after
    the conversation goes quiet, 57% of joined targets arrive more than 6 h later (median 10.2 h): a later
    sitting's opener, which a six-turn context's variance cannot know. Gap correlates with error (+.21).
@@ -72,4 +73,44 @@ train; neither → the shared head's confidence is not repaired by either, and t
 
 ## Results
 
-(filled in after R1 ran; see below)
+**R1** (run after the pre-registration was pushed in `edda7fcc`; 78 distinct targets, 21 September – 30 October,
+every window ending on his reply; [r1-replay.json](review-evidence/jepa-stalls-20261113/r1-replay.json)):
+
+| Model | Spearman(conf, error) | Control | Pass | Mean cosine error | Error by confidence tercile (low/mid/high) |
+|---|---:|---:|:-:|---:|---|
+| M0 live 21 Sep checkpoint | **+.236** | −.535 | no | .422 | .400 / .429 / .436 |
+| M1 production procedure, fresh | **−.529** | −.298 | **yes** | .343 | .429 / .310 / .290 |
+| M2 held-out epoch selection | −.551 | −.471 | no (margin .08) | .280 | .334 / .272 / .235 |
+
+This outcome was not one of the three enumerated readings. What it shows: the live checkpoint's confidence is
+inverted even in the after-reply regime, so the window is not the whole cause; the same procedure retrained on
+today's admitted sources gives a confidence that passes. The defect is in the **21 September weights** (trained
+on 312 Gloria turns from a mix of chat surfaces with the presence term on the shared trunk; the replica has 143
+ledger turns and no presence labels, so which difference matters is not separated). M2 has the lowest error but
+does not clear the control margin, so by the registration the production procedure is **not** changed.
+Consequence: the fix for the Gloria confidence is a retrain, and the retrain waits on stall 1. After-reply
+forecasting feeds that gate; `train-force` now would bypass it and is Gloria's decision, not this branch's.
+
+**Branch audits on live data** (read-only, same rows as the 13 November daily audit):
+
+| | Before | After |
+|---|---|---|
+| Gloria (shared) held-out mono / control | −.017 / +.092 (n=21) | unchanged: −.017 / +.092 (0 targets removed by the arrival guard) |
+| Self (shared) | unmeasured (9 placeholders among 56) | **measured**: +.204 / control −.343, n=15 held out of 47 qualified |
+| Served Gloria (anchored readout) | never audited | full sample −.300 / control −.490 (n=23); held-out third +.071 (n=7) |
+| Ranking, Gloria / self | n 63 / 56 | n 63 / 56 (unchanged) |
+| Retrain gate | 21 of 64 held out, HELD | same today; threshold unchanged. After deploy, each door exchange can add an outcome (35 of 40 since 1 November came through the doors) |
+
+## Deploying
+
+Five scripts change, all already in `deploy-atelier.sh`: `jepa_predictor.py`, `jepa_self_head.py`,
+`jepa_calibration_audit.py`, `jepa_ranking_audit.py`, `jepa_readout.py`. No crontab change, no new service, no
+server restart (the server starts `jepa_self_head.py on-message` fresh for each message). No weights change.
+After deploy: `/tmp/jepa-self-on-message.log` shows `after-reply` lines; history rows carry
+`"trigger": "after_reply"`; `/tmp/cron-jepa-audit.log` adds the served Gloria numbers; `preregistered` in
+`memory/jepa-calibration.json` reads COLLECTING until 30 after-reply targets exist.
+
+## Reading
+
+Neither shared head's confidence is useful today (self is inverted too), and the served readout's confidence
+does not beat decode similarity on its 23 prospective targets. P1 will judge it on after-reply forecasts.

@@ -1,0 +1,50 @@
+{
+  "protocol": "R1 pre-registered in edda7fcc",
+  "n": 78,
+  "window": [
+    "2026-09-21T04:15",
+    "2026-10-31 excluded onward"
+  ],
+  "models": {
+    "M0": {
+      "monotonicity_conf_vs_err": 0.236,
+      "CONTROL_dsim_vs_err": -0.535,
+      "pass": false,
+      "mean_cosine_error": 0.4219,
+      "bins_low_mid_high_conf_err": [
+        0.4004,
+        0.4288,
+        0.4364
+      ],
+      "validation": null
+    },
+    "M1": {
+      "monotonicity_conf_vs_err": -0.529,
+      "CONTROL_dsim_vs_err": -0.298,
+      "pass": true,
+      "mean_cosine_error": 0.3429,
+      "bins_low_mid_high_conf_err": [
+        0.4294,
+        0.3095,
+        0.2898
+      ],
+      "validation": null
+    },
+    "M2": {
+      "monotonicity_conf_vs_err": -0.551,
+      "CONTROL_dsim_vs_err": -0.471,
+      "pass": false,
+      "mean_cosine_error": 0.2801,
+      "bins_low_mid_high_conf_err": [
+        0.3335,
+        0.2717,
+        0.235
+      ],
+      "validation": {
+        "kind": "latest_time_slice",
+        "n": 46,
+        "best_loss": -6.460074
+      }
+    }
+  }
+}
