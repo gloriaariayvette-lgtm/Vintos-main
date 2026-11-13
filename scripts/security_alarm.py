@@ -404,9 +404,10 @@ def drift_notices(state, events, current, now):
             # A drift that returns (restored then patched again, or reverted to earlier content) is a new change:
             # the earlier episode's hourly cooldown and delivery receipt must not swallow it (review, 12 November).
             state.get('last_alert', {}).pop(key, None)
+            state.get('delivered', {}).pop(key, None)
             out.append((key, kind, why))
         elif not row.get('announced'):
-            if state.get('delivered', {}).get(key, -1e20) >= row['first_seen']:
+            if state.get('delivered', {}).get(key):
                 row['announced'] = state['delivered'][key]
             elif key not in pending_keys:
                 out.append((key, kind, why))
