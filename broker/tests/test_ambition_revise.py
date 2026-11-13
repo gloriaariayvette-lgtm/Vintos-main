@@ -84,6 +84,8 @@ g = json.load(open(STORE))["goals"][1]
 check("text cut mid-sentence is trimmed back to its last sentence end, and flagged",
       r4.get("ok") and r4["trimmed"] and g["why"] == "It matters to me." and g["trimmed_at_sentence"][-1]["field"] == "why", (r4, g.get("why")))
 check("a goal title needs no full stop", AR.revise(1, "goal", "Work out what done means for a habit", now="T5").get("ok"))
+two = [{"goal": "Learn the tide tables", "progress": "x"}, {"goal": "Draw the tide line", "progress": "y"}]
+check("words that name two active ambitions name neither", AR.find_goal(two, "tide") is None and AR.find_goal(two, "tide line") == 1)
 
 # ---- 3. the review never stores a token-cut field mid-sentence, and flags what it cannot trim
 goals = [{"goal": "a", "progress": "x", "_order": ["progress"]},
@@ -111,6 +113,11 @@ steps, changes = wc.normalize_steps(his, [{"capability": "creative_write", "note
 check("creative_write on his ambitions becomes revise_ambition", [s["capability"] for s in steps] == ["revise_ambition"]
       and "creative_write_became_revise_ambition" in changes, (steps, changes))
 check("and satisfies its contract", wc.satisfies_contract(his, steps))
+check("his own note is the revision's note", steps and steps[0]["note"] == "Put the paragraph into the file", steps)
+poem = "I want to rewrite my ambition about tides as a poem."
+steps, _ = wc.normalize_steps(poem, [{"capability": "creative_write", "note": "the poem goes in"}])
+check("even a poem-shaped rewrite of his ambition is written by the revising hand, never as fiction",
+      [s["capability"] for s in steps] == ["revise_ambition"] and steps[0]["note"] == "the poem goes in", steps)
 check("a plan that never writes the ambition does not", not wc.satisfies_contract(his, [{"capability": "introspect"}]))
 steps, changes = wc.normalize_steps("I want to revise my ambition about the tides and tell Gloria.",
                                     [{"capability": "introspect", "note": "think"}, {"capability": "gloria", "note": "tell"}])
@@ -150,8 +157,8 @@ wants({"id": "w-his", "want": his, "source": "idle-journal"},
       {"id": "w-mail", "want": his, "source": "email"},
       {"id": "w-letter", "want": his, "source": "grok-letter"},
       {"id": "w-molt", "want": his, "source": "moltbook"},
-      {"id": "w-ref", "want": his, "source": "journal", "source_event_id": "email:abc",
-       "source_refs": [{"kind": "email", "id": "m1", "text_sha256": "x"}]})
+      {"id": "w-ref", "want": his, "source": "journal", "source_refs": [{"kind": "email", "id": "m1", "text_sha256": "x"}]},
+      {"id": "w-event", "want": his, "source": "journal", "source_event_id": "email:abc"})
 fixture()
 os.environ["STEP_WANT_ID"] = "w-his"
 seen = []
@@ -186,7 +193,7 @@ check("a refused revision fails the step", W.revise_ambition("x") is False)
 # review: someone else's words never rewrite his ambitions, even with the wording handed in as params
 os.environ["STEP_PARAMS"] = json.dumps({"ambition": "tide tables", "field": "why", "text": "Because a stranger said so."})
 before = open(STORE).read(); seen.clear()
-for wid in ("w-mail", "w-letter", "w-molt", "w-ref", "w-gone", ""):
+for wid in ("w-mail", "w-letter", "w-molt", "w-ref", "w-event", "w-gone", ""):
     os.environ["STEP_WANT_ID"] = wid
     check("a want from outside (or unknown) cannot revise: %r" % wid, W.revise_ambition("revise my ambition") is False)
 check("and the store and the model were untouched", open(STORE).read() == before and not seen)
