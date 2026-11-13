@@ -239,6 +239,62 @@ except ValueError:
     pass
 check('malformed audio packets are refused', True)
 
+# Interleaving: an answer is decoded token by token; arrivals in between are taken in, held, then committed.
+import threading as _threading
+import time as _time
+
+
+class Slow(Backend):
+    """Never reaches EOS, and each single-token step takes a moment, like a real decode."""
+    def forward(self, embeds, cache, vision=False):
+        self.hidden_seen = getattr(self, 'hidden_seen', []) + [getattr(self, 'hidden', None)]
+        out = Backend.forward(self, embeds, cache, vision)
+        if embeds.shape[1] == 1:
+            _time.sleep(.01)
+        return np.array([0., 1.])
+
+
+slow = Slow()
+svc = VideoService(mind, slow)
+sid = svc.dispatch('/video/start', {})['session_id']
+svc.dispatch('/video/frame', {'session_id': sid, 'at': 0, 'image': base64.b64encode(png.getvalue()).decode()})
+answer, receipts_during = {}, []
+asker = _threading.Thread(target=lambda: answer.update(svc.dispatch('/video/ask', {'session_id': sid, 'question': 'q', 'max_tokens': 500})))
+asker.start(); _time.sleep(.05)
+for k in range(3):
+    started = _time.perf_counter()
+    r = svc.dispatch('/video/frame', {'session_id': sid, 'at': 1 + k, 'image': base64.b64encode(png.getvalue()).decode()})
+    receipts_during.append((r, _time.perf_counter() - started))
+r = svc.dispatch('/video/audio', {'session_id': sid, 'at': 4, 'audio': base64.b64encode(b'\0\0' * 6400).decode()})
+asker.join()
+check('frames and audio that arrive mid-answer are taken in between tokens, not after the answer',
+      all(x[0].get('deferred') for x in receipts_during) and r.get('deferred') and all(x[1] < .2 for x in receipts_during))
+check('the live answer is capped and everything that arrived is committed after it',
+      len(answer['tokens']) == runtime.LIVE_ANSWER_TOKENS and answer['deferred_committed'] == 4
+      and [s['kind'] for s in svc.active[1].window()].count('frame') == 4)
+try:
+    svc.dispatch('/video/ask', {'session_id': sid, 'question': 'again', 'max_tokens': 2})
+    check('a second question after the first is answered normally', True)
+finally:
+    svc.dispatch('/video/abort', {'session_id': sid})
+
+# Recent-seconds: older frames are masked for the question and answer only.
+rs = LiveSession(mind, Slow(), clock=lambda: 0.)
+for k in range(6):
+    rs.frame(frame(k * 30), at=k)
+rs.stream.hidden_seen = []
+rs.ask('which way?', max_tokens=2, recent_seconds=1.5)
+old_positions = set(int(p) for p in rs.positions[np.isin(rs.owner, [0, 1, 2, 3])])
+check('only frames from the last N seconds are visible to the answer',
+      rs.stream.hidden_seen[0] is None and all(h == old_positions for h in rs.stream.hidden_seen[1:])
+      and rs.stream.hidden is None and len(rs.window()) == 6)
+
+# Scene markers: a frame that differs from the last on most of the image is marked.
+sm = LiveSession(mind, Backend(), scene_markers=True, clock=lambda: 0.)
+r1 = sm.frame(frame(10), at=0); r2 = sm.frame(frame(12), at=.5); r3 = sm.frame(frame(200), at=1)
+check('a new scene is marked in the timeline, a small change is not', not r1['scene_change'] and not r2['scene_change']
+      and r3['scene_change'] and sm.segments[r3['segment']].get('scene_change'))
+
 t = [0.]
 sampler = client.AdaptiveSampler(idle_fps=.5, burst_fps=2, change=.04, tokens_per_second=144, clock=lambda: t[0])
 still, moved = frame(50), frame(200)

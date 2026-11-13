@@ -24,6 +24,15 @@ RETAIN_AUDIO_TOKENS = 200    # eight seconds of 40 ms audio tokens, the audio ca
 AUDIO_SPAN_TOKENS = 50       # an audio span closes every two seconds so eviction stays granular
 AUDIO_FLUSH_TOKENS = 10      # audio enters the mind in 400 ms steps (or sooner when a frame or question closes it)
 WINDOW_TOKENS = 1024         # the checkpoint's local (sliding) attention window
+SCENE_CHANGE = .15           # mean 32x32 luminance change (0..1) that marks a new scene
+SCENE_MARKER = "[new scene]"
+LIVE_ANSWER_TOKENS = 32      # answers during a live stream are capped so ingestion never waits long
+
+
+def _small_gray(rgb):
+    from PIL import Image
+    gray = Image.fromarray(np.asarray(rgb, dtype=np.uint8)).convert("L")
+    return np.asarray(gray.resize((32, 32), Image.BOX), dtype=np.float32)
 CONTEXT = 8192
 ANSWER_RESERVE = 640         # question plus answer budget kept free at all times
 PREFIX, QUERY = -1, -2       # owners of the open-turn prefix and of a rolled-back question/answer
@@ -202,9 +211,13 @@ class LiveSession:
     questions that are answered then rolled back."""
 
     def __init__(self, mind, stream, instruction=None, retain_frames=RETAIN_FRAMES,
-                 retain_audio_tokens=RETAIN_AUDIO_TOKENS, clock=time.monotonic, on_embedding=None):
+                 retain_audio_tokens=RETAIN_AUDIO_TOKENS, clock=time.monotonic, on_embedding=None, scene_markers=False):
         # on_embedding(kind, at, embeds, ref): the projected embeddings exactly as they enter the mind, for a tap.
         self.on_embedding = on_embedding
+        self.scene_markers = bool(scene_markers)   # write "[new scene]" before a frame that differs from the last
+        self.last_small = None
+        self.answering = False                     # while True, frames and audio are encoded/held, then committed
+        self.deferred = []
         if not 1 <= int(retain_frames) <= 64 or not 0 <= int(retain_audio_tokens) <= 750:
             raise ValueError("Invalid retention window")
         self.mind, self.stream, self.tokenizer = mind, stream, mind.tokenizer
@@ -224,6 +237,7 @@ class LiveSession:
         self.next_pos = 0              # absolute position of the next committed token (rolled-back questions excluded)
         self.window_tokens = int(getattr(stream, "window", WINDOW_TOKENS))
         self.owner = np.empty(0, dtype=np.int64)
+        self.positions = np.empty(0, dtype=np.int64)   # absolute position of every committed cached token
         self.segments = {}             # id -> provenance of one frame or audio span
         self.next_id = 0
         self.pending_close = None      # (ids, owner) closing the last frame or audio span
@@ -244,6 +258,7 @@ class LiveSession:
             raise ValueError("Context exceeds the existing 8192 token budget")
         self.scores = self.stream.forward(embeds, self.cache, vision)
         self.owner = np.concatenate([self.owner, np.full(n, owner, dtype=np.int64)])
+        self.positions = np.concatenate([self.positions, np.arange(self.next_pos, self.next_pos + n)])
         self.next_pos += n
 
     def _text(self, ids, owner):
@@ -257,14 +272,14 @@ class LiveSession:
             return ids, owner
         return [], None
 
-    def _open(self, kind, at, opener, **record):
+    def _open(self, kind, at, opener, marker="", **record):
         """Write ``[close of previous] mm:ss <open>`` as one chunk; the close keeps its previous owner."""
         segment = self.next_id
         self.next_id += 1
         close_ids, close_owner = self._close_pending()
         # The native video layout: "<question> 00:00 <|image>...<image|> 00:00 <|image>..."
         space = " " if (segment or self.instruction) else ""
-        lead = self._ids(space + stamp(at) + " ")
+        lead = self._ids(space + (marker + " " if marker else "") + stamp(at) + " ")
         embeds = self.stream.text(close_ids + lead + opener)
         n_close = len(close_ids)
         self._forward(embeds, segment)
@@ -278,7 +293,17 @@ class LiveSession:
 
     def frame(self, rgb, at=None, soft_tokens=SOFT_TOKENS):
         """Append one frame through the native image projection. Returns a receipt; the frame is not kept.
-        ``soft_tokens`` is the native budget: 70 for motion, up to 280 (the checkpoint default) for a still look."""
+        ``soft_tokens`` is the native budget: 70 for motion, up to 280 (the checkpoint default) for a still look.
+        While an answer is being decoded the frame is encoded now and enters the timeline right after the answer."""
+        prepared = self.prepare_frame(rgb, at, soft_tokens)
+        if self.answering:
+            self.deferred.append(("frame", prepared))
+            return {"frame_ref": prepared["ref"], "at": round(prepared["at"], 3), "visual_tokens": int(prepared["embeds"].shape[1]),
+                    "deferred": True, "evicted_segments": [], "ingest_seconds": prepared["seconds"]}
+        return self.commit_frame(prepared)
+
+    def prepare_frame(self, rgb, at=None, soft_tokens=SOFT_TOKENS):
+        """Validate and encode a frame through the native image projection; the timeline is not touched."""
         if self.closed:
             raise ValueError("Session is closed")
         if soft_tokens not in SOFT_TOKEN_CHOICES:
@@ -287,11 +312,22 @@ class LiveSession:
         if x.ndim != 3 or x.shape[2] != 3 or x.dtype != np.uint8 or not 32 <= min(x.shape[:2]) or max(x.shape[:2]) > 4096:
             raise ValueError("Expected an RGB uint8 frame between 32 and 4096 pixels per side")
         started = time.perf_counter()
-        self._end_audio_span()
-        at = self._seconds(at)
-        ref = frame_ref(x)
-        segment = self._open("frame", at, self.boi, frame_ref=ref, height=int(x.shape[0]), width=int(x.shape[1]))
         embeds = self.stream.image(x, soft_tokens) if soft_tokens != SOFT_TOKENS else self.stream.image(x)
+        return {"embeds": embeds, "at": self._seconds(at), "ref": frame_ref(x), "shape": x.shape[:2],
+                "small": _small_gray(x) if self.scene_markers else None, "started": started,
+                "seconds": time.perf_counter() - started}
+
+    def commit_frame(self, prepared):
+        self._end_audio_span()
+        at, ref, embeds = prepared["at"], prepared["ref"], prepared["embeds"]
+        scene = False
+        if prepared["small"] is not None:
+            scene = self.last_small is not None and float(np.abs(prepared["small"] - self.last_small).mean()) / 255 >= SCENE_CHANGE
+            self.last_small = prepared["small"]
+        segment = self._open("frame", at, self.boi, frame_ref=ref, height=int(prepared["shape"][0]),
+                             width=int(prepared["shape"][1]), marker=SCENE_MARKER if scene else "")
+        if scene:
+            self.segments[segment]["scene_change"] = True
         self._forward(embeds, segment, vision=True)
         self._tap("frame", at, embeds, ref)
         self.segments[segment]["visual_tokens"] = int(embeds.shape[1])
@@ -301,7 +337,8 @@ class LiveSession:
         evicted = self._evict()
         return {"segment": segment, "frame_ref": ref, "at": round(at, 3), "visual_tokens": int(embeds.shape[1]),
                 "cache_tokens": self.stream.length(self.cache), "retained_frames": self._count("frame"),
-                "evicted_segments": evicted, "ingest_seconds": time.perf_counter() - started}
+                "evicted_segments": evicted, "scene_change": scene,
+                "ingest_seconds": time.perf_counter() - prepared["started"]}
 
     def audio(self, samples, at=None):
         """Append mono 16 kHz samples on the same timeline as the frames (40 ms native audio tokens)."""
@@ -312,6 +349,10 @@ class LiveSession:
             raise ValueError("Expected a nonempty finite mono waveform in [-1, 1], at most eight seconds")
         started = time.perf_counter()
         at = self._seconds(at)
+        if self.answering:
+            self.deferred.append(("audio", x, at))
+            return {"audio_tokens": self.audio_tokens, "pending_samples": len(self.audio_tail) + len(x),
+                    "deferred": True, "evicted_segments": [], "ingest_seconds": time.perf_counter() - started}
         if self.audio_span is None:
             self.audio_span = self._open("audio", at, self.boa, audio_tokens=0, digest=hashlib.sha256())
         span = self.segments[self.audio_span]
@@ -392,6 +433,7 @@ class LiveSession:
         keep = np.flatnonzero(~np.isin(self.owner, doomed))
         self.stream.keep(self.cache, keep)
         self.owner = self.owner[keep]
+        self.positions = self.positions[keep]
         for i in doomed:
             if self.segments.pop(i)["kind"] == "frame":
                 self.evicted_frames += 1
@@ -401,14 +443,28 @@ class LiveSession:
         """Provenance of what the mind currently holds: one record per retained frame or audio span."""
         return [dict({k: v for k, v in s.items() if k != "digest"}, segment=i) for i, s in sorted(self.segments.items())]
 
-    def ask(self, question, max_tokens=128, temperature=0, on_text=None):
+    def ask(self, question, max_tokens=128, temperature=0, on_text=None, recent_seconds=None):
         """Answer from the retained window, then roll the question and answer back out of the cache."""
+        steps = self.ask_steps(question, max_tokens, temperature, on_text, recent_seconds)
+        while True:
+            try:
+                next(steps)
+            except StopIteration as done:
+                return done.value
+
+    def ask_steps(self, question, max_tokens=128, temperature=0, on_text=None, recent_seconds=None):
+        """The same answer one token per step, so a caller can take in arrivals between tokens: while it runs,
+        frames are encoded and audio held, and both enter the timeline right after the answer is rolled back.
+        ``recent_seconds`` limits the answer to frames from the last N seconds before the question (older
+        frames are masked for the question and answer only; they stay in the window)."""
         if self.closed:
             raise ValueError("Session is closed")
         if not 1 <= int(max_tokens) <= 512 or not 0 <= float(temperature) <= 2:
             raise ValueError("Invalid generation budget")
         if STREAM_MARKER in str(question):
             raise ValueError("Reserved stream placeholder")
+        if self.answering:
+            raise BlockingIOError("An answer is already being decoded")
         started = time.perf_counter()
         self._end_audio_span()
         close_ids, close_owner = self._close_pending()
@@ -418,9 +474,25 @@ class LiveSession:
         question_ids = self._ids((" " + question if question else "") + self.closing)
         if len(question_ids) + int(max_tokens) > ANSWER_RESERVE:
             raise ValueError("Question and answer exceed the reserved budget")
+        hidden = None
+        if recent_seconds is not None:
+            frames = [s for s in self.segments.values() if s["kind"] == "frame"]
+            if frames:
+                horizon = max(s["at"] for s in frames) - float(recent_seconds)
+                old = [i for i, s in self.segments.items() if s["kind"] == "frame" and s["at"] < horizon - 1e-6]
+                hidden = set(int(p) for p in self.positions[np.isin(self.owner, old)])
+        tokens, finish_reason, first = [], "length", None
+        self.answering = True
+
+        def forward(embeds):
+            self.stream.hidden = hidden
+            try:
+                return self.stream.forward(embeds, self.cache, False)
+            finally:
+                self.stream.hidden = None
+
         try:
-            self.scores = self.stream.forward(self.stream.text(question_ids), self.cache, False)
-            tokens, finish_reason, first = [], "length", None
+            self.scores = forward(self.stream.text(question_ids))
             for _ in range(int(max_tokens)):
                 token = self._choose(float(temperature))
                 if first is None:
@@ -432,16 +504,30 @@ class LiveSession:
                 if on_text:
                     on_text(self.tokenizer.decode(tokens, skip_special_tokens=True))
                 if len(tokens) < int(max_tokens):
-                    self.scores = self.stream.forward(self.stream.text([token]), self.cache, False)
+                    self.scores = forward(self.stream.text([token]))
+                    yield len(tokens)
         finally:
             self.stream.truncate(self.cache, mark)
-            self.owner = self.owner[:mark]
-        self.pending_close = None
-        return {"text": self.tokenizer.decode(tokens, skip_special_tokens=True), "tokens": tokens,
-                "finish_reason": finish_reason, "first_token_seconds": first,
-                "total_seconds": time.perf_counter() - started, "window": self.window(),
-                "cache_tokens": mark, "frames_seen": self.frames, "frames_evicted": self.evicted_frames,
-                "checkpoint_sha256": self.mind.sha, "native_video": True}
+            self.owner, self.positions = self.owner[:mark], self.positions[:mark]
+            self.answering = False
+            self.pending_close = None
+        result = {"text": self.tokenizer.decode(tokens, skip_special_tokens=True), "tokens": tokens,
+                  "finish_reason": finish_reason, "first_token_seconds": first,
+                  "total_seconds": time.perf_counter() - started, "window": self.window(),
+                  "cache_tokens": mark, "frames_seen": self.frames, "frames_evicted": self.evicted_frames,
+                  "checkpoint_sha256": self.mind.sha, "native_video": True}
+        result["deferred_committed"] = self.flush_deferred()
+        return result
+
+    def flush_deferred(self):
+        """Commit what arrived during an answer, in arrival order."""
+        items, self.deferred = self.deferred, []
+        for kind, *payload in items:
+            if kind == "frame":
+                self.commit_frame(payload[0])
+            else:
+                self.audio(payload[0], payload[1])
+        return len(items)
 
     def _choose(self, temperature):
         scores = self.scores.copy()

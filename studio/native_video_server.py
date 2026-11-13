@@ -17,7 +17,11 @@ from native_apriltags import TagDetector
 from native_audio_runtime import NativeMind
 from native_audio_server import handler as audio_handler
 from native_sensory_tap import SensoryTap
-from native_video_runtime import RETAIN_FRAMES, SOFT_TOKENS, AppleStream, LiveSession
+from native_video_runtime import LIVE_ANSWER_TOKENS, RETAIN_FRAMES, SOFT_TOKENS, AppleStream, LiveSession
+
+# Set from the scored development check (see README): which retention aid live sessions use by default.
+SCENE_MARKERS_DEFAULT = False
+RECENT_SECONDS_DEFAULT = None
 
 MAX_IMAGE_BYTES = 6 * 1024 * 1024   # base64 must fit the shared handler's 8 MB request limit
 MAX_PIXELS = 4096 * 4096
@@ -46,26 +50,62 @@ def pcm16(data):
     return np.frombuffer(raw, dtype="<i2").astype(np.float32) / 32768
 
 
+class _Answer:
+    """A question being decoded one token per worker step."""
+    def __init__(self, steps):
+        self.steps = steps
+
+
 class VideoService:
     def __init__(self, mind, stream, tap=None, detector=None):
         self.mind, self.stream = mind, stream
         self.tap, self.detector = tap, detector
-        self.lock = threading.Lock()
         self.active = None
         self.expires = 0
         self._timer = None
+        self.answer = None             # (steps generator, done) while a question is being decoded
         # Every model call runs on this one thread: MLX state is per thread, while HTTP requests arrive on many.
+        # Requests queue here in arrival order; between two answer tokens the worker takes whatever arrived.
         self._jobs = queue.Queue()
         self._worker = threading.Thread(target=self._work, name="native-video-inference", daemon=True)
         self._worker.start()
 
     def _work(self):
         while True:
-            job, done = self._jobs.get()
             try:
-                done["result"] = job()
+                job, done = self._jobs.get(block=self.answer is None)
+            except queue.Empty:
+                self._step_answer()
+                continue
+            try:
+                result = job()
+                if isinstance(result, _Answer):
+                    self.answer = (result.steps, done)
+                    continue   # completed by _step_answer
+                done["result"] = result
             except BaseException as exc:   # handed back to the request thread unchanged
                 done["error"] = exc
+            done["event"].set()
+
+    def _step_answer(self):
+        steps, done = self.answer
+        try:
+            next(steps)
+            return
+        except StopIteration as finished:
+            done["result"] = dict(finished.value, raw_frames_retained=False)
+            self._arm()
+        except BaseException as exc:
+            done["error"] = exc
+        self.answer = None
+        done["event"].set()
+
+    def _end_answer(self):
+        if self.answer:
+            steps, done = self.answer
+            self.answer = None
+            steps.close()
+            done["error"] = ValueError("The stream ended before the answer finished")
             done["event"].set()
 
     def _on_worker(self, job):
@@ -93,30 +133,26 @@ class VideoService:
         self._timer.start()
 
     def _reap(self):
-        with self.lock:
-            self._on_worker(self.expire)
+        self._on_worker(self.expire)
 
     def expire(self):
-        if self.active and time.monotonic() > self.expires:
+        if self.active and self.answer is None and time.monotonic() > self.expires:
             self.active[1].abort()
             self._drop()
 
     def close(self):
-        with self.lock:
+        def stop():
+            self._end_answer()
             if self.active:
-                self._on_worker(self.active[1].abort)
+                self.active[1].abort()
             self._drop()
+        self._on_worker(stop)
 
     def dispatch(self, path, body, on_text=None):
-        if not self.lock.acquire(blocking=False):
-            raise BlockingIOError("Inference is busy")
-        try:
-            return self._on_worker(lambda: self._dispatch(path, body, on_text))
-        finally:
-            self.lock.release()
+        return self._on_worker(lambda: self._dispatch(path, body, on_text))
 
     def _dispatch(self, path, body, on_text=None):
-        if True:   # body kept at its original indentation; runs on the inference thread under self.lock
+        if True:   # runs on the inference thread; requests are serialised by its queue
             self.expire()
             if path == "/video/start":
                 if self.active:
@@ -127,7 +163,8 @@ class VideoService:
                     to_numpy = getattr(self.stream, "numpy", np.asarray)
                     on_embedding = lambda kind, at, e, ref: self.tap.embedding(kind, at, to_numpy(e), ref)
                 session = LiveSession(self.mind, self.stream, body.get("instruction"),
-                                      int(body.get("retain_frames", RETAIN_FRAMES)), on_embedding=on_embedding)
+                                      int(body.get("retain_frames", RETAIN_FRAMES)), on_embedding=on_embedding,
+                                      scene_markers=bool(body.get("scene_markers", SCENE_MARKERS_DEFAULT)))
                 session_id = uuid.uuid4().hex
                 self.active = (session_id, session)
                 self._arm()
@@ -139,7 +176,7 @@ class VideoService:
             at = body.get("at")
             at = None if at is None else float(at)
             if path == "/video/abort":
-                session.abort(); self._drop()
+                self._end_answer(); session.abort(); self._drop()
                 return {"ok": True}
             if path == "/video/frame":
                 rgb = decode_image(body["image"])
@@ -156,11 +193,16 @@ class VideoService:
             elif path == "/video/audio":
                 result = session.audio(pcm16(body["audio"]), at)
             elif path == "/video/ask":
-                result = session.ask(str(body["question"]), int(body.get("max_tokens", 128)),
-                                     float(body.get("temperature", 0)), on_text)
+                if self.answer is not None:
+                    raise BlockingIOError("An answer is already being decoded")
+                recent = body.get("recent_seconds", RECENT_SECONDS_DEFAULT)
+                steps = session.ask_steps(str(body["question"]), min(int(body.get("max_tokens", 128)), LIVE_ANSWER_TOKENS),
+                                          float(body.get("temperature", 0)), None,
+                                          None if recent is None else float(recent))
+                return _Answer(steps)   # decoded token by token between arrivals; the reply waits for the end
             elif path == "/video/finish":
                 window = session.window()
-                session.abort(); self._drop()
+                self._end_answer(); session.abort(); self._drop()
                 return {"ok": True, "window": window, "raw_frames_retained": False}
             else:
                 raise KeyError("Unknown endpoint")
