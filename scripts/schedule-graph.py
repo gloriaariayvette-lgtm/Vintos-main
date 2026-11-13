@@ -60,7 +60,8 @@ def read_wrapper(path):
     # on the first line of a wrapper, so taking owners[0] blindly made the journal's owner
     # read as "want_stance.py allow" and turned a gated job into an unowned one. subcon_target only
     # answers which model his subconscious uses (2026-11-07); it is looked up first, not the job.
-    GATES_NOT_OWNERS = ("compute_admission", "velqan_context", "want_stance", "subcon_target")
+    # ambition_revise only prints a bounded excerpt of his ambitions log for the journal (2026-11-12).
+    GATES_NOT_OWNERS = ("compute_admission", "velqan_context", "want_stance", "subcon_target", "ambition_revise")
     owners = [os.path.basename(p) + ((" " + a) if a else "") for p, a in py
               if not any(g in p for g in GATES_NOT_OWNERS)]
     if any("want_stance" in p for p, _ in py):
