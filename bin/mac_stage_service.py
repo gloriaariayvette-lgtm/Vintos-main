@@ -248,7 +248,7 @@ def hear_pcm(audio_b64, rate=24000):
             "pauses": [{"seconds": round(d, 2), "at": round(at, 2)} for d, at in gaps],
             "ears": "gemma4-e4b-audio-native", "audio_native_gemma": True, "model": EARS_MODEL}
 
-def voice_models(active, evict_ears=False):
+def voice_models(active, evict_ears=False, external_ears=False):
     """The live voice is call-scoped; the ears stay warm unless a heavy bench evicts them."""
     global _chatterbox_call_active
     actions = []
@@ -263,7 +263,11 @@ def voice_models(active, evict_ears=False):
         actions.append({"model": "chatterbox-turbo-4bit", "ok": False,
                         "detail": str(exc)[:160]})
     try:
-        if active:
+        if external_ears:
+            if evict_ears:
+                _ears_unload()
+            actions.append({"model": "native-waveform-service", "ok": True, "detail": "external ears; not warmed here"})
+        elif active:
             # Loading and warming the ears takes ~25 s cold: off this request, so the call opens as soon as his voice
             # is ready; a first turn that comes sooner waits on the ears' lock, never on a half-loaded model.
             def _bg():
@@ -271,13 +275,17 @@ def voice_models(active, evict_ears=False):
                 except Exception as exc: log("ears load failed: %s" % str(exc)[:160])
             threading.Thread(target=_bg, daemon=True).start()
         elif evict_ears: _ears_unload()
-        actions.append({"model": EARS_MODEL, "ok": True,
-                        "detail": "audio-native model %s" %
-                                  (("loaded" if _ears_pipe is not None else "loading") if active else
-                                   ("evicted" if evict_ears else "kept warm"))})
+        if not external_ears:
+            actions.append({"model": EARS_MODEL, "ok": True,
+                            "detail": "audio-native model %s" %
+                                      (("loaded" if _ears_pipe is not None else "loading") if active else
+                                       ("evicted" if evict_ears else "kept warm"))})
     except Exception as exc:
         actions.append({"model": EARS_MODEL, "ok": False, "detail": str(exc)[:160]})
-    return {"ok": all(a["ok"] for a in actions), "active": bool(active), "actions": actions}
+    receipt = {"ok": all(a["ok"] for a in actions), "active": bool(active), "actions": actions}
+    if external_ears:
+        receipt["external_ears"] = True
+    return receipt
 
 def face_for(room):
     try:
@@ -530,7 +538,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/health":
             n = len([c for c in os.listdir(CLIPS) if c.endswith(".mp4")]) if os.path.isdir(CLIPS) else 0
-            self._send(200, json.dumps({"ok": True, "clips": n}).encode())
+            self._send(200, json.dumps({"ok": True, "clips": n, "external_ears": True}).encode())
         else:
             self._send(404, b'{"error":"not found"}')
 
@@ -539,7 +547,7 @@ class Handler(BaseHTTPRequestHandler):
             try: body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
             except Exception: body = {}
             self._send(200, json.dumps(voice_models(bool(body.get("active")),
-                bool(body.get("evict_ears")))).encode()); return
+                bool(body.get("evict_ears")), bool(body.get("external_ears")))).encode()); return
         if self.path == "/listen":
             try:
                 body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))

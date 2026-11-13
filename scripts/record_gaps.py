@@ -23,6 +23,10 @@ GAP_RULE = ("When your records do not confirm something you said or saw, say pla
             "capture it. Do not explain the gap with a source you cannot point to: no earlier knowledge, no memory of "
             "having seen it before, no guess about where it came from. " + MEDIA_NOTE)
 
+AUDIO_GAP_RULE = ("The audio record is a short transcript and measured acoustics, not everything heard. "
+                  "A detail absent from it was not captured in the record. Do not infer a mood or invent "
+                  "an earlier memory to explain the gap, and do not flag a detail solely because this short record omits it.")
+
 
 def media_line(entry, cap=600):
     """The media note of a ledger entry as one marked line, or ''."""

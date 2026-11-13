@@ -146,7 +146,8 @@ def build(audio_b64: str, sample_rate: int, heard: Dict[str, Any], turn_id: Opti
         return None
     reading = str((heard or {}).get("audio_reading") or "").strip()
     transcript = str((heard or {}).get("transcript") or "").strip()
-    if not reading or not transcript:
+    native = (heard or {}).get("native_audio") is True
+    if (not reading and not native) or not transcript:
         return None
     try:
         pcm = base64.b64decode(audio_b64 or "", validate=False)
@@ -166,6 +167,12 @@ def build(audio_b64: str, sample_rate: int, heard: Dict[str, Any], turn_id: Opti
         "acoustics": acoustics(pcm, sample_rate),
         "interpretations": [],
     }
+    if native:
+        from record_gaps import AUDIO_GAP_RULE
+        rec["audio_ref"] = source_hash
+        rec["checkpoint_sha256"] = str(heard.get("checkpoint_sha256") or "")[:64]
+        rec["observation"]["kind"] = "native waveform heard; transcript index and measured acoustics only"
+        rec["record_gap"] = AUDIO_GAP_RULE
     return rec
 
 
@@ -228,6 +235,11 @@ def _quote(s: Any) -> str:
 
 def render(rec: Dict[str, Any]) -> str:
     obs = rec.get("observation") or {}
+    if rec.get("audio_ref"):
+        from record_gaps import AUDIO_GAP_RULE
+        return ('[HEARD AUDIO - %s, source %s: short transcript "%s". %s The recording itself was not kept.]'
+                % (str(rec.get("heard_at", ""))[:16].replace("T", " "), rec["audio_ref"],
+                   _quote(rec.get("transcript")), AUDIO_GAP_RULE))
     line = ("[HOW HER VOICE SOUNDED - %s, a spoken turn: she said \"%s\". %s: \"%s\""
             % (str(rec.get("heard_at", ""))[:16].replace("T", " "), _quote(rec.get("transcript")),
                "The ears' reading of the recording at the time (an observation, not a fact about her mood)",
