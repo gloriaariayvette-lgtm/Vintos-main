@@ -1153,6 +1153,16 @@ def _judge_gloria(row, tgt, ax, reply, hers, source=None, now=None):
         got = {"verdict": "NOT_JUDGEABLE", "reason": "error", "status": "error", "detail": "no_verdict"}
     if got["verdict"] == "NO" and got.get("adherence") != "delivered":
         got = dict(got, verdict="NOT_JUDGEABLE", reason="his_move_not_delivered")   # his failure, never her NO
+    if got["verdict"] in ("YES", "PARTIAL"):
+        # a landing stands only on a complete, self-consistent receipt (13 November review): a bare YES, or a
+        # PARTIAL whose reason says she never replied, is invalid - NOT_JUDGEABLE, never counted
+        try:
+            import gloria_judge
+            why = gloria_judge.problem(got) or ("" if got.get("status") == "ok" else "status_not_ok")
+        except Exception as err:
+            why = "unchecked_%s" % type(err).__name__
+        if why:
+            got = {"verdict": "NOT_JUDGEABLE", "reason": "invalid", "status": "invalid", "detail": why}
     rec.update({k: got.get(k) for k in ("verdict", "reason", "codes", "adherence", "confidence", "status", "detail", "model")})
     rec["codes"] = [str(c) for c in (rec.get("codes") or [rec["reason"]])][:8]
     return rec

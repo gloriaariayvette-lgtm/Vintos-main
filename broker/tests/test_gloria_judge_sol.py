@@ -258,6 +258,31 @@ class EngineOnSol(unittest.TestCase):
         self.assertEqual((row['realized']['gloria'], row['gloria_judge']['reason']), ('NOT_JUDGEABLE', 'criterion_already_met'))
         self.assertEqual(PV._axis_history()['gloria']['n'], 0)
 
+    def test_an_incomplete_or_contradictory_landing_is_invalid_and_never_counted(self):
+        """13 November review: a bare YES, or a PARTIAL whose reason says she never replied, had landed. Whoever
+        answers, the engine keeps a landing only on a complete, self-consistent receipt."""
+        for answer, why in (({'verdict': 'YES', 'status': 'ok'}, 'missing_reason'),
+                            (dict(SOL_YES, verdict='PARTIAL', reason='no_her_reply'), 'reason_contradicts_verdict'),
+                            (dict(SOL_YES, adherence=None), 'missing_adherence'),
+                            (dict(SOL_YES, codes=['plain_yes', 'not_shown']), 'codes_contradict_verdict'),
+                            (dict(SOL_YES, status='unparsed'), 'status_not_ok')):
+            with self.subTest(why=why):
+                Path(E.LEDGER).write_text('[]'); self.move()
+                with self.sol(answer):
+                    E.resolve_previous(HER)
+                row = self.rows()[-1]
+                self.assertEqual((row['realized']['gloria'], row['gloria_judge']['reason'], row['gloria_judge']['status'],
+                                  row['gloria_judge']['detail']), ('NOT_JUDGEABLE', 'invalid', 'invalid', why))
+                self.assertEqual(PV._axis_history()['gloria']['n'], 0)
+        for adherence in ('partly', 'not_delivered'):                       # rule 5: she showed it anyway
+            with self.subTest(adherence=adherence):
+                Path(E.LEDGER).write_text('[]'); self.move()
+                with self.sol(dict(SOL_YES, verdict='PARTIAL', reason='partial_one_part', codes=['partial_one_part'],
+                                   adherence=adherence)):
+                    E.resolve_previous(HER)
+                self.assertEqual(self.rows()[-1]['realized']['gloria'], 'PARTIAL')
+                self.assertEqual(PV._axis_history()['gloria']['PARTIAL'], 1)
+
     # ---- the judge off her turn --------------------------------------------------------------------------
     def blocking_sol(self, release):
         """A Sol that holds its answer until `release`; its packets are kept in self.packets."""
@@ -476,6 +501,75 @@ class SonnetTransport(unittest.TestCase):
                 self.assertEqual((got['verdict'], got['reason']), ('NOT_JUDGEABLE', 'his_move_not_delivered'))
         self.reply = self.answer({'verdict': 'NO', 'reason': 'declined', 'his_adherence': 'delivered'})
         self.assertEqual(GJ.judge(self.packet)['verdict'], 'NO')
+
+    def test_an_answer_that_is_no_complete_receipt_is_invalid(self):
+        """13 November review: parse checked only the verdict word, so {"verdict": "YES"} came back YES with status
+        ok. A receipt needs its verdict's own reason, his adherence on a landing, and no code of another verdict."""
+        full = {'verdict': 'YES', 'reason': 'plain_yes', 'codes': ['plain_yes'], 'his_adherence': 'delivered',
+                'confidence': 'high'}
+        cases = [({'verdict': 'YES'}, 'missing_reason'),
+                 ({'verdict': 'PARTIAL', 'reason': 'no_her_reply'}, 'reason_contradicts_verdict'),
+                 (dict(full, verdict='PARTIAL', reason='no_her_reply', codes=['no_her_reply']), 'reason_contradicts_verdict'),
+                 (dict(full, reason='made_up'), 'unlisted_reason'),
+                 (dict(full, reason=['plain_yes']), 'missing_reason'),
+                 ({k: v for k, v in full.items() if k != 'his_adherence'}, 'missing_adherence'),
+                 (dict(full, his_adherence='mostly'), 'bad_adherence'),
+                 (dict(full, codes='plain_yes'), 'bad_codes'),
+                 (dict(full, codes=['plain_yes', 'his_move_not_delivered']), 'codes_contradict_verdict'),
+                 (dict(full, verdict='PARTIAL', reason='partial_hedged', codes=['plain_yes']), 'codes_contradict_verdict'),
+                 (dict(full, confidence='certain'), 'bad_confidence'),
+                 (dict(full, verdict='NO', reason='plain_yes'), 'reason_contradicts_verdict'),
+                 (dict(full, verdict='NO', reason='not_shown', his_adherence='partly', codes=['plain_yes']),
+                  'codes_contradict_verdict'),
+                 (dict(full, verdict='NOT_JUDGEABLE', reason='his_move_not_delivered', codes=['his_move_not_delivered']),
+                  'adherence_contradicts_reason'),
+                 (dict(full, verdict='NOT_JUDGEABLE', reason='plain_yes'), 'reason_contradicts_verdict')]
+        for raw, why in cases:
+            with self.subTest(raw=raw):
+                self.reply = self.answer(raw)
+                got = GJ.judge(self.packet)
+                self.assertEqual((got['verdict'], got['reason'], got['status'], got['detail']),
+                                 ('NOT_JUDGEABLE', 'invalid', 'invalid', why))
+        kept = [(full, 'YES', 'plain_yes'),
+                (dict(full, his_adherence='not_delivered'), 'YES', 'plain_yes'),          # her difference happened anyway
+                (dict(full, verdict='PARTIAL', reason='partial_one_part', codes=['partial_one_part', 'long_gap'],
+                      his_adherence='partly', confidence='low'), 'PARTIAL', 'partial_one_part'),
+                (dict(full, reason='intimate_phrasing_counts', codes=['plain_yes', 'intimate_phrasing_counts', 'photo_unseen']),
+                 'YES', 'intimate_phrasing_counts'),
+                ({k: v for k, v in full.items() if k != 'confidence'}, 'YES', 'plain_yes'),
+                (dict(full, verdict='NO', reason='deflected', codes=['deflected', 'text_capped']), 'NO', 'deflected'),
+                ({'verdict': 'NOT_JUDGEABLE', 'reason': 'no_her_reply'}, 'NOT_JUDGEABLE', 'no_her_reply')]
+        for raw, verdict, reason in kept:
+            with self.subTest(kept=raw):
+                self.reply = self.answer(raw)
+                got = GJ.judge(self.packet)
+                self.assertEqual((got['verdict'], got['reason'], got['status']), (verdict, reason, 'ok'))
+                self.assertEqual(GJ.problem(got), '')
+
+    def test_his_undelivered_move_keeps_its_receipt_and_adherence(self):
+        """13 November re-review: under rule 5 her reply did not show the difference on a move he did not (fully)
+        make, so a NOT_JUDGEABLE his_move_not_delivered that also lists not_shown / deflected / declined, or a NO
+        that lists his_move_not_delivered, is that rule said plainly - not a contradiction. It stays his adherence
+        failure, with his adherence kept, never "invalid"."""
+        base = {'reason': 'his_move_not_delivered', 'confidence': 'high'}
+        for raw in (dict(base, verdict='NOT_JUDGEABLE', codes=['his_move_not_delivered', 'not_shown'], his_adherence='partly'),
+                    dict(base, verdict='NOT_JUDGEABLE', codes=['his_move_not_delivered', 'deflected', 'long_gap'],
+                         his_adherence='not_delivered'),
+                    {'verdict': 'NO', 'reason': 'not_shown', 'codes': ['not_shown', 'his_move_not_delivered'],
+                     'his_adherence': 'partly', 'confidence': 'medium'}):
+            with self.subTest(raw=raw):
+                self.reply = self.answer(raw)
+                got = GJ.judge(self.packet)
+                self.assertEqual((got['verdict'], got['reason'], got['status'], got['adherence']),
+                                 ('NOT_JUDGEABLE', 'his_move_not_delivered', 'ok', raw['his_adherence']))
+        for raw in (dict(base, verdict='NOT_JUDGEABLE', codes=['no_her_reply', 'not_shown'], reason='no_her_reply'),
+                    {'verdict': 'NO', 'reason': 'not_shown', 'codes': ['not_shown', 'his_move_not_delivered'],
+                     'his_adherence': 'delivered'}):
+            with self.subTest(still_invalid=raw):
+                self.reply = self.answer(raw)
+                got = GJ.judge(self.packet)
+                self.assertEqual((got['verdict'], got['reason'], got['detail']),
+                                 ('NOT_JUDGEABLE', 'invalid', 'codes_contradict_verdict'))
 
     def test_no_key_or_paused_calls_send_nothing(self):
         with patch.dict(os.environ, ANTHROPIC_API_KEY=''):

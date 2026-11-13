@@ -13,7 +13,10 @@ L = importlib.util.module_from_spec(_spec); _spec.loader.exec_module(L)
 G = L.G
 AXES = ('field', 'gloria', 'self')
 VERDICTS = ('YES', 'PARTIAL', 'NO', 'HELD', 'NOT_DECLARED')
-OLD = VERDICTS + ('MISSING', 'INVALID')
+# The serving engine's own abstention on her axis (the rubric judge's NOT_JUDGEABLE, 12 November) is kept apart
+# from malformed values; like HELD it is never in the decisive agreement denominator.
+ABSTAINED = 'NOT_JUDGEABLE'
+OLD = VERDICTS + (ABSTAINED, 'MISSING', 'INVALID')
 FAMILIES = ('mechanical', 'semantic', 'internal_state', 'unspecified')
 REASONS = ('not_declared', 'legacy_shape', 'invalid_declaration', 'not_delivered', 'missing_identity',
            'ambiguous_identity', 'unknown_time', 'time_order', 'after_cutoff',
@@ -66,7 +69,9 @@ def bundle(evidence, contracts):
 def original(row, axis):
     value = row.get('realized')
     value = value.get(axis) if isinstance(value, dict) else value if axis == 'field' else None
-    return 'MISSING' if value is None else value if isinstance(value, str) and value in VERDICTS else 'INVALID'
+    if value is None: return 'MISSING'
+    if isinstance(value, str) and value in VERDICTS: return value
+    return ABSTAINED if axis == 'gloria' and value == ABSTAINED else 'INVALID'
 
 
 def declaration(row, axis):

@@ -36,6 +36,15 @@ CODES = ("plain_yes", "intimate_phrasing_counts", "partial_hedged", "partial_one
          "declined", "his_move_not_delivered", "no_her_reply", "device_event_only", "reply_to_later_move",
          "criterion_already_met", "criterion_withdrawn", "photo_unseen_decisive", "photo_unseen", "long_gap",
          "text_capped")
+# Which reason codes go with which verdict (the rubric's rule 8 and its abstentions). A verdict whose main reason,
+# or any listed code, belongs to another verdict contradicts itself and is not a receipt (13 November review).
+REASONS_FOR = {"YES": ("plain_yes", "intimate_phrasing_counts"),
+               "PARTIAL": ("partial_hedged", "partial_one_part", "intimate_phrasing_counts"),
+               "NO": ("not_shown", "deflected", "declined"),
+               "NOT_JUDGEABLE": ("his_move_not_delivered", "no_her_reply", "device_event_only", "reply_to_later_move",
+                                 "criterion_already_met", "criterion_withdrawn", "photo_unseen_decisive")}
+MODIFIERS = ("photo_unseen", "long_gap", "text_capped")     # facts about the evidence, beside any verdict
+CONFIDENCE = ("high", "medium", "low")
 SRC_LIVE = "gloria-judge"              # the live verdicts (the caller in anthropic-usage.jsonl)
 SRC_STALE = "gloria-judge-stale"       # the check at selection
 LIVE_SRCS = (SRC_LIVE, SRC_STALE)
@@ -220,21 +229,77 @@ def not_judgeable(reason, status="", detail=""):
             "status": status or reason, "detail": detail, "model": model()}
 
 
+def problem(rec):
+    """Why a recorded answer is not a complete, self-consistent rubric receipt, or "" when it is (13 November
+    review: a bare {"verdict": "YES"}, or a PARTIAL whose reason is no_her_reply, had been recorded as status ok and
+    counted as a landing). `rec` is in the recorded shape (verdict, reason, codes, adherence, confidence).
+
+    A YES or PARTIAL needs its own reason code and his adherence said - any of the three: a difference she showed
+    anyway lands even on a move he made only in part or not at all (rule 5). A NO stands only on a move he
+    delivered. No listed code may belong to another verdict. Confidence, when given, is one of the three words."""
+    if not isinstance(rec, dict):
+        return "not_a_receipt"
+    verdict, reason, codes = rec.get("verdict"), rec.get("reason"), rec.get("codes")
+    if verdict not in REASONS_FOR:
+        return "bad_verdict"
+    if not isinstance(reason, str) or not reason:
+        return "missing_reason"
+    if reason not in REASONS_FOR[verdict]:
+        return "reason_contradicts_verdict" if reason in CODES else "unlisted_reason"
+    if codes is not None and not (isinstance(codes, list) and all(isinstance(c, str) for c in codes)):
+        return "bad_codes"
+    allowed = REASONS_FOR[verdict] + MODIFIERS
+    if verdict == "NOT_JUDGEABLE" and reason == "his_move_not_delivered":
+        allowed += REASONS_FOR["NO"]      # rule 5 is exactly "his move not made and her reply did not show it"
+    if any(c in CODES and c not in allowed for c in (codes or [])):
+        return "codes_contradict_verdict"
+    if rec.get("confidence") is not None and rec.get("confidence") not in CONFIDENCE:
+        return "bad_confidence"
+    adherence = rec.get("adherence")
+    if verdict in ("YES", "PARTIAL") and adherence not in ADHERENCE:
+        return "missing_adherence"
+    if verdict == "NO" and adherence != "delivered":
+        return "no_on_undelivered_move"
+    if reason == "his_move_not_delivered" and adherence == "delivered":
+        return "adherence_contradicts_reason"
+    return ""
+
+
+def invalid(why):
+    """An answer that is no receipt: NOT_JUDGEABLE with the fixed reason "invalid" - never a landing, never a miss."""
+    return not_judgeable("invalid", "invalid", why)
+
+
 def normalize(j):
-    """The answer as it is recorded: fixed vocabularies only, and her NO never stands on a move he did not make."""
+    """The answer as it is recorded: fixed vocabularies only, complete and self-consistent, and her NO never stands
+    on a move he did not make. Anything else is invalid (NOT_JUDGEABLE), never counted."""
     verdict = j["verdict"]
-    reason = str(j.get("reason") or "")
-    reason = reason if reason in CODES else "unlisted_code"
-    codes = [c for c in (j.get("codes") or []) if isinstance(c, str) and c in CODES][:8]
-    adherence = j.get("his_adherence") if j.get("his_adherence") in ADHERENCE else None
-    confidence = j.get("confidence") if j.get("confidence") in ("high", "medium", "low") else None
+    reason = j.get("reason")
+    raw_codes = j.get("codes")
+    if raw_codes is not None and not (isinstance(raw_codes, list) and all(isinstance(c, str) for c in raw_codes)):
+        return invalid("bad_codes")
+    codes = [c for c in (raw_codes or []) if c in CODES][:8]     # an unknown extra code is dropped, as before
+    adherence = j.get("his_adherence")
+    if adherence is not None and adherence not in ADHERENCE:
+        adherence = "unknown"                                    # said, but outside the vocabulary
+    confidence = j.get("confidence")
+    rec = {"verdict": verdict, "reason": reason, "codes": codes, "adherence": adherence, "confidence": confidence,
+           "status": "ok", "detail": "", "model": model()}
     if verdict == "NO" and adherence != "delivered":
         # rule 5: a move he did not make (or made only in part, or whose making is not said) is his adherence
-        # failure, never her NO
-        verdict, reason = "NOT_JUDGEABLE", "his_move_not_delivered"
-        if reason not in codes: codes = [reason] + codes
-    return {"verdict": verdict, "reason": reason, "codes": codes, "adherence": adherence, "confidence": confidence,
-            "status": "ok", "detail": "", "model": model()}
+        # failure, never her NO - when the NO is itself a NO (its own reason, no other verdict's code)
+        # (a NO that itself lists his_move_not_delivered says the same rule-5 thing, not another verdict)
+        why = problem(dict(rec, adherence="delivered", codes=[c for c in codes if c != "his_move_not_delivered"]))
+        if why:
+            return invalid(why)
+        reason = "his_move_not_delivered"
+        rec.update(verdict="NOT_JUDGEABLE", reason=reason, codes=[reason] + [c for c in codes if c in MODIFIERS],
+                   adherence=adherence if adherence in ADHERENCE else None)
+        return rec
+    if adherence == "unknown":
+        return invalid("bad_adherence")
+    why = problem(rec)
+    return invalid(why) if why else rec
 
 
 def _over_cap(srcs, cap_env, cap_default):
