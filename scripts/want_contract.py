@@ -29,6 +29,19 @@ _CREATIVE = re.compile(
     re.I,
 )
 
+# Changing what his own ambitions say (12 November: he tried creative_write to finish an ambition's sentence)
+# Review: the contract forces a revise_ambition step, so only an act on HIS ambition's wording counts. Merely naming
+# the file ("read my ambitions file"), an update given to someone ("update Gloria about my ambitions", "an update on
+# my ambitions") or a story about ambition must not turn into a rewrite of his ambitions.
+_AMBITION_EDIT = re.compile(
+    r"(?<!\ban )(?<!\bthe )(?<!\bno )\b(?:revise|rewrite|edit|update|reword|amend)\s+"
+    r"(?:(?!gloria\b|her\b|him\b|them\b|about\b|on\b|with\b|for\b)[\w'’-]+\s+){0,5}?"
+    r"(?:my|his)\s+(?:own\s+)?ambitions?\b|"
+    r"\b(?:in)?to\s+(?:my|his)\s+(?:own\s+)?ambitions?(?:\.json|\s+file)\b|"
+    r"\b(?:finish|complete)\b.{0,30}\bsentences?\b.{0,40}\b(?:my|his)\s+(?:own\s+)?ambitions?\b",
+    re.I,
+)
+
 _ALIASES = {
     "tell_gloria": "gloria",
     "route_to_gloria": "gloria",
@@ -79,6 +92,7 @@ def contract_for(want_text):
         "creative_requested": creative,
         "records": records,
         "terminal": "gloria" if outward else None,
+        "ambition_revision": bool(_AMBITION_EDIT.search(text)),
     }
 
 
@@ -100,6 +114,9 @@ def normalize_steps(want_text, proposed):
         if not cap or not note:
             changes.append("dropped_incomplete_step")
             continue
+        if cap == "creative_write" and contract["ambition_revision"]:
+            cap = "revise_ambition"   # his ambitions are changed by the hand that writes them, not into fiction
+            changes.append("creative_write_became_revise_ambition")
         if cap == "creative_write" and not contract["creative_requested"]:
             changes.append("dropped_uncommissioned_creative_write")
             continue
@@ -130,6 +147,14 @@ def normalize_steps(want_text, proposed):
             )
             changes.append("added_required_evidence_step")
         clean.insert(0, existing)
+
+    if contract["ambition_revision"]:
+        kept = [s for s in clean if s["capability"] == "revise_ambition"][:1]
+        clean = [s for s in clean if s["capability"] != "revise_ambition"]
+        if not kept:
+            kept = [_step("revise_ambition", "Write the new wording into the ambition itself: " + str(want_text))]
+            changes.append("added_required_revise_ambition")
+        clean += kept
 
     if contract["outward_to_gloria"]:
         existing = next((s for s in clean if s["capability"] == "gloria"), None)
@@ -167,5 +192,7 @@ def satisfies_contract(want_text, steps):
     if contract["outward_to_gloria"] and (not caps or caps[-1] != "gloria"):
         return False
     if not contract["creative_requested"] and "creative_write" in caps:
+        return False
+    if contract["ambition_revision"] and ("revise_ambition" not in caps or "creative_write" in caps):
         return False
     return True

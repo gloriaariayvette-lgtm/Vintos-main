@@ -120,7 +120,7 @@ stratagem.py stratagem_turn.py stratagem_realtime.py turn_record.py formation_ob
 concurrency-canary.py
 atelier-door.sh atelier-canary.sh atelier-broker-watch.sh atelier-status.sh
 house_map.py house-map.json home_presence.py
-want_artifact_guard.py wants_audit.py emoclaw_utils.py want_contract.py journal_wants.py conversation_wants.py record_gaps.py want_grounding.py moltbook_grounding.py local_analysis.py want_agent.py want_working_thread.py want_work_budget.py"
+want_artifact_guard.py wants_audit.py emoclaw_utils.py want_contract.py ambition_revise.py journal_wants.py conversation_wants.py record_gaps.py want_grounding.py moltbook_grounding.py local_analysis.py want_agent.py want_working_thread.py want_work_budget.py"
 SCRIPTS="$SCRIPTS humor-practice.py joke_fermentation.py taste_salience.py curiosity_debt.py unsaid_frontier.py unsaid_questions.py architecture_answers.py"
 SCRIPTS="$SCRIPTS self_review.py self_review_builder.py reciprocal_modification.py atelier_reveals.py atelier_quantum.py atelier_media.py atelier_lab_lean.py atelier_forge.py atelier_voice.py quantum_snapshot.py"
 SCRIPTS="$SCRIPTS intent_context.py atelier-gate.py"
@@ -440,6 +440,24 @@ locate() {
 }
 count() { printf '%s\n' "$1" | sed '/^$/d' | wc -l | tr -d ' '; }
 
+# His install locations. dest() used to take a lone same-name hit anywhere under $HOME as the target: on 12 November
+# scripts/gloria_judge.py (new to the workspace, imported by intent_engine.py) went over the gloria-axis shadow loop's
+# own copy in ~/gloria-judge-20261112/bin, with a paid_http.py twin beside it, while the workspace import failed.
+# A copy outside these trees is somebody's own (a shadow loop, an experiment, a hand copy) and never a target.
+# toy_keepalive.py and scenes_server.py are the two files his systemd units run from $HOME itself (%h/<name>).
+HOME_LEVEL_FILES="toy_keepalive.py scenes_server.py"
+live_tree() {   # $1 = a path; succeeds when it is inside one of his install locations
+    local p="$1" f
+    case "$p" in
+        "$HOME"/.vintos/workspace/*|"$HOME"/Vintos/*|"$HOME"/.config/systemd/user/*) return 0 ;;
+    esac
+    if [ -n "${ANCHOR_DIR:-}" ]; then
+        case "$p" in "$ANCHOR_DIR"/*) return 0 ;; esac
+    fi
+    for f in $HOME_LEVEL_FILES; do [ "$p" = "$HOME/$f" ] && return 0; done
+    return 1
+}
+
 # turn_coordinator.py is part of the running system, so it anchors the tree.
 # New files with no copy yet are placed beside it.
 if [ -n "${VINTOS_SCRIPTS:-}" ]; then
@@ -473,9 +491,16 @@ tree_score() {
 }
 
 dest() {
-    local base hits n beside best bestn d sc
+    local base hits n beside best bestn d sc h outside
     base="$(basename -- "$1")"
-    hits="$(locate "$base")"; n="$(count "$hits")"
+    hits="$(locate "$base")"
+    # same-name copies outside his trees are named and left alone; they never pick the destination
+    outside="$(printf '%s\n' "$hits" | while read -r h; do [ -n "$h" ] || continue; live_tree "$h" || printf '%s\n' "$h"; done)"
+    if [ -n "$outside" ]; then
+        printf '%s\n' "$outside" | sed "s|^|  WARN    $base: a copy outside his trees, left alone: |" >&2
+        hits="$(printf '%s\n' "$hits" | grep -vxF -- "$outside" || true)"
+    fi
+    n="$(count "$hits")"
     [ "$n" -eq 1 ] && { printf '%s' "$hits"; return 0; }
     [ "$n" -eq 0 ] && { printf '%s/%s' "$ANCHOR_DIR" "$base"; return 0; }
     # a copy sitting beside the anchor is his by definition
@@ -598,6 +623,17 @@ while IFS='|' read -r _paid_src _paid_dst; do
 "
     fi
 done <<< "$PLAN"
+
+# Nothing is installed outside his trees, whatever chose the destination (a twin, a symlink, a resolver).
+outside_plan() {   # reads PLAN lines on stdin; prints each destination outside his trees
+    local s d
+    while IFS='|' read -r s d; do
+        [ -n "$d" ] || continue
+        live_tree "$d" || printf '  OUTSIDE %-26s -> %s\n' "$(basename -- "$s")" "$d"
+    done
+}
+_outside="$(printf '%s' "$PLAN" | outside_plan)"
+[ -z "$_outside" ] || { printf '%s\n' "$_outside"; die "a destination is outside his trees (above) — nothing installed"; }
 
 # Two sources, one destination. `belief_sediment.py` is in SCRIPTS and in BINS, and the
 # two checkouts had drifted apart: the plan promoted scripts/ and then bin/ over the top

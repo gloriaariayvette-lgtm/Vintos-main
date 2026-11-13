@@ -69,10 +69,11 @@ class IntentFieldsFix(unittest.TestCase):
         self.select_calls = []; self.judge_calls = []
         self.answer = copy.deepcopy(TARGET); self.answers = []; self.verdict = 'NO'; self.verdicts = []
         self.stack.enter_context(patch('urllib.request.urlopen', self.respond))
-        # Her axis goes to Sol (12 November). Here the fixture's one-word judge stands in for it, through the same
-        # queue and the same call list: a verdict word is what Sol answered, anything else is NOT_JUDGEABLE. The
+        # Her axis goes to the rubric judge (12 November; Sonnet 5.5). Here the fixture's one-word judge stands in
+        # for it, through the same queue and the same call list: a verdict word is what the judge answered, anything
+        # else is NOT_JUDGEABLE. The
         # check at selection finds nothing already met.
-        self.stack.enter_context(patch.object(E, '_sol_judge', lambda packet: IntentFieldsFix.sol(self, packet)))
+        self.stack.enter_context(patch.object(E, '_rubric_judge', lambda packet: IntentFieldsFix.sol(self, packet)))
         self.stack.enter_context(patch.object(E, '_stale_gloria', return_value='not_met'))
         # the resolver inline, as these tests read it; the background resolver has its own tests (gloria_judge_sol)
         self.stack.enter_context(patch.object(E, 'RESOLVE_IN_BACKGROUND', False))

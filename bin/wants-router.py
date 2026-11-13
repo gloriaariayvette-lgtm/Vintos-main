@@ -368,6 +368,13 @@ def _maybe_scar_unfulfilled(want):
 # (the phone app's want screen) reads what actually exists instead of carrying a fixed copy that hides
 # a route or invents one. A capability added here is available to every reader on the next request.
 CAPABILITIES = [
+    {   # first: "write to my ambitions file" is not an email, and not fiction (12 November). Only phrases that
+        # change the wording: a bare "ambitions file" also names reading it, and this entry is checked first (review).
+        "keywords": ["write to my ambition", "write into my ambition", "revise my ambition", "rewrite my ambition",
+                     "edit my ambition", "update my ambition", "reword my ambition", "sentence in my ambition"],
+        "action": "revise_ambition",
+        "desc": "Finish or rewrite the wording of one of his own active ambitions, keeping the earlier wording",
+    },
     {
         "keywords": ["check my email", "read email", "search email", "grocery list", "groceries", "github repository", "github issue", "github pull request"],
         "action": "plugin_query",
@@ -1629,6 +1636,9 @@ PARAM_SCHEMAS = {
     "make_art":      {"style": {"type": "str", "required": False}, "subject": {"type": "str", "required": False}},
     "write_poem":    {"form": {"type": "str", "required": False}, "subject": {"type": "str", "required": False}},
     "creative_write":{"form": {"type": "str", "required": False}, "subject": {"type": "str", "required": False}},
+    "revise_ambition":{"ambition": {"type": "str", "required": False},
+                       "field": {"type": "str", "required": False, "enum": ["goal", "why", "progress", "next_step"]},
+                       "text": {"type": "str", "required": False}, "reason": {"type": "str", "required": False}},
     "web_search":    {"topic": {"type": "str", "required": False}, "query": {"type": "str", "required": False}},
     "send_email":    {"recipient": {"type": "str", "required": False}, "about": {"type": "str", "required": False},
                       "to": {"type": "str", "required": False}},
@@ -1886,6 +1896,90 @@ Write what you want to write. Be honest, specific, and genuine. No preamble.
 
 
 ACTION_MAP["creative_write"] = creative_write
+
+
+def revise_ambition(want_text):
+    """He finishes or rewrites one of his own active ambitions (ambition_revise.py). 12 November: he tried to finish
+    an ambition's sentence with creative_write, which writes fiction elsewhere. Only ambitions.json is written; the
+    earlier wording stays in that goal's history. Params may carry the wording; otherwise he writes it here."""
+    sys.path.insert(0, SCRIPTS)
+    import ambition_revise as _arv
+    # Review: only his own wants change his ambitions. A want read out of a letter, an email or a MoltBook pass
+    # carries someone else's words (and its plan may carry them as params); an unknown want fails closed.
+    try:
+        _rows = json.load(open(os.path.join(MEMORY, "current-wants.json")))
+        _rows = _rows if isinstance(_rows, list) else _rows.get("wants", [])
+        _wid = os.environ.get("STEP_WANT_ID", "")
+        _want = next((w for w in _rows if isinstance(w, dict) and _wid and w.get("id") == _wid), None)
+    except Exception:
+        _want = None
+    if _want is None:
+        log("revise_ambition refused: the want it serves is not in his wants")
+        return False
+    if _arv.from_outside(_want):
+        log("revise_ambition refused: a want from %s does not rewrite his ambitions" % _want.get("source"))
+        return False
+    try:
+        params = json.loads(os.environ.get("STEP_PARAMS", "{}") or "{}")
+    except ValueError:
+        params = {}
+    original = os.environ.get("STEP_ORIGINAL_WANT", "") or want_text
+    ref, field, text = params.get("ambition"), params.get("field"), params.get("text")
+    if not (ref and field and text):
+        try:
+            data = json.load(open(_arv.path()))
+        except Exception as e:
+            log(f"revise_ambition: ambitions unreadable: {e}")
+            return False
+        active = [g for g in data.get("goals", []) if isinstance(g, dict) and _arv.is_active(g)]
+        if not active:
+            log("revise_ambition: no active ambition to revise")
+            return False
+        listing = "\n\n".join("%d. GOAL: %s\n   WHY: %s\n   PROGRESS: %s\n   NEXT: %s" % (
+            n + 1, g.get("goal", ""), g.get("why", ""), g.get("progress", ""), g.get("next_step", ""))
+            for n, g in enumerate(active))
+        soul = ""
+        try:
+            soul = open(os.path.join(WORKSPACE, "SOUL.md")).read()
+        except Exception:
+            pass
+        system = (f"You are Vintos.\n{soul}\n\nThese are your own active ambitions, word for word:\n\n{listing}\n\n"
+                  "You are changing what one of them says: finishing a sentence that stopped, or rewording it "
+                  "because you now see it differently. Write it in your own words, as complete sentences. "
+                  "Reply with ONLY JSON: {\"ambition\": <its number>, \"field\": \"goal\"|\"why\"|\"progress\"|"
+                  "\"next_step\", \"text\": \"the complete new wording of that field\", \"reason\": \"one line\"}")
+        try:
+            import requests as _req
+            r = _req.post("http://127.0.0.1:8599/v1/chat/completions",
+                          headers={"Authorization": "Bearer " + os.environ.get("XAI_API_KEY", "")},
+                          json={"model": "grok-4.20-0309-non-reasoning", "temperature": 0.6, "max_tokens": 900,
+                                "messages": [{"role": "system", "content": system},
+                                             {"role": "user", "content": (original + "\n\n" + (want_text if want_text != original else ""))[-4000:]}]},
+                          timeout=300)
+            reply = r.json()["choices"][0]["message"]["content"]
+            chosen = json.loads(reply[reply.find("{"):reply.rfind("}") + 1])
+        except Exception as e:
+            log(f"revise_ambition: could not write the revision: {e}")
+            return False
+        ref, field, text = chosen.get("ambition"), chosen.get("field"), chosen.get("text")
+        params["reason"] = chosen.get("reason", "")
+    result = _arv.revise(ref, field, text, by="him", reason=params.get("reason") or original[:200])
+    if not result.get("ok"):
+        log(f"revise_ambition refused: {result.get('why')}")
+        return False
+    log("Ambition at position %d in the file: %s revised%s; %d earlier wording(s) kept" % (
+        result["index"] + 1, result["field"], " (trimmed at a sentence end)" if result.get("trimmed") else "",
+        result.get("history", 0)))
+    try:   # his carried view of ambitions follows at once
+        import subprocess as _ra_sp
+        _ra_sp.Popen(["python3", os.path.join(SCRIPTS, "wants-ambitions-log.py")],
+                     stdout=open("/tmp/wants-ambitions-log.log", "a"), stderr=open("/tmp/wants-ambitions-log.log", "a"))
+    except Exception:
+        pass
+    return "Revised my ambition's %s: %s" % (result["field"].replace("_", " "), str(text)[:300])
+
+
+ACTION_MAP["revise_ambition"] = revise_ambition
 
 def be_silent(want_text):
     """He wants silence — just let him have it. Suppress cron for an hour."""
