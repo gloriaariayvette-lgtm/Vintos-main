@@ -56,10 +56,11 @@ class Enc:
         return np.asarray([[1.0, 0.0] for _ in texts])
 
 REAL_PREDICT = JP.predict
-def run_after(J, rows, newer_log=None, newer_pending=False, shadow=False, clock_start=None):
+def run_after(J, rows, newer_log=None, newer_pending=False, shadow=False, clock_start=None, hold=None, events=None):
     calls, slept, built = [], [], []
+    events = events if events is not None else []
     J.load = lambda p, d=None: list(rows) if p == J.CHAT else d
-    J.predict = lambda *a, **k: calls.append((a, k)) or {"state": "WRITTEN"}
+    J.predict = lambda *a, **k: calls.append((a, k)) or events.append("predict") or {"state": "WRITTEN"}
     log = os.path.join(MEM, "jepa-self-forecasts.jsonl"); pend = os.path.join(MEM, "jepa-self-pending")
     for p in (log, J.SHADOW_MODEL):
         if os.path.exists(p): os.remove(p)
@@ -71,8 +72,9 @@ def run_after(J, rows, newer_log=None, newer_pending=False, shadow=False, clock_
     clock = [clock_start if clock_start is not None else ARR + 30]
     def sleep(s): slept.append(s); clock[0] += s
     enc = Enc()
+    kw = {"hold": hold} if hold is not None else {}
     out = J.after_reply(ARR, enc=None, wait=60, poll=5, sleep=sleep, clock=lambda: clock[0],
-                        encoder_factory=lambda: built.append(1) or enc)
+                        encoder_factory=lambda: built.append(1) or events.append("encoder") or enc, **kw)
     return out, calls, slept, built
 
 def probe_landed(J):
@@ -98,6 +100,23 @@ check("she wrote again: that message's own job forecasts; this one makes none", 
 killed("newer-arrival check removed", probe_superseded, JP, "if _newer_arrival(arrived_at):", "if False:")
 out, calls, _, _ = run_after(JP, LANDED, newer_log=ARR - 1)
 check("an older message in the log does not supersede", out["state"] == "FORECAST" and len(calls) == 1)
+
+import contextlib
+def recording_hold(events):
+    @contextlib.contextmanager
+    def hold():
+        events.append("enter")
+        try: yield
+        finally: events.append("exit")
+    return hold
+def probe_hold(J):
+    ev = []
+    out, _, _, _ = run_after(J, LANDED, shadow=True, hold=recording_hold(ev), events=ev)
+    waited = []
+    no, _, _, _ = run_after(J, OLD, hold=recording_hold(waited), events=waited)
+    return out["state"] == "FORECAST" and ev == ["enter", "encoder", "predict", "predict", "exit"] and no["state"] == "NO_REPLY" and waited == []
+check("the encoder and both forecasts run inside the hold, taken only after the reply landed (never during the wait)", probe_hold(JP))
+killed("hold ignored", probe_hold, JP, "with (hold() if hold else contextlib.nullcontext()):", "with contextlib.nullcontext():")
 JP.load = JP._ev_load; JP.predict = REAL_PREDICT
 
 src = open(JP.__file__).read()
@@ -113,10 +132,48 @@ SH._jp = lambda: types.SimpleNamespace(after_reply=lambda arrived, **k: seen.app
 check("a fresh pending row hands its arrival to the after-reply forecast",
       SH.after_reply_job({"arrived_at": time.time() - 5}) == {"state": "FORECAST"} and len(seen) == 1)
 check("a stale pending row forecasts nothing", SH.after_reply_job({"arrived_at": time.time() - SH.PENDING_MAX_AGE - 5}) is None and len(seen) == 1)
+def probe_release(S):
+    del seen[:]
+    S._ENC["enc"] = object()   # the on-message forecast's encoder
+    S._jp = SH._jp
+    S.after_reply_job({"arrived_at": time.time() - 5})
+    k = seen[-1][1] if seen else {}
+    return "enc" not in S._ENC and k.get("enc") is None and k.get("hold") is S._self_lock and k.get("encoder_factory") is S._encoder
+check("the on-message encoder is released before the wait; the after-reply forecast loads one under the on-message lock", probe_release(SH))
+killed("encoder kept through the wait", probe_release, SH, "        _release_encoder()\n        return _jp().after_reply", "        return _jp().after_reply")
+SH._ENC.pop("enc", None)
 SH._jp = REAL_JP
+
+# the wait runs in a fresh process image (the on-message encoder's GPU memory is given back)
+execs, waited = [], []
+REAL_ARJ = SH.after_reply_job
+SH.after_reply_job = lambda p, now=None: waited.append(p) or "waited"
+SH._after_reply_fresh({"arrived_at": 1762000000.123456}, execv=lambda exe, argv: execs.append(argv))
+check("after the on-message forecast the job re-executes itself as `after-reply <arrival>`",
+      len(execs) == 1 and execs[0][2:] == ["after-reply", repr(1762000000.123456)] and execs[0][1].endswith("jepa_self_head.py"))
+def boom(exe, argv): raise OSError("no exec")
+del waited[:]
+check("if the exec fails the job waits in this process instead",
+      SH._after_reply_fresh({"arrived_at": 1762000000.5}, execv=boom) == "waited" and waited == [{"arrived_at": 1762000000.5}])
+SH.after_reply_job = REAL_ARJ
+
+# the on-message lock really excludes a second holder
+import fcntl
+with SH._self_lock():
+    other = open(os.path.join(SH.MEMORY, ".jepa-self-on-message.lock"), "a+")
+    try:
+        fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB); excluded = False
+    except BlockingIOError:
+        excluded = True
+    other.close()
+again = open(os.path.join(SH.MEMORY, ".jepa-self-on-message.lock"), "a+"); fcntl.flock(again, fcntl.LOCK_EX | fcntl.LOCK_NB); again.close()
+check("the after-reply hold is the on-message job's lock, and it is released on exit", excluded)
+
 shsrc = open(SH.__file__).read()
-check("the on-message command reads the row, runs its forecast, then the after-reply forecast",
-      "_pending = _load_json(sys.argv[2], {})" in shsrc and shsrc.index("on_message_job(sys.argv[2])") < shsrc.index("after_reply_job(_pending)"))
+check("the on-message command reads the row, runs its forecast, and only a logged arrival gets an after-reply forecast",
+      "_pending = _load_json(sys.argv[2], {})" in shsrc and "if on_message_job(sys.argv[2]) is not None:" in shsrc
+      and shsrc.index("if on_message_job(sys.argv[2]) is not None:") < shsrc.index("_after_reply_fresh(_pending)")
+      and 'elif cmd == "after-reply"' in shsrc)
 
 # ------------------------------------------------------------------ 2. targets already sent
 print("--- 2. a Gloria target she had already sent is not an outcome ---")

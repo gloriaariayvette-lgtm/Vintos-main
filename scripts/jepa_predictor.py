@@ -597,11 +597,13 @@ def _newer_arrival(arrived_at, pending_dir=None, on_message_log=None):
 
 
 def after_reply(arrived_at, enc=None, wait=AFTER_REPLY_WAIT, poll=AFTER_REPLY_POLL, sleep=None, clock=None,
-                encoder_factory=None):
+                encoder_factory=None, hold=None):
     """Called by the on-message job once its own forecast is written. Waits (without an encoder) for his
     reply to her message, then makes the production and shadow forecasts: the moment the next Gloria turn
-    is genuinely ahead. Returns the states; never raises."""
-    import time as _t
+    is genuinely ahead. hold() is a context manager taken after the wait, around the encoder and both
+    forecasts (the on-message job passes its own lock, so two of her messages never hold two encoders).
+    Returns the states; never raises."""
+    import time as _t, contextlib
     sleep, clock = sleep or _t.sleep, clock or _t.time
     try:
         while True:
@@ -612,22 +614,24 @@ def after_reply(arrived_at, enc=None, wait=AFTER_REPLY_WAIT, poll=AFTER_REPLY_PO
             if clock() - arrived_at > wait:
                 log("after-reply: no reply within %ds; no forecast" % wait); return {"state": "NO_REPLY"}
             sleep(poll)
-        if _newer_arrival(arrived_at):
-            log("after-reply: she wrote again; that message's job forecasts"); return {"state": "SUPERSEDED"}
-        enc = enc or (encoder_factory or encoder)()
-        out = {"state": "FORECAST", "production": None, "shadow": None}
-        try:
-            r = predict(enc=enc, trigger="after_reply", side_feeds=False)
-            out["production"] = (r or {}).get("state", "WRITTEN") if isinstance(r, dict) else None
-        except Exception as e:
-            log("after-reply production forecast failed: %s" % type(e).__name__)
-        if os.path.exists(SHADOW_MODEL):
+        with (hold() if hold else contextlib.nullcontext()):
+            # checked under the hold: a newer message's job may have logged its arrival while this one waited
+            if _newer_arrival(arrived_at):
+                log("after-reply: she wrote again; that message's job forecasts"); return {"state": "SUPERSEDED"}
+            enc = enc or (encoder_factory or encoder)()
+            out = {"state": "FORECAST", "production": None, "shadow": None}
             try:
-                r = predict(SHADOW_MODEL, SHADOW_OUT, SHADOW_HISTORY, shadow=True, enc=enc, trigger="after_reply")
-                out["shadow"] = (r or {}).get("state", "WRITTEN") if isinstance(r, dict) else None
+                r = predict(enc=enc, trigger="after_reply", side_feeds=False)
+                out["production"] = (r or {}).get("state", "WRITTEN") if isinstance(r, dict) else None
             except Exception as e:
-                log("after-reply shadow forecast failed: %s" % type(e).__name__)
-        return out
+                log("after-reply production forecast failed: %s" % type(e).__name__)
+            if os.path.exists(SHADOW_MODEL):
+                try:
+                    r = predict(SHADOW_MODEL, SHADOW_OUT, SHADOW_HISTORY, shadow=True, enc=enc, trigger="after_reply")
+                    out["shadow"] = (r or {}).get("state", "WRITTEN") if isinstance(r, dict) else None
+                except Exception as e:
+                    log("after-reply shadow forecast failed: %s" % type(e).__name__)
+            return out
     except Exception as e:
         log("after-reply forecast unavailable: %s" % type(e).__name__)
         return {"state": "ERROR"}

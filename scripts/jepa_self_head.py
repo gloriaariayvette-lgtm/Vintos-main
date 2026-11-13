@@ -64,7 +64,7 @@ The eval scores each mode separately, on forecasts made after its checkpoint abo
 against the baselines given exactly the same information (on_message: the same history and her message).
 It also scores the old shared-trunk self rows on the production checkpoint, for before/after.
 """
-import os, sys, json, re, hashlib, math, time
+import os, sys, json, re, hashlib, math, time, contextlib
 
 WS = os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.vintos/workspace"))
 MEMORY = os.path.join(WS, "memory")
@@ -1103,23 +1103,70 @@ _ENC = {}
 
 
 def _encoder():
-    """One encoder per background process: the on-message forecast and the after-reply forecast share it."""
+    """One encoder per process, loaded on first use."""
     if "enc" not in _ENC:
         _ENC["enc"] = _jp().encoder()
     return _ENC["enc"]
 
 
+def _release_encoder():
+    """Drop this process's encoder before a long wait, so a waiting job does not hold the embedding model."""
+    _ENC.pop("enc", None)
+    try:
+        import gc
+        gc.collect()
+        if "torch" in sys.modules and sys.modules["torch"].cuda.is_available():
+            sys.modules["torch"].cuda.empty_cache()
+    except Exception:
+        pass
+
+
+@contextlib.contextmanager
+def _self_lock():
+    """The on-message job's lock: one encoder-holding forecast job at a time."""
+    lk = None
+    try:
+        import fcntl
+        lk = open(os.path.join(MEMORY, ".jepa-self-on-message.lock"), "a+"); fcntl.flock(lk, fcntl.LOCK_EX)
+    except Exception:
+        lk = None
+    try:
+        yield
+    finally:
+        if lk is not None:
+            try: lk.close()
+            except Exception: pass
+
+
 def after_reply_job(pending, now=None):
     """Second half of the on-message job, after its lock is released: once his reply to this message lands,
-    the production (and shadow) JEPA forecast her next turn (jepa_predictor.after_reply). Never raises."""
+    the production (and shadow) JEPA forecast her next turn (jepa_predictor.after_reply). The encoder is
+    released for the wait and loaded again, under the on-message lock, only once the reply has landed.
+    Never raises."""
     try:
         arrived = float((pending or {}).get("arrived_at") or 0)
         if not arrived or (time.time() if now is None else now) - arrived > PENDING_MAX_AGE:
             return None
-        return _jp().after_reply(arrived, enc=_ENC.get("enc"), encoder_factory=_encoder)
+        _release_encoder()
+        return _jp().after_reply(arrived, enc=None, encoder_factory=_encoder, hold=_self_lock)
     except Exception as e:
         log("after-reply forecast not made: %s" % type(e).__name__)
         return None
+
+
+def _after_reply_fresh(pending, execv=None):
+    """Run the after-reply wait in a fresh process image: the on-message forecast's encoder and its CUDA
+    context are given back to the GPU for the wait (up to AFTER_REPLY_WAIT). Same pid, nice level and log
+    file. Falls back to waiting in this process if the exec fails."""
+    try:
+        arrived = float((pending or {}).get("arrived_at") or 0)
+        if not arrived:
+            return None
+        sys.stdout.flush(); sys.stderr.flush()
+        (execv or os.execv)(sys.executable, [sys.executable, os.path.abspath(__file__), "after-reply", repr(arrived)])
+    except Exception as e:
+        log("after-reply re-exec failed (%s); waiting in this process" % type(e).__name__)
+    return after_reply_job(pending)
 
 
 # ---------------------------------------------------------------- the held-out evaluation
@@ -1286,6 +1333,11 @@ if __name__ == "__main__":
     elif cmd == "sources": print(json.dumps(sources_report(), indent=2))
     elif cmd == "on-message" and len(sys.argv) > 2:
         _pending = _load_json(sys.argv[2], {})   # read before the job removes it
-        on_message_job(sys.argv[2])
-        after_reply_job(_pending)
+        # Only a message whose arrival is in the on-message log gets an after-reply forecast: the joiners
+        # read that log to drop a target she had already sent, so without the row they could not.
+        if on_message_job(sys.argv[2]) is not None:
+            _after_reply_fresh(_pending)
+    elif cmd == "after-reply" and len(sys.argv) > 2:
+        try: after_reply_job({"arrived_at": float(sys.argv[2])})
+        except ValueError: log("after-reply: bad arrival time")
     else: print("usage: jepa_self_head.py train|train-force|eval|sources|on-message <pending>")

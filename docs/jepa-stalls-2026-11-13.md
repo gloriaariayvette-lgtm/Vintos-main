@@ -39,8 +39,14 @@ the sealed week of 31 October). Counts only; no conversation text.
 * **After-reply forecasts.** The on-message job the server already launches for each message of hers at the
   chat/full and avatar doors now, after its own forecast and with its lock released, waits (no encoder held
   for the wait; at most 900 s) for his reply to land in the chat record, then makes the production and shadow
-  forecasts with the same encoder (`jepa_predictor.after_reply`, `jepa_self_head.after_reply_job`). It skips
-  when she has written again. The latent stream and the LAM cascade are left to the cron. A file lock
+  forecasts with one shared encoder (`jepa_predictor.after_reply`, `jepa_self_head.after_reply_job`). It skips
+  when she has written again.
+  *Review fix (13 November):* as first written, the on-message encoder stayed loaded (on the GPU) for the whole
+  wait, and every waiting job kept its own, breaking the on-message lock's "never two encoders at once". The
+  job now re-executes itself as `jepa_self_head.py after-reply <arrival>` (same pid, nice level and log; the
+  old process image and its CUDA context are gone) and loads the encoder only after the reply lands, under the
+  on-message lock. It also runs only when the on-message row (her arrival) was logged, since that row is what
+  lets the joiners drop a target she had already sent. The latent stream and the LAM cascade are left to the cron. A file lock
   serializes forecast writers. History rows record `trigger` and `context_last_role`. Since 1 November 35 of
   40 exchanges came through those doors. No threshold is lowered.
 * **Targets she had already sent are not outcomes.** Both joiners skip a Gloria target whose window ended on
