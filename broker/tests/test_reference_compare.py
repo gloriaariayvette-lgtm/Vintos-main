@@ -49,7 +49,10 @@ CIF = open(os.path.join(C.REFERENCES, "9ZZZ.cif")).read() + (
        "loop_\n_struct_conf.conf_type_id\n_struct_conf.id\n_struct_conf.beg_auth_seq_id\n"
        "_struct_conf.end_auth_seq_id\n_struct_conf.beg_auth_asym_id\nHELX_P HELX_P1 10 25 A\nHELX_P HELX_P2 50 60 A\n"
        "#\nloop_\n_struct_sheet_range.sheet_id\n_struct_sheet_range.id\n_struct_sheet_range.beg_auth_seq_id\n"
-       "_struct_sheet_range.end_auth_seq_id\n_struct_sheet_range.beg_auth_asym_id\nAA1 1 33 38 A\n#\n")
+       "_struct_sheet_range.end_auth_seq_id\n_struct_sheet_range.beg_auth_asym_id\nAA1 1 33 38 A\n#\n"
+       # what the entry is, as an RCSB file says it (13 November: a TM-score was read as an answer about plants)
+       "_struct.title 'Synthetic transporter bound chloride in inward state'\n#\n"
+       "_entity_src_gen.entity_id 1\n_entity_src_gen.pdbx_gene_src_scientific_name 'Testus syntheticus'\n#\n")
 open(os.path.join(C.REFERENCES, "9ZZZ.cif"), "w").write(CIF)
 
 # --- the request is checked before anything runs ------------------------------------------------------
@@ -92,6 +95,12 @@ check("the entry's helices and strand are given in his numbering", set(els) == {
 check("a strand half in the left-out loop is compared only where both have it", els.get(("strand", (28, 33)), {}).get("compared") == 3,
       els.get(("strand", (28, 33))))
 check("it says what it is not", "not_proof" in r.get("truth_status", ""))
+check("it says what the entry is: its title and source organism", r.get("reference_title")
+      == "Synthetic transporter bound chloride in inward state" and r.get("reference_organism") == "Testus syntheticus",
+      (r.get("reference_title"), r.get("reference_organism")))
+check("and says it second in the display, where the Lab's 1,500-character summary keeps it",
+      (r.get("display") or ["", ""])[1] == "the entry is: Synthetic transporter bound chloride in inward state "
+      "(Testus syntheticus)", (r.get("display") or [])[:2])
 check("the Lab's other files are untouched", sorted(os.listdir(C.REFERENCES)) == ["1ABC.cif", "9ZZZ.cif"], os.listdir(C.REFERENCES))
 
 # --- the numbering comes from the alignment; a wrong offset is refused (2026-10-08) ----------------------
@@ -138,6 +147,9 @@ out = run_compare({"model": "Q8SGWX", "reference": "9SGW", "chain": "C", "ref_sp
 r = out.get("result") or {}
 check("8SGW-shaped: chain C, 535-729 as numbered, the alignment gives offset 0", out.get("ok") and r.get("offset") == 0
       and r.get("offset_agreement") == 1.0, out)
+check("an entry whose file names no title or organism is still compared, and says so",
+      out.get("ok") and r.get("reference_title") is None and r.get("reference_organism") is None
+      and "the entry is: (its file gives no title and no source organism)" in r.get("display", []), r.get("display"))
 check("8SGW-shaped: the no-density stretch is named 586-653, not 581-648", r.get("missing_in_entry") == [[586, 653]], r.get("missing_in_entry"))
 check("8SGW-shaped: 586-653 is not compared (195 in span, 68 left out: 127)", r.get("compared") == 127, r.get("compared"))
 els = {(e["kind"], tuple(e["protein"])) for e in r.get("elements", [])}
@@ -151,6 +163,37 @@ check("the example in the module is 8SGW chain C, 535-729, with no five-residue 
       and '"offset": -5' not in open(C.__file__).read())
 check("numbering(): a pure check, no structure needed", C.numbering([(0, 0), (1, 1), (2, 2)], [(10, "A", 0), (11, "C", 0), (12, "D", 0)],
       [(15, "A", 0), (16, "C", 0), (17, "D", 0)]) == (-5, 1.0) and C.gaps_in({1, 2, 5}, [1, 6], 0) == [[3, 4], [6, 6]])
+
+# --- the organism is the compared chain's own, when an entry has several ------------------------------------
+_two = os.path.join(HOME, "two-entities.cif")
+open(_two, "w").write("data_TWO\n_struct.title 'A receptor with a fluorescent tag'\n#\nloop_\n_entity_src_gen.entity_id\n"
+                      "_entity_src_gen.pdbx_gene_src_scientific_name\n1 'Testus syntheticus'\n2 'Taggus fluorens'\n#\n"
+                      "loop_\n_atom_site.group_PDB\n_atom_site.id\n_atom_site.label_atom_id\n_atom_site.label_comp_id\n"
+                      "_atom_site.label_entity_id\n_atom_site.auth_asym_id\n_atom_site.auth_seq_id\n"
+                      "_atom_site.Cartn_x\n_atom_site.Cartn_y\n_atom_site.Cartn_z\n"
+                      "ATOM 1 CA ALA 1 A 1 0.0 0.0 0.0\nATOM 2 CA GLY 2 B 1 1.0 0.0 0.0\n#\n")
+_none = os.path.join(HOME, "no-names.cif")
+open(_none, "w").write("data_NONE\n_struct.title ?\n#\n_entity_src_nat.pdbx_organism_scientific_name ?\n#\n")
+_nat = os.path.join(HOME, "natural.cif")
+open(_nat, "w").write("data_NAT\n_struct.title 'A natural protein'\n#\n"
+                      "_entity_src_nat.entity_id 1\n_entity_src_nat.pdbx_organism_scientific_name 'Natura testis'\n#\n")
+done = subprocess.run([python, "-c", "import json, sys; sys.path.insert(0, sys.argv[1]); import chemistry_reference_compare as C; "
+                       "print(json.dumps([C.reference_identity(sys.argv[2], 'B'), C.reference_identity(sys.argv[2], 'A'), "
+                       "C.reference_identity(sys.argv[2]), C.reference_identity(sys.argv[3], 'A'), "
+                       "C.reference_identity(sys.argv[4], 'A'), C.reference_identity(sys.argv[2] + '.missing')]))",
+                       os.path.join(REPO, "scripts"), _two, _none, _nat], text=True, capture_output=True, timeout=120)
+try: ids = json.loads(done.stdout.strip().splitlines()[-1])
+except Exception: ids = done.stdout[-300:] + done.stderr[-300:]
+check("chain B is named by its own entity's organism", isinstance(ids, list) and ids[0] == ["A receptor with a fluorescent tag",
+      "Taggus fluorens"] and ids[1][1] == "Testus syntheticus", ids)
+check("with no chain, every source organism the entry names", isinstance(ids, list)
+      and ids[2][1] == "Testus syntheticus, Taggus fluorens", ids)
+check("'?' is not a title or an organism; a natural source is read too; an unreadable file is (None, None)",
+      isinstance(ids, list) and ids[3] == [None, None] and ids[4] == ["A natural protein", "Natura testis"]
+      and ids[5] == [None, None], ids)
+check("identity_line() degrades without a title or an organism", C.identity_line("T", None)
+      == "the entry is: T (source organism not given in its file)" and C.identity_line(None, "O")
+      == "the entry is: (no title in its file) (O)", C.identity_line("T", None))
 
 # --- the Lab offers it, and runs it on Aegis, not through the relay ------------------------------------
 check("offered in the Lab's menu with his model", "reference_compare" in L.menu_block()

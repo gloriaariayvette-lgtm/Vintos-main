@@ -209,6 +209,16 @@ def tell(row, now=None, express=None):
         return False
 
 
+def _mark_reference(question):
+    """A next question that asks for a comparison with a reference structure but names no PDB entry is stored marked
+    "(no reference structure named)": reference_compare cannot run it, and the next planner reads it here."""
+    try:
+        from chemistry_reference_compare import mark_unnamed_reference
+        return mark_unnamed_reference(question)
+    except Exception:
+        return question
+
+
 def record(investigation, reflection, ask, sources=None, now=None, express=None):
     """An answered investigation as a judged, kept, possibly told finding the next one can build on. Never raises."""
     try:
@@ -223,7 +233,7 @@ def record(investigation, reflection, ask, sources=None, now=None, express=None)
                "line_id": investigation.get("line_id"), "question": question,
                "prediction": investigation.get("prediction"), "tools": tools, "result": result[:1500],
                "reading": str(reflection.get("speculative_reading") or "")[:600],
-               "next_question": str(reflection.get("next_question") or "")[:300],
+               "next_question": _mark_reference(str(reflection.get("next_question") or "")[:300]),
                "evidence": [s.get("id") for s in steps if s.get("state") == "completed"],
                "literature": lit, "truth_status": TRUTH}
         row["provenance"] = provenance(steps)
