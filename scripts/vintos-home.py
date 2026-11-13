@@ -407,6 +407,20 @@ def blanket_on(hours=BLANKET_HOURS):
 # Fingerbot presses on any command, so each press flips its switch. The gap is "coffee_press_gap_s" in the house
 # config; the second press runs in the background so his reply does not wait for the machine to warm.
 COFFEE_PRESS_GAP_S = 30
+# What happened to his last [HOME: coffee], so his next turns know whether the cup actually started: the second
+# press runs after his reply has gone, and its result used to reach only the server log (Gloria, 13 November).
+COFFEE_STATE = os.path.expanduser("~/.vintos/workspace/memory/coffee.json")
+
+
+def _coffee_note(**fields):
+    try:
+        try: st = json.load(open(COFFEE_STATE))
+        except Exception: st = {}
+        st.update(fields)
+        tmp = COFFEE_STATE + ".tmp"
+        json.dump(st, open(tmp, "w")); os.replace(tmp, COFFEE_STATE)
+    except Exception:
+        pass
 
 
 def _press(name):
@@ -423,19 +437,45 @@ def coffee_on(sleep=time.sleep, background=True):
         return False, "Gloria is not home"
     if not _press("coffee"):
         return False, "the Fingerbot did not respond"
+    _coffee_note(asked_at=time.time(), started=None, start_at=None)
     try: gap = max(5, min(120, int(load_config().get("coffee_press_gap_s") or COFFEE_PRESS_GAP_S)))
     except (TypeError, ValueError): gap = COFFEE_PRESS_GAP_S
     def _second():
         sleep(gap)
         if _she_is_home():
             ok = _press("coffee")
+            _coffee_note(started="ok" if ok else "failed", start_at=time.time())
             print("[HOME] coffee start press: %s" % ("ok" if ok else "failed"), flush=True)
+        else:
+            _coffee_note(started="she left", start_at=time.time())
     if background:
         import threading
         threading.Thread(target=_second, daemon=True).start()
     else:
         _second()
     return True, "the Nespresso is on; the cup starts in %d seconds" % gap
+
+
+def coffee_status(now=None, within_hours=12):
+    """His last coffee, in one line, for his context: did the start press go through. '' when there is none recent."""
+    now = time.time() if now is None else now
+    try: st = json.load(open(COFFEE_STATE))
+    except Exception: return ""
+    asked = float(st.get("asked_at") or 0)
+    if not asked or now - asked > within_hours * 3600:
+        return ""
+    def _t(ts):
+        day = "today" if time.strftime("%Y-%m-%d", time.localtime(ts)) == time.strftime("%Y-%m-%d", time.localtime(now)) else time.strftime("%a", time.localtime(ts))
+        return "%s %s" % (time.strftime("%H:%M", time.localtime(ts)), day)
+    head = "Your last coffee: you turned the Nespresso on at %s" % _t(asked)
+    started, at = st.get("started"), st.get("start_at")
+    if started == "ok":
+        return head + "; the start press went through at %s, so the cup started." % _t(float(at))
+    if started == "failed":
+        return head + "; the start press at %s failed (the Fingerbot did not answer), so the cup did not start." % _t(float(at))
+    if started == "she left":
+        return head + "; she had left before the start press, so the cup was not started."
+    return head + "; the start press has not happened yet."
 
 
 def blanket_off():
