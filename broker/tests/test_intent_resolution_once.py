@@ -53,7 +53,8 @@ class ResolutionOnce(unittest.TestCase):
             except BaseException as exc: errors.append(exc)
         def sol(packet):    # her axis is Sol's (12 November): the same race, in the rubric's answer
             v = judge()
-            return {'verdict': v if v in ('YES', 'PARTIAL', 'NO') else 'NOT_JUDGEABLE', 'reason': 'fixture',
+            v = v if v in ('YES', 'PARTIAL', 'NO') else 'NOT_JUDGEABLE'
+            return {'verdict': v, 'reason': {'YES': 'plain_yes', 'PARTIAL': 'partial_hedged', 'NO': 'not_shown'}.get(v, 'no_her_reply'),
                     'adherence': 'delivered', 'status': 'ok'}
         with patch.object(E, '_judge_realized', side_effect=judge), patch.object(E, '_rubric_judge', side_effect=sol):
             worker = threading.Thread(target=slow_one, name='slow-judge'); worker.start()

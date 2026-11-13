@@ -90,7 +90,7 @@ class Shadow(unittest.TestCase):
         write_weights(cls.weights)
 
     def setUp(self):
-        for n in (S.OUT_NAME, S.HIST_NAME):
+        for n in (S.OUT_NAME, S.HIST_NAME, S.HIST_NAME + S.LOCK_SUFFIX):
             p = os.path.join(MEM, n)
             if os.path.exists(p): os.unlink(p)
 
@@ -151,9 +151,9 @@ class Shadow(unittest.TestCase):
         S.run(self.weights, now=NOW, mem=MEM, door_dir=DOOR)
         after = tree_hashes(MEM, DOOR)
         new = sorted(set(after) - set(before))
-        self.assertEqual([os.path.basename(p) for p in new], sorted([S.HIST_NAME, S.OUT_NAME]))
+        self.assertEqual([os.path.basename(p) for p in new], sorted([S.HIST_NAME, S.HIST_NAME + S.LOCK_SUFFIX, S.OUT_NAME]))
         for p, h in before.items():
-            if os.path.basename(p) not in (S.HIST_NAME, S.OUT_NAME):
+            if os.path.basename(p) not in (S.HIST_NAME, S.HIST_NAME + S.LOCK_SUFFIX, S.OUT_NAME):
                 self.assertEqual(after.get(p), h, p)
         self.assertEqual(glob.glob(os.path.join(MEM, '.world-model-shadow*')), [], 'no temp file left behind')
 
@@ -166,6 +166,63 @@ class Shadow(unittest.TestCase):
         self.assertEqual(set(rows[0]['expect']), {'30m', '2h', '6h'})
         self.assertEqual(len(rows[0]['expect']['2h']['heart_rate']), 2)        # mean and sd, to score later
         self.assertIn('fresh_minutes', rows[0])
+
+    def test_a_writer_waiting_through_a_rotation_keeps_its_row(self):
+        """13 November review: the lock was on the history file the rotation replaces, so a writer already waiting
+        on it appended to the detached copy and its row was lost. Writer B arrives while A holds the lock and is
+        about to rotate (cap 1); both rows must reach the history in turn, and B's is the one kept."""
+        import fcntl, threading
+        from unittest import mock
+        hist = os.path.join(scratch.name, 'rotation', S.HIST_NAME)
+        os.makedirs(os.path.dirname(hist), exist_ok=True)
+        Path(hist).write_text('{"sequence":0}\n')
+        b_waiting, a_rotating, errors = threading.Event(), threading.Event(), []
+        real_flock, real_replace = fcntl.flock, os.replace
+
+        def flock(fd, op):
+            if threading.current_thread().name == 'writer-B': b_waiting.set()
+            return real_flock(fd, op)
+
+        def replace(src, dst):
+            if threading.current_thread().name == 'writer-A' and dst == hist:
+                a_rotating.set()
+                if not b_waiting.wait(5): raise AssertionError('fixture: writer B never arrived')
+                threading.Event().wait(0.2)                  # B is now blocked on the lock, not past it
+            return real_replace(src, dst)
+
+        def writer(seq):
+            try:
+                if seq == 2 and not a_rotating.wait(5): raise AssertionError('fixture: A never rotated')
+                S._append_bounded(hist, {'sequence': seq}, 1)
+            except BaseException as e:
+                errors.append(e)
+        with mock.patch.object(S.fcntl, 'flock', flock), mock.patch.object(S.os, 'replace', replace):
+            a = threading.Thread(target=writer, args=(1,), name='writer-A')
+            b = threading.Thread(target=writer, args=(2,), name='writer-B')
+            b.start(); a.start(); a.join(10); b.join(10)
+        self.assertFalse(a.is_alive() or b.is_alive(), 'a writer hung')
+        self.assertEqual(errors, [])
+        self.assertEqual([json.loads(l)['sequence'] for l in Path(hist).read_text().splitlines()], [2])
+        self.assertTrue(os.path.exists(hist + S.LOCK_SUFFIX), 'the lock file is stable, never replaced')
+        self.assertEqual(glob.glob(os.path.join(os.path.dirname(hist), '.world-model-shadow*')), [])
+
+    def test_two_writers_through_many_rotations_lose_nothing(self):
+        """Two processes append through repeated rotations: every row written is kept while the cap allows."""
+        import subprocess
+        hist = os.path.join(scratch.name, 'rotation-many', S.HIST_NAME)
+        os.makedirs(os.path.dirname(hist), exist_ok=True)
+        if os.path.exists(hist): os.unlink(hist)
+        code = ('import sys; sys.path.insert(0, sys.argv[1]); import world_model_shadow as S\n'
+                'for i in range(40): S._append_bounded(sys.argv[2], {"w": sys.argv[3], "i": i, "pad": "p" * 1000}, 30)')
+        procs = [subprocess.Popen([sys.executable, '-c', code, os.path.dirname(os.path.abspath(S.__file__)), hist, w])
+                 for w in ('A', 'B')]
+        self.assertEqual([p.wait(120) for p in procs], [0, 0])
+        rows = [json.loads(l) for l in Path(hist).read_text().splitlines()]
+        self.assertEqual(len(rows), 30)
+        # the history keeps the newest 30 of 80 rows, so each writer's kept rows run without a gap to its last row
+        for w in ('A', 'B'):
+            kept = [r['i'] for r in rows if r['w'] == w]
+            self.assertEqual(kept, list(range(40 - len(kept), 40)), (w, kept))
 
     def test_weights_for_other_channels_are_refused(self):
         other = os.path.join(scratch.name, 'private', 'other.pt')

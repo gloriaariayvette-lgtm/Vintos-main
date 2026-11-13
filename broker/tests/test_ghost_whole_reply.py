@@ -50,6 +50,32 @@ sse = b"".join(b"data: " + json.dumps({"choices": [{"delta": {"content": t}}]}).
 serve(sse)
 out, _ = G.run_primary("system", "prompt")
 check("a streamed reply is still read as a stream", out == "I stopped circling it.", repr(out))
+# 13 November review: "data:" inside a whole reply's prose is not a stream; only a line that begins "data:" is
+for prose in ("Synthetic data: one observation.", "x" * 500 + " data: across a 512-byte read " + "y" * 600,
+              "line one\ndata: on a line of its own inside the prose"):
+    for body in (json.dumps({"choices": [{"message": {"role": "assistant", "content": prose}}]}).encode(),
+                 json.dumps({"choices": [{"message": {"role": "assistant", "content": prose}}]}, indent=2).encode()):
+        serve(body)
+        out, _ = G.run_primary("system", "prompt")
+        check("a whole primary whose prose says 'data:' is kept (%d chars)" % len(prose), out == prose, repr(out[:80]))
+        box = [None]
+        G.stream_ghost([{"role": "user", "content": "x"}], {"id": "more_brazen", "label": "more brazen"}, box, 0)
+        check("a whole ghost lean whose prose says 'data:' is kept (%d chars)" % len(prose),
+              box[0] and box[0]["output"] == prose, box)
+long_tokens = ["token %03d data: says the stream. " % i for i in range(60)]           # events cross 512-byte reads
+sse_long = b"".join(b"data: " + json.dumps({"choices": [{"delta": {"content": t}}]}).encode() + b"\n\n"
+                    for t in long_tokens) + b"data: [DONE]\n\n"
+serve(sse_long)
+out, _ = G.run_primary("system", "prompt")
+check("a stream whose events cross read boundaries and whose words say 'data:' is read as a stream",
+      out == "".join(long_tokens), repr(out[:80]))
+serve(b"".join(b"data:" + json.dumps({"choices": [{"delta": {"content": t}}]}).encode() + b"\r\n\r\n"
+               for t in ("I stopped ", "circling it.")) + b"data:[DONE]\r\n\r\n")
+out, _ = G.run_primary("system", "prompt")
+check("a stream framed 'data:' without the space, CRLF lines, is still a stream", out == "I stopped circling it.", repr(out))
+serve(b"data: [DONE]\n\n")
+out, _ = G.run_primary("system", "prompt")
+check("a real stream that carried no words stays empty (no whole-reply guess)", out == "", repr(out))
 serve(b"")
 out, _ = G.run_primary("system", "prompt")
 check("an empty body stays empty (nothing invented)", out == "", repr(out))

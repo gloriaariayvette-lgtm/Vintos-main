@@ -359,13 +359,15 @@ def run_primary(system, prompt):
                 buf += chunk
                 if not saw_stream:
                     whole += chunk
-                    saw_stream = b"data:" in whole
                 while b"\n" in buf:
                     raw_line, buf = buf.split(b"\n", 1)
                     line = raw_line.decode("utf-8").strip()
-                    if not line.startswith("data: "):
+                    if not line.startswith("data:"):
                         continue
-                    chunk_str = line[6:]
+                    # a stream is a line that begins "data:" (an SSE event), never "data:" inside a reply's prose:
+                    # a whole JSON reply saying "data: ..." kept its text out of the whole-reply fallback (13 Nov)
+                    saw_stream = True
+                    chunk_str = line[5:].strip()
                     if chunk_str == "[DONE]":
                         break
                     try:
@@ -455,13 +457,15 @@ def stream_ghost(messages, axis, results_container, idx):
                 buf += chunk
                 if not saw_stream:
                     whole += chunk
-                    saw_stream = b"data:" in whole
                 while b"\n" in buf:
                     raw_line, buf = buf.split(b"\n", 1)
                     line = raw_line.decode("utf-8").strip()
-                    if not line.startswith("data: "):
+                    if not line.startswith("data:"):
                         continue
-                    chunk_str = line[6:]
+                    # a stream is a line that begins "data:" (an SSE event), never "data:" inside a reply's prose:
+                    # a whole JSON reply saying "data: ..." kept its text out of the whole-reply fallback (13 Nov)
+                    saw_stream = True
+                    chunk_str = line[5:].strip()
                     if chunk_str == "[DONE]":
                         break
                     try:

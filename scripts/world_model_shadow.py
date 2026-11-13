@@ -31,6 +31,7 @@ WS = os.environ.get("SPARK_WORKSPACE") or os.path.expanduser("~/.vintos/workspac
 MEM = os.path.join(WS, "memory")
 DOOR_DIR = os.environ.get("MAMEPA_DOOR_DIR") or os.path.expanduser("~/doorbell-voice/live/encounters")
 OUT_NAME, HIST_NAME = "world-model-shadow.json", "world-model-shadow-history.jsonl"
+LOCK_SUFFIX = ".lock"                     # the history's own stable lock file, beside it
 HISTORY_ROWS = int(os.environ.get("MAMEPA_HISTORY_ROWS") or 4320)        # 30 days at one run per 10 minutes
 WINDOW_DAYS = 8
 TZ = ZoneInfo("America/Chicago")
@@ -340,15 +341,23 @@ def _atomic(path, obj):
 
 
 def _append_bounded(path, row, cap):
-    """Append one row; past `cap` rows keep the newest `cap`, rewritten atomically. Locked against an overlapping run."""
-    with open(path, "a") as lockf:
+    """Append one row; past `cap` rows keep the newest `cap`, rewritten atomically. Locked against an overlapping run
+    on a lock file of its own (path + LOCK_SUFFIX) that is never replaced, and the history is opened only once that
+    lock is held: a lock on the history itself was lost when the rotation replaced it, and a writer waiting on the
+    old file appended its row to the detached copy (13 November review)."""
+    with open(path + LOCK_SUFFIX, "a") as lockf:
         fcntl.flock(lockf, fcntl.LOCK_EX)
-        lockf.write(json.dumps(row, separators=(",", ":")) + "\n"); lockf.flush()
+        with open(path, "a") as f:
+            f.write(json.dumps(row, separators=(",", ":")) + "\n"); f.flush()
         with open(path, "r") as f: lines = f.readlines()
         if len(lines) > cap:
             fd, tmp = tempfile.mkstemp(prefix=".world-model-shadow-history-", dir=os.path.dirname(path))
-            with os.fdopen(fd, "w") as f: f.writelines(lines[-cap:])
-            os.replace(tmp, path)
+            try:
+                with os.fdopen(fd, "w") as f: f.writelines(lines[-cap:])
+                os.replace(tmp, path)
+            except BaseException:
+                if os.path.exists(tmp): os.unlink(tmp)
+                raise
 
 
 def run(weights, now=None, mem=MEM, door_dir=DOOR_DIR, history_rows=HISTORY_ROWS):
