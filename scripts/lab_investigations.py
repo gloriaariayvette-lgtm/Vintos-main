@@ -1876,6 +1876,24 @@ def _close_late_repeat(data, investigation, question, note):
     return None
 
 
+def _withheld(text):
+    """The closed-question placeholder (lab_closed_redaction) given back as if it were a question."""
+    return __import__('lab_closed_redaction').is_placeholder(text)
+
+
+def _drop_withheld(data, investigation):
+    """A fresh investigation whose only question is the withheld-question placeholder is not opened: it is dropped
+    before any step and written down, and the Lab's ordinary turn runs instead."""
+    data['investigations'] = [i for i in data['investigations'] if i is not investigation]
+    _save(data)
+    lab._append(lab.NOTEBOOK, {'at': lab.now_iso(), 'kind': 'investigation_refused_placeholder',
+                               'line_id': investigation.get('line_id'),
+                               'why': 'the planner gave back the withheld closed-question placeholder, not a question',
+                               'truth_status': 'refused_before_any_execution'})
+    _CURRENT.clear()
+    return None
+
+
 def _settle_question(investigation, value, data, context, ask, note):
     """(value, refused): the opening proposal with its question settled, or refused=True when it repeats a closed
     investigation's question and the investigation was not opened. A question already investigated is asked once more
@@ -1884,10 +1902,15 @@ def _settle_question(investigation, value, data, context, ask, note):
     asked = ''
     for attempt in (0, 1):
         given = str(value.get('question') or '').strip()
+        if _withheld(given):
+            given = ''      # the withheld-question placeholder echoed back is no question (12 November)
         # A retry that leaves out "question" still asks the one it was told repeats: read as no question at all, it
         # opened unchecked and a later turn wrote the old question back in (2 November: the pendrin 653-729
         # question opened 69 times since 28 October, every one after a refusal).
         question = given or had or asked
+        if not question and _withheld(value.get('question')):
+            _drop_withheld(data, investigation)
+            return None, True
         asked = question
         earlier = _same_question(question, None, data) if question else []
         if not earlier:
@@ -2069,6 +2092,9 @@ def _turn(context, *, ask=None, execute=None):
     investigation.pop('deferred_until', None)
     if not investigation.get('question'):
         filled = str(value.get('question') or '')
+        if _withheld(filled):
+            return _refuse(data, investigation, 'the planner gave back the withheld closed-question placeholder, '
+                                                'not a question')
         # A question written in after opening is checked as an opening one is: a repeat is not taken up here either
         repeated = _late_repeat(filled, data) if filled else None
         if repeated is not None:
@@ -2466,7 +2492,8 @@ def _carry_out(data, investigation, value, plan_ref, context, ask, execute, may_
         _save(data); lab._append(lab.NOTEBOOK, row)
         return row
     step = {'id':'S-'+uuid.uuid4().hex[:12], 'at':lab.now_iso(), 'route':route,
-            'question':str(value.get('step_question') or investigation['question']),
+            'question':str((value.get('step_question') if not _withheld(value.get('step_question')) else '')
+                           or investigation['question']),
             'request':request, 'input_refs':_inputs(request), 'why':str(value.get('why') or ''),
             'origin':'autonomous_lab', 'tool':tool_name(route,request), **({'authored_route':authored_route} if authored_route else {}),
             **({'plan_ref':plan_ref} if plan_ref else {}),
