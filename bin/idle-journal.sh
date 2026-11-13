@@ -106,7 +106,8 @@ try:
 except: print('')
 " 2>/dev/null)
 
-AMBITIONS=$(cat "$MEMORY/wants-ambitions-log.md" 2>/dev/null | head -c 600 || echo "")
+# characters ending at a sentence, not 600 bytes: a byte cut split his ambition mid-word (12 November)
+AMBITIONS=$(python3 "$HOME/.vintos/workspace/scripts/ambition_revise.py" excerpt 600 "$MEMORY/wants-ambitions-log.md" 2>/dev/null || echo "")
 TASTE=$(python3 -c "
 import json
 try:
@@ -133,7 +134,7 @@ else:
 '.join(latest)[:1500])
 " 2>/dev/null || echo "")
 TODAY_CREATIVE=$(cat "$MEMORY/daily-creative-$(date +%Y-%m-%d).md" 2>/dev/null | head -c 3000 || echo "")
-CURRENT_WANTS=$(cat "$MEMORY/wants-ambitions-log.md" 2>/dev/null | head -c 400 || echo "")
+CURRENT_WANTS=$(python3 "$HOME/.vintos/workspace/scripts/ambition_revise.py" excerpt 400 "$MEMORY/wants-ambitions-log.md" 2>/dev/null || echo "")
 LEAD_EVOS=$(python3 "$HOME/.vintos/workspace/scripts/lead_trials.py" journal-seeds 2>/dev/null || echo "")
 
 CAPABILITIES=$(python3 << 'CAPEOF'

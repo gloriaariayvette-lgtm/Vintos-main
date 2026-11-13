@@ -336,7 +336,8 @@ def host_events(previous, current):
                 out.append((kind+':'+p+':'+current['files'].get(p,'absent'), kind, verb+' '+p))
     for p, d in current['deployed'].items():
         if not d['matches_release']:
-            out.append(('code:'+p+':'+d['actual'], 'deployed_code_changed', 'deployed code differs from release '+str(current['release'])+': '+p))
+            out.append(('code:'+str(current['release'])+':'+p+':'+d['actual'], 'deployed_code_changed',
+                        'deployed code differs from release '+str(current['release'])+': '+p))
     if not current['release']:
         out.append(('missing-release', 'monitor_blind', 'No deployment receipt; deployed-code coverage unavailable'))
     return out
@@ -356,6 +357,66 @@ def remember(state, key, kind, why, now, cooldown=3600):
     state.setdefault('pending', {})[event_id] = {'why': why, 'kind': kind, 'at': now, 'key': key}
     sent[key] = now
     return True
+
+
+DRIFT_DIGEST_S = 86400
+
+
+def _drift_parts(key):
+    """(release, path, sha) from 'code:<release>:<path>:<sha>'; the path may hold ':' so it is split from both ends."""
+    body = key[len('code:'):]
+    release, _, rest = body.partition(':')
+    path, _, sha = rest.rpartition(':')
+    return release, path, sha
+
+
+def drift_notices(state, events, current, now):
+    """The deployed-code events this pass should raise: each (release, file, content hash) once, then one daily digest.
+
+    Gloria, 12 November: a live hot-patch outside the deploy was announced every hour all day for the same three
+    files. A new release, a new file or new content is a new key and alarms at once; an unchanged drift is silent
+    until the daily digest, which names every file still differing and since when. A drift that goes away (the
+    file is restored or a release adopts it) is forgotten. A first alert that was never delivered is raised again
+    (remember's own hourly cooldown) until it is. Deferred or unreadable snapshots leave the record untouched.
+    """
+    code = [e for e in events if e[1] == 'deployed_code_changed']
+    drift = state.setdefault('code_drift', {})
+    if current is None or current.get('deploying'):
+        return []
+    if 'code_drift_since' not in state:
+        # Upgrade from per-hour keys ('code:<path>:<sha>', no release): drifts already announced are not
+        # announced again; they reach her in the digest.
+        legacy = {k for k in state.get('last_alert', {}) if k.startswith('code:') and k.count(':') >= 2}
+        for key, kind, why in code:
+            release, path, sha = _drift_parts(key)
+            if 'code:' + path + ':' + sha in legacy:
+                drift[key] = {'path': path, 'sha': sha, 'release': release, 'first_seen': now, 'announced': now,
+                              'before_upgrade': True}
+        state['code_drift_since'] = now
+    out, live = [], set()
+    pending_keys = {row.get('key') for row in state.get('pending', {}).values()}
+    for key, kind, why in code:
+        live.add(key)
+        row = drift.get(key)
+        if row is None:
+            release, path, sha = _drift_parts(key)
+            drift[key] = {'path': path, 'sha': sha, 'release': release, 'first_seen': now}
+            out.append((key, kind, why))
+        elif not row.get('announced'):
+            if state.get('delivered', {}).get(key):
+                row['announced'] = state['delivered'][key]
+            elif key not in pending_keys:
+                out.append((key, kind, why))
+    for key in [k for k in drift if k not in live]:
+        del drift[key]
+    old = sorted((r for r in drift.values() if now - r['first_seen'] >= DRIFT_DIGEST_S), key=lambda r: r['first_seen'])
+    if old and now - state.get('code_drift_digest_at', -1e20) >= DRIFT_DIGEST_S:
+        state['code_drift_digest_at'] = now
+        names = '; '.join('%s (since %s)' % (r['path'], time.strftime('%Y-%m-%d %H:%M', time.localtime(r['first_seen'])))
+                          for r in old)
+        out.append(('code-drift-digest:%d' % int(now // DRIFT_DIGEST_S), 'deployed_code_unresolved',
+                    '%d deployed file(s) still differ from release %s: %s' % (len(old), old[-1]['release'], names)))
+    return out
 
 
 def tend(now=None, dry=False, runner=run, sender=None, snapshot=None, logins=None):
@@ -395,7 +456,8 @@ def tend(now=None, dry=False, runner=run, sender=None, snapshot=None, logins=Non
         except Exception as e:
             events.append(('accounting-health-unreadable','monitor_blind','Accounting health evidence unreadable: '+type(e).__name__+(' ('+str(e)[:160]+')' if isinstance(e, RuntimeError) else '')))
         if dry: return {'rates': rates, 'events': [e[1:] for e in events], 'dry': True}
-        for key,kind,why in events: remember(state,key,kind,why,now)
+        for key,kind,why in [e for e in events if e[1] != 'deployed_code_changed'] + drift_notices(state, events, current, now):
+            remember(state,key,kind,why,now)
         if current is not None and not current.get('deploying'): state['host'] = current
         if current is not None and current.get('deploying'):
             state.setdefault('deploy_started', now)
@@ -420,6 +482,7 @@ def tend(now=None, dry=False, runner=run, sender=None, snapshot=None, logins=Non
                 authority=lambda: (True, 'Gloria requested infrastructure security alarms'), retries=1, priority='high')
             if receipt.get('state') in ('sent','acknowledged'):
                 del state['pending'][event_id]; delivered[row['key']] = now; sent += 1
+                if row['key'] in state.get('code_drift', {}): state['code_drift'][row['key']]['announced'] = now
         # Bound long-term suppression metadata; no event history is stored here. delivered was never pruned, so a
         # churny key (an SSH login from a rotating address) left a dead entry on every pass and the state grew without
         # limit; bound it like last_alert.

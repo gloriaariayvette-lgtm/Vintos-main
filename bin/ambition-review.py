@@ -71,6 +71,8 @@ def main():
     current_str = "\n".join(
         f"- {g['goal']} (progress: {g.get('progress', 'just starting')})"
         + (f"{chr(10)}  WHY IT MATTERS: {g['why']}" if g.get("why") else "")
+        + (f"{chr(10)}  (this ambition's {', '.join(g['incomplete'])} stopped mid-sentence; finish it in your own words)"
+           if g.get("incomplete") else "")
         for g in _active
     ) or "No ambitions yet — this is your first time thinking about it."
     if _retired:
@@ -207,9 +209,11 @@ Nothing else. No preamble. Start with GOAL:"""
         response = requests.post(LM_API,
             headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")},
             json={"model": MODEL, "messages": [{"role": "user", "content": prompt}],
-                  "temperature": 0.8, "max_tokens": 400},
+                  "temperature": 0.8, "max_tokens": 1200},   # 400 could end five goals' last line mid-sentence
             timeout=1200)
-        text = response.json()["choices"][0]["message"]["content"].strip()
+        _choice = response.json()["choices"][0]
+        text = _choice["message"]["content"].strip()
+        _cut = _choice.get("finish_reason") == "length"
     except Exception as e:
         print(f"[Ambition] LLM error: {e}")
         return
@@ -227,19 +231,31 @@ Nothing else. No preamble. Start with GOAL:"""
             current_goal = {"goal": line.split(":", 1)[1].strip()}
         elif line.upper().startswith("WHY") and ":" in line:
             current_goal["why"] = line.split(":", 1)[1].strip()
+            current_goal.setdefault("_order", []).append("why")
         elif line.upper().startswith("PROGRESS") and ":" in line:
             current_goal["progress"] = line.split(":", 1)[1].strip()
+            current_goal.setdefault("_order", []).append("progress")
         elif line.upper().startswith("NEXT") and ":" in line:
             current_goal["next_step"] = line.split(":", 1)[1].strip()
+            current_goal.setdefault("_order", []).append("next_step")
     if current_goal.get("goal"):
         goals.append(current_goal)
+    # A reply that ran out of tokens never stores its last field mid-sentence (ambition_revise, 12 November)
+    try:
+        import ambition_revise as _ar
+        for _gi, _field, _how in _ar.seal_cut(goals, _cut):
+            print(f"[Ambition] goal {_gi + 1} {_field} was cut by the token limit: {_how}")
+    except ImportError:
+        pass
+    for g in goals:
+        g.pop("_order", None)
 
     # Carried-forward goals keep their history; completed goals stay with their marks
     _old = {g.get("goal", "")[:60].lower(): g for g in current.get("goals", [])}
     for g in goals:
         prev = _old.get(g.get("goal", "")[:60].lower())
         if prev:
-            for k in ("why", "seeded_from", "seeded_at"):
+            for k in ("why", "seeded_from", "seeded_at", "history", "revised_at"):
                 if prev.get(k) and not g.get(k):
                     g[k] = prev[k]
     _completed = [g for g in current.get("goals", []) if g.get("progress", "").lower() == "completed"][-5:]

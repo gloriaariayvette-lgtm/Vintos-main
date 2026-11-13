@@ -977,6 +977,7 @@ def generate_steps(want_text, possible_approach="", reasoning="", self_interpret
 - make_music: Compose music. Note must specify: mood, style, instrumentation if relevant.
 - make_video: Generate a short video. Note must specify: subject and style.
 - creative_write: Write fiction or creative exploration. Note must specify: what to write about.
+- revise_ambition: Finish or rewrite one of YOUR OWN active ambitions in your ambitions file (its goal, why, progress or next step); the earlier wording is kept in its history. Use this, never creative_write, when you want to change what your ambitions say. Note must specify: which ambition and what it should now say. params may be {"ambition":"its number or words from its goal","field":"goal|why|progress|next_step","text":"the complete new wording"}.
 - analyze_memory: Analyze patterns in memory files. Note must specify: which files, what patterns to look for.
 - write_journal: Write a journal entry. Note must specify: what to write about.
 - echo_announce: Tell Gloria something through the Echo. Note must specify: what to say.
@@ -1147,7 +1148,8 @@ def _grounding_block(want_text, source_context=""):
 
 # Step actions the router runs (wants-router.py ACTION_MAP) that the planner's capability text does not list.
 ROUTER_STEP_ACTIONS = ("tell_gloria", "voidex_explore", "play_music", "correlate", "make_chart", "be_silent",
-                       "be_mischievous", "creative_write", "introspect", "read_memory", "send_email", "gloria")
+                       "be_mischievous", "creative_write", "introspect", "read_memory", "send_email", "gloria",
+                       "revise_ambition")
 
 
 def fit_steps_to_hands(steps, known, may_commission, source=""):
