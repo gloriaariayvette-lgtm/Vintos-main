@@ -1,7 +1,12 @@
 # Continuous latent stream — the idea, set against what he already has
 
 Captured 2026-10-18 by Gloria with Chat; fleshed out 2026-10-22 by Claude Code from the repository.
-**Status: step 1 run on 22 October; not taken further as it stands (results below). Re-run in late November.** Nothing here is built. Where this says what runs on Aegis and how often, it
+**Status (13 November): step 1 ran on 22 October (results below); re-run in late November. The Mamba stream
+itself is not built, but three pieces around it now run on Aegis:** the persistent carrying state
+(`vintos-persistent-carry.service`; [persistent-carry-shadow.md](persistent-carry-shadow.md)), the present-moment
+model (`memory/jepa-readouts/present-moment.npz`, read by `scripts/latent_feed.py` into `memory/latent-feed.json`;
+[subconscious-head-feeds-implementation.md](subconscious-head-feeds-implementation.md)), and the JEPA predictor
+(`scripts/jepa_predictor.py`; [jepa-stalls-2026-11-13.md](jepa-stalls-2026-11-13.md)). Where this says what runs on Aegis and how often, it
 is read from the code; schedules live in Aegis's crontab, which the repository does not hold, so the first step
 below is a read-only probe that confirms them.
 
