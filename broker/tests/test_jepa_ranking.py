@@ -143,7 +143,7 @@ check("structured model has separate checkpoint output and history", "jepa-predi
 check("shadow prediction is structurally barred from steering", '"steering_allowed": (False if shadow else' in src and '"shadow_only": bool(shadow)' in src)
 check("head-specific confidence is confined to the shadow architecture", 'head-specific-confidence-v2' in src and 'train(SHADOW_MODEL, "structured-turns-v1", "head-specific-confidence-v2", validation_fraction=0.2)' in src)
 check("shadow training selects weights on a later time slice", '"kind": "latest_time_slice"' in src and 'net.load_state_dict(best_state)' in src and 'early stop epoch' in src)
-check("duplicate suppression happens before the encoder is loaded", src.index("if unchanged_forecast(") < src.index("enc = encoder()", src.index("def predict(")))
+check("duplicate suppression happens before the encoder is loaded", src.index("def _predict(") < src.index("if unchanged_forecast(") < src.index("enc = enc or encoder()", src.index("def _predict(")))
 check("forced retraining is explicit and absent from ordinary scheduler commands", 'elif cmd == "train-force"' in src and 'elif cmd == "train-shadow-force"' in src)
 
 print("\n%d/%d" % (sum(R), len(R))); sys.exit(0 if all(R) else 1)
