@@ -737,7 +737,23 @@ def _plan(investigation, context, ask, note=None):
     # a re-plan says why again at the very end, where she reads last, with the exact operations not to return, and is
     # asked a little less deterministically: at 0.35 the same prompt gave her the same proposal back
     prompt += tail
-    value = lab._json_object(ask(system, prompt, max_tokens=800, temperature=0.7 if note else 0.35))
+    # LAB_PLANNER_TRIAL (lab_planner_trial; Gloria, 13 November): a trial model proposes first, and its step is used
+    # only when the Lab's own rules would act on it. Otherwise, and whenever the switch is off, the current model is
+    # asked here exactly as before (and recorded as this function's call).
+    try:
+        import lab_planner_trial
+        trial = lab_planner_trial.propose(system, prompt, investigation, note, planned)
+    except Exception:
+        lab_planner_trial, trial = None, None
+    if trial is not None and 'value' in trial:
+        value = trial['value']
+    else:
+        started = time.time()
+        try:
+            value = lab._json_object(ask(system, prompt, max_tokens=800, temperature=0.7 if note else 0.35))
+        finally:
+            if trial is not None:
+                lab_planner_trial.fell_back(trial, time.time() - started)
     if planned and isinstance(value, dict):
         value['_planned'] = planned
     return value
@@ -1937,9 +1953,13 @@ def turn(context, *, ask=None, execute=None):
     never saw such turns, and on 21 October one open investigation failed 365 turns in a row, the Lab doing nothing
     from 17:36 until she noticed."""
     _CURRENT.clear()
+    _trial_turn('begin_turn')
     try:
-        return _turn(context, ask=ask, execute=execute)
+        out = _turn(context, ask=ask, execute=execute)
+        _trial_turn('end_turn', out)
+        return out
     except Exception as exc:
+        _trial_turn('end_turn', None, exc)
         iid = _CURRENT.get('id')
         if iid:
             data = lab._load(_path('investigations.json'), {'investigations': []})
@@ -1952,6 +1972,14 @@ def turn(context, *, ask=None, execute=None):
                                % (inv['planning_failures'], inv['last_planning_error'][:160]))
                 _save(data)
         raise
+
+
+def _trial_turn(name, *args):
+    """lab_planner_trial's per-turn bookkeeping (LAB_PLANNER_TRIAL); it writes nothing unless the trial was asked."""
+    try:
+        getattr(__import__('lab_planner_trial'), name)(*args)
+    except Exception:
+        pass
 
 
 def _turn(context, *, ask=None, execute=None):
@@ -2372,14 +2400,15 @@ def _again(investigation, data, context, ask, note, kind):
     return value if isinstance(value, dict) else None
 
 
-def _carry_out(data, investigation, value, plan_ref, context, ask, execute, may_replan):
-    """One proposed operation, as a step. With may_replan, a proposal that would only repeat this investigation's own
-    step, is not the planned step, is refused as a repeat before sending, or is malformed for its instrument raises
-    _Replan instead, before anything is sent, and leaves no step behind."""
+def _route_request(value):
+    """(route, request, authored_route, inferred): a proposal's operation as it is carried out. An instrument request
+    naming only another door goes to that door; a source named as the route is that source's query; a dotted source
+    is its source and operation. The request is returned as given when it is not an object."""
     route, request = value.get('route'), value.get('request') or {}
-    if not isinstance(request,dict): raise ValueError('operation request must be an object')
     authored_route = None
     inferred = value.get('_route_inferred')
+    if not isinstance(request, dict):
+        return route, request, authored_route, inferred
     if route in ('instrument', 'native'):
         door = _other_door(request)
         if door:
@@ -2402,6 +2431,15 @@ def _carry_out(data, investigation, value, plan_ref, context, ask, execute, may_
                 request = dict(request, source=joined)
             elif head in SOURCE_ROUTES and op and not request.get('operation'):
                 request = dict(request, source=head, operation=op)   # "ncbi.literature" -> source ncbi, op literature
+    return route, request, authored_route, inferred
+
+
+def _carry_out(data, investigation, value, plan_ref, context, ask, execute, may_replan):
+    """One proposed operation, as a step. With may_replan, a proposal that would only repeat this investigation's own
+    step, is not the planned step, is refused as a repeat before sending, or is malformed for its instrument raises
+    _Replan instead, before anything is sent, and leaves no step behind."""
+    route, request, authored_route, inferred = _route_request(value)
+    if not isinstance(request,dict): raise ValueError('operation request must be an object')
     if route == 'finish':
         unknown = [s for s in investigation['steps'] if s.get('state') == 'outcome_unknown']
         settled = [s for s in unknown if _reconcile(investigation, s, data)]
