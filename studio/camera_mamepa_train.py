@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Train the camera mamepa's selective SSM forecaster, JEPA-style: from the carried state, predict the latent of the
 next frames (horizons 1, 2 and 4) in a fixed whitened projection of the mind's own frame embeddings. No pixels are
-predicted and no labels exist. Training data is synthetic only (this file's own generator, seeds far from every
-registered evaluation seed); no live frame, recording or downloaded video is used.
+predicted and no labels exist. Training data: this file's own synthetic generator (seeds far from every registered evaluation seed)
+and, with ``--davis``, the 60 DAVIS 2017 train sequences (public, approved by Gloria; frames are only decoded, nothing
+from the dataset folder is run). The 30 DAVIS val sequences are encoded for a held-out check only. No live frame or
+recording is used.
 
 Runs on Apple MLX. ``--encoder toy`` (a fixed random projection of tiny frames) needs no model and is the CPU check;
 ``--encoder aeon`` encodes through the checkpoint's own vision projection and is a GPU job that must hold
@@ -111,6 +113,55 @@ def encode_clips(seeds, encoder, frames=32):
         DT.append(np.r_[0., np.diff(at)])
         CUT.append(cut)
     return np.stack(V).astype(np.float32), np.stack(DT).astype(np.float32), np.stack(CUT)
+
+
+DAVIS_FPS = 24.
+DAVIS_EVERY = 3            # frames encoded per sequence: every third (8 fps); clips then step 2 or 4 of these
+
+
+def davis_sequences(root, split):
+    """(name, sorted frame paths) for one DAVIS 2017 split. Names must resolve inside the dataset folder."""
+    root = Path(root).resolve()
+    base = (root / 'JPEGImages' / '480p').resolve()
+    for name in (root / 'ImageSets' / '2017' / ('%s.txt' % split)).read_text().split():
+        folder = (base / name).resolve()
+        if folder.parent != base or not folder.is_dir():
+            raise ValueError('unexpected DAVIS sequence entry')
+        yield name, sorted(folder.glob('*.jpg'))
+
+
+def encode_davis(root, split, encoder):
+    from PIL import Image
+    out = {}
+    for name, paths in davis_sequences(root, split):
+        vecs = []
+        for path in paths[::DAVIS_EVERY]:
+            with Image.open(path) as im:
+                vecs.append(encoder(np.asarray(im.convert('RGB'), dtype=np.uint8)))
+        out[name] = np.stack(vecs).astype(np.float32)
+    return out
+
+
+def davis_clips(seqs, count, frames=32, seed=0):
+    """Clips of ``frames`` steps joined from windows of real sequences (each a scene; a join is a cut), stepping
+    2 or 4 encoded frames (0.25 or 0.5 s, around the live 2 fps)."""
+    rng = np.random.default_rng(seed)
+    names = sorted(seqs)
+    V, DT, CUT = [], [], []
+    for _ in range(count):
+        v, d, c = [], [], []
+        while len(v) < frames:
+            seq = seqs[names[int(rng.integers(len(names)))]]
+            stride = int(rng.choice([2, 4]))
+            n = min(int(rng.integers(4, 13)), (len(seq) - 1) // stride + 1, frames - len(v))
+            start = int(rng.integers(0, len(seq) - (n - 1) * stride))
+            for j in range(n):
+                v.append(seq[start + j * stride])
+                d.append(stride * DAVIS_EVERY / DAVIS_FPS if j else .5)
+                c.append(bool(j == 0 and len(v) > 1))
+        V.append(np.stack(v)); DT.append(d); CUT.append(c)
+    DT = np.array(DT, np.float32); DT[:, 0] = 0.
+    return np.stack(V).astype(np.float32), DT, np.array(CUT)
 
 
 def fit_projection(V, dz):
@@ -270,6 +321,9 @@ def main():
     ap.add_argument('--cpu', action='store_true')
     ap.add_argument('--mind', help='checkpoint directory (aeon encoder)')
     ap.add_argument('--expected-sha256')
+    ap.add_argument('--davis', help='DAVIS 2017 folder (the one holding ImageSets and JPEGImages)')
+    ap.add_argument('--davis-clips', type=int, default=192)
+    ap.add_argument('--davis-val-clips', type=int, default=48)
     ap.add_argument('--out', required=True)
     ap.add_argument('--report', required=True)
     args = ap.parse_args()
@@ -289,13 +343,24 @@ def main():
     V, DT, CUT = encode_clips(train_seeds, encoder, args.frames)
     Vv, DTv, CUTv = encode_clips(val_seeds, encoder, args.frames)
     Vt, DTt, CUTt = encode_clips([SEED_BASE + 900_000 + i for i in range(args.val_clips)], encoder, args.frames)
+    davis_report = None
+    if args.davis:
+        train_seqs = encode_davis(args.davis, 'train', encoder)
+        val_seqs = encode_davis(args.davis, 'val', encoder)
+        Vd, DTd, CUTd = davis_clips(train_seqs, args.davis_clips, args.frames, seed=1)
+        Vdv, DTdv, CUTdv = davis_clips(val_seqs, args.davis_val_clips, args.frames, seed=2)
+        V, DT, CUT = np.concatenate([V, Vd]), np.concatenate([DT, DTd]), np.concatenate([CUT, CUTd])
+        davis_report = {'train_sequences': len(train_seqs), 'val_sequences': len(val_seqs),
+                        'train_frames_encoded': int(sum(len(x) for x in train_seqs.values())),
+                        'val_frames_encoded': int(sum(len(x) for x in val_seqs.values())),
+                        'train_clips': args.davis_clips, 'val_clips': args.davis_val_clips}
     mu, P = fit_projection(V, args.dz)
     Z, Zv, Zt = project(V, mu, P), project(Vv, mu, P), project(Vt, mu, P)
     horizons = (1, 2, 4)
     params, history = train(Z, DT, CUT, Zv, DTv, CUTv, horizons, args.state, args.epochs)
     space = cm.SPACE if args.encoder == 'aeon' else 'toy'
     meta = {'trained': True, 'horizons': list(horizons), 'dt_ref': .5, 'space': space,
-            'data': 'synthetic-v1 (own generator, seeds %d+)' % SEED_BASE,
+            'data': 'synthetic-v1 (own generator, seeds %d+)' % SEED_BASE + (' + DAVIS 2017 train (60 sequences)' if args.davis else ''),
             'train_clips': args.clips, 'val_clips': args.val_clips, 'frames': args.frames, 'err_scale': None}
     arrays = dict(mu=mu, P=P, **{k: v.astype(np.float32) for k, v in params.items()})
     out = Path(args.out)
@@ -310,6 +375,17 @@ def main():
         meta.update(trained=False, horizons=[1])
         cm.save(tmp, arrays, meta)
     meta['err_scale'] = calibrate(tmp, space, Vt, DTt, CUTt, report)
+    if davis_report is not None:   # held-out real video, checking only: never used to choose or keep anything
+        Zdv = project(Vdv, mu, P)
+        check = {}
+        davis_report['persistence_val'] = persistence_loss(Zdv, CUTdv, horizons)
+        if report['ssm_kept']:
+            davis_report['ssm_val_numpy'] = ssm_loss_numpy(cm.Model(tmp, space), Zdv, DTdv, CUTdv, horizons)
+            davis_report['ssm_gain_val'] = 1 - davis_report['ssm_val_numpy'] / davis_report['persistence_val']
+        cm.save(tmp, arrays, dict(meta))
+        calibrate(tmp, space, Vdv, DTdv, CUTdv, check)
+        davis_report['val_boundaries'] = check
+        report['davis'] = davis_report
     report.update(checkpoint=str(out), checkpoint_id=cm.save(out, arrays, meta), seconds=time.time() - started)
     tmp.unlink()
     Path(args.report).write_text(json.dumps(report, indent=2))

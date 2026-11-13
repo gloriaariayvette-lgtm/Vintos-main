@@ -153,6 +153,46 @@ class CallableTagStore(TagStore):
         return [r for r in (out if isinstance(out, list) else [out]) if isinstance(r, dict)]
 
 
+class TagMapStore(TagStore):
+    """Read-only view of a resolved tag-map copy (written by scripts/apriltag_map_sync.py): {key: {'label', 'text'}
+    or {'label', 'record'}}. The file must be private (no group or other access); it is re-read when it changes and
+    a missing or unreadable file reads as no records. Nothing is ever written back."""
+    def __init__(self, path):
+        self.path = Path(path)
+        self.stamp, self.map = None, {}
+
+    def _load(self):
+        import os
+        import stat
+        try:
+            st = self.path.stat()
+        except OSError:
+            self.stamp, self.map = None, {}
+            return
+        if stat.S_IMODE(st.st_mode) & 0o077:
+            raise PermissionError('the tag map copy must be private (mode 600)')
+        if (st.st_mtime_ns, st.st_size) == self.stamp:
+            return
+        try:
+            data = json.loads(self.path.read_text())
+        except Exception:
+            data = {}
+        self.map = {k: v for k, v in data.items() if isinstance(v, dict) and not k.startswith('_')} \
+            if isinstance(data, dict) else {}
+        self.stamp = (st.st_mtime_ns, st.st_size)
+
+    def lookup(self, key):
+        self._load()
+        entry = self.map.get(key)
+        if not entry:
+            return []
+        if entry.get('text'):
+            return [{'text': str(entry['text'])[:1200], 'label': entry.get('label')}]
+        if isinstance(entry.get('record'), dict):
+            return [dict(entry['record'], label=entry.get('label'))]
+        return []
+
+
 # ---------------------------------------------------------------- state
 
 class Mamepa:

@@ -307,6 +307,7 @@ def main():
     parser.add_argument("--camera", type=float, nargs=4, metavar=("FX", "FY", "CX", "CY"), help="intrinsics for tag pose")
     parser.add_argument("--tag-size", type=float, help="printed tag edge in metres, for tag pose")
     parser.add_argument("--mamepa", help="camera mamepa checkpoint (.npz); without it no camera memory runs")
+    parser.add_argument("--tag-map", help="private resolved copy of the AprilTag map (mode 600), read only")
     args = parser.parse_args()
     if args.port in (8840, 8844) or not 1024 <= args.port <= 65535:
         raise ValueError("Choose an unreserved loopback port")
@@ -315,8 +316,13 @@ def main():
     detector = TagDetector(intrinsics=args.camera, tag_size=args.tag_size)
     mamepa = None
     if args.mamepa:
-        from camera_mamepa import Mamepa, Model
-        mamepa = Mamepa(Model(args.mamepa))   # no tag store attached here: tags are reported as unlinked
+        from camera_mamepa import Mamepa, Model, TagMapStore
+        store = None
+        if args.tag_map:
+            store = TagMapStore(args.tag_map)
+            store._load()   # refuses a copy that others can read
+        # records reach a prompt only through the mamepa summary, i.e. only when a question asks for recall
+        mamepa = Mamepa(Model(args.mamepa), store)
     service = VideoService(mind, AppleStream(mind.backend), tap, detector, mamepa)
     server = ThreadingHTTPServer(("127.0.0.1", args.port), handler(service))
     server.daemon_threads = True

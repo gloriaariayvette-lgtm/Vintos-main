@@ -335,4 +335,44 @@ earlier = mam2.recall()
 check('recall_earlier shows the earlier scene again when there is one',
       earlier is None or sum(1 for c in svc2.stream.calls if c[1]) == len(earlier['frames']))
 svc2.dispatch('/video/abort', {'session_id': sid2})
+
+# ---- the tag map, read only: resolved on the Vintos side, a private copy read by the mamepa (synthetic only)
+import stat as _stat
+from camera_mamepa import TagMapStore
+import apriltag_map_sync
+import native_video
+mem = Path(os.environ['SPARK_WORKSPACE']) / 'memory'
+mem.mkdir(parents=True, exist_ok=True)
+native_video.WORKSPACE = os.environ['SPARK_WORKSPACE']
+native_video.TAG_MAP = str(mem / 'apriltag-memories.json')
+(mem / 'synthetic-moments.jsonl').write_text(json.dumps({'id': 's1', 'text': 'synthetic stored record'}) + '\n')
+Path(native_video.TAG_MAP).write_text(json.dumps({
+    '_how': 'x', 'tag36h11:1': {'text': 'synthetic text record', 'label': 'syn'},
+    'tag36h11:2': {'store': 'synthetic-moments.jsonl', 'id': 's1'},
+    'tag36h11:3': {'store': 'synthetic-moments.jsonl', 'id': 'absent'}}))
+before_map = Path(native_video.TAG_MAP).read_bytes()
+resolved, entries = apriltag_map_sync.resolve()
+check('the sync resolves found entries only and never writes her files',
+      entries == 3 and resolved['tag36h11:1'] == {'label': 'syn', 'text': 'synthetic text record'}
+      and resolved['tag36h11:2']['record']['text'] == 'synthetic stored record' and 'tag36h11:3' not in resolved
+      and Path(native_video.TAG_MAP).read_bytes() == before_map)
+copy_dir = tmp / 'private'; copy_dir.mkdir(mode=0o700)
+copy = copy_dir / 'tag-map.json'
+copy.write_text(json.dumps(resolved)); os.chmod(copy, 0o600)
+tms = TagMapStore(copy)
+check('the mamepa reads the private copy by key', tms.lookup('tag36h11:1') == [{'text': 'synthetic text record', 'label': 'syn'}]
+      and tms.lookup('tag36h11:2')[0]['text'] == 'synthetic stored record' and tms.lookup('tag36h11:9') == [])
+resolved['tag36h11:1']['text'] = 'synthetic text record, edited'
+copy.write_text(json.dumps(resolved)); os.chmod(copy, 0o600)
+check('a changed copy is re-read', tms.lookup('tag36h11:1')[0]['text'] == 'synthetic text record, edited')
+os.chmod(copy, 0o644)
+try:
+    tms.lookup('tag36h11:1'); raise AssertionError('readable copy accepted')
+except PermissionError:
+    pass
+check('a copy that others can read is refused', True)
+check('a missing copy reads as no records', TagMapStore(copy_dir / 'none.json').lookup('tag36h11:1') == [])
+wired = Mamepa(model, TagMapStore(copy_dir / 'none.json')); wired.new_stream('w', 0.); wired.frame(clip, at=0.)
+check('the summary still says plainly when nothing is linked', 'no record is linked' in
+      (wired.tag(0., {'family': 'tag36h11', 'tag_id': 1}) and wired.summary()['text']))
 print('all camera mamepa checks passed')

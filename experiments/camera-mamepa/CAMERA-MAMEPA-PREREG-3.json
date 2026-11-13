@@ -1,0 +1,15 @@
+{
+  "scope": "Training-data amendment for the camera mamepa, approved by Gloria on 2026-11-13 (\"Yes. Yes to all of those.\"). Bars in CAMERA-MAMEPA-PREREG.json and CAMERA-MAMEPA-PREREG-2.json are unchanged.",
+  "registered_before_scoring": "2026-11-13, before any training, development check or fresh clip of this hold; the chain had not started",
+  "dataset": {
+    "name": "DAVIS 2017 TrainVal 480p",
+    "file": "DAVIS-2017-trainval-480p.zip, 832,766,765 bytes, sha256 e3d0b5b77c3d031b000a19e0e25e3e2cac65d183755601bc2cf066df1a2aa492",
+    "handling": "extracted by a path-checked extractor into its own private folder; frames are only decoded (JPEG via PIL); nothing in the folder is run"
+  },
+  "training": {
+    "added": "the 60 train sequences, every third frame encoded through the checkpoint's own vision projection; 192 clips of 32 steps joined from windows of 4-12 steps (step 0.25 or 0.5 s), a join between sequences is a cut",
+    "unchanged": "the 384 synthetic training clips, synthetic selection split (early stopping), synthetic test split (keep rule: SSM >= 5% below persistence) and err_scale calibration on the synthetic test split",
+    "check_only": "the 30 val sequences (48 clips): persistence and SSM loss and boundary diagnostics are reported, never used to choose, keep or calibrate anything"
+  },
+  "gates": "all gates of CAMERA-MAMEPA-PREREG.json and CAMERA-MAMEPA-PREREG-2.json are scored once on the checkpoint this training produces, with their bars unchanged"
+}
