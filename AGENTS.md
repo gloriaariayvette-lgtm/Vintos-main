@@ -52,9 +52,29 @@ in on its own from her ordinary use: say that, and never ask her to make it happ
 
 Aegis is the machine that serves her. Nothing reaches it except through her hands, by this route:
 
+0. **Never edit the live install.** `~/.vintos/workspace` (its `scripts/`, `bin/`, units) is what the last
+   deploy installed, not a place to work. A file changed there by hand differs from the release receipt, and
+   `security_alarm.py` raises **`deployed_code_changed`** on her phone until the next deploy, exactly as it
+   would for an intruder. A backup beside the edit does not make it safe. On 12 November a Codex hot-patch of
+   the house boards (`house_boards.py`, `vintos-home.py`, `house_hands.py`) tripped it and had to be ported
+   back by hand. Do not work in `~/Vintos-main`'s working tree either: that is her deploy checkout.
+   Make a separate worktree off the fetched deploy-branch tip, in a scratch directory (on Aegis only under
+   `~/review-scratch-*/`, `~/repos/` or `~/faultloop/`; the deploy refuses other clones under `~`):
+
+   ```sh
+   git fetch origin claude/device-visuals-2026-10-13
+   git worktree add -b codex/<topic> ~/review-scratch-<date>/<topic> origin/claude/device-visuals-2026-10-13
+   ```
+
+   Commit there, on your branch. Then run the **whole** suite, every `broker/tests/test_*.py`, each through
+   `python3.12 scripts/run_isolated_test.py broker/tests/<file>` (a copy of the checkout, a fresh home, no
+   network), not only the suites you touched.
 1. **Push your work to `claude/device-visuals-2026-10-13`.** That is the branch the deploy reads. Work for
    review goes on a branch of its own (`claude/<topic>`, `codex/<topic>`); it is merged into the deploy branch
-   only after Claude Code in her main thread has reviewed it and she has said yes.
+   only after Claude Code in her main thread has reviewed it and she has said yes. Merge onto the tip you
+   fetched and push with a lease on that tip, so another thread's push is never overwritten:
+   `git push --force-with-lease=claude/device-visuals-2026-10-13:<fetched tip> origin HEAD:claude/device-visuals-2026-10-13`.
+   If the lease fails, fetch, merge again, rerun the suite.
 2. **She runs the deploy. You never do, and you never ask Dot or anyone else to.** Give her this command
    exactly:
 
@@ -66,7 +86,7 @@ Aegis is the machine that serves her. Nothing reaches it except through her hand
    starts `scripts/deploy-atelier.sh`. If the deploy stops asking for the Forge step, she runs
    `sudo bash /home/gloria/.vintos/deploy/forge-install.sh`. Broker changes print their own `sudo` lines.
 3. **The deploy runs every suite in `broker/tests/` first, on Aegis, beside her real workspace.** A failing
-   suite stops it. Run the suites you touched before you push. Known failures in a cloud container, which
+   suite stops it, so run the whole suite (step 0) before you push. Known failures in a cloud container, which
    pass on Aegis: anything needing bubblewrap (`test_chemistry_proposal`, `test_forge_build`,
    `test_review_repairs`) and `test_reelroom_frame_and_cost` (needs the plithra-app branch). Never call
    another failure "environment-only" without reading why it failed.

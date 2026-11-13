@@ -9,6 +9,8 @@ One line in his message, one real act, and the line is replaced with what actual
     TV: on | off | pause | play | volume <0-15> | status
     ECHO: say <words> | announce <words> | play <song or artist> | stop
     LIGHTS: <colour or #hex> [room] | flicker [room]
+    Without a room: nearest fresh phone reading. Explicit rooms: bedroom, bathroom, office,
+    balcony, living room, kitchen, laundry room. No location evidence means no action.
     MISCHIEF: <what he has in mind>  his mischief, now: the same mischief-detector, forced
     MAKE: video <the motion> | <image path>   made with his own tools, on her subscription: nothing is spent
     TO GLORIA: <what about, one line>  his outreach writes to her in his own voice, outside Slack
@@ -224,14 +226,16 @@ def lights(arg, home=None, present=False):
     if parts[0].lower() == "flicker":
         if _quiet(present):
             return False, "no flicker outside 9:00-22:00"
-        room = parts[1] if len(parts) > 1 else None
-        return bool(home.flicker(room)), "lights flickered%s" % (" in " + room if room else "")
+        room = " ".join(parts[1:]) if len(parts) > 1 else None
+        room = home.lighting_room(room) if hasattr(home, "lighting_room") else room
+        return bool(home.flicker(room or "all")), "lights flickered%s" % (" in " + room if room else "")
     colour = parts[0].lower()
     hexed = colour if re.fullmatch(r"#[0-9a-f]{6}", colour) else COLOURS.get(colour)
     if not hexed:
         return False, "not a colour I know: %s (use #rrggbb or one of %s)" % (colour, ", ".join(sorted(COLOURS)))
-    room = parts[1] if len(parts) > 1 else None
-    return bool(home.set_room_color(hexed, room=room)), "lights %s%s" % (colour, " in " + room if room else "")
+    room = " ".join(parts[1:]) if len(parts) > 1 else None
+    room = home.lighting_room(room) if hasattr(home, "lighting_room") else room
+    return bool(home.set_room_color(hexed, room=room or "all")), "lights %s%s" % (colour, " in " + room if room else "")
 
 
 def mischief(arg, run=None):

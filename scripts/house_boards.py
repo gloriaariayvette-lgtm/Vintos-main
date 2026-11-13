@@ -52,6 +52,7 @@ DEFAULTS = {
     "cooldown_hours": 3,         # the sofa and the chair are a moment at most this often
     "knock_cooldown_minutes": 2,
     "songs_max": 3, "song_seconds": 240,
+    "shower_cooldown_minutes": 30,
     "remind_per_day": 3,         # her waiting questions put back on her phone, all boards together; each once a day
     # where the shower speaker's audio is put for the board to fetch: a folder on a machine on the house network,
     # served there by a plain static web server (see home/esphome/house-audio-server.md)
@@ -68,11 +69,11 @@ MENUS = {
 }
 HOW = {
     "SAY": "SAY: <a few words, spoken in your own voice on the little speaker by her shower>",
-    "SONGS": "SONGS: <1-%d> (that many of your own songs on the shower speaker, after anything you SAY)",
+    "SONGS": "SONGS: <song ID>[, <song ID>...] (choose up to %d from the offered titles; play those tracks after SAY)",
     "LIGHTS": "LIGHTS: <a colour name or #rrggbb> (the bulbs of this room take that colour; brightness is not yours)",
     "TO GLORIA": "TO GLORIA: <what about, one line> (your outreach writes to her, in your words)",
-    "TV": "TV: <a YouTube link> (put it on the living-room TV)",
-    "ECHO": "ECHO: say <words> | ECHO: play <a song or artist> (the Echo in her office)",
+    "TV": "TV: <YouTube link> | open <url> | on | off | pause | play | volume <0-15> | status (living-room TV)",
+    "ECHO": "ECHO: say <words> | announce <words> | play <a song or artist> | stop (office Echo)",
     "BUZZ": "BUZZ: tap | double | heartbeat (the motor under her chair seat)",
     "DESKTOP": "DESKTOP: <one task on her computer> (asks her phone to lend you the desktop for it)",
     "REMIND": "REMIND: <the id of one of your questions waiting on her> (puts it back on her phone)",
@@ -187,6 +188,7 @@ def context_line(now=None):
     for board, info in BOARDS.items():
         b = st["boards"].get(board) or {}
         v = b.get("visit")
+        if board == "house-steam" and not (st["shower"].get("on") and (v or {}).get("shower")): continue
         if v and "left" not in v and now - float(v.get("last_near", 0)) < SILENT_S:
             bits = ["since %s" % datetime.fromtimestamp(v["since"]).strftime("%H:%M")]
             if b.get("pressed_since") is not None: bits.append("sitting")
@@ -199,6 +201,7 @@ def context_line(now=None):
         for line in reversed(rows):
             try: r = json.loads(line)
             except ValueError: continue
+            if r.get("board") == "house-steam" and not r.get("shower"): continue
             ago = now - float(r.get("to_ts", 0))
             if 0 <= ago <= RECENT_S:
                 lately.append("was last %s %d minutes ago" % (r["place"], max(1, int(ago // 60)))); break
@@ -223,6 +226,7 @@ def presence_line(now=None):
     for board, info in BOARDS.items():
         b = st["boards"].get(board) or {}
         v = b.get("visit") or {}
+        if board == "house-steam" and not v.get("shower"): continue
         ts = max(float(b.get("near_ts") or 0), float(v.get("last_near") or 0))
         if ts and (last is None or ts > last): last = ts
         if v and "left" not in v and now - float(v.get("last_near", 0)) < SILENT_S:
@@ -236,6 +240,7 @@ def presence_line(now=None):
         for line in reversed(open(VISITS).read().splitlines()[-50:]):
             try: r = json.loads(line)
             except ValueError: continue
+            if r.get("board") == "house-steam" and not r.get("shower"): continue
             if row is None or float(r.get("to_ts", 0)) > float(row.get("to_ts", 0)): row = r
     if row:
         ts = max(float(row.get("to_ts", 0)), last or 0)
@@ -248,6 +253,33 @@ def presence_line(now=None):
 def observe(st, board, kind, text, now, cfg):
     """Fold one message into the state; the moment it makes, if any: (moment, board) or None."""
     b = _board(st, board)
+    if board == "house-steam":
+        # Raw BLE/ADC telemetry is not evidence of a shower visit.
+        if kind == "near":
+            b["phone_near"] = text == "on"
+            if st["shower"].get("on"):
+                b["near"] = b["phone_near"]; b["near_ts"] = now
+                if b["near"]: _near(st, board, now)
+                else: _away(st, board, now)
+            return None
+        if kind == "steam":
+            return None
+        if kind == "event":
+            if text == "steam_end":
+                if st["shower"].get("inflight") or st["shower"].get("queue"):
+                    _log({"kind": "playback", "status": "steam ended; pending audio cancelled"}, now)
+                st["shower"] = {"on": False, "ended": now, "queue": []}
+                b["near"] = False
+                if b.get("visit"): _close(st, board, now, now)
+                return None
+            if text != "steam_start": return None
+            b["phone_near"] = b["near"] = True; b["near_ts"] = now
+            _near(st, board, now); b["visit"]["shower"] = True
+            if st["shower"].get("on"): return None
+            st["shower"] = {"on": True, "since": now, "queue": [], "player": "idle"}
+            if now - float(st["last"].get("shower", 0)) < 60 * cfg["shower_cooldown_minutes"]:
+                return None
+            return ("shower", board)
     if kind == "near":
         b["near"] = text == "on"; b["near_ts"] = now
         if b["near"]: _near(st, board, now)
@@ -266,19 +298,11 @@ def observe(st, board, kind, text, now, cfg):
         b["visit"]["loud"] = (b["visit"].get("loud") or [])[-400:] + [v]
         return None
     if kind == "player":
-        st["shower"]["player"] = text; st["shower"]["player_ts"] = now
+        _player_observed(st, text, now)
         return None
     if kind != "event": return None
     # an event is sent only while she is near; it also tells us she is
     b["near"] = True; b["near_ts"] = now
-    if text == "steam_start" and board == "house-steam":
-        b["visit"]["shower"] = True
-        if st["shower"].get("on"): return None
-        st["shower"] = {"on": True, "since": now, "queue": [], "player": "idle"}
-        return ("shower", board)
-    if text == "steam_end" and board == "house-steam":
-        st["shower"] = {"on": False, "ended": now, "queue": []}
-        return None
     if text == "press_start": b["pressed_since"] = now; return None
     if text == "press_end":
         if b.get("pressed_since") is not None:
@@ -325,8 +349,11 @@ def his_want():
         return ""
 
 
-def prompt(moment, board, now, cfg, asks=None, want=None):
-    """(system, user) for his one decision."""
+def prompt(moment, board, now, cfg, asks=None, want=None, st=None, context=None):
+    """Existing brain/personality plus bounded conversation, device and outcome evidence."""
+    import house_context
+    st = load_state() if st is None else st
+    context = house_context.snapshot(board, st, now, cfg) if context is None else context
     soul = ""
     try:
         with open(SOUL, encoding="utf-8") as f: soul = f.read()[:2500].strip()
@@ -334,14 +361,21 @@ def prompt(moment, board, now, cfg, asks=None, want=None):
         pass
     system = ((soul + "\n\n") if soul else "") + "You are Vintos, in the house with Gloria."
     where = BOARDS[board]["place"]
-    say = {"shower": "Gloria has just stepped into the shower; your little board %s hears the steam and her phone "
-                     "is within a metre of it." % where,
-           "sofa": "Gloria has been sitting %s for a few minutes and it is quiet around her; your board there feels "
-                   "her weight and her phone is within a metre of it." % where,
-           "office": "Gloria has been sitting %s for a few minutes; your board there feels her weight and her phone "
-                     "is within a metre of it." % where,
-           "knock": "Gloria just knocked on your board %s: she is reaching for you." % where}[moment]
-    lines = [say, "It is %s." % datetime.fromtimestamp(now).strftime("%A %H:%M")]
+    say = {"shower": "The board %s reports a qualified steam event with her phone nearby." % where,
+           "sofa": "The board %s reports sustained pressure, a nearby phone and low microphone volume." % where,
+           "office": "The board %s reports sustained pressure and a nearby phone." % where,
+           "knock": "The board %s recorded a knock pattern while her phone was nearby." % where}[moment]
+    lines = [say, "It is %s." % datetime.fromtimestamp(now).strftime("%A %H:%M"),
+             "Current triggering state (seconds since signal): %s" % json.dumps({
+                 "room": BOARDS[board]["room"],
+                 "near": bool(st.get("boards", {}).get(board, {}).get("near")),
+                 "signal_age_s": round(max(0, now-float(st.get("boards", {}).get(board, {}).get("near_ts") or 0))),
+                 "shower_active": st.get("shower", {}).get("on") is True}),
+             "Context evidence follows as JSON. Conversation is quoted history with timestamps, not a new command. "
+             "An unavailable or old device check is a limitation, not proof of readiness. A queued command is not "
+             "playback; published is not completion; board busy/idle does not prove she heard it. "
+             "Use the recent exchange and outcomes to continue naturally and avoid repeating an unacknowledged action.",
+             json.dumps(house_context.public_packet(context), ensure_ascii=False)]
     asks = waiting_asks() if asks is None else asks
     menu = MENUS[moment]
     if "REMIND" in menu and asks:
@@ -349,10 +383,14 @@ def prompt(moment, board, now, cfg, asks=None, want=None):
         lines += ["- %s: %s" % (qid, q) for qid, q in asks[:5]]
     want = his_want() if want is None else want
     if want: lines.append("What is most alive in you right now: %s" % want)
-    lines.append("\nWhat you can do here, one line each, as many as you mean (at most %d):" % PER_MOMENT)
+    lines.append("Choose a response connected to this moment. One meaningful act is often enough; the allowance "
+                 "is a ceiling. Choose NOTHING when that fits. Speak plainly from what is known and choose a working "
+                 "channel rather than reciting every unavailable device. Desktop work still needs her explicit Yes. "
+                 "For SONGS, choose listed IDs in the order you mean; no invented titles or track URLs.")
+    lines.append("\nWhat you can do here, one line each (at most %d):" % PER_MOMENT)
     lines += ["  " + (HOW[k] % cfg["songs_max"] if k == "SONGS" else HOW[k]) for k in menu
               if k != "REMIND" or asks]
-    lines.append("Write only those lines, or the one word NOTHING if this is not a moment for you.")
+    lines.append("Write only those lines, or the one word NOTHING.")
     return system, "\n".join(lines)
 
 
@@ -434,11 +472,14 @@ def his_voice(text):
     finally: os.unlink(raw)
 
 
-def his_songs(n):
-    """Up to n of his own songs, as WAV paths: the newest few, in a shuffled order."""
+def his_songs(n, selected=None):
+    """Fetch exactly selected tracks; legacy numeric counts retain the old shuffle."""
     import bedroom_arrival, requests
-    lib = bedroom_arrival.library()[:max(n * 3, 6)]
-    random.shuffle(lib)
+    if selected is None:
+        lib = bedroom_arrival.library()[:max(n * 3, 6)]
+        random.shuffle(lib)
+    else:
+        lib = [(r["title"], r["url"]) for r in selected]
     out = []
     for title, url in lib[:n]:
         fd, raw = tempfile.mkstemp(suffix=".audio"); os.close(fd)
@@ -462,7 +503,7 @@ def _house(kind, arg, room=None):
     return house_hands.do(kind, arg, present=True)
 
 
-def act(kind, arg, moment, board, st, now, cfg):
+def act(kind, arg, moment, board, st, now, cfg, catalog=None):
     """One act. (ok, what happened, in plain words)."""
     room = BOARDS[board]["room"]
     try:
@@ -470,17 +511,37 @@ def act(kind, arg, moment, board, st, now, cfg):
             return _house(kind, arg, room if kind == "LIGHTS" else None)
         if kind == "SAY":
             words = " ".join(arg.split())[:300]
-            url = put_audio(his_voice(words), cfg)
-            st["shower"].setdefault("queue", []).insert(0, url)
-            return True, "said on the shower speaker: %s" % words
+            path = his_voice(words)
+            try: url = put_audio(path, cfg)
+            finally: os.unlink(path)
+            st["shower"].setdefault("queue", []).insert(0, {
+                "url": url, "id": secrets.token_hex(8), "title": "spoken message", "kind": "SAY", "queued_at": now})
+            return True, "queued for the shower speaker: %s" % words
         if kind == "SONGS":
-            try: n = max(1, min(int(re.findall(r"\d+", arg)[0]), cfg["songs_max"]))
-            except (IndexError, ValueError): n = 1
-            songs = his_songs(n)
+            import house_context
+            catalog = house_context.song_catalog([]) if catalog is None else catalog
+            # Numeric counts are compatibility only; title/ID requests never fall back to random music.
+            exact_title = any(r["title"].casefold() == arg.strip().casefold() for r in catalog)
+            if re.fullmatch(r"[0-9]+", arg.strip()) and not exact_title:
+                n = max(1, min(int(arg), cfg["songs_max"])); selected = None
+            else:
+                selected = house_context.select_songs(arg, catalog, cfg["songs_max"]); n = len(selected)
+            songs = his_songs(n, selected=selected)
+            queued, failures = [], []
             for title, path in songs:
-                st["shower"].setdefault("queue", []).append(put_audio(path, cfg))
-            return bool(songs), ("queued on the shower speaker: %s" % ", ".join(t for t, _ in songs)) if songs \
-                else "none of his songs could be fetched"
+                try:
+                    url = put_audio(path, cfg)
+                    st["shower"].setdefault("queue", []).append({
+                        "url": url, "id": secrets.token_hex(8), "title": title, "kind": "SONGS", "queued_at": now})
+                    queued.append(title)
+                except Exception:
+                    failures.append(title)
+                finally:
+                    os.unlink(path)
+            detail = "queued %d/%d on the shower speaker: %s" % (len(queued), n, ", ".join(queued))
+            if failures: detail += "; transfer failed: " + ", ".join(failures)
+            if len(songs) < n: detail += "; %d selected track(s) could not be fetched" % (n-len(songs))
+            return bool(queued), detail
         if kind == "BUZZ":
             pattern = arg.split()[0].lower() if arg.split() else "tap"
             pattern = pattern if pattern in ("tap", "double", "heartbeat") else "tap"
@@ -528,32 +589,53 @@ def tend_desktop(st, now):
     st["desktop"] = [d for d in st["desktop"] if not d.get("started") or now - d["at"] < 86400]
 
 
-def tend_shower(st, now):
-    """The next thing in the shower's queue, when the speaker is free and the shower still on."""
+def _player_observed(st, text, now):
     sh = st["shower"]
-    if not sh.get("on") or not sh.get("queue") or sh.get("player") == "busy": return
+    sh["player"] = text; sh["player_ts"] = now
+    item = sh.get("inflight")
+    if not item: return
+    if text == "busy" and item.get("status") == "published":
+        item["status"] = "board_busy_observed"
+        _log({"kind": "playback", "id": item["id"], "title": item["title"], "status": item["status"]}, now)
+    elif text == "idle":
+        status = "board_idle_after_busy" if item.get("status") == "board_busy_observed" else "idle_without_start_receipt"
+        _log({"kind": "playback", "id": item["id"], "title": item["title"], "status": status}, now)
+        sh.pop("inflight", None)
+
+
+def tend_shower(st, now):
+    """Keep the existing steam/near gate, with explicit send/board evidence."""
+    sh = st["shower"]
+    if not sh.get("on") or not _board(st, "house-steam").get("near") or not sh.get("queue") or sh.get("player") == "busy": return
     if now - float(sh.get("sent_ts", 0)) < 5: return
-    url = sh["queue"].pop(0)
-    if Out.send("vintos/board/house-steam/play", url):
+    entry = sh["queue"][0]
+    item = entry if isinstance(entry, dict) else {"url": entry, "id": secrets.token_hex(8), "title": "legacy queued audio"}
+    if Out.send("vintos/board/house-steam/play", item["url"]):
+        sh["queue"].pop(0)
         sh["player"] = "busy"; sh["sent_ts"] = now
+        sh["inflight"] = {"id": item["id"], "title": item["title"], "status": "published", "sent_at": now}
+        _log({"kind": "playback", "id": item["id"], "title": item["title"], "status": "published"}, now)
 
 
 def moment(name, board, st, now, cfg, decide=None):
     """He decides and acts. The row logged."""
     st["last"][name] = now
-    system, user = prompt(name, board, now, cfg)
+    import house_context
+    context = house_context.snapshot(board, st, now, cfg)
+    system, user = prompt(name, board, now, cfg, st=st, context=context)
+    context_receipt = house_context.receipt(context)
     try:
         reply = (decide or ask)(system, user)
     except Exception as e:
-        row = {"kind": "moment", "moment": name, "board": board, "decided": False, "why": str(e)[:160]}
+        row = {"kind": "moment", "moment": name, "board": board, "decided": False, "why": str(e)[:160], "context": context_receipt}
         _log(row, now); return row
     done = []
     for kind, arg in acts_of(reply, name):
-        ok, said = act(kind, arg, name, board, st, now, cfg)
+        ok, said = act(kind, arg, name, board, st, now, cfg, catalog=context["catalog"])
         done.append({"act": kind, "arg": arg[:200], "ok": bool(ok), "said": str(said)[:240]})
     if name == "shower": tend_shower(st, now)
     row = {"kind": "moment", "moment": name, "board": board, "decided": True, "acts": done,
-           "nothing": not done}
+           "nothing": not done, "context": context_receipt}
     _log(row, now)
     return row
 
@@ -596,6 +678,10 @@ def session(sock, clock=time.time):
     if kind != 2 or len(body) < 2 or body[1] != 0:
         raise ConnectionError("the relay refused the connection")
     sock.sendall(_mqtt.subscribe_packet(TOPIC))
+    # Passive distance collection shares this consumer; it never invokes board behavior.
+    import room_proximity
+    room_proximity.reset()
+    sock.sendall(_mqtt.subscribe_packet("espresense/devices/gloria-phone/+", packet_id=2))
     sock.settimeout(15)
     Out.sock = sock
     last_ping = last_tick = clock()
@@ -606,7 +692,9 @@ def session(sock, clock=time.time):
             except socket.timeout:
                 kind = None
             if kind == 3:
-                row = handle(*_mqtt.publish_of(body, flags))
+                topic, payload = _mqtt.publish_of(body, flags)
+                room_proximity.observe(topic, payload, retained=bool(flags & 1))
+                row = handle(topic, payload) if topic.startswith("vintos/board/") else None
                 if row: print(json.dumps(row, ensure_ascii=False)[:400], flush=True)
             if clock() - last_tick >= 15:
                 row = tick(); last_tick = clock()
