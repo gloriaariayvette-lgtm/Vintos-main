@@ -147,7 +147,19 @@ class _Health:
         self.mind = service.mind
 
     def dispatch(self, path, body, on_text=None):
-        return self.service.dispatch(path, body)
+        try:
+            return self.service.dispatch(path, body)
+        except (BlockingIOError, ValueError, TypeError, KeyError):
+            raise
+        except Exception as exc:
+            # Unexpected faults are logged by type and code location only: never request bodies, frames or text.
+            import sys
+            import traceback
+            frames = traceback.extract_tb(exc.__traceback__)
+            sys.stderr.write("native video fault on %s: %s at %s\n" % (path, type(exc).__name__, " <- ".join(
+                "%s:%d %s" % (f.filename.rsplit("/", 1)[-1], f.lineno, f.name) for f in reversed(frames[-6:]))))
+            sys.stderr.flush()
+            raise
 
 
 def handler(service):
