@@ -4,6 +4,7 @@ import argparse
 import base64
 import io
 import json
+import queue
 import threading
 import time
 import urllib.parse
@@ -53,6 +54,29 @@ class VideoService:
         self.active = None
         self.expires = 0
         self._timer = None
+        # Every model call runs on this one thread: MLX state is per thread, while HTTP requests arrive on many.
+        self._jobs = queue.Queue()
+        self._worker = threading.Thread(target=self._work, name="native-video-inference", daemon=True)
+        self._worker.start()
+
+    def _work(self):
+        while True:
+            job, done = self._jobs.get()
+            try:
+                done["result"] = job()
+            except BaseException as exc:   # handed back to the request thread unchanged
+                done["error"] = exc
+            done["event"].set()
+
+    def _on_worker(self, job):
+        if threading.current_thread() is self._worker:
+            return job()
+        done = {"event": threading.Event()}
+        self._jobs.put((job, done))
+        done["event"].wait()
+        if "error" in done:
+            raise done["error"]
+        return done["result"]
 
     def _drop(self):
         self.active = None
@@ -70,7 +94,7 @@ class VideoService:
 
     def _reap(self):
         with self.lock:
-            self.expire()
+            self._on_worker(self.expire)
 
     def expire(self):
         if self.active and time.monotonic() > self.expires:
@@ -80,13 +104,19 @@ class VideoService:
     def close(self):
         with self.lock:
             if self.active:
-                self.active[1].abort()
+                self._on_worker(self.active[1].abort)
             self._drop()
 
     def dispatch(self, path, body, on_text=None):
         if not self.lock.acquire(blocking=False):
             raise BlockingIOError("Inference is busy")
         try:
+            return self._on_worker(lambda: self._dispatch(path, body, on_text))
+        finally:
+            self.lock.release()
+
+    def _dispatch(self, path, body, on_text=None):
+        if True:   # body kept at its original indentation; runs on the inference thread under self.lock
             self.expire()
             if path == "/video/start":
                 if self.active:
@@ -136,8 +166,6 @@ class VideoService:
                 raise KeyError("Unknown endpoint")
             self._arm()
             return dict(result, raw_frames_retained=False)
-        finally:
-            self.lock.release()
 
 
 class _Health:

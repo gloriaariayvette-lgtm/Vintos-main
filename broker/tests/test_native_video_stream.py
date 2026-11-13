@@ -51,6 +51,7 @@ class Backend:
         if vision:
             assert all(v >= 1000 for v in values)
         cache.extend(values)
+        self.threads = getattr(self, 'threads', set()) | {__import__('threading').current_thread().name}
         self.generated = getattr(self, 'generated', 0) + 1 if len(values) == 1 else 0
         return np.array([0., 1.]) if self.generated < 2 else np.array([1., 0.])
     def length(self, cache): return len(cache)
@@ -148,6 +149,7 @@ check('the masking reference hides exactly the requested positions', masked[:, 2
 kv.truncate(2)
 check('rollback restores the next position after the kept tail', kv.offset == 2 and list(kv.positions) == [0, 1])
 
+backend.threads = set()
 service = VideoService(mind, backend)
 start = service.dispatch('/video/start', {'retain_frames': 2})
 try:
@@ -172,6 +174,35 @@ asked = service.dispatch('/video/ask', {'session_id': start['session_id'], 'ques
 check('the service answers with checkpoint and window provenance', asked['native_video'] and asked['window'])
 done = service.dispatch('/video/finish', {'session_id': start['session_id']})
 check('finish clears the session', service.active is None and done['raw_frames_retained'] is False)
+import threading
+errors = []
+def request(path, body):
+    try:
+        service.dispatch(path, body)
+    except Exception as exc:
+        errors.append(exc)
+again = service.dispatch('/video/start', {})
+for path, body in [('/video/frame', {'image': base64.b64encode(png.getvalue()).decode()}),
+                   ('/video/audio', {'audio': base64.b64encode(b'\0\0' * 3200).decode()}),
+                   ('/video/ask', {'question': 'now?', 'max_tokens': 2}), ('/video/abort', {})]:
+    t = threading.Thread(target=request, args=(path, dict(body, session_id=again['session_id']))); t.start(); t.join()
+check('every model call runs on the one inference thread, whatever thread the request came on',
+      not errors and backend.threads == {'native-video-inference'})
+try:
+    service.dispatch('/video/frame', {'session_id': 'nope', 'image': ''}); raise AssertionError('unknown session')
+except ValueError:
+    pass
+check('errors raised on the inference thread reach the caller unchanged', True)
+
+from native_video_runtime import resize_like_hf, _axis_weights
+const = np.full((192, 192, 3), 77, np.uint8)
+check('the reference resize keeps a flat image flat and leaves same-size frames untouched',
+      (resize_like_hf(const, 384, 384) == 77).all() and resize_like_hf(frame(5), 48, 64) is not None
+      and np.allclose(_axis_weights(192, 384).sum(1), 1) and np.allclose(_axis_weights(640, 384).sum(1), 1))
+ramp = np.tile(np.linspace(0, 255, 192).astype(np.uint8)[None, :, None], (192, 1, 3))
+pil = np.asarray(Image.fromarray(ramp).resize((384, 384), Image.BICUBIC), dtype=np.int16)
+ours = resize_like_hf(ramp, 384, 384).astype(np.int16)
+check('the reference resize is the antialiased bicubic kernel torch shares with PIL', np.abs(ours - pil).max() <= 2)
 try:
     pcm16(base64.b64encode(b'\0').decode()); raise AssertionError('odd PCM accepted')
 except ValueError:

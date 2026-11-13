@@ -98,14 +98,48 @@ def stream_masks(layers, caches, length, window, vision, hidden=None, mx=None):
     return [sliding if layer.layer_type == "sliding_attention" else full for layer in layers]
 
 
+def _cubic(x, a):
+    x = np.abs(x)
+    return np.where(x <= 1, ((a + 2) * x - (a + 3)) * x * x + 1,
+                    np.where(x < 2, ((a * x - 5 * a) * x + 8 * a) * x - 4 * a, 0.))
+
+
+def _axis_weights(n_in, n_out):
+    """Resampling matrix [n_out, n_in] as torch computes bicubic with antialias=True at every scale (the
+    PIL-compatible kernel: a=-0.5, support widened only when shrinking, taps normalised, edges cut)."""
+    scale = n_out / float(n_in)
+    s = min(scale, 1.)
+    support = 2. / s
+    w = np.zeros((n_out, n_in), dtype=np.float64)
+    for i in range(n_out):
+        center = (i + .5) / scale
+        lo, hi = max(int(center - support + .5), 0), min(int(center + support + .5), n_in)
+        taps = _cubic((np.arange(lo, hi) - center + .5) * s, -.5)
+        w[i, lo:hi] = taps / taps.sum()
+    return w
+
+
+def resize_like_hf(rgb, height, width):
+    """The HF/CUDA reference resize (torchvision bicubic, antialias=True) in numpy, rounded back to uint8."""
+    x = np.asarray(rgb, dtype=np.float64)
+    if x.shape[:2] == (height, width):
+        return np.asarray(rgb, dtype=np.uint8)
+    x = np.einsum("oh,hwc->owc", _axis_weights(x.shape[0], height), x)
+    x = np.einsum("pw,owc->opc", _axis_weights(x.shape[1], width), x)
+    return np.clip(np.rint(x), 0, 255).astype(np.uint8)
+
+
 class AppleStream:
     """Streaming adapter over the Codex AppleBackend: same loaded model, same embeddings, own caches."""
 
     def __init__(self, backend, soft_tokens=SOFT_TOKENS):
         import mlx.core as mx
-        from mlx_vlm.models.gemma4_unified.processing_gemma4_unified import Gemma4UnifiedImageProcessor
+        from mlx_vlm.models.gemma4_unified import processing_gemma4_unified as unified
+        from mlx_vlm.models.gemma4.processing_gemma4 import get_aspect_ratio_preserving_size
         self.mx, self.base, self.model = mx, backend, backend.model
-        self.processor = Gemma4UnifiedImageProcessor(max_soft_tokens=soft_tokens)
+        self.processor = unified.Gemma4UnifiedImageProcessor(max_soft_tokens=soft_tokens)
+        self._patches, self._pad, self._size = (unified._convert_image_to_model_patches, unified._pad_patches,
+                                                get_aspect_ratio_preserving_size)
         text_model = self.model.language_model.model
         self.window = int(text_model.window_size)
         self.hidden = None
@@ -136,12 +170,24 @@ class AppleStream:
     def audio(self, frames):
         return self.base.audio(frames)
 
+    def pixels(self, rgb, soft_tokens=SOFT_TOKENS):
+        """Patches exactly as the HF reference prepares them: torchvision-style resize, 1/255, no normalisation."""
+        p = self.processor
+        x = np.asarray(rgb, dtype=np.uint8)
+        height, width = self._size(x.shape[0], x.shape[1], p.patch_size, soft_tokens * p.pooling_kernel_size ** 2,
+                                   p.pooling_kernel_size)
+        x = resize_like_hf(x, height, width).astype(np.float32) / 255.
+        patches, positions = self._patches(x.transpose(2, 0, 1), p.model_patch_size)
+        count = patches.shape[0]
+        patches, positions = self._pad(patches, positions, soft_tokens)
+        return patches[None], positions[None], count
+
     def image(self, rgb, soft_tokens=SOFT_TOKENS):
         mx = self.mx
-        data, counts = self.processor.preprocess([np.asarray(rgb, dtype=np.uint8)], max_soft_tokens=soft_tokens)
-        features = self.model.get_image_features(mx.array(data["pixel_values"]), mx.array(data["image_position_ids"]))
-        dtype = self.model.language_model.model.embed_tokens.weight.dtype
-        return features.astype(dtype).reshape(1, int(counts[0]), -1)
+        patches, positions, count = self.pixels(rgb, soft_tokens)
+        dtype = self.model.vision_embedder.patch_dense.weight.dtype   # HF casts pixels to the projection dtype
+        features = self.model.get_image_features(mx.array(patches).astype(dtype), mx.array(positions))
+        return features.astype(self.model.language_model.model.embed_tokens.weight.dtype).reshape(1, int(count), -1)
 
     def forward(self, embeds, cache, vision=False):
         mx = self.mx
