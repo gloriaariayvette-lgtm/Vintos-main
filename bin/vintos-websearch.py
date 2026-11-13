@@ -592,6 +592,74 @@ class SearchUnavailable(RuntimeError):
     monthly quota ran out about 6 November and every search since read as 'No search results')."""
 
 
+SEARXNG_ENDPOINT = os.environ.get("SEARXNG_URL", "http://127.0.0.1:8888/search")
+
+
+def searx_search(query, count=8):
+    """His own SearXNG on Aegis: free, no key, no quota; it asks several engines at once (13 November)."""
+    r = requests.get(SEARXNG_ENDPOINT, params={"q": query, "format": "json"}, timeout=30)
+    if r.status_code != 200:
+        raise SearchUnavailable("searxng %s" % r.status_code)
+    out = []
+    for x in (r.json().get("results") or [])[:count]:
+        out.append({"title": x.get("title", ""), "url": x.get("url", ""), "description": (x.get("content") or "")[:900]})
+    return out
+
+
+DDG_ENDPOINT = "https://html.duckduckgo.com/html/"
+DDG_UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36"
+
+
+def ddg_search(query, count=8):
+    """DuckDuckGo's plain HTML results: free, no key, no quota (Gloria, 13 November: Brave's free plan ran out and
+    xAI credits run out too). Same shape as brave_search."""
+    import html as _h, re as _re
+    from urllib.parse import parse_qs, unquote, urlparse
+    r = requests.post(DDG_ENDPOINT, data={"q": query}, headers={"User-Agent": DDG_UA}, timeout=15)
+    if r.status_code != 200:
+        raise SearchUnavailable("duckduckgo %s" % r.status_code)
+    def _clean(x):
+        return _h.unescape(_re.sub(r"<[^>]+>", "", x or "")).strip()
+    def _url(u):
+        u = _h.unescape(u)
+        if u.startswith("//"): u = "https:" + u
+        q = parse_qs(urlparse(u).query)
+        return unquote(q["uddg"][0]) if "uddg" in q else u
+    blocks = _re.split(r'<div class="result results_links', r.text)[1:]
+    results = []
+    for b in blocks:
+        a = _re.search(r'class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>', b, _re.S)
+        if not a or "ad_domain" in b or "result--ad" in b:
+            continue
+        sn = _re.search(r'class="result__snippet"[^>]*>(.*?)</a>', b, _re.S)
+        results.append({"title": _clean(a.group(2)), "url": _url(a.group(1)),
+                        "description": _clean(sn.group(1) if sn else "")[:900]})
+        if len(results) >= count:
+            break
+    return results
+
+
+def web_search(query, count=8):
+    """His own SearXNG first; then Brave; when Brave refuses (quota, rate limit), DuckDuckGo. Raises
+    SearchUnavailable only when all three do. An empty answer from SearXNG is tried on Brave before it counts."""
+    try:
+        res = searx_search(query, count)
+        if res:
+            return res
+    except Exception as e:
+        log("SearXNG unavailable (%s): trying Brave" % str(e)[:120])
+    try:
+        return brave_search(query, count)
+    except SearchUnavailable as e:
+        log("Brave refused (%s): searching DuckDuckGo instead" % e)
+    try:
+        return ddg_search(query, count)
+    except SearchUnavailable:
+        raise
+    except Exception as e:
+        raise SearchUnavailable("duckduckgo: %s" % str(e)[:120])
+
+
 def brave_search(query, count=8):
     """Search via Brave Search API."""
     try:
@@ -846,11 +914,11 @@ def main():
     _q_vec_out = _qv if "_qv" in dir() else None
     for _att in range(_max_att):
         try:
-            _res = brave_search(_aq); _tool_status = "ok"
+            _res = web_search(_aq); _tool_status = "ok"
         except SearchUnavailable as _su:
             # A refused search is not an unanswered question: no session outcome, no curiosity debt, no message to
             # Gloria. The question stays his and is tried again on the next run.
-            log("SEARCH UNAVAILABLE - Brave refused the search: %s. Not searching today; the question is kept." % _su)
+            log("SEARCH UNAVAILABLE - SearXNG, Brave and DuckDuckGo all refused: %s. Not searching today; the question is kept." % _su)
             return
         except Exception as _bse:
             _res = []; _tool_status = "error: %s" % str(_bse)[:80]
