@@ -1,18 +1,17 @@
-"""Her axis judged by Sol (Gloria, 12 November): the rubric judge on gpt-6.1-sol, what code settles before it is
-asked, his adherence apart from her verdict, whole texts, a stale criterion refused at selection, and a landing
-rate that never counts a NOT_JUDGEABLE or an expired row. Scratch stores, synthetic text and a fixture transport
-only: no model is asked, no socket opened, nothing sent."""
+"""Her axis judged against the rubric (Gloria, 12 November): first by Sol, now by Claude Sonnet 5.5 through his
+Claude path (claude_cache) - what code settles before the judge is asked, his adherence apart from her verdict,
+whole texts, a stale criterion refused at selection, and a landing rate that never counts a NOT_JUDGEABLE or an
+expired row. The engine's tests still call the stand-in judge "sol"; the judge itself is SonnetTransport below.
+Scratch stores, synthetic text and a fixture transport only: no model is asked, no socket opened, nothing sent."""
 import contextlib
 import copy
-import io
 import json
 import os
 from pathlib import Path
 import sys
 import tempfile
-import types
+import time
 import unittest
-import urllib.error
 import uuid
 from datetime import datetime, timedelta
 from unittest.mock import Mock, patch
@@ -56,7 +55,7 @@ class EngineOnSol(unittest.TestCase):
             self.packets.append(packet)
             if isinstance(answer, Exception): raise answer
             return copy.deepcopy(answer)
-        return patch.object(E, '_sol_judge', judge)
+        return patch.object(E, '_rubric_judge', judge)
 
     # ---- the verdict ------------------------------------------------------------------------------------
     def test_sol_sees_whole_texts_and_her_live_words_only(self):
@@ -78,7 +77,7 @@ class EngineOnSol(unittest.TestCase):
         self.assertIn('THE-DECIDING-END', self.word_calls()[-1])
         row = self.rows()[-1]
         self.assertEqual(row['realized']['gloria'], 'YES')
-        self.assertEqual((row['gloria_judge']['reason'], row['gloria_judge']['judge']), ('plain_yes', 'sol'))
+        self.assertEqual((row['gloria_judge']['reason'], row['gloria_judge']['judge']), ('plain_yes', 'rubric'))
         self.assertEqual(row['adherence'], {'gloria': 'delivered'})
         self.assertNotIn('HER-LAST-WORDS', json.dumps(row['gloria_judge']))     # codes and counts only
         self.assertNotIn('synthetic move', json.dumps(row['gloria_judge']))
@@ -267,7 +266,7 @@ class EngineOnSol(unittest.TestCase):
             self.packets.append(packet)
             if not release.wait(10): raise AssertionError('fixture release timed out')
             return copy.deepcopy(SOL_YES)
-        return patch.object(E, '_sol_judge', judge)
+        return patch.object(E, '_rubric_judge', judge)
 
     def test_her_turn_never_waits_on_sol_and_each_verdict_lands_once(self):
         import threading, time
@@ -308,7 +307,7 @@ class EngineOnSol(unittest.TestCase):
                 signal.alarm(60); done = threading.Event()
                 def dying(packet):
                     done.wait(10); os._exit(7)                                    # it stops with Sol still out
-                with patch.object(E, '_sol_judge', dying), patch.object(E, 'RESOLVE_IN_BACKGROUND', True):
+                with patch.object(E, '_rubric_judge', dying), patch.object(E, 'RESOLVE_IN_BACKGROUND', True):
                     self.turn(HER); done.set(); time.sleep(20)
                 os._exit(9)
             finally:
@@ -371,73 +370,103 @@ class EngineOnSol(unittest.TestCase):
         self.assertEqual(PV.WINDOW_EXPIRED, E.WINDOW_EXPIRED); self.assertEqual(PV.HER_REPLY_HOURS, E.DEVICE_WAIT_HOURS)
 
 
-class FakeResponse(io.BytesIO):
-    def __enter__(self): return self
-    def __exit__(self, *a): self.close()
+class FakeReply:
+    def __init__(self, body): self.body = body
+    def json(self):
+        if isinstance(self.body, Exception): raise self.body
+        return copy.deepcopy(self.body)
 
 
-class SolTransport(unittest.TestCase):
-    """gloria_judge itself: the call, its answer, its failures, its usage line and its cap."""
+SONNET = 'claude-sonnet-5-5'
+
+
+class SonnetTransport(unittest.TestCase):
+    """gloria_judge itself, on Sonnet 5.5 through claude_cache: the call, its answer, its failures, its usage line
+    and its cap."""
     def setUp(self):
+        import claude_cache
+        self.C = claude_cache
         tmp = tempfile.TemporaryDirectory(prefix='gloria-judge-'); self.addCleanup(tmp.cleanup)
         self.home = Path(tmp.name)
         self.stack = contextlib.ExitStack(); self.addCleanup(self.stack.close)
-        env = {k: v for k, v in os.environ.items() if not k.startswith(('OPENAI', 'GLORIA_JUDGE'))}
-        env.update(HOME=str(self.home), OPENAI_API_KEY='sk-fixture-not-a-key')
+        env = {k: v for k, v in os.environ.items() if not k.startswith(('OPENAI', 'ANTHROPIC', 'GLORIA_JUDGE'))}
+        env.update(HOME=str(self.home), SPARK_WORKSPACE=str(self.home / '.vintos/workspace'),
+                   VINTOS_ENV_FILE=str(self.home / 'no-vintos.env'), ANTHROPIC_API_KEY='sk-ant-api03-fixturekey0000')
         self.stack.enter_context(patch.dict(os.environ, env, clear=True))
+        self.log = self.home / '.vintos/workspace/memory/anthropic-usage.jsonl'
+        self.stack.enter_context(patch.object(claude_cache, 'USAGE', str(self.log)))
         self.stack.enter_context(patch('socket.socket.connect', side_effect=AssertionError('no socket may open')))
         self.sent = []; self.reply = None
-        self.stack.enter_context(patch('urllib.request.urlopen', self.transport))
+        self.stack.enter_context(patch.object(GJ, '_post', self.transport))
         self.packet = {'declared': {'gloria_difference_intended': 'she names one want'}, 'his_reply': 'a move',
                        'her_message_he_replied_to': 'before', 'her_next_reply': 'SYNTHETIC-HER-WORDS', 'facts': {}}
 
-    def transport(self, req, timeout=None):
-        self.sent.append((req, json.loads(req.data)))
-        if isinstance(self.reply, Exception): raise self.reply
-        return FakeResponse(json.dumps(self.reply).encode())
+    def transport(self, url, timeout=None, json=None, headers=None):
+        self.sent.append({'url': url, 'timeout': timeout, 'body': json, 'headers': headers})
+        if isinstance(self.reply, Exception) and not isinstance(self.reply, ValueError): raise self.reply
+        return FakeReply(self.reply)
 
     @staticmethod
-    def answer(obj, usage=(3000, 200, 2000), kind='output_text'):
-        part = {'type': kind, kind if kind == 'refusal' else 'text': obj if isinstance(obj, str) else json.dumps(obj)}
-        return {'status': 'completed', 'output': [{'type': 'reasoning'}, {'type': 'message', 'content': [part]}],
-                'usage': {'input_tokens': usage[0], 'output_tokens': usage[1], 'input_tokens_details': {'cached_tokens': usage[2]}}}
+    def answer(obj, usage=(3000, 15000, 0, 800), stop='end_turn'):
+        text = obj if isinstance(obj, str) else json.dumps(obj)
+        return {'type': 'message', 'model': SONNET, 'stop_reason': stop,
+                'content': [{'type': 'text', 'text': text}] if text else [],
+                'usage': {'input_tokens': usage[0], 'cache_read_input_tokens': usage[1],
+                          'cache_creation_input_tokens': usage[2], 'output_tokens': usage[3]}}
 
     def usage(self):
-        p = self.home / '.vintos/logs/openai-usage.jsonl'
-        return [json.loads(l) for l in p.read_text().splitlines()] if p.exists() else []
+        return [json.loads(l) for l in self.log.read_text().splitlines()] if self.log.exists() else []
 
-    def test_one_call_to_sol_with_the_rubric_and_its_answer_recorded(self):
+    def write_usage(self, rows):
+        self.log.parent.mkdir(parents=True, exist_ok=True)
+        self.log.write_text(''.join(json.dumps(r) + '\n' for r in rows))
+
+    def test_one_call_to_sonnet_with_the_rubric_cached_and_thinking_off(self):
         self.reply = self.answer({'verdict': 'PARTIAL', 'reason': 'partial_hedged', 'codes': ['partial_hedged', 'bogus'],
                                   'his_adherence': 'delivered', 'confidence': 'medium'})
         got = GJ.judge(self.packet)
         self.assertEqual((got['verdict'], got['reason'], got['codes'], got['adherence'], got['model']),
-                         ('PARTIAL', 'partial_hedged', ['partial_hedged'], 'delivered', 'gpt-6.1-sol'))
-        (req, body), = self.sent
-        self.assertEqual(req.full_url, 'https://api.openai.com/v1/responses')
-        self.assertEqual(body['model'], 'gpt-6.1-sol')
-        self.assertEqual(body['input'][0], {'role': 'system', 'content': GJ.RUBRIC})
-        self.assertEqual(json.loads(body['input'][1]['content']), self.packet)
+                         ('PARTIAL', 'partial_hedged', ['partial_hedged'], 'delivered', SONNET))
+        sent, = self.sent
+        body = sent['body']
+        self.assertEqual(sent['url'], 'https://api.anthropic.com/v1/messages')
+        self.assertEqual(sent['headers']['x-api-key'], 'sk-ant-api03-fixturekey0000')
+        self.assertEqual(sent['timeout'], GJ.JUDGE_TIMEOUT)
+        self.assertEqual((body['model'], body['max_tokens']), (SONNET, GJ.JUDGE_MAX_TOKENS))
+        self.assertEqual(body['system'], [{'type': 'text', 'text': GJ.RUBRIC,
+                                           'cache_control': {'type': 'ephemeral', 'ttl': '1h'}}])   # cached
+        part, = body['messages'][0]['content']
+        self.assertEqual(json.loads(part['text']), self.packet); self.assertNotIn('cache_control', part)
+        self.assertEqual(body['thinking'], self.C.thinking_off(SONNET))                            # his rule
+        self.assertIsNotNone(body['thinking']); self.assertNotIn('output_config', body)
         line, = self.usage()
-        self.assertEqual((line['src'], line['model'], line['in'], line['out'], line['cached']), ('gloria-judge', 'gpt-6.1-sol', 3000, 200, 2000))
+        self.assertEqual((line['caller'], line['model'], line['in'], line['cache_read'], line['cache_write'], line['out']),
+                         ('gloria-judge', SONNET, 3000, 15000, 0, 800))
         logged = json.dumps(self.usage())
-        self.assertNotIn('sk-fixture', logged); self.assertNotIn('SYNTHETIC-HER-WORDS', logged)
-        self.assertAlmostEqual(GJ.spent(GJ.LIVE_SRCS), (1000 * 5.0 + 2000 * 0.5 + 200 * 40.0) / 1e6)
-        self.assertEqual(GJ.spent([GJ.SRC_TEACHER]), 0.0)
+        self.assertNotIn('fixturekey', logged); self.assertNotIn('SYNTHETIC-HER-WORDS', logged)
+        self.assertAlmostEqual(GJ.spent(GJ.LIVE_SRCS), (3000 * 2.0 + 15000 * 0.10 + 800 * 10.0) / 1e6)   # $0.0155
+        self.assertEqual(GJ.spent(['gloria-judge-teacher']), 0.0)
+
+    def test_sonnet_cache_reads_are_priced_at_ten_cents(self):
+        self.assertEqual(self.C.PRICES[SONNET], (2.0, 10.0, 0.10))
+        row = {'model': SONNET, 'in': 0, 'cache_read': 1_000_000, 'cache_write': 0, 'out': 0}
+        self.assertAlmostEqual(self.C.cost(row), 0.10)
 
     def test_refusals_and_errors_are_not_judgeable(self):
-        cases = [(self.answer('I cannot help with that.', kind='refusal'), 'refused'),
-                 (urllib.error.HTTPError(GJ.ENDPOINT, 400, 'bad', {}, io.BytesIO(json.dumps({'error': {'code': 'content_policy_violation'}}).encode())), 'refused'),
-                 (urllib.error.HTTPError(GJ.ENDPOINT, 500, 'down', {}, io.BytesIO(b'{}')), 'error'),
+        cases = [(self.answer('', stop='refusal'), 'refused'),
+                 ({'type': 'error', 'error': {'type': 'invalid_request_error', 'message': 'flagged by safety system'}}, 'refused'),
+                 ({'type': 'error', 'error': {'type': 'overloaded_error', 'message': 'Overloaded'}}, 'error'),
                  (TimeoutError('fixture'), 'error'),
+                 (ValueError('fixture: not JSON'), 'error'),
+                 (self.answer('', stop='max_tokens'), 'error'),
                  (self.answer('no object here'), 'error'),
-                 (self.answer({'verdict': 'PROBABLY'}), 'error'),
-                 ({'error': {'message': 'flagged by safety system'}}, 'refused'),
-                 ({'status': 'incomplete', 'output': []}, 'error')]
+                 (self.answer({'verdict': 'PROBABLY'}), 'error')]
         for reply, reason in cases:
             with self.subTest(reply=str(reply)[:60]):
                 self.reply = reply
                 got = GJ.judge(self.packet)
                 self.assertEqual((got['verdict'], got['reason']), ('NOT_JUDGEABLE', reason))
+        self.assertEqual(len(self.sent), len(cases))                                          # nothing retried
 
     def test_her_no_on_a_move_not_delivered_is_not_judgeable(self):
         for adherence in ('not_delivered', 'partly', 'unknown'):
@@ -449,50 +478,59 @@ class SolTransport(unittest.TestCase):
         self.assertEqual(GJ.judge(self.packet)['verdict'], 'NO')
 
     def test_no_key_or_paused_calls_send_nothing(self):
-        with patch.dict(os.environ, OPENAI_API_KEY=''):
+        with patch.dict(os.environ, ANTHROPIC_API_KEY=''):
             got = GJ.judge(self.packet)
         self.assertEqual((got['verdict'], got['reason'], got['detail']), ('NOT_JUDGEABLE', 'error', 'no_key'))
         (self.home / '.vintos').mkdir(parents=True, exist_ok=True); (self.home / '.vintos/paid-outbound.paused').write_text('')
         got = GJ.judge(self.packet)
         self.assertEqual((got['reason'], got['detail']), ('error', 'paid_paused'))
+        self.assertEqual(GJ.stale_check({'difference_intended': 'x'}, 'words'), 'error')
         self.assertEqual(self.sent, [])
 
-    def test_the_weekly_cap_stops_the_live_judge(self):
-        log = self.home / '.vintos/logs/openai-usage.jsonl'; log.parent.mkdir(parents=True)
-        import time
-        rows = [{'ts': time.time() - 3600, 'src': 'gloria-judge', 'model': 'gpt-6.1-sol', 'in': 1_000_000, 'out': 0, 'cached': 0},
-                {'ts': time.time() - 8 * 86400, 'src': 'gloria-judge', 'model': 'gpt-6.1-sol', 'in': 9_000_000, 'out': 0, 'cached': 0}]
-        log.write_text(''.join(json.dumps(r) + '\n' for r in rows))
-        self.assertEqual(GJ.spent(GJ.LIVE_SRCS), 5.0)                            # the week only
+    def test_the_weekly_cap_is_priced_for_sonnet_and_stops_the_live_judge(self):
+        at = lambda hours: time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime(time.time() - hours * 3600))
+        row = lambda hours, caller, **t: dict({'at': at(hours), 'caller': caller, 'model': SONNET, 'in': 0,
+                                               'cache_read': 0, 'cache_write': 0, 'out': 0}, **t)
+        self.write_usage([row(1, 'gloria-judge', **{'in': 1_000_000}),                  # $2.00
+                          row(2, 'gloria-judge-stale', cache_read=10_000_000),          # $1.00 at $0.10 a million
+                          row(3, 'slack:claude-sonnet-5-5', **{'in': 9_000_000}),       # another caller
+                          row(8 * 24, 'gloria-judge', **{'in': 9_000_000})])            # last week
+        self.assertAlmostEqual(GJ.spent(GJ.LIVE_SRCS), 3.0)
+        self.assertEqual(GJ.LIVE_WEEKLY_USD, 3.5)
         self.reply = self.answer({'verdict': 'YES', 'reason': 'plain_yes', 'his_adherence': 'delivered'})
-        with patch.dict(os.environ, GLORIA_JUDGE_WEEKLY_USD='5'):
+        with patch.dict(os.environ, GLORIA_JUDGE_WEEKLY_USD='3'):
             got = GJ.judge(self.packet)
             self.assertEqual((got['verdict'], got['reason']), ('NOT_JUDGEABLE', 'budget'))
             self.assertEqual(GJ.stale_check({'difference_intended': 'x'}, 'words'), 'budget')
         self.assertEqual(self.sent, [])
-        self.assertEqual(GJ.judge(self.packet)['verdict'], 'YES')                # under the default $8
+        self.assertEqual(GJ.judge(self.packet)['verdict'], 'YES')                # under the default $3.50
+        self.write_usage([row(1, 'gloria-judge', **{'in': 2_000_000})])           # $4.00: over the default
+        self.assertEqual(GJ.judge(self.packet)['reason'], 'budget')
 
-    def test_vintos_env_prices_override_the_estimate(self):
-        log = self.home / '.vintos/logs/openai-usage.jsonl'; log.parent.mkdir(parents=True)
-        import time
-        log.write_text(json.dumps({'ts': time.time(), 'src': 'gloria-judge', 'in': 1_000_000, 'out': 1_000_000, 'cached': 0}) + '\n')
-        self.assertEqual(GJ.spent(GJ.LIVE_SRCS), 45.0)                           # the high default estimate
-        with patch.dict(os.environ, GLORIA_JUDGE_PRICE_IN='1.25', GLORIA_JUDGE_PRICE_OUT='10'):
-            self.assertEqual(GJ.spent(GJ.LIVE_SRCS), 11.25)
-        with patch.dict(os.environ, GLORIA_JUDGE_PRICE_IN='not-a-number'):
-            self.assertEqual(GJ.spent(GJ.LIVE_SRCS), 45.0)                       # a bad value keeps the estimate
+    def test_the_model_stays_on_claude(self):
+        self.assertEqual(GJ.MODEL_DEFAULT, SONNET)
+        for setting, want in (('', SONNET), ('gpt-6.1-sol', SONNET), ('claude-haiku-5-5', 'claude-haiku-5-5')):
+            with self.subTest(setting=setting), patch.dict(os.environ, GLORIA_JUDGE_MODEL=setting):
+                self.assertEqual(GJ.model(), want)
+        row = {'model': 'claude-unpriced-9', 'in': 1_000_000, 'cache_read': 0, 'cache_write': 0, 'out': 0}
+        self.assertAlmostEqual(GJ.cost(row), 2.0)                                 # never free to the cap
 
-    def test_stale_check_answers_met_or_not(self):
+    def test_stale_check_answers_met_or_not_on_sonnet(self):
         for raw, want in (({'already_met': True}, 'met'), ({'already_met': False}, 'not_met'), ({'already_met': 'yes'}, 'error')):
             with self.subTest(raw=raw):
                 self.reply = self.answer(raw)
                 self.assertEqual(GJ.stale_check({'difference_intended': 'she names one want'}, 'I want this'), want)
-        req, body = self.sent[-1]
-        self.assertEqual(body['input'][0]['content'], GJ.STALE_RUBRIC)
-        self.assertEqual(json.loads(body['input'][1]['content'])['her_message'], 'I want this')
+        body = self.sent[-1]['body']
+        self.assertEqual((body['model'], body['max_tokens']), (SONNET, GJ.STALE_MAX_TOKENS))
+        self.assertEqual(body['system'][0]['text'], GJ.STALE_RUBRIC)
+        self.assertEqual(body['thinking'], self.C.thinking_off(SONNET))
+        self.assertEqual(json.loads(body['messages'][0]['content'][0]['text'])['her_message'], 'I want this')
+        self.assertEqual(self.sent[-1]['timeout'], GJ.STALE_TIMEOUT)
         n = len(self.sent)
         self.assertEqual(GJ.stale_check({'difference_intended': 'x'}, '  '), 'skipped'); self.assertEqual(len(self.sent), n)
-        self.assertEqual(self.usage()[-1]['src'], 'gloria-judge-stale')
+        self.assertEqual(self.usage()[-1]['caller'], 'gloria-judge-stale')
+        self.reply = self.answer('', stop='refusal')
+        self.assertEqual(GJ.stale_check({'difference_intended': 'x'}, 'words'), 'refused')
 
 
 if __name__ == '__main__':

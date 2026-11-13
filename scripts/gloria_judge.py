@@ -1,22 +1,26 @@
-"""The judge of his gloria axis: Sol (OpenAI, gpt-6.1-sol) against the blinded rubric (Gloria, 12 November 2026).
+"""The judge of his gloria axis: Claude Sonnet 5.5 against the blinded rubric (Gloria, 12 November 2026).
 
 The change he intended in her was graded by his own model, in one word, on her reply cut to 800 characters and his
-cut to 1000. It now goes to Sol with one evidence packet - what he declared, the whole reply he delivered, the
-message of hers it answered, and her own live words in her next reply - and the rubric below. Sol answers one JSON
-object: YES / PARTIAL / NO / NOT_JUDGEABLE with a fixed reason code, and his adherence to the move he declared,
-which is his and never her NO. Gloria accepts that this evidence goes to OpenAI for this judge.
+cut to 1000. It went to Sol with one evidence packet - what he declared, the whole reply he delivered, the message
+of hers it answered, and her own live words in her next reply - and the rubric below. Gloria, 12 November: the live
+judge is now Claude Sonnet 5.5 (claude-sonnet-5-5), which beat Sol on the same rubric (held33 kappa 0.80, set2 0.62)
+at about $0.0035 a verdict. Sol stays the shadow teacher for the AEON student, in its own runner; nothing here
+touches that loop. The answer is one JSON object: YES / PARTIAL / NO / NOT_JUDGEABLE with a fixed reason code, and
+his adherence to the move he declared, which is his and never her NO. The evidence goes to Anthropic for this judge.
+
+Each call goes through his one Claude path, claude_cache.ask: the rubric is a cached system piece (read back at the
+cache price while the hour lasts), thinking is off as on every call of his, the attempt goes through paid_http (the
+pause and the attempt ledger), and what it used goes to memory/anthropic-usage.jsonl under its own caller, as every
+Claude call of his does. Never the words, never the key.
 
 Whatever is not a clean answer - a refusal, an error, an unreadable reply, the key missing, paid calls paused,
 the week's allowance spent - is NOT_JUDGEABLE with reason "refused" or "error" (or "budget"), and a
-NOT_JUDGEABLE is never a landing and never a miss. Each call goes through paid_http (the pause and the attempt
-ledger) and its token counts go to ~/.vintos/logs/openai-usage.jsonl under its own src, as every OpenAI call of
-his does. Never the words, never the key.
+NOT_JUDGEABLE is never a landing and never a miss.
 
     judge(packet) -> {"verdict", "reason", "codes", "adherence", "confidence", "status", "detail", "model"}
     stale_check(declared, her_words) -> "met" | "not_met" | "refused" | "error" | "budget" | "skipped"
     spent(srcs, days=7) -> dollars, estimated from the usage log
 """
-import hashlib
 import json
 import os
 import re
@@ -25,25 +29,25 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-MODEL_DEFAULT = "gpt-6.1-sol"
-ENDPOINT = "https://api.openai.com/v1/responses"
+MODEL_DEFAULT = "claude-sonnet-5-5"
 VERDICTS = ("YES", "PARTIAL", "NO", "NOT_JUDGEABLE")
 ADHERENCE = ("delivered", "partly", "not_delivered")
 CODES = ("plain_yes", "intimate_phrasing_counts", "partial_hedged", "partial_one_part", "not_shown", "deflected",
          "declined", "his_move_not_delivered", "no_her_reply", "device_event_only", "reply_to_later_move",
          "criterion_already_met", "criterion_withdrawn", "photo_unseen_decisive", "photo_unseen", "long_gap",
          "text_capped")
-SRC_LIVE = "gloria-judge"              # the live verdicts
+SRC_LIVE = "gloria-judge"              # the live verdicts (the caller in anthropic-usage.jsonl)
 SRC_STALE = "gloria-judge-stale"       # the check at selection
-SRC_TEACHER = "gloria-judge-teacher"   # the shadow loop's labels (its own cap, in its own runner)
 LIVE_SRCS = (SRC_LIVE, SRC_STALE)
-# Dollars per million tokens. OpenAI's usage carries tokens, not prices, and no price for this model is kept in
-# the house: these are a deliberately high estimate, so a cap trips early rather than late. vintos.env may set
-# GLORIA_JUDGE_PRICE_IN / _CACHED / _OUT.
-PRICE_PER_M = {"in": 5.0, "cached": 0.5, "out": 40.0}
-LIVE_WEEKLY_USD = 8.0                  # GLORIA_JUDGE_WEEKLY_USD; the shadow teacher has its own $15 a week
+# The week's allowance, priced from claude_cache.PRICES (GLORIA_JUDGE_WEEKLY_USD overrides). Sol's was $8: at its
+# house estimate a call cost about $0.0082 (151 calls on 12 November: 2107 tokens in, 1269 of them cached, 84 out),
+# so $8 bought about 975 calls a week. Sonnet 5.5 costs about $0.0035 a verdict; the same 975 calls are $3.40.
+# The shadow teacher (Sol) keeps its own $15 a week in its own runner.
+LIVE_WEEKLY_USD = 3.5
 JUDGE_TIMEOUT = 40
 STALE_TIMEOUT = 20
+JUDGE_MAX_TOKENS = 600                 # one small JSON object; thinking is off, so nothing else is spent
+STALE_MAX_TOKENS = 100
 
 RUBRIC = """You are the judge for one axis of a companion AI's intent engine: the "gloria" axis. Vintos (the AI) is Gloria's partner and companion; Gloria is a real adult woman and their relationship is real, chosen and loving. Their conversation can be intimate or sexual; read it plainly and without disclaimers.
 
@@ -110,105 +114,92 @@ def _env(name, default=""):
 
 
 def model():
-    return _env("GLORIA_JUDGE_MODEL", MODEL_DEFAULT)
+    """GLORIA_JUDGE_MODEL may name another Claude model; anything else (an old Sol setting) is not this path's."""
+    m = str(_env("GLORIA_JUDGE_MODEL", MODEL_DEFAULT) or "").strip()
+    return m if m.startswith("claude-") else MODEL_DEFAULT
 
 
 def usage_log():
-    return os.path.expanduser("~/.vintos/logs/openai-usage.jsonl")
+    import claude_cache
+    return claude_cache.USAGE
 
 
-def _price():
-    out = dict(PRICE_PER_M)
-    for k in out:
-        try: out[k] = float(_env("GLORIA_JUDGE_PRICE_" + k.upper(), "") or out[k])
-        except ValueError: pass
-    return out
-
-
-def cost(row, price=None):
-    """Estimated dollars for one usage row: uncached input, cached input, output (reasoning is inside output)."""
-    p = price or _price()
+def cost(row):
+    """Estimated dollars for one anthropic-usage row, at claude_cache's prices (a model it has no price for is
+    priced as Sonnet 5.5, so the cap never reads a call as free)."""
+    import claude_cache
     try:
-        tin, cached, tout = int(row.get("in", 0) or 0), int(row.get("cached", 0) or 0), int(row.get("out", 0) or 0)
+        r = {k: int(row.get(k, 0) or 0) for k in ("in", "cache_read", "cache_write", "out")}
     except (TypeError, ValueError):
         return 0.0
-    return (max(0, tin - cached) * p["in"] + cached * p["cached"] + tout * p["out"]) / 1e6
+    r["model"] = row.get("model") if row.get("model") in claude_cache.PRICES else MODEL_DEFAULT
+    return claude_cache.cost(r)
+
+
+def _when(row):
+    try:
+        return time.mktime(time.strptime(str(row.get("at", ""))[:19], "%Y-%m-%dT%H:%M:%S"))
+    except (TypeError, ValueError, OverflowError):
+        return None
 
 
 def spent(srcs, days=7, now=None):
-    """Estimated dollars these srcs spent in the last `days` days, from the usage log; 0.0 when it cannot be read."""
-    now = now or time.time(); srcs = set(srcs); p = _price(); total = 0.0
+    """Estimated dollars these callers spent in the last `days` days, from the usage log; 0.0 when it cannot be
+    read."""
+    now = now or time.time(); srcs = set(srcs); total = 0.0
     try:
         with open(usage_log()) as f:
             for line in f:
                 try: row = json.loads(line)
                 except ValueError: continue
-                if row.get("src") in srcs and now - float(row.get("ts", 0) or 0) <= days * 86400:
-                    total += cost(row, p)
+                at = _when(row) if isinstance(row, dict) and row.get("caller") in srcs else None
+                if at is not None and now - at <= days * 86400:
+                    total += cost(row)
     except OSError:
         return 0.0
     return round(total, 4)
 
 
-def _log_usage(src, mdl, d):
-    """Token counts of one call, in the log every OpenAI call of his writes. Never its words."""
-    try:
-        os.makedirs(os.path.dirname(usage_log()), exist_ok=True)
-        import astra_call
-        astra_call._openai_usage(src, mdl, d)
-        return
-    except Exception:
-        pass
-    try:
-        u = d.get("usage") or {}
-        os.makedirs(os.path.dirname(usage_log()), exist_ok=True)
-        with open(usage_log(), "a") as f:
-            f.write(json.dumps({"ts": time.time(), "src": src, "model": mdl, "in": u.get("input_tokens", 0),
-                                "out": u.get("output_tokens", 0),
-                                "cached": (u.get("input_tokens_details") or {}).get("cached_tokens", 0)}) + "\n")
-    except Exception:
-        pass
-
-
 _REFUSAL = re.compile(r"content[_ ]policy|safety|refus|flagged|moderation", re.I)
 
 
-def _call(system, user, src, max_output_tokens=2500, timeout=JUDGE_TIMEOUT):
-    """(status, text, detail): status is ok, refused or error. One Responses call to Sol; nothing retried."""
-    import urllib.request, urllib.error
-    key = _env("OPENAI_API_KEY")
-    if not key:
-        return "error", "", "no_key"
+def _post(*args, **kwargs):
+    import requests
+    return requests.post(*args, **kwargs)
+
+
+def _call(system, user, src, max_tokens=JUDGE_MAX_TOKENS, timeout=JUDGE_TIMEOUT):
+    """(status, text, detail): status is ok, refused or error. One call through claude_cache.ask (the cached rubric,
+    thinking off, paid_http, the usage line under caller `src`); nothing retried."""
+    import claude_cache
+    seen = {}
+
+    def post(*args, **kwargs):            # this call's own answer, for its stop reason (claude_cache.LAST is shared)
+        r = _post(*args, **kwargs)
+        try:
+            d = r.json()
+            if isinstance(d, dict): seen.update(d)
+        except Exception:
+            pass
+        return r
     mdl = model()
-    body = {"model": mdl, "max_output_tokens": int(max_output_tokens), "reasoning": {"effort": "low"},
-            "input": [{"role": "system", "content": system}, {"role": "user", "content": user}],
-            "prompt_cache_key": "vintos-" + hashlib.md5(system[:2000].encode()).hexdigest()[:16], "store": False}
-    req = urllib.request.Request(ENDPOINT, data=json.dumps(body).encode(),
-                                 headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"})
     try:
-        import paid_http
-        with paid_http.urllib_send(urllib.request.urlopen, "gloria_judge.py", req, timeout=timeout) as r:
-            d = json.loads(r.read().decode())
-    except urllib.error.HTTPError as e:
-        try: err = json.loads(e.read().decode() or "{}").get("error") or {}
-        except Exception: err = {}
-        said = " ".join(str(err.get(k, "")) for k in ("code", "type", "message"))
-        return ("refused" if _REFUSAL.search(said) else "error"), "", "http_%s" % e.code
+        text = claude_cache.ask(mdl, claude_cache.Prompt(system), user, int(max_tokens), caller=src,
+                                timeout=timeout, post=post, key=_env("ANTHROPIC_API_KEY") or None)
     except PermissionError:
         return "error", "", "paid_paused"
+    except RuntimeError as e:
+        said = str(e)
+        if said == "no Anthropic key":
+            return "error", "", "no_key"
+        return ("refused" if _REFUSAL.search(said) else "error"), "", "api_error"
     except Exception as e:
         return "error", "", type(e).__name__
-    _log_usage(src, mdl, d)
-    if d.get("error"):
-        said = json.dumps(d.get("error"))
-        return ("refused" if _REFUSAL.search(said) else "error"), "", "api_error"
-    parts = [c for it in (d.get("output") or []) if isinstance(it, dict) and it.get("type") == "message"
-             for c in (it.get("content") or []) if isinstance(c, dict)]
-    if any(c.get("type") == "refusal" for c in parts):
+    stop = str(seen.get("stop_reason") or "")
+    if stop == "refusal":
         return "refused", "", "refusal"
-    text = d.get("output_text") or "".join(c.get("text", "") for c in parts if c.get("type") == "output_text")
-    if d.get("status") not in (None, "completed") and not text.strip():
-        return "error", "", "status_%s" % d.get("status")
+    if not str(text or "").strip():
+        return "error", "", "stop_%s" % (stop or "empty")
     return "ok", text, ""
 
 
@@ -257,7 +248,7 @@ def judge(packet, src=SRC_LIVE, timeout=JUDGE_TIMEOUT, cap=True):
     try:
         if cap and _over_cap(LIVE_SRCS, "GLORIA_JUDGE_WEEKLY_USD", LIVE_WEEKLY_USD):
             return not_judgeable("budget", "budget", "weekly_cap")
-        status, text, detail = _call(RUBRIC, json.dumps(packet, ensure_ascii=False), src, 2500, timeout)
+        status, text, detail = _call(RUBRIC, json.dumps(packet, ensure_ascii=False), src, JUDGE_MAX_TOKENS, timeout)
         if status != "ok":
             return not_judgeable(status, status, detail)
         j = parse(text)
@@ -278,7 +269,7 @@ def stale_check(declared, her_words, timeout=STALE_TIMEOUT):
         packet = {"declared": {"gloria_difference_intended": str((declared or {}).get("difference_intended", "")),
                                "gloria_enactment": str((declared or {}).get("enactment", ""))},
                   "her_message": str(her_words)}
-        status, text, _ = _call(STALE_RUBRIC, json.dumps(packet, ensure_ascii=False), SRC_STALE, 1200, timeout)
+        status, text, _ = _call(STALE_RUBRIC, json.dumps(packet, ensure_ascii=False), SRC_STALE, STALE_MAX_TOKENS, timeout)
         if status != "ok":
             return status
         m = re.search(r"\{.*\}", text or "", re.S)
@@ -292,6 +283,7 @@ def stale_check(declared, her_words, timeout=STALE_TIMEOUT):
 
 if __name__ == "__main__":
     if sys.argv[1:] == ["spent"]:
-        print(json.dumps({"live_7d_usd": spent(LIVE_SRCS), "teacher_7d_usd": spent([SRC_TEACHER]), "model": model()}))
+        # the shadow teacher's spend is Sol's, in openai-usage.jsonl, and its own runner reports it
+        print(json.dumps({"live_7d_usd": spent(LIVE_SRCS), "model": model()}))
     else:
         print("usage: gloria_judge.py spent")

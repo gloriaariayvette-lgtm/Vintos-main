@@ -55,7 +55,7 @@ class ResolutionOnce(unittest.TestCase):
             v = judge()
             return {'verdict': v if v in ('YES', 'PARTIAL', 'NO') else 'NOT_JUDGEABLE', 'reason': 'fixture',
                     'adherence': 'delivered', 'status': 'ok'}
-        with patch.object(E, '_judge_realized', side_effect=judge), patch.object(E, '_sol_judge', side_effect=sol):
+        with patch.object(E, '_judge_realized', side_effect=judge), patch.object(E, '_rubric_judge', side_effect=sol):
             worker = threading.Thread(target=slow_one, name='slow-judge'); worker.start()
             try:
                 self.assertTrue(started.wait(10)); out = meanwhile()

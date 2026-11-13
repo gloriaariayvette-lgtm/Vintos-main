@@ -569,7 +569,7 @@ def _select_target(recent_text, resolve, step_campaign, persist, her_source, _tu
     if resolve and persist:
         if RESOLVE_IN_BACKGROUND:
             # Her turn never waits on a judge (review, 12 November): her reply is noted on the waiting move now -
-            # before this turn's own move can be delivered - and the judging (Sol for her axis) runs in the one
+            # before this turn's own move can be delivered - and the judging (Sonnet 5.5 for her axis) runs in the one
             # background resolver. A verdict already settled is used; one still out lands later and counts from
             # the next turn on, and this selection reads the weights as they stand.
             _guarded("note_response", lambda: note_response(recent_text, **({"source": her_source} if her_source else {})), _tsf)
@@ -807,7 +807,7 @@ def _select_target(recent_text, resolve, step_campaign, persist, her_source, _tu
     _abst = {f[2]: f[0] for f in _faults if f[2] != "opportunity"}
     # A change in her she has already shown in the message this move answers cannot be credited to the move, and
     # its absence next is no miss (12 November): such a gloria criterion is refused here - her axis is left
-    # undeclared as criterion_already_met. Sol is asked, on her own live turns only; a check that cannot answer
+    # undeclared as criterion_already_met. The judge (Sonnet 5.5) is asked, on her own live turns only; a check that cannot answer
     # refuses nothing, and the judge's own rule still holds the verdict back.
     _iid = uuid.uuid4().hex
     if persist and _eligible and isinstance(_t.get("gloria"), dict) and _t.get("gloria") and "gloria" not in _abst:
@@ -998,10 +998,10 @@ def _judge_realized(target, reply_text, her_text=""):
     return "HELD"       # an answer outside the vocabulary is no verdict either
 
 
-# ---- her axis, judged by Sol (Gloria, 12 November) -------------------------------------------------------------
-# The change he intended in her was graded by his own model in one word. It now goes to Sol (gloria_judge) with one
-# packet and the rubric, and comes back YES / PARTIAL / NO / NOT_JUDGEABLE with a fixed reason. What code can settle
-# is settled here first, and Sol is not asked: her reply came after the window (24 hours for her next reply - a row
+# ---- her axis, judged against the rubric (Gloria, 12 November) -------------------------------------------------
+# The change he intended in her was graded by his own model in one word. It now goes to the rubric judge
+# (gloria_judge: Claude Sonnet 5.5, which replaced Sol the same day) with one packet, and comes back YES / PARTIAL /
+# NO / NOT_JUDGEABLE with a fixed reason. What code can settle is settled here first, and the judge is not asked: her reply came after the window (24 hours for her next reply - a row
 # that never declared its window keeps it undeclared, and is read by the same 24 hours); her reply came after a
 # later move of his, so it answers that move; her reply is a photo alone, which no judge here can see. His delivery
 # of the move is recorded apart, as adherence: a move he did not make is his failure and NOT_JUDGEABLE for her,
@@ -1011,7 +1011,7 @@ GLORIA_DEFAULT_WINDOW_HOURS = 24
 _MEDIA_NOTE = re.compile(r"\(she sent an? [^)]*\)", re.I)
 
 
-def _sol_judge(packet):
+def _rubric_judge(packet):
     import gloria_judge
     return gloria_judge.judge(packet)
 
@@ -1118,7 +1118,7 @@ def _judge_gloria(row, tgt, ax, reply, hers, source=None, now=None):
     before, media_before = _her_words(row.get("input_text"), None) if row.get("surface") != "reelroom" else ("", False)
     later = _later_moves(row, came)
     rec = {"window": {"declared": declared, "hours": hours, "gap_hours": gap}, "later_moves": later,
-           "her_media": media, "judge": "sol", "at": datetime.now().isoformat()}
+           "her_media": media, "judge": "rubric", "at": datetime.now().isoformat()}
     if gap is None or gap > hours:
         why = "window_expired"
     elif later:
@@ -1145,7 +1145,7 @@ def _judge_gloria(row, tgt, ax, reply, hers, source=None, now=None):
                         "device_or_non_message": None, "later_moves_of_his_before_her_reply": later,
                         "text_capped_at_12000": False}}
     try:
-        got = _sol_judge(packet)
+        got = _rubric_judge(packet)
     except Exception as err:
         got = {"verdict": "NOT_JUDGEABLE", "reason": "error", "status": "error", "detail": type(err).__name__}
     got = got if isinstance(got, dict) else {}
@@ -1365,7 +1365,7 @@ def _resolve_row(last, recent_text="", source=None):
             ax_t = {"goal": di, "success_criterion": "", "enactment": ax.get("enactment", ""), "field_state": "",
                     "observation_window": ax.get("observation_window"), "evidence_type": ax.get("evidence_type")}
         if axis == "gloria":
-            # her axis goes to Sol with the rubric (12 November); it is settled on this pass, whatever comes back
+            # her axis goes to the rubric judge (12 November; Sonnet 5.5); it is settled on this pass, whatever comes back
             _gj = _judge_gloria(last, tgt, ax, reply, recent_text, source)
             last["gloria_judge"] = _gj
             last["adherence"] = dict(last["adherence"] if isinstance(last.get("adherence"), dict) else {}, gloria=_gj.get("adherence"))
