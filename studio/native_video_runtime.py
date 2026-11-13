@@ -443,25 +443,30 @@ class LiveSession:
         """Provenance of what the mind currently holds: one record per retained frame or audio span."""
         return [dict({k: v for k, v in s.items() if k != "digest"}, segment=i) for i, s in sorted(self.segments.items())]
 
-    def ask(self, question, max_tokens=128, temperature=0, on_text=None, recent_seconds=None):
+    def ask(self, question, max_tokens=128, temperature=0, on_text=None, recent_seconds=None, view_from=None,
+            note=None):
         """Answer from the retained window, then roll the question and answer back out of the cache."""
-        steps = self.ask_steps(question, max_tokens, temperature, on_text, recent_seconds)
+        steps = self.ask_steps(question, max_tokens, temperature, on_text, recent_seconds, view_from, note)
         while True:
             try:
                 next(steps)
             except StopIteration as done:
                 return done.value
 
-    def ask_steps(self, question, max_tokens=128, temperature=0, on_text=None, recent_seconds=None):
+    def ask_steps(self, question, max_tokens=128, temperature=0, on_text=None, recent_seconds=None, view_from=None,
+                  note=None):
         """The same answer one token per step, so a caller can take in arrivals between tokens: while it runs,
         frames are encoded and audio held, and both enter the timeline right after the answer is rolled back.
         ``recent_seconds`` limits the answer to frames from the last N seconds before the question (older
-        frames are masked for the question and answer only; they stay in the window)."""
+        frames are masked for the question and answer only; they stay in the window). ``view_from`` does the
+        same from an absolute stream time (e.g. where the camera mamepa says the present happening began), and
+        ``note`` is a short text (e.g. the camera mamepa's summary) placed before the question; both are rolled
+        back with the answer."""
         if self.closed:
             raise ValueError("Session is closed")
         if not 1 <= int(max_tokens) <= 512 or not 0 <= float(temperature) <= 2:
             raise ValueError("Invalid generation budget")
-        if STREAM_MARKER in str(question):
+        if STREAM_MARKER in str(question) or STREAM_MARKER in str(note or ""):
             raise ValueError("Reserved stream placeholder")
         if self.answering:
             raise BlockingIOError("An answer is already being decoded")
@@ -471,16 +476,21 @@ class LiveSession:
         self._text(close_ids, close_owner)
         mark = self.stream.length(self.cache)
         question = str(question).strip()
-        question_ids = self._ids((" " + question if question else "") + self.closing)
+        note = str(note or "").strip()
+        question_ids = self._ids((" " + note if note else "") + (" " + question if question else "") + self.closing)
         if len(question_ids) + int(max_tokens) > ANSWER_RESERVE:
             raise ValueError("Question and answer exceed the reserved budget")
         hidden = None
-        if recent_seconds is not None:
-            frames = [s for s in self.segments.values() if s["kind"] == "frame"]
-            if frames:
-                horizon = max(s["at"] for s in frames) - float(recent_seconds)
-                old = [i for i, s in self.segments.items() if s["kind"] == "frame" and s["at"] < horizon - 1e-6]
-                hidden = set(int(p) for p in self.positions[np.isin(self.owner, old)])
+        frames = [s for s in self.segments.values() if s["kind"] == "frame"]
+        horizons = []
+        if recent_seconds is not None and frames:
+            horizons.append(max(s["at"] for s in frames) - float(recent_seconds))
+        if view_from is not None and frames:
+            horizons.append(min(float(view_from), max(s["at"] for s in frames)))   # never hides the newest frame
+        if horizons:
+            horizon = max(horizons)
+            old = [i for i, s in self.segments.items() if s["kind"] == "frame" and s["at"] < horizon - 1e-6]
+            hidden = set(int(p) for p in self.positions[np.isin(self.owner, old)])
         tokens, finish_reason, first = [], "length", None
         self.answering = True
 

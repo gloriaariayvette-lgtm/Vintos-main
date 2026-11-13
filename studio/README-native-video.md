@@ -57,6 +57,18 @@ The service holds the GPU lock for its lifetime. It loads its own copy of the BF
   - Tag events carry the id, family, margin, corners and pose.
   - Each event has `dt` since the previous one, so a quiet scene shows up as a long gap. The schema is in the module docstring. Nothing is written to disk.
 
+## Camera mamepa (retention)
+
+`camera_mamepa.py` is a small Mamba-style state-space model over the tap's frame vectors, trained JEPA-style (predict the latent of the next frames, never pixels). It uses the same carrying-state conventions as his inner models (`latent_stream_model.py` and the persistence candidates), so his eyes and his inner state keep one memory scheme:
+
+- Versioned schema (`camera-mamepa-v1`); a checkpoint is one `.npz` with a JSON `meta`, identified by its sha256; a dumped state names its checkpoint and any other refuses it.
+- Carried state: the last latent plus continuous-time EMA levels (tau 0.5 s to 2 min, `w = exp(-dt/tau)`), each elapsed step clamped to 0–300 s, and the selective SSM state when a trained forecaster is present.
+- Several forecasters of the next latent (persistence, drift, the EMA levels, the SSM), mixed per axis with inverse-MSE weights from each one's recently realized error. Only outcomes already seen count. Surprise asks whether *any* forecaster foresaw the frame; a large surprise opens a new segment.
+- **What the prompt gets.** `summary()` returns a short factual line: when the current scene began, how long it has lasted, how much changed, and what came before. It names no objects. `onset()` is where the current happening began (at least two frames back). With `"recall": true` on `/video/ask` (off by default until its gates pass), the summary goes in as a note before the question, and the answer sees frames from the onset onward. Both are rolled back with the answer, like `recent_seconds`.
+- **Tags are keys.** A seen tag looks up `'<family>:<id>'` in a pluggable `TagStore` (`DictTagStore`, `CallableTagStore`; the service starts with none, so tags read as unlinked). Records are only read, never written. Each sighting is bound to its segment, so a later sighting can say it was seen before. Tests use synthetic records only.
+- Frames only: audio is a different vector space and never enters this state. The state lives in memory. Training (`camera_mamepa_train.py`, MLX) uses synthetic clips from its own generator only. `--encoder toy --cpu` is the model-free check. `--encoder aeon` encodes through the checkpoint's vision projection and must hold `~/physics-lab/train.lock`. The SSM forecaster is kept only if it beats persistence on held-out clips.
+- Start the service with `--mamepa <checkpoint.npz>`. `GET /mamepa` returns the current summary.
+
 ## Boundary
 
 No model, dataset or WebRTC stack is downloaded (pupil-apriltags is the one approved library). No frame or recording is written, trained on or sent anywhere. The gates and their pre-registered bars are in the Codex review folder (`NATIVE-VIDEO-STREAM-PREREG.json`, `NATIVE-VIDEO-STREAM-FROM-CLAUDE-CODE.md`). Real-feed acceptance with the glasses is still pending, because the glasses do not exist yet. Gloria alone deploys.

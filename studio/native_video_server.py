@@ -22,6 +22,9 @@ from native_video_runtime import LIVE_ANSWER_TOKENS, RETAIN_FRAMES, SOFT_TOKENS,
 # Set from the scored development check (see README): which retention aid live sessions use by default.
 SCENE_MARKERS_DEFAULT = False
 RECENT_SECONDS_DEFAULT = None
+# The camera mamepa's summary and adaptive view are used only when a request asks (``recall``), until its own
+# pre-registered gates pass; then this default may change.
+RECALL_DEFAULT = False
 
 MAX_IMAGE_BYTES = 6 * 1024 * 1024   # base64 must fit the shared handler's 8 MB request limit
 MAX_PIXELS = 4096 * 4096
@@ -57,9 +60,10 @@ class _Answer:
 
 
 class VideoService:
-    def __init__(self, mind, stream, tap=None, detector=None):
+    def __init__(self, mind, stream, tap=None, detector=None, mamepa=None):
         self.mind, self.stream = mind, stream
-        self.tap, self.detector = tap, detector
+        self.tap, self.detector, self.mamepa = tap, detector, mamepa
+        self.mamepa_seconds = 0.
         self.active = None
         self.expires = 0
         self._timer = None
@@ -151,6 +155,10 @@ class VideoService:
     def dispatch(self, path, body, on_text=None):
         return self._on_worker(lambda: self._dispatch(path, body, on_text))
 
+    def dispatch_read(self, fn):
+        """A read of state the inference thread owns, taken on that thread."""
+        return self._on_worker(fn)
+
     def _dispatch(self, path, body, on_text=None):
         if True:   # runs on the inference thread; requests are serialised by its queue
             self.expire()
@@ -158,10 +166,14 @@ class VideoService:
                 if self.active:
                     raise BlockingIOError("A stream is already active")
                 on_embedding = None
+                to_numpy = getattr(self.stream, "numpy", np.asarray)
+                stream_id = None
                 if self.tap is not None:
-                    self.tap.start(body.get("feed") or "unknown")
-                    to_numpy = getattr(self.stream, "numpy", np.asarray)
-                    on_embedding = lambda kind, at, e, ref: self.tap.embedding(kind, at, to_numpy(e), ref)
+                    stream_id = self.tap.start(body.get("feed") or "unknown")
+                if self.mamepa is not None:
+                    self.mamepa.new_stream(stream_id or uuid.uuid4().hex[:12], 0., time.time())
+                if self.tap is not None or self.mamepa is not None:
+                    on_embedding = lambda kind, at, e, ref: self._sense(kind, at, to_numpy(e), ref)
                 session = LiveSession(self.mind, self.stream, body.get("instruction"),
                                       int(body.get("retain_frames", RETAIN_FRAMES)), on_embedding=on_embedding,
                                       scene_markers=bool(body.get("scene_markers", SCENE_MARKERS_DEFAULT)))
@@ -189,6 +201,10 @@ class VideoService:
                     for tag in tags:
                         if self.tap is not None:
                             self.tap.tag(result["at"], tag, result["frame_ref"])
+                        if self.mamepa is not None:
+                            self.mamepa.tag(result["at"], tag)
+                if self.mamepa is not None:
+                    result["mamepa_seconds"], self.mamepa_seconds = self.mamepa_seconds, 0.
                 result["tags"] = [{k: t[k] for k in ("tag_id", "family", "decision_margin", "center", "pose")} for t in tags]
             elif path == "/video/audio":
                 result = session.audio(pcm16(body["audio"]), at)
@@ -196,9 +212,15 @@ class VideoService:
                 if self.answer is not None:
                     raise BlockingIOError("An answer is already being decoded")
                 recent = body.get("recent_seconds", RECENT_SECONDS_DEFAULT)
+                view_from = note = None
+                if self.mamepa is not None and body.get("recall", RECALL_DEFAULT):
+                    memory = self.mamepa.summary()
+                    note = memory.get("text")
+                    if body.get("recall_view", True):
+                        view_from = memory.get("onset")
                 steps = session.ask_steps(str(body["question"]), min(int(body.get("max_tokens", 128)), LIVE_ANSWER_TOKENS),
                                           float(body.get("temperature", 0)), None,
-                                          None if recent is None else float(recent))
+                                          None if recent is None else float(recent), view_from, note)
                 return _Answer(steps)   # decoded token by token between arrivals; the reply waits for the end
             elif path == "/video/finish":
                 window = session.window()
@@ -208,6 +230,17 @@ class VideoService:
                 raise KeyError("Unknown endpoint")
             self._arm()
             return dict(result, raw_frames_retained=False)
+
+
+    def _sense(self, kind, at, embeds, ref):
+        """One encoded frame or audio packet, as it entered the mind: to the tap ring and (frames) the mamepa."""
+        if self.tap is not None:
+            self.tap.embedding(kind, at, embeds, ref)
+        if self.mamepa is not None and kind == "frame":
+            started = time.perf_counter()
+            x = np.asarray(embeds, dtype=np.float32)
+            self.mamepa.frame(x.reshape(-1, x.shape[-1]).mean(axis=0), at, time.time())
+            self.mamepa_seconds += time.perf_counter() - started
 
 
 class _Health:
@@ -245,13 +278,16 @@ def handler(service):
                 except ValueError:
                     return self.reply(400, {"error": "Invalid tap query"})
                 return self.reply(200, service.tap.since(since, limit))
+            if url.path == "/mamepa" and service.mamepa is not None:
+                return self.reply(200, service.dispatch_read(service.mamepa.summary))
             if url.path != "/health":
                 return self.reply(404, {"error": "Unknown endpoint"})
             self.reply(200, {"checkpoint_sha256": service.mind.sha, "native_video": True,
                              "soft_tokens_per_frame": SOFT_TOKENS, "retain_frames": RETAIN_FRAMES,
                              "shared_audio_timeline": True, "raw_frames_retained": False,
                              "sensory_tap": service.tap is not None,
-                             "apriltags": bool(service.detector is not None and service.detector.available)})
+                             "apriltags": bool(service.detector is not None and service.detector.available),
+                             "camera_mamepa": None if service.mamepa is None else service.mamepa.model.checkpoint_id})
 
     return Handler
 
@@ -265,13 +301,18 @@ def main():
     parser.add_argument("--tap-tokens", action="store_true", help="keep every soft token in the tap, not only the mean")
     parser.add_argument("--camera", type=float, nargs=4, metavar=("FX", "FY", "CX", "CY"), help="intrinsics for tag pose")
     parser.add_argument("--tag-size", type=float, help="printed tag edge in metres, for tag pose")
+    parser.add_argument("--mamepa", help="camera mamepa checkpoint (.npz); without it no camera memory runs")
     args = parser.parse_args()
     if args.port in (8840, 8844) or not 1024 <= args.port <= 65535:
         raise ValueError("Choose an unreserved loopback port")
     mind = NativeMind(args.mind, args.expected_sha256, "apple")
     tap = SensoryTap(args.tap_events, keep_tokens=args.tap_tokens) if args.tap_events else None
     detector = TagDetector(intrinsics=args.camera, tag_size=args.tag_size)
-    service = VideoService(mind, AppleStream(mind.backend), tap, detector)
+    mamepa = None
+    if args.mamepa:
+        from camera_mamepa import Mamepa, Model
+        mamepa = Mamepa(Model(args.mamepa))   # no tag store attached here: tags are reported as unlinked
+    service = VideoService(mind, AppleStream(mind.backend), tap, detector, mamepa)
     server = ThreadingHTTPServer(("127.0.0.1", args.port), handler(service))
     server.daemon_threads = True
     try:
