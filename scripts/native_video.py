@@ -111,7 +111,7 @@ def encode_jpeg(rgb, quality=90):
 class Stream:
     """One live session: frames and 16 kHz PCM16 packets on one timeline. Nothing is stored."""
 
-    def __init__(self, instruction=None, retain_frames=None, post=None, sampler=None, clock=time.monotonic):
+    def __init__(self, instruction=None, retain_frames=None, post=None, sampler=None, clock=time.monotonic, feed=None):
         self.base = verify() if post is None else "http://127.0.0.1:0"
         self._send = post or self._post
         self.sampler = sampler or AdaptiveSampler(clock=clock)
@@ -121,6 +121,8 @@ class Stream:
             body["instruction"] = instruction
         if retain_frames:
             body["retain_frames"] = int(retain_frames)
+        if feed:
+            body["feed"] = str(feed)[:40]
         self.session_id = self._send(self.base + "/video/start", body)["session_id"]
         self.started = clock()
         self.closed = False
@@ -178,6 +180,13 @@ class Stream:
             self._send(self.base + "/video/abort", {"session_id": self.session_id})
 
 
+def read_tap(since=0, limit=256):
+    """Sensory tap events after ``since`` (schema in studio/native_sensory_tap.py), for a latent-state consumer."""
+    base = verify()
+    with _opener().open("%s/tap?since=%d&limit=%d" % (base, int(since), int(limit)), timeout=5) as response:
+        return json.load(response)
+
+
 def window_record(window, receipts=(), started_at=None):
     """The provenance record of one retained window: per segment a time, a keyframe or audio reference and the
     source hash of the bytes received. No pixels, no description, nothing that was not measured."""
@@ -201,12 +210,104 @@ def window_record(window, receipts=(), started_at=None):
             "record_gap": VIDEO_GAP_RULE}
 
 
-def senses_block(record, keyframes=()):
-    """Content parts for the current conversation turn: the frames themselves (in memory, as image parts) and
-    one short provenance line. The line says what was seen came from frames that were not kept."""
+WORKSPACE = os.environ.get("SPARK_WORKSPACE") or os.path.expanduser("~/.vintos/workspace")
+TAG_MAP = os.path.join(WORKSPACE, "memory", "apriltag-memories.json")
+TAG_MAP_HOW = ("Gloria fills this. Key: '<family>:<id>', e.g. 'tag36h11:7'. Value: either {'text': 'the memory in "
+               "her words'} or {'store': 'a file under memory/ (.json or .jsonl)', 'id': 'the record id', "
+               "'id_field': 'id'}, with an optional 'label'.")
+
+
+def _memory_dir():
+    return os.path.realpath(os.path.join(WORKSPACE, "memory"))
+
+
+def load_tag_map(path=None):
+    try:
+        with open(path or TAG_MAP) as f:
+            data = json.load(f)
+        return {k: v for k, v in data.items() if not k.startswith("_") and isinstance(v, dict)} if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def init_tag_map(path=None):
+    """Create the empty map with its how-to line, once. Never overwrites."""
+    path = path or TAG_MAP
+    if os.path.exists(path):
+        return False
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "x") as f:
+        json.dump({"_how": TAG_MAP_HOW}, f, indent=2)
+    return True
+
+
+def _store_record(entry):
+    store = os.path.realpath(os.path.join(_memory_dir(), str(entry.get("store") or "")))
+    if not store.startswith(_memory_dir() + os.sep) or not os.path.isfile(store):
+        return None
+    field, wanted = str(entry.get("id_field") or "id"), str(entry.get("id") or "")
+    with open(store) as f:
+        rows = [json.loads(l) for l in f if l.strip()] if store.endswith(".jsonl") else json.load(f)
+    if isinstance(rows, dict):
+        rows = [dict(v, **{field: k}) if isinstance(v, dict) else {field: k, "value": v} for k, v in rows.items()]
+    return next((r for r in rows if isinstance(r, dict) and str(r.get(field)) == wanted), None)
+
+
+def tag_memory(tag, tag_map=None):
+    """The memory Gloria linked to one detected tag, or a record saying plainly that nothing is linked or that the
+    linked record was not found. Never a guess."""
+    key = "%s:%s" % (tag.get("family"), tag.get("tag_id"))
+    entry = (tag_map if tag_map is not None else load_tag_map()).get(key)
+    out = {"tag": key, "at": tag.get("at"), "label": None, "memory": None, "found": False}
+    if not entry:
+        out["note"] = "no memory is linked to this tag"
+        return out
+    out["label"] = str(entry.get("label") or "")[:120] or None
+    if entry.get("text"):
+        out.update(memory={"text": str(entry["text"])[:1200]}, found=True)
+        return out
+    try:
+        record = _store_record(entry)
+    except Exception:
+        record = None
+    if record is None:
+        out["note"] = "the linked memory was not found in its store"
+    else:
+        out.update(memory={k: (v[:1200] if isinstance(v, str) else v) for k, v in record.items()}, found=True)
+    return out
+
+
+def tag_lines(tags, tag_map=None):
+    """One line per distinct tag seen in the window, with its linked memory, placed beside the frames."""
+    seen, lines = set(), []
+    for tag in tags or []:
+        hit = tag_memory(tag, tag_map)
+        if hit["tag"] in seen:
+            continue
+        seen.add(hit["tag"])
+        if hit["found"]:
+            text = hit["memory"].get("text") or json.dumps(hit["memory"], ensure_ascii=False)[:600]
+            lines.append("[TAG %s seen%s - the memory Gloria linked to it%s: %s]" % (
+                hit["tag"], " at %s" % tag["at"] if tag.get("at") is not None else "",
+                " (%s)" % hit["label"] if hit["label"] else "", text))
+        else:
+            lines.append("[TAG %s seen - %s. Do not guess what it stands for.]" % (hit["tag"], hit["note"]))
+    return lines
+
+
+def window_tags(receipts):
+    """Tags from the frame receipts, each with the stream time it was seen."""
+    return [dict(t, at=r.get("at")) for r in receipts or [] for t in r.get("tags") or []]
+
+
+def senses_block(record, keyframes=(), tags=(), tag_map=None):
+    """Content parts for the current conversation turn: the frames themselves (in memory, as image parts), one
+    short provenance line, and for each AprilTag seen the memory linked to it. The provenance line says what was
+    seen came from frames that were not kept."""
     from record_gaps import VIDEO_GAP_RULE
     parts = [{"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + base64.b64encode(b).decode()}}
              for b in keyframes]
+    parts += [{"type": "text", "text": line} for line in tag_lines(tags, tag_map)]
     span = [s["at"] for s in record.get("segments") or [] if s.get("at")]
     line = ("[SENSES - live video through your own eyes, %d frame(s)%s; keyframe %s, source %s. %s The frames "
             "themselves were not kept.]" % (record.get("frames", 0),

@@ -6,13 +6,16 @@ import io
 import json
 import threading
 import time
+import urllib.parse
 import uuid
 from http.server import ThreadingHTTPServer
 
 import numpy as np
 
+from native_apriltags import TagDetector
 from native_audio_runtime import NativeMind
 from native_audio_server import handler as audio_handler
+from native_sensory_tap import SensoryTap
 from native_video_runtime import RETAIN_FRAMES, SOFT_TOKENS, AppleStream, LiveSession
 
 MAX_IMAGE_BYTES = 6 * 1024 * 1024   # base64 must fit the shared handler's 8 MB request limit
@@ -43,8 +46,9 @@ def pcm16(data):
 
 
 class VideoService:
-    def __init__(self, mind, stream):
+    def __init__(self, mind, stream, tap=None, detector=None):
         self.mind, self.stream = mind, stream
+        self.tap, self.detector = tap, detector
         self.lock = threading.Lock()
         self.active = None
         self.expires = 0
@@ -87,8 +91,13 @@ class VideoService:
             if path == "/video/start":
                 if self.active:
                     raise BlockingIOError("A stream is already active")
+                on_embedding = None
+                if self.tap is not None:
+                    self.tap.start(body.get("feed") or "unknown")
+                    to_numpy = getattr(self.stream, "numpy", np.asarray)
+                    on_embedding = lambda kind, at, e, ref: self.tap.embedding(kind, at, to_numpy(e), ref)
                 session = LiveSession(self.mind, self.stream, body.get("instruction"),
-                                      int(body.get("retain_frames", RETAIN_FRAMES)))
+                                      int(body.get("retain_frames", RETAIN_FRAMES)), on_embedding=on_embedding)
                 session_id = uuid.uuid4().hex
                 self.active = (session_id, session)
                 self._arm()
@@ -103,7 +112,17 @@ class VideoService:
                 session.abort(); self._drop()
                 return {"ok": True}
             if path == "/video/frame":
-                result = session.frame(decode_image(body["image"]), at, int(body.get("soft_tokens", SOFT_TOKENS)))
+                rgb = decode_image(body["image"])
+                result = session.frame(rgb, at, int(body.get("soft_tokens", SOFT_TOKENS)))
+                tags = []
+                if self.detector is not None and self.detector.available:
+                    started = time.perf_counter()
+                    tags = self.detector.detect(rgb)
+                    result["tag_seconds"] = time.perf_counter() - started
+                    for tag in tags:
+                        if self.tap is not None:
+                            self.tap.tag(result["at"], tag, result["frame_ref"])
+                result["tags"] = [{k: t[k] for k in ("tag_id", "family", "decision_margin", "center", "pose")} for t in tags]
             elif path == "/video/audio":
                 result = session.audio(pcm16(body["audio"]), at)
             elif path == "/video/ask":
@@ -136,11 +155,21 @@ def handler(service):
 
     class Handler(base):
         def do_GET(self):
-            if self.path != "/health":
+            url = urllib.parse.urlsplit(self.path)
+            if url.path == "/tap" and service.tap is not None:
+                query = urllib.parse.parse_qs(url.query)
+                try:
+                    since, limit = int(query.get("since", ["0"])[0]), int(query.get("limit", ["256"])[0])
+                except ValueError:
+                    return self.reply(400, {"error": "Invalid tap query"})
+                return self.reply(200, service.tap.since(since, limit))
+            if url.path != "/health":
                 return self.reply(404, {"error": "Unknown endpoint"})
             self.reply(200, {"checkpoint_sha256": service.mind.sha, "native_video": True,
                              "soft_tokens_per_frame": SOFT_TOKENS, "retain_frames": RETAIN_FRAMES,
-                             "shared_audio_timeline": True, "raw_frames_retained": False})
+                             "shared_audio_timeline": True, "raw_frames_retained": False,
+                             "sensory_tap": service.tap is not None,
+                             "apriltags": bool(service.detector is not None and service.detector.available)})
 
     return Handler
 
@@ -150,11 +179,17 @@ def main():
     parser.add_argument("--mind", required=True)
     parser.add_argument("--expected-sha256", required=True)
     parser.add_argument("--port", type=int, default=8876)
+    parser.add_argument("--tap-events", type=int, default=4096, help="sensory tap ring size; 0 disables the tap")
+    parser.add_argument("--tap-tokens", action="store_true", help="keep every soft token in the tap, not only the mean")
+    parser.add_argument("--camera", type=float, nargs=4, metavar=("FX", "FY", "CX", "CY"), help="intrinsics for tag pose")
+    parser.add_argument("--tag-size", type=float, help="printed tag edge in metres, for tag pose")
     args = parser.parse_args()
     if args.port in (8840, 8844) or not 1024 <= args.port <= 65535:
         raise ValueError("Choose an unreserved loopback port")
     mind = NativeMind(args.mind, args.expected_sha256, "apple")
-    service = VideoService(mind, AppleStream(mind.backend))
+    tap = SensoryTap(args.tap_events, keep_tokens=args.tap_tokens) if args.tap_events else None
+    detector = TagDetector(intrinsics=args.camera, tag_size=args.tag_size)
+    service = VideoService(mind, AppleStream(mind.backend), tap, detector)
     server = ThreadingHTTPServer(("127.0.0.1", args.port), handler(service))
     server.daemon_threads = True
     try:

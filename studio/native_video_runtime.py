@@ -127,6 +127,9 @@ class AppleStream:
     def new_cache(self):
         return [PositionedKV(self.mx) for _ in self.model.language_model.model.layers]
 
+    def numpy(self, x):
+        return np.array(x.astype(self.mx.float32))
+
     def text(self, ids):
         return self.base.text(ids)
 
@@ -172,7 +175,9 @@ class LiveSession:
     questions that are answered then rolled back."""
 
     def __init__(self, mind, stream, instruction=None, retain_frames=RETAIN_FRAMES,
-                 retain_audio_tokens=RETAIN_AUDIO_TOKENS, clock=time.monotonic):
+                 retain_audio_tokens=RETAIN_AUDIO_TOKENS, clock=time.monotonic, on_embedding=None):
+        # on_embedding(kind, at, embeds, ref): the projected embeddings exactly as they enter the mind, for a tap.
+        self.on_embedding = on_embedding
         if not 1 <= int(retain_frames) <= 64 or not 0 <= int(retain_audio_tokens) <= 750:
             raise ValueError("Invalid retention window")
         self.mind, self.stream, self.tokenizer = mind, stream, mind.tokenizer
@@ -258,6 +263,7 @@ class LiveSession:
         segment = self._open("frame", at, self.boi, frame_ref=ref, height=int(x.shape[0]), width=int(x.shape[1]))
         embeds = self.stream.image(x, soft_tokens) if soft_tokens != SOFT_TOKENS else self.stream.image(x)
         self._forward(embeds, segment, vision=True)
+        self._tap("frame", at, embeds, ref)
         self.segments[segment]["visual_tokens"] = int(embeds.shape[1])
         self.pending_close = (self.eoi, segment)
         self.frames += 1
@@ -284,7 +290,9 @@ class LiveSession:
         while n:
             take = min(n, AUDIO_SPAN_TOKENS - span["audio_tokens"])
             frames = self.audio_tail[:take * FRAME].reshape(take, FRAME)
-            self._forward(self.stream.audio(frames), self.audio_span)
+            embeds = self.stream.audio(frames)
+            self._forward(embeds, self.audio_span)
+            self._tap("audio", at + span["audio_tokens"] * FRAME / SAMPLE_RATE, embeds, "span:%d" % self.audio_span)
             self.audio_tail = self.audio_tail[take * FRAME:].copy()
             span["audio_tokens"] += take
             self.audio_tokens += take
@@ -314,6 +322,13 @@ class LiveSession:
         span["audio_ref"] = "sha256:" + span.pop("digest").hexdigest()
         self.pending_close = (self.eoa, self.audio_span)
         self.audio_span = None
+
+    def _tap(self, kind, at, embeds, ref):
+        if self.on_embedding:
+            try:
+                self.on_embedding(kind, at, embeds, ref)
+            except Exception:
+                pass   # a consumer never affects what the mind sees
 
     def _count(self, kind):
         return sum(1 for s in self.segments.values() if s["kind"] == kind)

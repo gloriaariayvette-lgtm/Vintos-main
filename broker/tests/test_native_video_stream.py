@@ -2,6 +2,7 @@
 """Live frame timeline, cross-window eviction, rollback, sampling and provenance, with a synthetic backend only."""
 import base64
 import io
+import json
 import os
 from pathlib import Path
 import sys
@@ -224,3 +225,79 @@ check('stream inputs cover RTSP, HTTP and local webcams through ffmpeg',
 paced = list(sources.replay_source([frame(1)] * 3, 2, clock=lambda: 0., sleep=lambda s: None))
 check('public replay yields frames with capture times', len(paced) == 3)
 check('no file was written during the stream', not any(Path(scratch.name).iterdir()))
+
+# Sensory tap and AprilTags (fake detector; no frames or tags from any camera).
+from native_sensory_tap import SensoryTap, decode_vector
+from native_apriltags import TagDetector
+
+
+class Det:
+    def __init__(self, **kw): self.__dict__.update(kw)
+
+
+class FakeTags:
+    def detect(self, image, **kwargs):
+        assert image.dtype == np.uint8 and image.ndim == 2
+        good = Det(tag_id=7, tag_family=b'tag36h11', decision_margin=60., hamming=0, center=[10, 12],
+                   corners=[[0, 0], [1, 0], [1, 1], [0, 1]])
+        weak = Det(tag_id=8, tag_family=b'tag36h11', decision_margin=3., hamming=0, center=[1, 1], corners=[[0, 0]] * 4)
+        flipped = Det(tag_id=9, tag_family=b'tag36h11', decision_margin=80., hamming=1, center=[1, 1], corners=[[0, 0]] * 4)
+        return [good, weak, flipped]
+
+
+clock = [100.]
+tap = SensoryTap(max_events=5, clock=lambda: clock[0])
+service = VideoService(mind, backend, tap, TagDetector(backend=FakeTags()))
+start = service.dispatch('/video/start', {'feed': 'replay'})
+clock[0] = 101.5
+r = service.dispatch('/video/frame', {'session_id': start['session_id'], 'at': 1.0,
+                                      'image': base64.b64encode(png.getvalue()).decode()})
+check('tags are detected on the sampled frame; weak or bit-corrected reads are dropped',
+      [t['tag_id'] for t in r['tags']] == [7] and r['tags'][0]['family'] == 'tag36h11' and r['tags'][0]['pose'] is None)
+events = tap.since(0)['events']
+check('the tap holds the projected frame embedding and the tag event, timestamped',
+      [e['kind'] for e in events] == ['frame', 'tag'] and events[0]['space'] == 'aeon-12b/vision-proj'
+      and events[0]['feed'] == 'replay' and events[0]['ref'] == r['frame_ref'] and events[1]['tag_id'] == 7
+      and events[1]['ref'] == r['frame_ref'] and events[0]['dt'] is None and events[1]['dt'] == 0)
+check('tap vectors decode to the pooled embedding width', decode_vector(events[0]).shape == (1,))
+service.dispatch('/video/audio', {'session_id': start['session_id'], 'audio': base64.b64encode(b'\0\0' * 6400).decode()})
+check('audio embeddings join the same tap in their own space',
+      any(e['kind'] == 'audio' and e['space'] == 'aeon-12b/audio-proj' for e in tap.since(0)['events']))
+for _ in range(4):
+    service.dispatch('/video/frame', {'session_id': start['session_id'], 'image': base64.b64encode(png.getvalue()).decode()})
+page = tap.since(0)
+check('the ring is bounded and says how much it dropped', len(page['events']) == 5 and page['dropped'] > 0
+      and page['oldest'] == page['events'][0]['seq'] and tap.since(page['next'])['events'] == [])
+service.dispatch('/video/abort', {'session_id': start['session_id']})
+absent = TagDetector()
+absent.backend = None
+check('detection is off, not faked, when the library is absent', not absent.available and absent.detect(frame(1)) == [])
+try:
+    TagDetector(backend=FakeTags(), intrinsics=(500, 500, 320, 240)); raise AssertionError('pose without tag size')
+except ValueError:
+    pass
+check('pose needs intrinsics and the printed tag size', True)
+
+memory_dir = Path(scratch.name) / 'workspace' / 'memory'
+client.WORKSPACE = str(Path(scratch.name) / 'workspace')
+client.TAG_MAP = str(memory_dir / 'apriltag-memories.json')
+check('the tag map is created once with its how-to and never overwritten',
+      client.init_tag_map() and not client.init_tag_map() and client.load_tag_map() == {})
+(memory_dir / 'moments.jsonl').write_text(json.dumps({'id': 'm1', 'text': 'the first lantern'}) + '\n')
+tag_map = {'tag36h11:7': {'store': 'moments.jsonl', 'id': 'm1', 'label': 'lantern'},
+           'tag36h11:8': {'text': 'her words for this one'},
+           'tag36h11:9': {'store': 'moments.jsonl', 'id': 'missing'},
+           'tag36h11:10': {'store': '../../outside.json', 'id': 'x'}}
+hits = {t: client.tag_memory({'family': 'tag36h11', 'tag_id': t}, tag_map) for t in (7, 8, 9, 10, 11)}
+check('a tag returns exactly the memory record it is linked to', hits[7]['found'] and hits[7]['memory']['text'] == 'the first lantern'
+      and hits[8]['memory'] == {'text': 'her words for this one'})
+check('missing links and missing records are said plainly, never guessed', not hits[9]['found'] and 'not found' in hits[9]['note']
+      and not hits[11]['found'] and 'no memory' in hits[11]['note'])
+check('a store outside his memory folder is never read', not hits[10]['found'])
+tags = client.window_tags([dict(r, at=1.0)])
+parts = client.senses_block(record, [b'\xff\xd8x\xff\xd9'], tags, tag_map)
+check('the Senses block puts the linked memory beside the frames',
+      parts[0]['type'] == 'image_url' and 'the first lantern' in parts[1]['text'] and '(lantern)' in parts[1]['text']
+      and 'were not kept' in parts[-1]['text'])
+(memory_dir / 'moments.jsonl').unlink(); Path(client.TAG_MAP).unlink()
+check('nothing but the test fixtures was written', not any(memory_dir.iterdir()))
