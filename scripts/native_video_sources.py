@@ -62,10 +62,13 @@ def replay_source(frames, fps, clock=time.monotonic, sleep=time.sleep):
 
 
 def door_png_source(interval=1., read=None, clock=time.monotonic, sleep=time.sleep, limit=None):
-    """Poll the door service's PNG adapter. ``read`` defaults to door_camera_frame.read_camera from
-    ~/doorbell-voice; a missing frame (camera not live) is skipped, never replaced."""
+    """Poll the door service's PNG adapter. ``read`` defaults to door_camera_frame.read_camera from the
+    directory named by VINTOS_DOOR_ADAPTER_DIR; a missing frame (camera not live) is skipped, never replaced."""
     if read is None:
-        sys.path.insert(0, os.path.expanduser("~/doorbell-voice"))
+        folder = os.environ.get("VINTOS_DOOR_ADAPTER_DIR", "")
+        if not folder or not os.path.isdir(folder):
+            raise RuntimeError("Set VINTOS_DOOR_ADAPTER_DIR to the door service's adapter directory")
+        sys.path.insert(0, folder)
         from door_camera_frame import read_camera as read
     n = 0
     while limit is None or n < limit:
