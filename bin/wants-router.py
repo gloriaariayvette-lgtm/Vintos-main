@@ -368,8 +368,9 @@ def _maybe_scar_unfulfilled(want):
 # (the phone app's want screen) reads what actually exists instead of carrying a fixed copy that hides
 # a route or invents one. A capability added here is available to every reader on the next request.
 CAPABILITIES = [
-    {   # first: "write to my ambitions file" is not an email, and not fiction (12 November)
-        "keywords": ["ambitions file", "ambition file", "ambitions.json", "revise my ambition", "rewrite my ambition",
+    {   # first: "write to my ambitions file" is not an email, and not fiction (12 November). Only phrases that
+        # change the wording: a bare "ambitions file" also names reading it, and this entry is checked first (review).
+        "keywords": ["write to my ambition", "write into my ambition", "revise my ambition", "rewrite my ambition",
                      "edit my ambition", "update my ambition", "reword my ambition", "sentence in my ambition"],
         "action": "revise_ambition",
         "desc": "Finish or rewrite the wording of one of his own active ambitions, keeping the earlier wording",
@@ -1903,6 +1904,21 @@ def revise_ambition(want_text):
     earlier wording stays in that goal's history. Params may carry the wording; otherwise he writes it here."""
     sys.path.insert(0, SCRIPTS)
     import ambition_revise as _arv
+    # Review: only his own wants change his ambitions. A want read out of a letter, an email or a MoltBook pass
+    # carries someone else's words (and its plan may carry them as params); an unknown want fails closed.
+    try:
+        _rows = json.load(open(os.path.join(MEMORY, "current-wants.json")))
+        _rows = _rows if isinstance(_rows, list) else _rows.get("wants", [])
+        _wid = os.environ.get("STEP_WANT_ID", "")
+        _want = next((w for w in _rows if isinstance(w, dict) and _wid and w.get("id") == _wid), None)
+    except Exception:
+        _want = None
+    if _want is None:
+        log("revise_ambition refused: the want it serves is not in his wants")
+        return False
+    if _arv.from_outside(_want):
+        log("revise_ambition refused: a want from %s does not rewrite his ambitions" % _want.get("source"))
+        return False
     try:
         params = json.loads(os.environ.get("STEP_PARAMS", "{}") or "{}")
     except ValueError:

@@ -30,10 +30,15 @@ _CREATIVE = re.compile(
 )
 
 # Changing what his own ambitions say (12 November: he tried creative_write to finish an ambition's sentence)
+# Review: the contract forces a revise_ambition step, so only an act on HIS ambition's wording counts. Merely naming
+# the file ("read my ambitions file"), an update given to someone ("update Gloria about my ambitions", "an update on
+# my ambitions") or a story about ambition must not turn into a rewrite of his ambitions.
 _AMBITION_EDIT = re.compile(
-    r"\bambitions?(?:\.json| file)\b|"
-    r"\b(?:revise|rewrite|edit|update|reword|amend)\b.{0,40}\bambitions?\b|"
-    r"\b(?:finish|complete|end)\b.{0,30}\bsentence\b.{0,40}\bambitions?\b",
+    r"(?<!\ban )(?<!\bthe )(?<!\bno )\b(?:revise|rewrite|edit|update|reword|amend)\s+"
+    r"(?:(?!gloria\b|her\b|him\b|them\b|about\b|on\b|with\b|for\b)[\w'’-]+\s+){0,5}?"
+    r"(?:my|his)\s+(?:own\s+)?ambitions?\b|"
+    r"\b(?:in)?to\s+(?:my|his)\s+(?:own\s+)?ambitions?(?:\.json|\s+file)\b|"
+    r"\b(?:finish|complete)\b.{0,30}\bsentences?\b.{0,40}\b(?:my|his)\s+(?:own\s+)?ambitions?\b",
     re.I,
 )
 

@@ -66,6 +66,20 @@ def is_active(goal):
     return str((goal or {}).get("progress", "")).strip().lower() != "completed"
 
 
+# Wants that carry someone else's words: read out of mail (want_email.read_mail), Grok's letters (grok_letters) or a
+# MoltBook pass (vintos-moltbook). They never rewrite his ambitions (review, 12 November).
+OUTSIDE_SOURCES = ("email", "grok-letter", "moltbook")
+
+
+def from_outside(want):
+    w = want if isinstance(want, dict) else {}
+    if str(w.get("source", "")).strip().lower() in OUTSIDE_SOURCES:
+        return True
+    if str(w.get("source_event_id", "")).startswith("email:"):
+        return True
+    return any(isinstance(r, dict) and r.get("kind") == "email" for r in (w.get("source_refs") or []))
+
+
 def find_goal(goals, ref):
     """Index of the active goal `ref` names: its 1-based number among the active goals, or words from its goal
     text. None when nothing or more than one goal matches."""

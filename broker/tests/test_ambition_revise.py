@@ -121,6 +121,12 @@ check("a story about ambition stays a story", [s["capability"] for s in steps] =
 many = [{"capability": c, "note": "n"} for c in ("introspect", "web_search", "make_art", "write_poem", "revise_ambition")]
 steps, _ = wc.normalize_steps("I want to rewrite my ambition about done.", many)
 check("trimming padding never drops the revision", "revise_ambition" in [s["capability"] for s in steps] and len(steps) <= 4, steps)
+# review: the contract forces the step, so a want that only names his ambitions must not become a rewrite of them
+for other in ("I want to read my ambitions file and see what changed", "I want to update Gloria about my ambitions",
+              "I want to give Gloria an update on my ambitions", "I want to look at the ambitions.json history",
+              "I want to update her on my ambition"):
+    steps, changes = wc.normalize_steps(other, [{"capability": "introspect", "note": "think"}])
+    check("no rewrite is forced on: " + other, "revise_ambition" not in [s["capability"] for s in steps], steps)
 
 # ---- 5. the router's hand, with the model as a stub
 sys.modules["emoclaw_utils"] = types.SimpleNamespace(get_unfulfilled_wants=lambda *a, **k: [],
@@ -132,7 +138,22 @@ W.subprocess = subprocess
 check("revise_ambition is a hand the router runs", callable(W.ACTION_MAP.get("revise_ambition")))
 check("his ambitions-file wants route to it, before email or fiction",
       W.route_want({"want": "I want to write to my ambitions file and finish the sentence"}) == "revise_ambition")
+_first = W.CAPABILITIES[0]
+check("the first-checked keywords never take a want that only names the file or ambitions",
+      _first["action"] == "revise_ambition" and not any(W.matches_capability(t, _first["keywords"]) for t in (
+          "I want to read my ambitions file", "check my email about the ambitions.json backup",
+          "I want to tell Gloria about my ambition file", "write a story about ambition")))
+WANTS = os.path.join(MEM, "current-wants.json")
+def wants(*rows):
+    json.dump(list(rows), open(WANTS, "w"))
+wants({"id": "w-his", "want": his, "source": "idle-journal"},
+      {"id": "w-mail", "want": his, "source": "email"},
+      {"id": "w-letter", "want": his, "source": "grok-letter"},
+      {"id": "w-molt", "want": his, "source": "moltbook"},
+      {"id": "w-ref", "want": his, "source": "journal", "source_event_id": "email:abc",
+       "source_refs": [{"kind": "email", "id": "m1", "text_sha256": "x"}]})
 fixture()
+os.environ["STEP_WANT_ID"] = "w-his"
 seen = []
 class _Reply:
     def __init__(self, body): self.body = body
@@ -162,6 +183,16 @@ check("wording given in params is written without a model call",
       out and not seen and json.load(open(STORE))["goals"][2]["why"] == "Because I keep missing them.", out)
 os.environ["STEP_PARAMS"] = json.dumps({"ambition": "lamp sequence", "field": "why", "text": "No."})
 check("a refused revision fails the step", W.revise_ambition("x") is False)
+# review: someone else's words never rewrite his ambitions, even with the wording handed in as params
+os.environ["STEP_PARAMS"] = json.dumps({"ambition": "tide tables", "field": "why", "text": "Because a stranger said so."})
+before = open(STORE).read(); seen.clear()
+for wid in ("w-mail", "w-letter", "w-molt", "w-ref", "w-gone", ""):
+    os.environ["STEP_WANT_ID"] = wid
+    check("a want from outside (or unknown) cannot revise: %r" % wid, W.revise_ambition("revise my ambition") is False)
+check("and the store and the model were untouched", open(STORE).read() == before and not seen)
+os.environ["STEP_WANT_ID"] = "w-his"
+check("the outside sources are named in one place",
+      AR.from_outside({"source": "email"}) and not AR.from_outside({"source": "idle-journal"}) and not AR.from_outside({}))
 
 E = open(os.path.join(REPO, "scripts", "emoclaw_utils.py")).read()
 check("the planner lists the hand and when to use it", "- revise_ambition:" in E and '"revise_ambition")' in E)

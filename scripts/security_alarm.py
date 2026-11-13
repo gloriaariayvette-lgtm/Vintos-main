@@ -401,9 +401,12 @@ def drift_notices(state, events, current, now):
         if row is None:
             release, path, sha = _drift_parts(key)
             drift[key] = {'path': path, 'sha': sha, 'release': release, 'first_seen': now}
+            # A drift that returns (restored then patched again, or reverted to earlier content) is a new change:
+            # the earlier episode's hourly cooldown and delivery receipt must not swallow it (review, 12 November).
+            state.get('last_alert', {}).pop(key, None)
             out.append((key, kind, why))
         elif not row.get('announced'):
-            if state.get('delivered', {}).get(key):
+            if state.get('delivered', {}).get(key, -1e20) >= row['first_seen']:
                 row['announced'] = state['delivered'][key]
             elif key not in pending_keys:
                 out.append((key, kind, why))

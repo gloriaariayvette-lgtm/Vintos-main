@@ -86,6 +86,21 @@ class DriftOnce(unittest.TestCase):
         self.tick(DAY + 2 * HOUR, snap(**{'/w/a.py': 'good'}))
         self.assertEqual(len(self.sent), 2)        # nothing unresolved, no digest
 
+    def test_a_drift_that_returns_within_the_hour_is_loud_again(self):
+        # review: the earlier episode's hourly cooldown and delivery receipt swallowed the return for good
+        self.tick(0, snap(**{'/w/a.py': 'h1'}))
+        self.tick(600, snap(**{'/w/a.py': 'good'}))
+        self.tick(1200, snap(**{'/w/a.py': 'h1'}))
+        for h in range(1, 20): self.tick(h * HOUR, snap(**{'/w/a.py': 'h1'}))
+        self.assertEqual(len(self.sent), 2, [k['message'] for k in self.sent])
+
+    def test_a_revert_to_earlier_content_is_loud(self):
+        self.tick(0, snap(**{'/w/a.py': 'h1'}))
+        self.tick(60, snap(**{'/w/a.py': 'h2'}))
+        self.tick(120, snap(**{'/w/a.py': 'h1'}))
+        for h in range(1, 20): self.tick(h * HOUR, snap(**{'/w/a.py': 'h1'}))
+        self.assertEqual(len(self.sent), 3, [k['message'] for k in self.sent])
+
     def test_undelivered_first_alert_is_retried_until_delivered(self):
         self.ok = False
         s = snap(**{'/w/a.py': 'h1'})
