@@ -27,6 +27,11 @@ AUDIO_GAP_RULE = ("The audio record is a short transcript and measured acoustics
                   "A detail absent from it was not captured in the record. Do not infer a mood or invent "
                   "an earlier memory to explain the gap, and do not flag a detail solely because this short record omits it.")
 
+VIDEO_GAP_RULE = ("The video record is a timeline of frame references and source hashes, not the frames. A detail "
+                  "that is not in the record was not captured: say so plainly. Never invent what a frame showed, "
+                  "and never explain the gap with an earlier memory; do not flag a detail you saw in the live frames "
+                  "solely because this short record omits it.")
+
 
 def media_line(entry, cap=600):
     """The media note of a ledger entry as one marked line, or ''."""

@@ -1,0 +1,168 @@
+#!/usr/bin/env python3
+"""Explicitly started loopback video stream service; never downloads, stores frames or changes a route."""
+import argparse
+import base64
+import io
+import json
+import threading
+import time
+import uuid
+from http.server import ThreadingHTTPServer
+
+import numpy as np
+
+from native_audio_runtime import NativeMind
+from native_audio_server import handler as audio_handler
+from native_video_runtime import RETAIN_FRAMES, SOFT_TOKENS, AppleStream, LiveSession
+
+MAX_IMAGE_BYTES = 6 * 1024 * 1024   # base64 must fit the shared handler's 8 MB request limit
+MAX_PIXELS = 4096 * 4096
+IDLE_SECONDS = 30
+
+
+def decode_image(data):
+    """A JPEG or PNG frame, decoded in memory only."""
+    raw = base64.b64decode(data, validate=True)
+    if not raw or len(raw) > MAX_IMAGE_BYTES:
+        raise ValueError("Frame exceeds the request budget")
+    if not (raw.startswith(b"\xff\xd8") or raw.startswith(b"\x89PNG\r\n\x1a\n")):
+        raise ValueError("Expected a JPEG or PNG frame")
+    from PIL import Image
+    Image.MAX_IMAGE_PIXELS = MAX_PIXELS
+    with Image.open(io.BytesIO(raw)) as image:
+        if image.width * image.height > MAX_PIXELS:
+            raise ValueError("Frame exceeds the pixel budget")
+        return np.asarray(image.convert("RGB"), dtype=np.uint8)
+
+
+def pcm16(data):
+    raw = base64.b64decode(data, validate=True)
+    if not raw or len(raw) % 2 or len(raw) > 8 * 16000 * 2:
+        raise ValueError("Expected mono PCM16 at 16 kHz, at most eight seconds per packet")
+    return np.frombuffer(raw, dtype="<i2").astype(np.float32) / 32768
+
+
+class VideoService:
+    def __init__(self, mind, stream):
+        self.mind, self.stream = mind, stream
+        self.lock = threading.Lock()
+        self.active = None
+        self.expires = 0
+        self._timer = None
+
+    def _drop(self):
+        self.active = None
+        if self._timer:
+            self._timer.cancel()
+            self._timer = None
+
+    def _arm(self):
+        self.expires = time.monotonic() + IDLE_SECONDS
+        if self._timer:
+            self._timer.cancel()
+        self._timer = threading.Timer(IDLE_SECONDS + .05, self._reap)
+        self._timer.daemon = True
+        self._timer.start()
+
+    def _reap(self):
+        with self.lock:
+            self.expire()
+
+    def expire(self):
+        if self.active and time.monotonic() > self.expires:
+            self.active[1].abort()
+            self._drop()
+
+    def close(self):
+        with self.lock:
+            if self.active:
+                self.active[1].abort()
+            self._drop()
+
+    def dispatch(self, path, body, on_text=None):
+        if not self.lock.acquire(blocking=False):
+            raise BlockingIOError("Inference is busy")
+        try:
+            self.expire()
+            if path == "/video/start":
+                if self.active:
+                    raise BlockingIOError("A stream is already active")
+                session = LiveSession(self.mind, self.stream, body.get("instruction"),
+                                      int(body.get("retain_frames", RETAIN_FRAMES)))
+                session_id = uuid.uuid4().hex
+                self.active = (session_id, session)
+                self._arm()
+                return {"session_id": session_id, "soft_tokens_per_frame": SOFT_TOKENS,
+                        "retain_frames": session.retain_frames, "audio_sample_rate": 16000}
+            if not self.active or body.get("session_id") != self.active[0]:
+                raise ValueError("Unknown or expired stream")
+            session = self.active[1]
+            at = body.get("at")
+            at = None if at is None else float(at)
+            if path == "/video/abort":
+                session.abort(); self._drop()
+                return {"ok": True}
+            if path == "/video/frame":
+                result = session.frame(decode_image(body["image"]), at, int(body.get("soft_tokens", SOFT_TOKENS)))
+            elif path == "/video/audio":
+                result = session.audio(pcm16(body["audio"]), at)
+            elif path == "/video/ask":
+                result = session.ask(str(body["question"]), int(body.get("max_tokens", 128)),
+                                     float(body.get("temperature", 0)), on_text)
+            elif path == "/video/finish":
+                window = session.window()
+                session.abort(); self._drop()
+                return {"ok": True, "window": window, "raw_frames_retained": False}
+            else:
+                raise KeyError("Unknown endpoint")
+            self._arm()
+            return dict(result, raw_frames_retained=False)
+        finally:
+            self.lock.release()
+
+
+class _Health:
+    """Adapter so the audio candidate's HTTP handler (stream emitter, error mapping, no logging) is reused."""
+    def __init__(self, service):
+        self.service = service
+        self.mind = service.mind
+
+    def dispatch(self, path, body, on_text=None):
+        return self.service.dispatch(path, body)
+
+
+def handler(service):
+    base = audio_handler(_Health(service))
+
+    class Handler(base):
+        def do_GET(self):
+            if self.path != "/health":
+                return self.reply(404, {"error": "Unknown endpoint"})
+            self.reply(200, {"checkpoint_sha256": service.mind.sha, "native_video": True,
+                             "soft_tokens_per_frame": SOFT_TOKENS, "retain_frames": RETAIN_FRAMES,
+                             "shared_audio_timeline": True, "raw_frames_retained": False})
+
+    return Handler
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--mind", required=True)
+    parser.add_argument("--expected-sha256", required=True)
+    parser.add_argument("--port", type=int, default=8876)
+    args = parser.parse_args()
+    if args.port in (8840, 8844) or not 1024 <= args.port <= 65535:
+        raise ValueError("Choose an unreserved loopback port")
+    mind = NativeMind(args.mind, args.expected_sha256, "apple")
+    service = VideoService(mind, AppleStream(mind.backend))
+    server = ThreadingHTTPServer(("127.0.0.1", args.port), handler(service))
+    server.daemon_threads = True
+    try:
+        server.serve_forever()
+    finally:
+        service.close()
+        server.server_close()
+
+
+if __name__ == "__main__":
+    main()
