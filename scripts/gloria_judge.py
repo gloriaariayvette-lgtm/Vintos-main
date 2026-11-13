@@ -248,7 +248,10 @@ def problem(rec):
         return "reason_contradicts_verdict" if reason in CODES else "unlisted_reason"
     if codes is not None and not (isinstance(codes, list) and all(isinstance(c, str) for c in codes)):
         return "bad_codes"
-    if any(c in CODES and c not in REASONS_FOR[verdict] + MODIFIERS for c in (codes or [])):
+    allowed = REASONS_FOR[verdict] + MODIFIERS
+    if verdict == "NOT_JUDGEABLE" and reason == "his_move_not_delivered":
+        allowed += REASONS_FOR["NO"]      # rule 5 is exactly "his move not made and her reply did not show it"
+    if any(c in CODES and c not in allowed for c in (codes or [])):
         return "codes_contradict_verdict"
     if rec.get("confidence") is not None and rec.get("confidence") not in CONFIDENCE:
         return "bad_confidence"
@@ -285,7 +288,8 @@ def normalize(j):
     if verdict == "NO" and adherence != "delivered":
         # rule 5: a move he did not make (or made only in part, or whose making is not said) is his adherence
         # failure, never her NO - when the NO is itself a NO (its own reason, no other verdict's code)
-        why = problem(dict(rec, adherence="delivered"))
+        # (a NO that itself lists his_move_not_delivered says the same rule-5 thing, not another verdict)
+        why = problem(dict(rec, adherence="delivered", codes=[c for c in codes if c != "his_move_not_delivered"]))
         if why:
             return invalid(why)
         reason = "his_move_not_delivered"

@@ -73,6 +73,18 @@ serve(b"".join(b"data:" + json.dumps({"choices": [{"delta": {"content": t}}]}).e
                for t in ("I stopped ", "circling it.")) + b"data:[DONE]\r\n\r\n")
 out, _ = G.run_primary("system", "prompt")
 check("a stream framed 'data:' without the space, CRLF lines, is still a stream", out == "I stopped circling it.", repr(out))
+bom_sse = b"\xef\xbb\xbf" + b"".join(b"data: " + json.dumps({"choices": [{"delta": {"content": t}}]}).encode() + b"\r\n\r\n"
+                             for t in ("I stopped ", "circling it.")) + b"data: [DONE]\r\n\r\n"
+serve(bom_sse)
+out, _ = G.run_primary("system", "prompt")
+check("a stream opening with a UTF-8 BOM keeps its first event (CRLF too)", out == "I stopped circling it.", repr(out))
+serve(b"\xef\xbb\xbf" + whole)
+out, _ = G.run_primary("system", "prompt")
+check("a whole reply opening with a UTF-8 BOM is still read", out == PROSE, repr(out))
+box = [None]
+serve(bom_sse)
+G.stream_ghost([{"role": "user", "content": "x"}], {"id": "more_brazen", "label": "more brazen"}, box, 0)
+check("a ghost lean streamed behind a BOM keeps its first event", box[0] and box[0]["output"] == "I stopped circling it.", box)
 serve(b"data: [DONE]\n\n")
 out, _ = G.run_primary("system", "prompt")
 check("a real stream that carried no words stays empty (no whole-reply guess)", out == "", repr(out))

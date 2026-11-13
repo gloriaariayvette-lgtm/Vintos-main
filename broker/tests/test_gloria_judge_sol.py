@@ -546,6 +546,31 @@ class SonnetTransport(unittest.TestCase):
                 self.assertEqual((got['verdict'], got['reason'], got['status']), (verdict, reason, 'ok'))
                 self.assertEqual(GJ.problem(got), '')
 
+    def test_his_undelivered_move_keeps_its_receipt_and_adherence(self):
+        """13 November re-review: under rule 5 her reply did not show the difference on a move he did not (fully)
+        make, so a NOT_JUDGEABLE his_move_not_delivered that also lists not_shown / deflected / declined, or a NO
+        that lists his_move_not_delivered, is that rule said plainly - not a contradiction. It stays his adherence
+        failure, with his adherence kept, never "invalid"."""
+        base = {'reason': 'his_move_not_delivered', 'confidence': 'high'}
+        for raw in (dict(base, verdict='NOT_JUDGEABLE', codes=['his_move_not_delivered', 'not_shown'], his_adherence='partly'),
+                    dict(base, verdict='NOT_JUDGEABLE', codes=['his_move_not_delivered', 'deflected', 'long_gap'],
+                         his_adherence='not_delivered'),
+                    {'verdict': 'NO', 'reason': 'not_shown', 'codes': ['not_shown', 'his_move_not_delivered'],
+                     'his_adherence': 'partly', 'confidence': 'medium'}):
+            with self.subTest(raw=raw):
+                self.reply = self.answer(raw)
+                got = GJ.judge(self.packet)
+                self.assertEqual((got['verdict'], got['reason'], got['status'], got['adherence']),
+                                 ('NOT_JUDGEABLE', 'his_move_not_delivered', 'ok', raw['his_adherence']))
+        for raw in (dict(base, verdict='NOT_JUDGEABLE', codes=['no_her_reply', 'not_shown'], reason='no_her_reply'),
+                    {'verdict': 'NO', 'reason': 'not_shown', 'codes': ['not_shown', 'his_move_not_delivered'],
+                     'his_adherence': 'delivered'}):
+            with self.subTest(still_invalid=raw):
+                self.reply = self.answer(raw)
+                got = GJ.judge(self.packet)
+                self.assertEqual((got['verdict'], got['reason'], got['detail']),
+                                 ('NOT_JUDGEABLE', 'invalid', 'codes_contradict_verdict'))
+
     def test_no_key_or_paused_calls_send_nothing(self):
         with patch.dict(os.environ, ANTHROPIC_API_KEY=''):
             got = GJ.judge(self.packet)
