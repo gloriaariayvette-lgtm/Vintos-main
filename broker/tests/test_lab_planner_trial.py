@@ -231,7 +231,7 @@ class FailOpen(Base):
             os.environ.pop('LAB_PLANNER_TRIAL_URL', None)
 
     def test_a_check_that_breaks_falls_back(self):
-        with patch.object(T, '_ask', Mock(return_value=FIRST)), patch.object(T, 'check', Mock(side_effect=KeyError('x'))):
+        with patch.object(T, '_ask', Mock(return_value=FIRST)), patch.object(T, 'explain', Mock(side_effect=KeyError('x'))):
             ask = Mock(return_value=FIRST)
             I.turn('', ask=ask, execute=Mock(return_value=OUT))
         self.assertEqual(ask.call_count, 1)
@@ -248,7 +248,8 @@ class Logging(Base):
         for private in ('fixture', 'RT beside', 'SMILES', 'pubchem', 'prediction'):
             self.assertNotIn(private, text)
         allowed = {'at', 'kind', 'turn', 'proposer', 'replan', 'accepted', 'trial_s', 'reason', 'error', 'live_s',
-                   'calls', 'acted_on', 'outcome', 'state', 'repeat', 'new_output', 'answered'}
+                   'calls', 'acted_on', 'outcome', 'state', 'repeat', 'new_output', 'answered', 'stage',
+                   'first_reason'}
         for row in trial_rows():
             self.assertLessEqual(set(row), allowed)
 
@@ -260,6 +261,118 @@ class Logging(Base):
         turn = trial_rows('turn')[-1]
         self.assertTrue(turn['outcome'].startswith('error:'))
         self.assertEqual(turn['acted_on'], 'live')
+
+
+class Worm(Base):
+    """LAB_PLANNER_TRIAL=c1-worm: the learned planner with its wrapper. Craft (its history at the end of the prompt),
+    Lessons (worked examples from planner-worm/lessons.json), Witness (the same Lab rules), Compass (one retry told
+    why, in the Lab's re-plan words; then the current model)."""
+    def setUp(self):
+        super().setUp()
+        switch('c1-worm')
+        if os.path.exists(T.LESSONS):
+            os.remove(T.LESSONS)
+
+    def test_wrapper_an_unreadable_retry_leaves_the_current_model_planning(self):
+        """labloop w3 final f59c8908c55f467f: a retry with a trailing comma the Lab's lenient parser would repair."""
+        trailing = FIRST[:-1] + ', "x": [1, 2,]}'
+        ask = Mock(return_value=OTHER)
+        with patch.object(T, '_ask', Mock(side_effect=['prose', trailing])) as trial:
+            I.turn('', ask=ask, execute=Mock(return_value=OUT))
+        self.assertEqual((trial.call_count, ask.call_count), (2, 1))
+        call, = trial_rows('call')
+        self.assertEqual((call['accepted'], call['first_reason'], call['reason']), (False, 'unreadable', 'unreadable'))
+
+    def test_wrapper_an_experiment_named_as_a_key_is_not_offered_and_retried(self):
+        """labloop w3 final e1d315dd017b83ba: request {"fold": {...}} names no experiment under "experiment"."""
+        unnamed = choice('experiment', {'fold': {'parameters': {'sequence': 'HPHP'}}})
+        ask = Mock(return_value=OTHER)
+        with patch.object(T, '_ask', Mock(side_effect=[unnamed, FIRST])) as trial:
+            I.turn('', ask=ask, execute=Mock(return_value=OUT))
+        ask.assert_not_called()
+        self.assertIn('no experiment is named under "experiment"', trial.call_args_list[1].args[2])
+        call, = trial_rows('call')
+        self.assertEqual((call['accepted'], call['first_reason']), (True, 'not_offered'))
+
+    def test_wrapper_rules_read_the_call_alone(self):
+        task = {'tools': {'experiments': {'fold': {}}, 'instruments': {'skills': {'reference_compare': {}}}}}
+        prompt = json.dumps(task) + '\nNow plan.'
+        self.assertEqual(T.wrapper_verdict(prompt, '{"route": "experiment", "request": {"experiment": "fold"}}',
+                                           {'route': 'experiment', 'request': {'experiment': 'fold'}}), ('', ''))
+        self.assertEqual(T.wrapper_verdict(prompt, '{"route": "experiment", "request": {"experiment": "protein"}}',
+                                           {'route': 'experiment', 'request': {'experiment': 'protein'}})[0], 'not_offered')
+        self.assertEqual(T.wrapper_verdict(prompt, '{"route": "instrument", "request": {"skill": "docker"}}',
+                                           {'route': 'instrument', 'request': {'skill': 'docker'}})[0], 'not_offered')
+        self.assertEqual(T.wrapper_verdict(prompt, '{"route": "finish",}', {'route': 'finish'})[0], 'unreadable')
+
+    def test_a_refused_proposal_is_asked_once_more_with_the_reason_and_then_used(self):
+        ask = Mock(return_value=OTHER)
+        execute = Mock(return_value=OUT)
+        with patch.object(T, '_ask', Mock(side_effect=['not json at all', FIRST])) as trial:
+            row = I.turn('', ask=ask, execute=execute)
+        self.assertEqual(trial.call_count, 2)
+        ask.assert_not_called()
+        self.assertEqual(execute.call_args.args[1]['name'], 'fixture')
+        first_prompt, second_prompt = trial.call_args_list[0].args[2], trial.call_args_list[1].args[2]
+        self.assertIn('YOUR HISTORY TOOL', first_prompt)
+        self.assertIn('YOUR LAST PROPOSAL WAS NOT RUN (unreadable)', second_prompt)
+        self.assertTrue(second_prompt.startswith(first_prompt))
+        call, = trial_rows('call')
+        self.assertEqual((call['accepted'], call['stage'], call['first_reason'], call['reason']),
+                         (True, 2, 'unreadable', 'ok'))
+        with open(C.MODEL_CALLS) as f:
+            self.assertEqual([json.loads(l).get('trial') for l in f], ['c1-worm', 'c1-worm'])
+
+    def test_refused_twice_the_current_model_plans_exactly_as_without_the_switch(self):
+        ask = Mock(return_value=OTHER)
+        with patch.object(T, '_ask', Mock(side_effect=['prose', choice('experiment', {'experiment': 'teleport'})])) as trial:
+            row = I.turn('', ask=ask, execute=Mock(return_value=OUT))
+        self.assertEqual((trial.call_count, ask.call_count), (2, 1))
+        call, = trial_rows('call')
+        self.assertEqual((call['accepted'], call['first_reason'], call['reason']), (False, 'unreadable', 'not_offered'))
+        self.assertIn('live_s', call)
+
+    def test_the_retry_names_the_refused_operation_in_the_labs_words(self):
+        switch(None)
+        I.turn('', ask=Mock(return_value=FIRST), execute=Mock(return_value=OUT))   # the investigation's first step
+        switch('c1-worm')
+        with patch.object(T, '_ask', Mock(side_effect=[FIRST, OTHER])) as trial:
+            I.turn('', ask=Mock(return_value=OTHER), execute=Mock(return_value=OUT))
+        first, second = trial.call_args_list[0].args[2], trial.call_args_list[1].args[2]
+        self.assertIn('Completed in this investigation', first)          # Craft saw the completed step
+        self.assertIn('NOT RUN (repeat_within)', second)
+        self.assertIn('Do NOT return this operation again', second)
+        call, = trial_rows('call')
+        self.assertEqual((call['first_reason'], call['stage']), ('repeat_within', 2))
+
+    def test_lessons_reach_the_system_prompt_only_when_the_file_is_there(self):
+        with patch.object(T, '_ask', Mock(return_value=FIRST)) as trial:
+            I.turn('', ask=Mock(return_value=OTHER), execute=Mock(return_value=OUT))
+        self.assertNotIn('Worked examples', trial.call_args.args[1])
+        os.makedirs(os.path.dirname(T.LESSONS), exist_ok=True)
+        with open(T.LESSONS, 'w') as f:
+            json.dump({'examples': [{'situation': 'Mid-investigation', 'refused': '{"route": "source"}',
+                                     'instead': '{"route": "read_output"}'}]}, f)
+        C._atomic(I._path('investigations.json'), {'investigations': []})
+        with patch.object(T, '_ask', Mock(return_value=FIRST)) as trial:
+            I.turn('', ask=Mock(return_value=OTHER), execute=Mock(return_value=OUT))
+        self.assertIn('Worked examples from this Lab', trial.call_args.args[1])
+        os.remove(T.LESSONS)
+
+    def test_plain_c1_is_still_asked_once(self):
+        switch('c1')
+        ask = Mock(return_value=OTHER)
+        with patch.object(T, '_ask', Mock(return_value='prose')) as trial:
+            I.turn('', ask=ask, execute=Mock(return_value=OUT))
+        self.assertEqual((trial.call_count, ask.call_count), (1, 1))
+        self.assertNotIn('YOUR HISTORY TOOL', trial.call_args.args[2])
+
+    def test_a_down_server_on_the_retry_is_down_too(self):
+        ask = Mock(return_value=OTHER)
+        with patch.object(T, '_ask', Mock(side_effect=['prose', TimeoutError('timed out')])):
+            I.turn('', ask=ask, execute=Mock(return_value=OUT))
+        self.assertEqual(ask.call_count, 1)
+        self.assertEqual(trial_rows('call')[0]['reason'], 'trial_down')
 
 
 class Report(unittest.TestCase):
