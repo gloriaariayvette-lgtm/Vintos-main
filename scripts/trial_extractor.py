@@ -189,6 +189,20 @@ def _fresh_date(source_date, today=None):
         return False
 
 
+def _newest_date(dates):
+    """The newest readable source date (YYYY-MM-DD) among a capacity's instances, or None. A promotion is stamped
+    with it: add_entry used to stamp last_seen=now, so a capacity promoted from a backlog of old sessions looked
+    current to narrative identity and to retention (review 2026-11-14)."""
+    from datetime import date as _d
+    out = []
+    for s in dates:
+        try:
+            out.append(_d.fromisoformat(str(s)[:10]))
+        except Exception:
+            pass
+    return max(out).isoformat() if out else None
+
+
 def write_capacities(caps, source, source_date):
     """Accumulate capacities. Promote to the self-model at 2 distinct source dates.
 
@@ -226,6 +240,10 @@ def write_capacities(caps, source, source_date):
         added += 1
         dates = {i["source_date"] for i in rec["instances"]}
         if len(dates) >= 2 and not rec["promoted"]:
+            newest = _newest_date(dates)
+            if newest is None:
+                print(f"[Extractor] Capacity {key} not promoted: no readable evidence date")
+                continue
             try:
                 import sys as _cs
                 _cs.path.insert(0, os.path.dirname(__file__))
@@ -237,6 +255,7 @@ def write_capacities(caps, source, source_date):
                     source="trial-extractor",
                     entry_type="positive",
                     occurrence_id="capacity:%s:%s" % (key, source_date),
+                    seen_at=newest,   # the newest evidence, never the time the backlog was read
                 )
                 rec["promoted"] = True
                 rec["promoted_tendency"] = rec["instances"][-1]["description"]
@@ -257,6 +276,7 @@ def write_capacities(caps, source, source_date):
                     source="trial-extractor",
                     entry_type="positive",
                     occurrence_id="capacity:%s:%s" % (key, source_date),
+                    seen_at=source_date,   # the session's date, not the time it was read
                 )
                 print(f"[Extractor] Capacity {key} reinforced ({len(dates)} dates)")
             except Exception as _ce:

@@ -76,13 +76,40 @@ def _revise(projection, entry_id, old, new, reason, source):
     except Exception:
         pass
 
-def add_entry(trigger, tendency, confidence=0.3, source="causality", entry_type="positive", occurrence_id=None, quote=None, kind=None):
+# Evidence older than this is not current: it does not reinforce an existing entry, and an entry it forms carries its
+# real date, so retention and narrative identity see it as old (review 2026-11-14).
+EVIDENCE_FRESH_DAYS = 30
+
+
+def _evidence_time(seen_at, now):
+    """When the evidence happened. None means now (a caller reporting something that just happened). A date or
+    timestamp in the future is clamped to now; an unreadable one raises, so the caller's own except reports it
+    instead of the entry being stamped with now."""
+    if seen_at is None:
+        return now
+    if isinstance(seen_at, datetime):
+        t = seen_at
+    else:
+        t = datetime.fromisoformat(str(seen_at)[:26])
+    if t.tzinfo is not None:
+        t = t.astimezone().replace(tzinfo=None)
+    return min(t, now)
+
+
+def add_entry(trigger, tendency, confidence=0.3, source="causality", entry_type="positive", occurrence_id=None, quote=None, kind=None,
+              seen_at=None):
     """Add or reinforce a causal self-model entry.
     entry_type: positive (what he does) | negative (what he resists/avoids)
     review 107: occurrence_id (a turn or ledger id) and the verbatim quote it rests on are kept on the
     entry's evidence list. review 150: kind says what this is - authored_preference, dated_observation,
     tentative_inference, deployed_capability - derived from the source when not given.
+    seen_at: when the evidence happened (default now). A promotion from backlog evidence used to be stamped
+    last_seen=now, so months-old evidence looked current; last_seen is now the evidence's own time, never moved
+    backwards, and evidence older than EVIDENCE_FRESH_DAYS does not reinforce (review 2026-11-14).
     """
+    now = datetime.now()
+    seen = _evidence_time(seen_at, now)
+    stale = (now - seen).days > EVIDENCE_FRESH_DAYS
     data = load_model()
     entries = data["entries"]
     receipts = data.setdefault("occurrence_receipts", [])
@@ -106,15 +133,22 @@ def add_entry(trigger, tendency, confidence=0.3, source="causality", entry_type=
             t_overlap = _text_overlap(e["trigger"], trigger)
         tend_overlap = _text_overlap(e["tendency"], tendency)
         if t_overlap > 0.5 and tend_overlap > 0.4:
+            if stale:
+                save_model(data)   # the receipt is kept, so the old evidence is not offered again
+                return "stale"
             e["confidence"] = min(0.85, e["confidence"] + 0.06)
             e["evidence_count"] = e.get("evidence_count", 1) + 1
-            e["last_seen"] = datetime.now().isoformat()
+            try:
+                prev = _evidence_time(e.get("last_seen"), now) if e.get("last_seen") else None
+            except Exception:
+                prev = None
+            e["last_seen"] = max(seen, prev).isoformat() if prev else seen.isoformat()
             # Evidence becomes spine. Nothing ever flipped `imprint` off False,
             # so a tendency could be observed any number of times and still
             # never become something held about the self.
-            e.setdefault("evidence_dates", []).append(datetime.now().isoformat())
+            e.setdefault("evidence_dates", []).append(seen.isoformat())
             if occurrence_id or quote:
-                e.setdefault("evidence", []).append({"at": datetime.now().isoformat(), "occurrence_id": occurrence_id, "quote": (quote or "")[:300]})
+                e.setdefault("evidence", []).append({"at": seen.isoformat(), "occurrence_id": occurrence_id, "quote": (quote or "")[:300]})
             e.setdefault("kind", kind)
             ripe = can_promote(e)
             if ripe:
@@ -129,12 +163,12 @@ def add_entry(trigger, tendency, confidence=0.3, source="causality", entry_type=
         "tendency": tendency[:200],
         "type": entry_type,
         "kind": kind,
-        "evidence": ([{"at": datetime.now().isoformat(), "occurrence_id": occurrence_id, "quote": (quote or "")[:300]}] if (occurrence_id or quote) else []),
+        "evidence": ([{"at": seen.isoformat(), "occurrence_id": occurrence_id, "quote": (quote or "")[:300]}] if (occurrence_id or quote) else []),
         "confidence": round(confidence, 3),
         "evidence_count": 1,
         "source": source,
-        "formed": datetime.now().isoformat(),
-        "last_seen": datetime.now().isoformat(),
+        "formed": now.isoformat(),
+        "last_seen": seen.isoformat(),   # the evidence's time, not the time it was read (review 2026-11-14)
         "imprint": False,
     }
     entries.append(entry)

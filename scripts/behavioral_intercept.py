@@ -286,6 +286,30 @@ def _feed_narrative():
         return False
 
 
+def _newest_attempt_at(trial):
+    """When the trial's newest attempt happened: the evidence a promotion rests on. Promotion can fire on a later
+    default, or on attempts counted long ago; add_entry stamped last_seen=now, so old evidence looked current
+    (review 2026-11-14). Falls back to the trial's creation date; None if neither is readable."""
+    best = None
+    for o in trial.get("outcomes") or []:
+        if o.get("outcome") not in ("attempted", "partial"):
+            continue
+        try:
+            ts = datetime.fromisoformat(str(o.get("timestamp"))[:26])
+        except Exception:
+            continue
+        if ts.tzinfo is not None:
+            ts = ts.astimezone().replace(tzinfo=None)
+        if best is None or ts > best:
+            best = ts
+    if best is not None:
+        return best.isoformat()
+    try:
+        return datetime.fromisoformat(str(trial.get("created"))[:26]).isoformat()
+    except Exception:
+        return None
+
+
 def log_outcome(trial_id, outcome, resistance=0.5, influenced=False):
     """outcome: attempted / defaulted / partial / missed / unknown (recorded, weightless).
     influenced=True when a BIS ban note was live in the generation that produced
@@ -394,6 +418,9 @@ def log_outcome(trial_id, outcome, resistance=0.5, influenced=False):
             try:
                 import sys as _csm_sys, os as _csm_os; _csm_sys.path.insert(0, _csm_os.path.expanduser("~/.vintos/workspace/scripts"))
                 from causal_self_model import add_entry
+                _seen = _newest_attempt_at(t)
+                if _seen is None:
+                    raise ValueError("no readable evidence time")
                 add_entry(
                     trigger=t.get("trigger", ""),
                     tendency=t.get("pattern_description", ""),
@@ -401,6 +428,7 @@ def log_outcome(trial_id, outcome, resistance=0.5, influenced=False):
                     source="behavioral-intercept",
                     entry_type="negative",
                     occurrence_id="bis:%s:%s" % (trial_id, datetime.now().date().isoformat()),
+                    seen_at=_seen,   # the newest attempt, never the time the promotion ran
                 )
                 # (door 3 removed 2026-08-09 — BIS submits evidence via add_entry; the gate decides)
             except Exception as _csm_e:
@@ -423,6 +451,7 @@ def log_outcome(trial_id, outcome, resistance=0.5, influenced=False):
                     confidence=0.5,
                     source="behavioral-intercept",
                     entry_type="negative",
+                    seen_at=t["outcomes"][-1]["timestamp"],   # the attempt just recorded
                     occurrence_id="bis:%s:%s" % (trial_id, datetime.now().date().isoformat()),
                 )
                 if _r in ("reinforced", "added"):

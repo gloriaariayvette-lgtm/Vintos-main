@@ -171,6 +171,12 @@ def g_te(te, csm):
     E = csm.load_model()["entries"]
     out.append(("a re-added capacity entry starts at 0.50, not 0.3 + 0.1 per date",
                 len(E) == 1 and abs(E[0]["confidence"] - 0.5) < 1e-9, E))
+    # add_entry now refuses stale evidence for an entry it has; the extractor's own guard is what keeps an old date
+    # from bringing a trimmed entry back
+    json.dump({"entries": []}, open(csm.MODEL_FILE, "w"))
+    te.write_capacities(cap("old"), "journal", D(95))
+    E = csm.load_model()["entries"]
+    out.append(("an old date read late does not bring a trimmed entry back", E == [], E))
     legacy = {"key": "k", "promoted": True, "instances": [{"source_date": "d1", "description": "first"},
               {"source_date": "d1", "description": "same day"}, {"source_date": "d2", "description": "promoting"}]}
     out.append(("an older record names the instance that promoted it", te.promoted_tendency(legacy) == "promoting"))
@@ -270,6 +276,80 @@ report(run(g_te, [te, csm]))
 ni = load("ni")
 report(run(g_ni, [ni]))
 
+# ------------------------------------------------------------------ promotion carries its evidence's date
+def g_promo(csm, bi, te):
+    """A promotion from backlog evidence was stamped last_seen=now, so months-old evidence looked current."""
+    out = []
+    now = datetime.now()
+    D = lambda n: (now.date() - timedelta(days=n)).isoformat()
+    TS = lambda n: (now - timedelta(days=n)).isoformat()
+    seen = lambda e: str(e.get("last_seen", ""))[:10]
+    # the causal model itself
+    reset_stores()
+    r = csm.add_entry("", "hums while thinking through a long answer", confidence=0.5, source="trial-extractor",
+                      occurrence_id="synthetic:old", seen_at=D(90))
+    E = csm.load_model()["entries"]
+    out.append(("an entry formed from old evidence carries that evidence's date",
+                r == "added" and len(E) == 1 and seen(E[0]) == D(90), E))
+    out.append(("... so retention ranks it as old", csm._retention_score(E[0]) < 0.5 * 0.5 ** 2, E))
+    r = csm.add_entry("", "hums while thinking through a long answer", confidence=0.5, source="trial-extractor",
+                      occurrence_id="synthetic:older", seen_at=D(45))
+    E = csm.load_model()["entries"]
+    out.append(("evidence older than 30 days does not reinforce",
+                r == "stale" and E[0]["evidence_count"] == 1 and seen(E[0]) == D(90), (r, E)))
+    r = csm.add_entry("", "hums while thinking through a long answer", confidence=0.5, source="trial-extractor",
+                      occurrence_id="synthetic:recent", seen_at=D(2))
+    r2 = csm.add_entry("", "hums while thinking through a long answer", confidence=0.5, source="trial-extractor",
+                       occurrence_id="synthetic:earlier", seen_at=D(9))
+    E = csm.load_model()["entries"]
+    out.append(("fresh evidence reinforces at its own date, and an earlier date never moves last_seen back",
+                (r, r2) == ("reinforced", "reinforced") and E[0]["evidence_count"] == 3 and seen(E[0]) == D(2)
+                and [d[:10] for d in E[0].get("evidence_dates", [])] == [D(2), D(9)], (r, r2, E)))
+    reset_stores()
+    csm.add_entry("", "a synthetic tendency dated tomorrow", source="trial-extractor", seen_at=TS(-1))
+    E = csm.load_model()["entries"]
+    out.append(("a future date is clamped to now", seen(E[0]) == D(0), E))
+    # trial extractor: a capacity promoted from a backlog of old sessions
+    cap = lambda d: [{"capacity_key": "quiet patience", "capacity_description": "waits out a long silence " + d,
+                      "evidence": "synthetic"}]
+    reset_stores()
+    te.write_capacities(cap("one"), "journal", D(120))
+    te.write_capacities(cap("two"), "journal", D(90))
+    E = csm.load_model()["entries"]
+    out.append(("a capacity promoted from two old dates is stamped with the newer, not now",
+                len(E) == 1 and seen(E[0]) == D(90), E))
+    reset_stores()
+    te.write_capacities(cap("recent"), "journal", D(5))
+    te.write_capacities(cap("backlog"), "journal", D(100))   # an old session read late promotes it
+    E = csm.load_model()["entries"]
+    out.append(("a promotion triggered by an old date carries the newest date it rests on",
+                len(E) == 1 and seen(E[0]) == D(5), E))
+    # behavioural intercept: promotion fires on a later default, its attempts long past
+    reset_stores()
+    t = _trial("trial_a", 2)
+    t["outcomes"] = [{"outcome": "attempted", "timestamp": TS(60)}, {"outcome": "partial", "timestamp": TS(50)},
+                     {"outcome": "defaulted", "timestamp": TS(40)}]
+    _ledger([t])
+    bi.log_outcome("trial_a", "defaulted")
+    E = csm.load_model()["entries"]
+    out.append(("a trial promoted on a default carries its newest attempt's date",
+                len(E) == 1 and seen(E[0]) == D(50), E))
+    reset_stores()
+    t = _trial("trial_a", 2); t["created"] = D(70)
+    _ledger([t])
+    bi.log_outcome("trial_a", "missed")
+    E = csm.load_model()["entries"]
+    out.append(("with no dated attempt it carries the trial's own date", len(E) == 1 and seen(E[0]) == D(70), E))
+    reset_stores()
+    _ledger([_trial("trial_a", 1)])
+    bi.log_outcome("trial_a", "attempted")
+    E = csm.load_model()["entries"]
+    out.append(("a promotion on an attempt made now is current", len(E) == 1 and seen(E[0]) == D(0), E))
+    return out
+
+csm = load("csm"); bi = load("bi"); te = load("te")
+report(run(g_promo, [csm, bi, te]))
+
 MUTANTS = [
     ("csm", "empty triggers never match", ("t_overlap = 1.0", "t_overlap = 0.0"), g_csm),
     ("bi", "SCRIPTS undefined again", ('SCRIPTS = os.path.join(WORKSPACE, "scripts")\n', ""), g_bi),
@@ -287,10 +367,22 @@ MUTANTS = [
     ("te", "old capacity dates reinforce", (" and _fresh_date(source_date):", ":"), g_te),
     ("te", "re-add at 0.3 + 0.1 per date", ("confidence=0.5,   # only if", "confidence=min(0.9, 0.3 + len(dates) * 0.1),   # only if"), g_te),
     ("bi", "re-add at 0.3 + 0.1 per attempt", ("                    confidence=0.5,", "                    confidence=min(0.9, 0.3 + t.get('attempt_count', 0) * 0.1),"), g_bi),
+    ("pcsm", "new entry stamped now", ('"last_seen": seen.isoformat(),', '"last_seen": now.isoformat(),'), g_promo),
+    ("pcsm", "stale evidence reinforces", ("            if stale:\n", "            if False:\n"), g_promo),
+    ("pcsm", "last_seen moves backwards", ("max(seen, prev).isoformat() if prev else seen.isoformat()", "seen.isoformat()"), g_promo),
+    ("pcsm", "future not clamped", ("return min(t, now)", "return t"), g_promo),
+    ("pte", "capacity promotion stamped now", ("seen_at=newest,", "seen_at=None,"), g_promo),
+    ("pte", "oldest date instead of newest", ("max(out).isoformat()", "min(out).isoformat()"), g_promo),
+    ("pbi", "trial promotion stamped now", ("seen_at=_seen,", "seen_at=None,"), g_promo),
+    ("pbi", "a default counts as the evidence", ('if o.get("outcome") not in ("attempted", "partial"):\n            continue', "pass"), g_promo),
+    ("pbi", "no fallback to the trial's date", ('return datetime.fromisoformat(str(trial.get("created"))[:26]).isoformat()', "return None"), g_promo),
 ]
 for kind, name, mutation, group in MUTANTS:
     try:
-        if kind == "csm":
+        if kind.startswith("p"):
+            m = {k: (mutation if "p" + k == kind else None) for k in ("csm", "bi", "te")}
+            c = load("csm", m["csm"]); mods = [c, load("bi", m["bi"]), load("te", m["te"])]
+        elif kind == "csm":
             mods = [load("csm", mutation)]
         elif kind == "bi":
             c = load("csm"); mods = [load("bi", mutation), c]
