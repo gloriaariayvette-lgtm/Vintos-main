@@ -87,7 +87,7 @@ def add_entry(trigger, tendency, confidence=0.3, source="causality", entry_type=
     entries = data["entries"]
     receipts = data.setdefault("occurrence_receipts", [])
     if occurrence_id and occurrence_id in receipts:
-        return
+        return "duplicate"
     if occurrence_id:
         receipts.append(occurrence_id)
         if len(receipts) > MAX_RECEIPTS:
@@ -98,7 +98,12 @@ def add_entry(trigger, tendency, confidence=0.3, source="causality", entry_type=
     for e in entries:
         if e.get("type", "positive") != entry_type:
             continue
-        t_overlap = _text_overlap(e["trigger"], trigger)
+        # Two entries with no trigger (the trial extractor's capacities) share their trigger. Overlap of two empty
+        # texts is 0.0, so a capacity could never be reinforced, only re-added (2026-11-14).
+        if not str(e.get("trigger") or "").strip() and not str(trigger or "").strip():
+            t_overlap = 1.0
+        else:
+            t_overlap = _text_overlap(e["trigger"], trigger)
         tend_overlap = _text_overlap(e["tendency"], tendency)
         if t_overlap > 0.5 and tend_overlap > 0.4:
             e["confidence"] = min(0.85, e["confidence"] + 0.06)
@@ -117,7 +122,7 @@ def add_entry(trigger, tendency, confidence=0.3, source="causality", entry_type=
             save_model(data)
             if ripe:
                 _write_imprint(e)
-            return
+            return "reinforced"
 
     entry = {
         "trigger": trigger[:200],
@@ -138,6 +143,7 @@ def add_entry(trigger, tendency, confidence=0.3, source="causality", entry_type=
         entries = _trim(entries, keep=entry)
     data["entries"] = entries
     save_model(data)
+    return "added"
 
 
 def _age_days(iso, now=None):
