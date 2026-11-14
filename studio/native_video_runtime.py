@@ -26,7 +26,14 @@ AUDIO_FLUSH_TOKENS = 10      # audio enters the mind in 400 ms steps (or sooner 
 WINDOW_TOKENS = 1024         # the checkpoint's local (sliding) attention window
 SCENE_CHANGE = .15           # mean 32x32 luminance change (0..1) that marks a new scene
 SCENE_MARKER = "[new scene]"
+REPEAT_PENALTY = 1.1         # answer-token repetition penalty (the video path decodes greedily by default)
+NO_REPEAT_NGRAM = 4          # no 4-token run is repeated inside one answer
 LIVE_ANSWER_TOKENS = 32      # answers during a live stream are capped so ingestion never waits long
+
+
+def _thumb(rgb):
+    from camera_motion import thumb
+    return thumb(rgb)
 
 
 def _small_gray(rgb):
@@ -36,6 +43,26 @@ def _small_gray(rgb):
 CONTEXT = 8192
 ANSWER_RESERVE = 640         # question plus answer budget kept free at all times
 PREFIX, QUERY = -1, -2       # owners of the open-turn prefix and of a rolled-back question/answer
+
+
+def guard_repeats(scores, history, penalty=REPEAT_PENALTY, ngram=NO_REPEAT_NGRAM):
+    """Keep an answer from looping on itself ("the oration of the oration of ..."): every token already in this
+    answer is penalised (HF-style: positive scores divided, negative multiplied), and a token that would repeat an
+    ``ngram``-token run already in the answer is ruled out. Only the answer's own tokens count, so the first token
+    (and with it every one-word answer) is never changed."""
+    history = list(history)
+    if not history:
+        return scores
+    seen = np.unique(np.asarray(history, dtype=np.int64))
+    seen = seen[seen < len(scores)]
+    s = scores[seen]
+    scores[seen] = np.where(s > 0, s / penalty, s * penalty)
+    if ngram > 1 and len(history) >= ngram - 1:
+        tail = tuple(history[-(ngram - 1):])
+        for i in range(len(history) - ngram + 1):
+            if tuple(history[i:i + ngram - 1]) == tail:
+                scores[history[i + ngram - 1]] = -np.inf
+    return scores
 
 
 def stamp(seconds):
@@ -211,9 +238,13 @@ class LiveSession:
     questions that are answered then rolled back."""
 
     def __init__(self, mind, stream, instruction=None, retain_frames=RETAIN_FRAMES,
-                 retain_audio_tokens=RETAIN_AUDIO_TOKENS, clock=time.monotonic, on_embedding=None, scene_markers=False):
+                 retain_audio_tokens=RETAIN_AUDIO_TOKENS, clock=time.monotonic, on_embedding=None, scene_markers=False,
+                 on_pixels=None):
         # on_embedding(kind, at, embeds, ref): the projected embeddings exactly as they enter the mind, for a tap.
+        # on_pixels(at, thumb, ref): a 96-px thumbnail of each committed frame (camera_motion), just before its
+        # on_embedding call; the thumbnail lives only in memory.
         self.on_embedding = on_embedding
+        self.on_pixels = on_pixels
         self.scene_markers = bool(scene_markers)   # write "[new scene]" before a frame that differs from the last
         self.last_small = None
         self.answering = False                     # while True, frames and audio are encoded/held, then committed
@@ -316,7 +347,7 @@ class LiveSession:
         embeds = self.stream.image(x, soft_tokens) if soft_tokens != SOFT_TOKENS else self.stream.image(x)
         return {"embeds": embeds, "at": self._seconds(at), "ref": frame_ref(x), "shape": x.shape[:2],
                 "small": _small_gray(x) if self.scene_markers else None, "started": started,
-                "seconds": time.perf_counter() - started}
+                "thumb": _thumb(x) if self.on_pixels else None, "seconds": time.perf_counter() - started}
 
     def commit_frame(self, prepared):
         self._end_audio_span()
@@ -330,6 +361,11 @@ class LiveSession:
         if scene:
             self.segments[segment]["scene_change"] = True
         self._forward(embeds, segment, vision=True)
+        if self.on_pixels and prepared.get("thumb") is not None:
+            try:
+                self.on_pixels(at, prepared["thumb"], ref)
+            except Exception:
+                pass   # a consumer never affects what the mind sees
         self._tap("frame", at, embeds, ref)
         self.segments[segment]["visual_tokens"] = int(embeds.shape[1])
         self.segments[segment]["end_pos"] = self.next_pos - 1
@@ -449,10 +485,10 @@ class LiveSession:
         return [dict({k: v for k, v in s.items() if k != "digest"}, segment=i) for i, s in sorted(self.segments.items())]
 
     def ask(self, question, max_tokens=128, temperature=0, on_text=None, recent_seconds=None, view_from=None,
-            note=None, recall_frames=None):
+            note=None, recall_frames=None, fresh=False):
         """Answer from the retained window, then roll the question and answer back out of the cache."""
         steps = self.ask_steps(question, max_tokens, temperature, on_text, recent_seconds, view_from, note,
-                               recall_frames)
+                               recall_frames, fresh)
         while True:
             try:
                 next(steps)
@@ -460,7 +496,7 @@ class LiveSession:
                 return done.value
 
     def ask_steps(self, question, max_tokens=128, temperature=0, on_text=None, recent_seconds=None, view_from=None,
-                  note=None, recall_frames=None):
+                  note=None, recall_frames=None, fresh=False):
         """The same answer one token per step, so a caller can take in arrivals between tokens: while it runs,
         frames are encoded and audio held, and both enter the timeline right after the answer is rolled back.
         ``recent_seconds`` limits the answer to frames from the last N seconds before the question (older
@@ -469,6 +505,10 @@ class LiveSession:
         ``note`` is a short text (e.g. the camera mamepa's summary) placed before the question.
         ``recall_frames`` is a list of (stream seconds, projected embeddings) kept by the camera mamepa from an
         earlier scene that has left the window; each is shown again as a stamped image span just before the note.
+        Recalled frames are always read with the retained frames masked, so what is shown again is seen as it was,
+        not through the scene that followed it. ``fresh`` masks every retained frame for the question and answer
+        too (the recalled frames are then the whole view; e.g. the camera mamepa's kept frames of the present
+        happening, read without what came before them); an empty question then repeats the session instruction.
         All of these are rolled back with the answer."""
         if self.closed:
             raise ValueError("Session is closed")
@@ -484,6 +524,8 @@ class LiveSession:
         self._text(close_ids, close_owner)
         mark = self.stream.length(self.cache)
         question = str(question).strip()
+        if fresh and not question:
+            question = self.instruction
         note = str(note or "").strip()
         question_ids = self._ids((" " + note if note else "") + (" " + question if question else "") + self.closing)
         if len(question_ids) + int(max_tokens) > ANSWER_RESERVE:
@@ -503,11 +545,16 @@ class LiveSession:
             horizon = max(horizons)
             old = [i for i, s in self.segments.items() if s["kind"] == "frame" and s["at"] < horizon - 1e-6]
             hidden = set(int(p) for p in self.positions[np.isin(self.owner, old)])
+        window_frames = [i for i, s in self.segments.items() if s["kind"] == "frame"]
+        everything = set(int(p) for p in self.positions[np.isin(self.owner, window_frames)])
+        if fresh:
+            hidden = everything or None
+        recall_hidden = (everything | (hidden or set())) or None
         tokens, finish_reason, first = [], "length", None
         self.answering = True
 
-        def forward(embeds, vision=False):
-            self.stream.hidden = hidden
+        def forward(embeds, vision=False, mask=None):
+            self.stream.hidden = hidden if mask is None else mask
             try:
                 return self.stream.forward(embeds, self.cache, vision)
             finally:
@@ -515,12 +562,12 @@ class LiveSession:
 
         try:
             for at, embeds in recall_frames:
-                forward(self.stream.text(self._ids(" " + stamp(at) + " ") + self.boi))
-                forward(embeds, vision=True)
-                forward(self.stream.text(self.eoi))
+                forward(self.stream.text(self._ids(" " + stamp(at) + " ") + self.boi), mask=recall_hidden)
+                forward(embeds, vision=True, mask=recall_hidden)
+                forward(self.stream.text(self.eoi), mask=recall_hidden)
             self.scores = forward(self.stream.text(question_ids))
             for _ in range(int(max_tokens)):
-                token = self._choose(float(temperature))
+                token = self._choose(float(temperature), tokens)
                 if first is None:
                     first = time.perf_counter() - started
                 if token in self.mind.eos:
@@ -567,9 +614,10 @@ class LiveSession:
             self._commit_deferred(item)
         return len(items)
 
-    def _choose(self, temperature):
+    def _choose(self, temperature, history=()):
         scores = self.scores.copy()
         scores[self.mind.suppress] = -np.inf
+        scores = guard_repeats(scores, history)
         if not temperature:
             return int(np.argmax(scores))
         scaled = scores.astype(np.float64) / temperature

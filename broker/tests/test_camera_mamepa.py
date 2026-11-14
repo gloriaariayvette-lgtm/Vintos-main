@@ -279,10 +279,14 @@ check('by default the answer path is untouched', qcall(svc.stream.calls)[2] is N
       and qcall(svc.stream.calls)[0] == [float(t) for t in Tok().encode(' q<end>')])
 svc.stream.calls = []
 svc.dispatch('/video/ask', {'session_id': sid, 'question': 'q', 'max_tokens': 2, 'recall': True})
-note = mam.summary()['text']
-check('with recall the summary is the note and the onset is the view',
-      qcall(svc.stream.calls)[0][:len(note)] == [float(t) for t in Tok().encode(' ' + note)][:len(note)]
-      and (qcall(svc.stream.calls)[2] is not None) == (mam.onset() > 0))
+note, view = mam.summary()['text'], mam.view()
+enc = [float(t) for t in Tok().encode(' ' + note)]
+qi = next(i for i, c in enumerate(svc.stream.calls) if c[0][:len(enc)] == enc)
+win = svc.active[1]
+all_frames = set(int(p) for p in win.positions[np.isin(win.owner, [i for i, x in win.segments.items() if x['kind'] == 'frame'])])
+check('with recall the summary is the note and the present is read again from its kept frames, without the window',
+      len(view) >= 1 and sum(1 for c in svc.stream.calls[:qi] if c[1]) == len(view)
+      and all(c[2] == all_frames for c in svc.stream.calls))
 check('the summary is readable on the inference thread', svc.dispatch_read(mam.summary)['segments'] >= 1)
 svc.dispatch('/video/abort', {'session_id': sid})
 check('nothing was written outside the scratch checkpoints', sorted(p.name for p in tmp.iterdir() if p.is_file())
@@ -312,6 +316,9 @@ before = list(s.cache)
 emb = be.image(np.full((48, 64, 3), 7, np.uint8))
 s.ask('which way?', max_tokens=2, note='[RECALL]', recall_frames=[(0., emb), (.5, emb)])
 vis = [c for c in be.calls if c[1]]
+window_positions = set(int(p) for p in s.positions[np.isin(s.owner, [i for i, x in s.segments.items() if x['kind'] == 'frame'])])
+check('recalled frames are read with the retained frames masked; the question still sees the window',
+      all(c[2] == window_positions for c in vis) and next(c for c in be.calls if c[0][:3] == [float(t) for t in Tok().encode(" [R")])[2] is None)
 check('recalled frames are shown as stamped image spans before the note, then rolled back',
       len(vis) == 2 and max(i for i, c in enumerate(be.calls) if c[1]) < next(i for i, c in enumerate(be.calls)
       if c[0][:3] == [float(t) for t in Tok().encode(" [R")])
@@ -375,4 +382,45 @@ check('a missing copy reads as no records', TagMapStore(copy_dir / 'none.json').
 wired = Mamepa(model, TagMapStore(copy_dir / 'none.json')); wired.new_stream('w', 0.); wired.frame(clip, at=0.)
 check('the summary still says plainly when nothing is linked', 'no record is linked' in
       (wired.tag(0., {'family': 'tag36h11', 'tag_id': 1}) and wired.summary()['text']))
+
+# ---- the pixel motion organ: where the main moving region went, cuts, and the words the notes use
+import camera_motion as cmo
+
+
+def square(at, label, bg=(30, 60, 90), fg=(220, 200, 40)):
+    f = np.empty((192, 192, 3), np.uint8); f[:] = bg
+    d = np.array([[-1, 0], [1, 0], [0, -1], [0, 1]][label])
+    x, y = (np.array([96, 96]) + d * 15 * at).astype(int)
+    f[y - 10:y + 10, x - 10:x + 10] = fg
+    return f
+
+
+for label, word in enumerate(['left', 'right', 'up', 'down']):
+    st = cmo.step(cmo.thumb(square(-.5, label)), cmo.thumb(square(.5, label)))
+    check('a square moving %s is seen moving %s' % (word, word), st['reliable'] and cmo.direction(st['dx'], st['dy']) == word)
+flat_a, flat_b = np.full((96, 96, 3), .2, np.float32), np.full((96, 96, 3), .8, np.float32)
+st = cmo.step(flat_a, flat_b)
+check('a whole-view change with no consistent shift is not motion', not st['reliable'] and st['changed'] == 1.)
+check('an unchanged view has no motion', cmo.step(flat_a, flat_a.copy()) == {'dx': 0., 'dy': 0., 'reliable': False, 'changed': 0.})
+check('small or unclear displacements name no direction', cmo.direction(.01, 0.) is None and cmo.direction(.2, .18) is None)
+
+mo = Mamepa(model); mo.new_stream('m', 0.)
+for k in range(4):
+    mo.frame(clip + k * step * 3, at=k * .5, tokens=('A', k), thumb=cmo.thumb(square(k - 1.5, 0)))
+for k in range(6):
+    mo.frame(clip + (4 + k) * step * 3, at=2 + k * .5, tokens=('B', k),
+             thumb=cmo.thumb(square(k - 2.5, 3, bg=(200, 120, 60), fg=(20, 20, 200))))
+segs = mo.current()
+check('a pixel cut opens a new scene even when the latent forecast was not surprised',
+      len(segs) == 2 and segs[1]['opened_by'] == 'cut' and segs[1]['start'] == 2.)
+check('each scene keeps its own motion', cm.motion_phrase(segs[0]) == 'something in view moved left'
+      and cm.motion_phrase(segs[1]) == 'something in view moved down')
+text = mo.summary()['text']
+check('the summary says what moved in the present and in the earlier scene, naming nothing',
+      'Since 00:02, something in view moved down.' in text and 'In the earlier scene 00:00-00:01, something in view moved left.' in text
+      and 'square' not in text)
+check('the recall note says how the earlier scene moved', 'in that earlier scene something in view moved left' in mo.recall()['note'])
+check('the view is the kept frames of the present happening, oldest first',
+      [f[1] for f in mo.view()] == [('B', k) for k in range(6)] and [f[1] for f in mo.view(3)][-1] == ('B', 5))
+check('motion records survive a dump', json.loads(json.dumps(mo.dump()))['segments'][-1]['motion']['moving'] == 5)
 print('all camera mamepa checks passed')

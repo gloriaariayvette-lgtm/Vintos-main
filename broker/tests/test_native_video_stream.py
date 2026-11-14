@@ -245,13 +245,16 @@ import time as _time
 
 
 class Slow(Backend):
-    """Never reaches EOS, and each single-token step takes a moment, like a real decode."""
+    """Never reaches EOS, and each single-token step takes a moment, like a real decode. Each step favours a
+    different token, so the answer never trips the repetition guard."""
     def forward(self, embeds, cache, vision=False):
         self.hidden_seen = getattr(self, 'hidden_seen', []) + [getattr(self, 'hidden', None)]
         out = Backend.forward(self, embeds, cache, vision)
         if embeds.shape[1] == 1:
             _time.sleep(.01)
-        return np.array([0., 1.])
+        scores = np.zeros(4096)
+        scores[1 + len(cache) % 4000] = 1.
+        return scores
 
 
 slow = Slow()
@@ -490,4 +493,33 @@ check('the Senses block puts the linked memory beside the frames',
       parts[0]['type'] == 'image_url' and 'the first lantern' in parts[1]['text'] and '(lantern)' in parts[1]['text']
       and 'were not kept' in parts[-1]['text'])
 (memory_dir / 'moments.jsonl').unlink(); Path(client.TAG_MAP).unlink()
+
+# The repetition guard: answers cannot loop on themselves; the first token (every one-word answer) is untouched.
+from native_video_runtime import guard_repeats
+base_scores = np.array([0., 3., 2., 1., -1.])
+check('the first token of an answer is never changed', np.array_equal(guard_repeats(base_scores.copy(), []), base_scores))
+g = guard_repeats(base_scores.copy(), [1, 4])
+check('tokens already in the answer are penalised (positive divided, negative multiplied)',
+      g[1] == 3. / runtime.REPEAT_PENALTY and g[4] == -1. * runtime.REPEAT_PENALTY and g[2] == 2.)
+g = guard_repeats(base_scores.copy(), [1, 2, 3, 4, 1, 2, 3])
+check('a token that would repeat a four-token run is ruled out', g[4] == -np.inf and np.isfinite(g[1]))
+
+
+class Looper(Backend):
+    """Greedy logits that would loop forever on tokens 1, 2, 3 ("the oration of the oration of ...")."""
+    def forward(self, embeds, cache, vision=False):
+        Backend.forward(self, embeds, cache, vision)
+        last = int(embeds[0, -1, 0])
+        scores = np.full(64, -5.)
+        scores[{1: 2, 2: 3, 3: 1}.get(last, 1)] = 4.
+        scores[10 + len(cache) % 40] = 3.
+        return scores
+
+
+loop = LiveSession(mind, Looper(), clock=lambda: 0.)
+loop.frame(frame(10), at=0.)
+toks = loop.ask('what is moving?', max_tokens=24)['tokens']
+runs = [tuple(toks[i:i + 4]) for i in range(len(toks) - 3)]
+check('a greedy answer that would loop does not repeat any four-token run', len(runs) == len(set(runs)) and len(toks) == 24)
+
 check('nothing but the test fixtures was written', not any(memory_dir.iterdir()))

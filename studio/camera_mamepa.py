@@ -54,6 +54,46 @@ def stamp(seconds):
     return '%02d:%02d' % (minutes, rest)
 
 
+# ---------------------------------------------------------------- pixel motion per scene (camera_motion.py)
+
+WHOLE_VIEW_CUT = .6     # a step that changed more of the view than this with no consistent shift is a cut
+
+
+def _add_motion(seg, move):
+    """Add one camera_motion step to a scene's record: reliable object steps and whole-view moves separately."""
+    m = seg.setdefault('motion', {'dx': 0., 'dy': 0., 'moving': 0, 'pan_dx': 0., 'pan_dy': 0., 'pans': 0, 'steps': 0})
+    m['steps'] += 1
+    if not move['reliable']:
+        return
+    if move['changed'] > WHOLE_VIEW_CUT:
+        m['pan_dx'] = round(m['pan_dx'] + move['dx'], 5); m['pan_dy'] = round(m['pan_dy'] + move['dy'], 5); m['pans'] += 1
+    else:
+        m['dx'] = round(m['dx'] + move['dx'], 5); m['dy'] = round(m['dy'] + move['dy'], 5); m['moving'] += 1
+
+
+def _merge_motion(segs):
+    out = {'motion': {'dx': 0., 'dy': 0., 'moving': 0, 'pan_dx': 0., 'pan_dy': 0., 'pans': 0, 'steps': 0}}
+    for s in segs:
+        for k, v in (s.get('motion') or {}).items():
+            out['motion'][k] += v
+    return out
+
+
+def motion_phrase(seg):
+    """'something in view moved left' (and/or 'the whole view shifted up'), or None when nothing moved clearly."""
+    from camera_motion import direction
+    m = seg.get('motion') or {}
+    parts = []
+    if m.get('moving'):
+        way = direction(m['dx'], m['dy'])
+        parts.append('something in view moved %s' % way if way else 'something in view moved, in no single clear direction')
+    if m.get('pans'):
+        way = direction(m['pan_dx'], m['pan_dy'])
+        if way:
+            parts.append('the whole view shifted %s' % way)
+    return ' and '.join(parts) or None
+
+
 # ---------------------------------------------------------------- checkpoint
 
 def save(path, arrays, metadata):
@@ -221,6 +261,7 @@ class Mamepa:
         self.episodes = {}
         self.records = {}
         self.kept = []                             # [{'sid', 'at', 'tokens'}]: opaque embeddings, never dumped
+        self.thumb = None                          # the previous frame's 96-px thumbnail (camera_motion), memory only
         self.next_sid = 0
         if payload:
             self.load(payload)
@@ -295,6 +336,7 @@ class Mamepa:
         """A fresh live session: the carry continues (decayed by real time), segments start again."""
         self.stream = stream
         self.at = None
+        self.thumb = None
         self.segments.append({'start': float(at), 'end': float(at), 'frames': 0, 'stream': stream, 'tags': [],
                               'change': 0., 'peak': None, 'opened_by': 'stream', 'sid': self._sid()})
         del self.segments[:-MAX_SEGMENTS]
@@ -326,12 +368,28 @@ class Mamepa:
             frames = [(k['at'], k['tokens']) for k in self.kept if k['sid'] == seg.get('sid')]
             if seg['frames'] >= min_frames and len(frames) >= min_frames:
                 pick = np.unique(np.linspace(0, len(frames) - 1, min(max_frames, len(frames))).round().astype(int))
+                moved = motion_phrase(seg)
                 note = ('[CAMERA MEMORY RECALL: the frames stamped %s-%s just above are from an earlier scene '
-                        '(%d frames), shown again from memory; the current scene began at %s.]' % (
-                            stamp(seg['start']), stamp(seg['end']), seg['frames'], stamp(segs[-1]['start'])))
+                        '(%d frames), shown again from memory%s; the current scene began at %s.]' % (
+                            stamp(seg['start']), stamp(seg['end']), seg['frames'],
+                            '; in that earlier scene ' + moved if moved else '', stamp(segs[-1]['start'])))
                 return {'frames': [frames[i] for i in pick], 'note': note,
                         'segment': {k: seg[k] for k in ('start', 'end', 'frames')}}
         return None
+
+    def view(self, max_frames=KEEP_PER_SEGMENT):
+        """Kept frames of the present happening (from the onset on), oldest first, at most ``max_frames`` (evenly
+        spaced, the newest always included), so a question can see them again without what came before."""
+        onset = self.onset()
+        if onset is None:
+            return []
+        sids = {s.get('sid') for s in self.current() if s['start'] >= onset - 1e-6}
+        frames = sorted(((k['at'], k['tokens']) for k in self.kept if k['sid'] in sids and k['at'] >= onset - 1e-6),
+                        key=lambda f: f[0])
+        if len(frames) > max_frames:
+            pick = np.unique(np.linspace(0, len(frames) - 1, max_frames).round().astype(int))
+            frames = [frames[i] for i in pick]
+        return frames
 
     def _decay(self, dt):
         """Pure passage of time with nothing seen: levels hold, the realized-error memory fades."""
@@ -339,10 +397,12 @@ class Mamepa:
         self.L *= w
         self.M *= w
 
-    def frame(self, vec, at, t=None, key=None, tokens=None):
+    def frame(self, vec, at, t=None, key=None, tokens=None, thumb=None):
         """Ingest one frame vector at stream time ``at`` (seconds). Returns raw errors of the preceding state's
         forecast (``None`` for a duplicate). ``tokens`` (optional, opaque) are the frame's projected soft tokens,
-        kept in memory per scene so an earlier scene can be shown again after it has left the window."""
+        kept in memory per scene so an earlier scene can be shown again after it has left the window. ``thumb``
+        (optional, camera_motion.thumb of the same frame) adds the pixel motion organ: the step from the previous
+        frame is added to the scene's motion, and a whole-view change with no consistent shift opens a new scene."""
         if self._mark_seen(key):
             return None
         at = float(at)
@@ -378,19 +438,30 @@ class Mamepa:
         self.last, self.at, self.frames = x, at, self.frames + 1
         if t is not None:
             self.t = float(t)
-        self._segment(at, x, surprise)
+        move = None
+        if thumb is not None:
+            from camera_motion import step
+            move = step(self.thumb, thumb) if self.thumb is not None else None
+            self.thumb = thumb
+        cut = bool(move and move['changed'] > WHOLE_VIEW_CUT and not move['reliable'])
+        self._segment(at, x, surprise, cut)
+        if move and not cut:
+            _add_motion(self.segments[-1], move)
+        if move is not None:
+            result['motion'] = {k: move[k] for k in ('dx', 'dy', 'reliable', 'changed')}
         if tokens is not None:
             self._keep(self.segments[-1]['sid'], at, tokens)
         result['segment_start'] = self.segments[-1]['start']
-        result['boundary'] = self.segments[-1]['frames'] == 1 and self.segments[-1]['opened_by'] == 'surprise'
+        result['boundary'] = self.segments[-1]['frames'] == 1 and self.segments[-1]['opened_by'] in ('surprise', 'cut')
         return result
 
-    def _segment(self, at, x, surprise):
+    def _segment(self, at, x, surprise, cut=False):
         cur = self.segments[-1] if self.segments and self.segments[-1]['stream'] == self.stream else None
-        if cur is None or (cur['frames'] and surprise is not None and surprise >= self.boundary):
+        if cur is None or (cur['frames'] and ((surprise is not None and surprise >= self.boundary) or cut)):
             cur = {'start': at, 'end': at, 'frames': 0, 'stream': self.stream, 'tags': [], 'change': 0.,
                    'sid': self._sid(), 'peak': None if surprise is None else round(surprise, 3),
-                   'opened_by': 'surprise' if surprise is not None else 'stream'}
+                   'opened_by': 'cut' if cur is not None and cut and (surprise is None or surprise < self.boundary)
+                   else 'surprise' if surprise is not None else 'stream'}
             self.segments.append(cur)
             del self.segments[:-MAX_SEGMENTS]
         elif surprise is not None and cur['frames']:
@@ -464,8 +535,18 @@ class Mamepa:
         steady = 'little change' if cur['change'] < .5 else 'steady change' if cur['change'] < 1.2 else 'much change'
         lines.append('[CAMERA MEMORY: the current scene began at %s and has lasted %d frame(s), with %s.' % (
             stamp(cur['start']), cur['frames'], steady))
+        onset = self.onset()
+        present = [s for s in segs if s['start'] >= onset - 1e-6]
+        moved = motion_phrase(_merge_motion(present))
+        if moved:
+            lines.append('Since %s, %s.' % (stamp(onset), moved))
         earlier = segs[:-1]
         if earlier:
+            back = next((s for s in reversed([s for s in segs if s['start'] < onset - 1e-6])
+                         if s['frames'] >= 2 and motion_phrase(s)), None)
+            if back is not None:
+                lines.append('In the earlier scene %s-%s, %s.' % (stamp(back['start']), stamp(back['end']),
+                                                                motion_phrase(back)))
             short = [s for s in earlier if s['frames'] <= 2]
             span = '%s-%s' % (stamp(earlier[0]['start']), stamp(earlier[-1]['end']))
             if len(short) == len(earlier):
