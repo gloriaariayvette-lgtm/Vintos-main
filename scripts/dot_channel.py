@@ -2469,6 +2469,12 @@ def fresh(api, channel, self_id, since, watch=()):
 # Grok Bot cannot join as its own Slack app: it is her personal bot (Grok Bot, 2026-10-01).
 # Claude Code posts through her login too (2026-10-15), so a "[Claude Code]" post is never read as Gloria.
 SIGNS = {"[Muse]": "Muse", "[Grok Bot]": "Grok Bot", "[GrokBot]": "Grok Bot", "[Claude Code]": "Claude Code"}
+# The leading tag, read the way it is written (Gloria, 14 November): either Grok spelling, any case, any spacing inside
+# the brackets; "[Dot]" too. A tagged message is that agent's, never Gloria speaking; her untagged messages stay hers.
+# Only one written from her own account is authenticated (the rows' agent_authenticated), and the tag is not kept in
+# the text he reads or keeps.
+SIGN = re.compile(r"^\s*\[\s*(muse|grok\s*bot|claude\s*code|dot)\s*\]\s*[:\-\u2013\u2014]?\s*", re.I)
+SIGN_NAMES = {"muse": "Muse", "grokbot": "Grok Bot", "claudecode": "Claude Code", "dot": "Dot"}
 
 
 def said_meanwhile(api, channel, state, promised=()):
@@ -2483,8 +2489,13 @@ def said_meanwhile(api, channel, state, promised=()):
 
 
 def _signed(m):
-    t = str(m.get("text") or "").lstrip()
-    return next((name for sign, name in SIGNS.items() if t.startswith(sign)), None)
+    found = SIGN.match(str(m.get("text") or ""))
+    return SIGN_NAMES[re.sub(r"\s", "", found.group(1).lower())] if found else None
+
+
+def _unsigned(text):
+    """A message's words without its leading agent tag."""
+    return SIGN.sub("", str(text or ""), count=1)
 
 
 def _who(m, self_id, dot):
@@ -2579,6 +2590,13 @@ def to_grokbot(text):
     return out, True
 
 
+def want_mention(agent, dot, ids):
+    """How a line in a want's working thread reaches Dot, Grok Bot or Muse: Dot's app mention; Grok Bot's app mention
+    when it is a Slack app here, else the @GrokBot its routine watches the channel for; @Muse. None for anyone else."""
+    return {"Dot": "<@%s> " % dot, "Muse": "@Muse ",
+            "Grok Bot": ("<@%s> " % ids["grokbot"]) if (ids or {}).get("grokbot") else "@GrokBot "}.get(agent)
+
+
 def address(text, dot, ids):
     """His @s made real: dot becomes a Slack mention, and Grok Bot too if it is ever a Slack app here; otherwise
     '@GrokBot' and '@Muse' stay as written, which their routines watch the channel for.
@@ -2617,7 +2635,7 @@ def thread_block(api, channel, thread_ts, self_id, dot, names=None):
     lines = []
     for i, m in enumerate(msgs[:1] + msgs[1:][-THREAD_SHOWN:]):
         who = _who(m, self_id, dot)
-        said = _clean(m.get("text"), names)[:1500]
+        said = _clean(_unsigned(m.get("text")) if who in ("agent", "dot") else m.get("text"), names)[:1500]
         lines.append("%s%s: %s" % ("STARTED BY " if i == 0 else "",
                                    _speaker({"who": who, "name": _agent_name(m) if who == "agent" else None}), said))
     return ("THE THREAD THIS WAS SAID IN (its first message, then every reply, oldest first; your answer goes "
@@ -3204,11 +3222,11 @@ def agent_wants_pass(api, channel, dot, state, now, rows=(), put=None, notify=No
         except Exception as exc:
             skip(w, exc)
     want_agent.receive(rows)
-    def send_reply(w, work, text, trigger):
+    def send_reply(w, work, text, trigger, addressed=None):
         ensure_running(want_agent.workspace())
         if _guarded(text): raise RuntimeError("working reply refused by send guard")
         a = w['agent_work']
-        addressed = ("@Muse " if a['agent'] == 'muse' else "<@%s> " % dot)
+        addressed = addressed or ("@Muse " if a['agent'] == 'muse' else "<@%s> " % dot)
         body = addressed + '[want:%s] %s\n%s' % (w['id'], work['id'], text)
         sent = api('chat.postMessage', {'channel':channel, 'thread_ts':a['thread'], 'text':body,
                    'client_msg_id':str(__import__('uuid').uuid5(__import__('uuid').NAMESPACE_URL, a['request_id'] + trigger))})
@@ -3231,7 +3249,16 @@ def agent_wants_pass(api, channel, dot, state, now, rows=(), put=None, notify=No
             send_reply(w, work, chosen['message'], ':review:' + trigger)
             working._mutate(w, work, want_agent.workspace(), lambda d: d.setdefault('returned_results', []).append(trigger))
         return None
-    lines = want_agent.finish(state, publish, notify, complete, save, now, review=review)
+    def ask(w, agent, text):
+        # his line to Dot, Grok Bot or Muse about what was found for an email want, from his email step's deliberation
+        # (no working call): posted in the want's own thread, addressed the way each is reached here (Dot's app;
+        # Grok Bot's app if it is one, else the @GrokBot its routine watches for; @Muse), recorded like any reply
+        work = working.binding(w, state)
+        if work is None: raise RuntimeError('no current want-room binding to ask in')
+        to = want_mention(agent, dot, agent_ids(api, state, now))
+        if to is None: raise RuntimeError('not an agent of the room: %s' % agent)
+        return send_reply(w, work, text, ':ask:' + want_agent.fingerprint(agent + text), addressed=to)
+    lines = want_agent.finish(state, publish, notify, complete, save, now, review=review, ask=ask)
     # Resume unanswered events from disk, even when this poll has no new rows.
     for w in want_agent.read(want_agent.workspace() / 'memory/current-wants.json', []):
         a = w.get('agent_work') or {}
@@ -3623,7 +3650,8 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         signed_owner = _load(CONFIG_FILE, {}).get("owner_user_id")
         authenticated_agent = bool(signed_owner and m.get("user") == signed_owner and not m.get("bot_id") and not m.get("bot_profile"))
         rows.append({"agent_authenticated": authenticated_agent, "evidence_owner": evidence_delivery.authenticate(m, _load(CONFIG_FILE,{}).get("owner_user_id"), channel, now) if who == "gloria" else None, "ts": m["ts"], "who": who, **({"name": name} if name else {}),
-                     "text": "\n\n".join(x for x in (_clean(m.get("text"), names), seen) if x),
+                     "text": "\n\n".join(x for x in (_clean(_unsigned(m.get("text")) if who in ("agent", "dot")
+                                                        else m.get("text"), names), seen) if x),
                      "thread": m.get("thread_ts") if m.get("thread_ts") and m.get("thread_ts") != m["ts"] else None,
                      "at": datetime.fromtimestamp(float(m["ts"])).isoformat(timespec="seconds")})
     theirs = [r for r in rows if r["who"] != "vintos"]
