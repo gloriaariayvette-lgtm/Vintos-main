@@ -175,6 +175,20 @@ def promoted_tendency(rec):
     return inst[-1].get("description", "") if inst else ""
 
 
+# A capacity date older than this does not reinforce its entry after promotion. add_entry stamps last_seen with
+# now, so a backlog of old sessions read in one run would make months-old evidence look fresh to narrative identity
+# and raise the entry once per old date (review 2026-11-14).
+CAPACITY_FRESH_DAYS = 30
+
+
+def _fresh_date(source_date, today=None):
+    try:
+        from datetime import date as _d
+        return 0 <= ((today or _d.today()) - _d.fromisoformat(str(source_date)[:10])).days <= CAPACITY_FRESH_DAYS
+    except Exception:
+        return False
+
+
 def write_capacities(caps, source, source_date):
     """Accumulate capacities. Promote to the self-model at 2 distinct source dates.
 
@@ -229,7 +243,7 @@ def write_capacities(caps, source, source_date):
                 print(f"[Extractor] Capacity {key} promoted ({len(dates)} dates)")
             except Exception as _ce:
                 print(f"[Extractor] Capacity promote failed: {_ce}")
-        elif rec["promoted"] and new_date:
+        elif rec["promoted"] and new_date and _fresh_date(source_date):
             # A promoted capacity seen on a further date is further evidence for its entry. It used to stop here,
             # so the entry kept its promotion confidence (0.50) however many dates followed (2026-11-14).
             try:
@@ -239,7 +253,7 @@ def write_capacities(caps, source, source_date):
                 add_entry(
                     trigger="",
                     tendency=promoted_tendency(rec),
-                    confidence=min(0.9, 0.3 + len(dates) * 0.1),
+                    confidence=0.5,   # only if the entry has gone and is added again: the promotion level
                     source="trial-extractor",
                     entry_type="positive",
                     occurrence_id="capacity:%s:%s" % (key, source_date),

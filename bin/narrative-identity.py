@@ -52,8 +52,22 @@ def _text_overlap(a, b):
     if not wa or not wb: return 0.0
     return len(wa & wb) / max(len(wa), len(wb))
 
+def _polarity(text):
+    """Which way a fragment points. The template words dropped below include "avoid" and "no longer struggle", so
+    without this "I tend to avoid X", "I tend to X" and a pearl's "I no longer struggle to enact: X" all had the
+    same content and reinforced one another (review 2026-11-14)."""
+    t = " " + " ".join(text.lower().split()) + " "
+    if " no longer " in t:
+        return "no-longer"
+    if " avoid " in t:
+        return "avoid"
+    return "plain"
+
 def _content_overlap(a, b):
-    """_text_overlap on the words that carry content: the shared frame ("I tend to ... when") is left out."""
+    """_text_overlap on the words that carry content: the shared frame ("I tend to ... when") is left out.
+    Fragments that point opposite ways never match."""
+    if _polarity(a) != _polarity(b):
+        return 0.0
     wa = set(a.lower().split()) - _TEMPLATE_WORDS
     wb = set(b.lower().split()) - _TEMPLATE_WORDS
     if not wa or not wb: return 0.0

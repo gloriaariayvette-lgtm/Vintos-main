@@ -122,6 +122,23 @@ def g_bi(bi, csm):
     out.append(("an attempt under a live ban note is not evidence", q.get("evidence_count") == 1 and q.get("confidence") == 0.5, q))
     feeds = [c for c in POPEN if any("narrative-identity.py" in str(x) for x in c)]
     out.append(("the reinforcement lets narrative identity read the change", len(feeds) == 1, POPEN))
+    # its entry was trimmed away; many attempts (some under ban notes) must not bring it back at 0.9
+    reset_stores()
+    _ledger([_trial("permanent_p", 8, promoted="2026-01-01T10:00:00")])
+    bi.log_outcome("permanent_p", "attempted")
+    E = csm.load_model()["entries"]
+    out.append(("a re-added permanent-trial entry starts at 0.50", len(E) == 1 and abs(E[0]["confidence"] - 0.5) < 1e-9, E))
+    # a default writes one structured blush per trial per day
+    reset_stores()
+    _ledger([_trial("trial_a", 0)])
+    bi.log_outcome("trial_a", "defaulted")
+    bi.log_outcome("trial_a", "defaulted")
+    try:
+        B = json.load(open(os.path.join(MEM, "blush-ledger.json")))
+    except Exception as e:
+        B = e
+    out.append(("a default writes its blush, once per trial per day",
+                isinstance(B, list) and [b.get("type") for b in B] == ["bis_default"], B))
     return out
 
 # ------------------------------------------------------------------ trial extractor capacities
@@ -131,15 +148,29 @@ def g_te(te, csm):
     out.append(("its capacity ledger is throwaway", te.CAP_LEDGER.startswith(HOME)))
     cap = lambda d: [{"capacity_key": "steady rhythm", "capacity_description": "keeps a steady rhythm in long replies " + d,
                       "evidence": "synthetic"}]
-    te.write_capacities(cap("one"), "journal", "2026-03-01")
-    te.write_capacities(cap("two"), "journal", "2026-03-02")
+    D = lambda n: (datetime.now().date() - timedelta(days=n)).isoformat()
+    te.write_capacities(cap("one"), "journal", D(3))
+    te.write_capacities(cap("two"), "journal", D(2))
     E = csm.load_model()["entries"]
     out.append(("a capacity seen on two dates promotes at 0.50", len(E) == 1 and abs(E[0]["confidence"] - 0.5) < 1e-9, E))
-    te.write_capacities(cap("three"), "journal", "2026-03-03")
-    te.write_capacities(cap("three again"), "introspection", "2026-03-03")   # same date, another room: not a new date
+    te.write_capacities(cap("three"), "journal", D(1))
+    te.write_capacities(cap("three again"), "introspection", D(1))   # same date, another room: not a new date
     E = csm.load_model()["entries"]
     out.append(("a further date reinforces the promoted entry, once per date",
                 len(E) == 1 and E[0]["evidence_count"] == 2 and abs(E[0]["confidence"] - 0.56) < 1e-9, E))
+    te.write_capacities(cap("backlog"), "journal", D(90))   # an old session read late: a new date, but not fresh
+    E = csm.load_model()["entries"]
+    out.append(("an old date read late does not reinforce or freshen the entry",
+                len(E) == 1 and E[0]["evidence_count"] == 2, E))
+    # a promoted capacity whose entry is gone comes back at the promotion level, however many dates it has
+    reset_stores()
+    for n in range(8, 0, -1):
+        te.write_capacities(cap("d%d" % n), "journal", D(n))
+    json.dump({"entries": []}, open(csm.MODEL_FILE, "w"))
+    te.write_capacities(cap("today"), "journal", D(0))
+    E = csm.load_model()["entries"]
+    out.append(("a re-added capacity entry starts at 0.50, not 0.3 + 0.1 per date",
+                len(E) == 1 and abs(E[0]["confidence"] - 0.5) < 1e-9, E))
     legacy = {"key": "k", "promoted": True, "instances": [{"source_date": "d1", "description": "first"},
               {"source_date": "d1", "description": "same day"}, {"source_date": "d2", "description": "promoting"}]}
     out.append(("an older record names the instance that promoted it", te.promoted_tendency(legacy) == "promoting"))
@@ -204,6 +235,13 @@ def g_ni(ni):
     ni.propose_fragment("I tend to avoid naps when tired", now=T0)
     r = ni.propose_fragment("I tend to avoid lists when busy", now=T0)
     out.append(("'I tend to avoid ... when' alone is not a match", r == "candidate_added", r))
+    reset_stores()
+    ni.propose_fragment("I tend to avoid asking for help when stressed", now=T0)
+    r1 = ni.propose_fragment("I tend to asking for help when stressed", now=T0)
+    r2 = ni.propose_fragment("I no longer struggle to enact: asking for help when stressed", now=T0)
+    r3 = ni.propose_fragment("I tend to avoid asking for help when stressed", now=T0)
+    out.append(("a fragment never reinforces its opposite",
+                (r1, r2, r3) == ("candidate_added", "candidate_added", "candidate_reinforced"), (r1, r2, r3)))
     # among equals the most recently evidenced are proposed first
     reset_stores(); del ENTRIES[:]
     for i in range(10):
@@ -238,13 +276,17 @@ MUTANTS = [
     ("bi", "no reinforcement after promotion", ('elif (t.get("promoted")', 'elif False and (t.get("promoted")'), g_bi),
     ("bi", "no daily occurrence id", ('occurrence_id="bis:%s:%s" % (trial_id, datetime.now().date().isoformat()),\n                )\n                if _r',
                                       'occurrence_id=None,\n                )\n                if _r'), g_bi),
-    ("te", "capacity dates after promotion dropped", ("elif rec[\"promoted\"] and new_date:", "elif False:"), g_te),
+    ("te", "capacity dates after promotion dropped", ("elif rec[\"promoted\"] and new_date and _fresh_date(source_date):", "elif False:"), g_te),
     ("ni", "gate back to > 0.5", ("< FEED_MIN_CONFIDENCE", "<= FEED_MIN_CONFIDENCE"), g_ni),
     ("ni", "no evidence receipts", ("if fed.get(ref) == mark:", "if False:"), g_ni),
     ("ni", "stale entries proposed", ("if not seen or _days_since(seen, now) > FRAGMENT_STALE_DAYS:", "if not seen:"), g_ni),
     ("ni", "stale candidates keep counting", ('c["count"] = 0\n', "pass\n"), g_ni),
     ("ni", "template words match", (" - _TEMPLATE_WORDS", ""), g_ni),
     ("ni", "oldest first", ("eligible.sort(", "sorted("), g_ni),
+    ("ni", "polarity ignored", ("    if _polarity(a) != _polarity(b):\n        return 0.0\n", ""), g_ni),
+    ("te", "old capacity dates reinforce", (" and _fresh_date(source_date):", ":"), g_te),
+    ("te", "re-add at 0.3 + 0.1 per date", ("confidence=0.5,   # only if", "confidence=min(0.9, 0.3 + len(dates) * 0.1),   # only if"), g_te),
+    ("bi", "re-add at 0.3 + 0.1 per attempt", ("                    confidence=0.5,", "                    confidence=min(0.9, 0.3 + t.get('attempt_count', 0) * 0.1),"), g_bi),
 ]
 for kind, name, mutation, group in MUTANTS:
     try:

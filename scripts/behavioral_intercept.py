@@ -275,8 +275,11 @@ def _feed_narrative():
     try:
         import subprocess as _ni_sub
         _log = open(NARRATIVE_LOG, "a")
-        _ni_sub.Popen(["python3", os.path.join(SCRIPTS, "narrative-identity.py"), "feed"],
-                      stdout=_log, stderr=_log)
+        try:
+            _ni_sub.Popen(["python3", os.path.join(SCRIPTS, "narrative-identity.py"), "feed"],
+                          stdout=_log, stderr=_log)
+        finally:
+            _log.close()   # the child holds its own copy
         return True
     except Exception as _ni_e:
         print(f"[Intercept] narrative feed failed: {_ni_e}", file=sys.stderr)
@@ -411,10 +414,13 @@ def log_outcome(trial_id, outcome, resistance=0.5, influenced=False):
             # is compliance, not evidence of change, and does not count.
             try:
                 from causal_self_model import add_entry
+                # The confidence only applies if the entry has gone (trimmed) and is added again: it starts at the
+                # promotion level, not at 0.3 + 0.1 per attempt, which counts ban-note attempts and could start it
+                # at 0.9, above anything reinforcement can reach (review 2026-11-14).
                 _r = add_entry(
                     trigger=t.get("trigger", ""),
                     tendency=t.get("pattern_description", ""),
-                    confidence=min(0.9, 0.3 + t.get("attempt_count", 0) * 0.1),
+                    confidence=0.5,
                     source="behavioral-intercept",
                     entry_type="negative",
                     occurrence_id="bis:%s:%s" % (trial_id, datetime.now().date().isoformat()),
