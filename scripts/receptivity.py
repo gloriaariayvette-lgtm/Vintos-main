@@ -14,13 +14,15 @@ for). That is whether a hoped-for outcome happened, not whether she was receptiv
 Two constructs, kept apart (review, 14 November, 12:16): what this measures is RESPONSE ENGAGEMENT - she answered
 or engaged with his ask. It is not OFFER ACCEPTANCE - her willingness to be changed or moved by him. Answering a
 question does not show that, and the judge is never asked it, so acceptance is reported as not measured, never
-inferred from this figure. A clear refusal or boundary is a response: it counts as engagement, and it is counted
-on its own beside it, so a "no" never reads as her being unreceptive.
+inferred from this figure. A clear refusal or boundary is a response, never a non-response: it is counted on its
+own and left out of the figure's numerator AND denominator, so a "no" neither lowers her priority as if she were
+unreceptive nor raises it - which would send him after her axis harder because she said no (blinded Claude review,
+14 November).
 
 The labels, one per delivered move, and what each is worth to her engagement:
     answered  1.0   she answered or did it, in any form
     partly    0.5   she took up part of it, or a hedged answer
-    refused   1.0   she plainly said no to it or set a boundary: engaged, and counted apart as `refused`
+    refused   -     she plainly said no to it or set a boundary: a response, counted apart, outside the figure
     ignored   0.0   she replied but left what he asked or offered untouched (a clear non-response)
     no_bid    not counted - his reply asked and offered nothing she could respond to
     unclear   not counted - the evidence cannot decide (a photo it cannot see, her reply answers a later move)
@@ -39,7 +41,8 @@ Counts only, never words.
 from datetime import datetime
 
 LABELS = ("answered", "partly", "ignored", "refused", "no_bid", "unclear")
-ENGAGEMENT = {"answered": 1.0, "partly": 0.5, "refused": 1.0, "ignored": 0.0}   # the counted labels
+ENGAGEMENT = {"answered": 1.0, "partly": 0.5, "ignored": 0.0}   # the labels in the figure
+COUNTED = ("answered", "partly", "ignored", "refused")             # the labels counted (refused apart)
 CREDIT = ENGAGEMENT                       # the old name, read by older callers
 RESPONSE_WINDOW_HOURS = 48
 RECENT_DAYS = 14
@@ -158,28 +161,29 @@ def history(led, now, days=RECENT_DAYS):
         if t is None or now - t > days * 86400 or t > now:
             continue
         lab = effective(r, cmap)
-        if lab in ENGAGEMENT:
+        if lab in COUNTED:
             later = lab != label_of(r) or (lab == "answered" and r["receptive"].get("via") == "later_turn")
             seen.append((t, lab, later))
     h = {"answered": 0, "partly": 0, "ignored": 0, "refused": 0, "later_turn": 0, "n": 0}
     for _t, lab, later in sorted(seen, key=lambda x: x[0])[-MAX_RECORDS:]:
-        h[lab] += 1; h["n"] += 1; h["later_turn"] += int(later)
+        h[lab] += 1; h["later_turn"] += int(later)
+        h["n"] += int(lab in ENGAGEMENT)          # a refusal is counted, never in the figure's denominator
     return h
 
 
 def score(h):
-    """Her response engagement: the share of his asks and offers she responded to - a plain no included, a partly
-    counting half; None under MIN_RECORDS. Conditional on counted evidence: silence, no_bid, unclear, pending and
-    judge failures are outside its denominator (partition)."""
+    """Her response engagement: the share of his asks and offers she responded to, a partly counting half and a
+    plain no left out of both sides; None under MIN_RECORDS. Conditional on counted evidence: silence, no_bid,
+    unclear, refused, pending and judge failures are outside its denominator (partition)."""
     if not isinstance(h, dict) or h.get("n", 0) < MIN_RECORDS:
         return None
     return round(sum(ENGAGEMENT[k] * h.get(k, 0) for k in ENGAGEMENT) / h["n"], 2)
 
 
 def counts_text(h):
-    return ("(%d answered + %d refused + 0.5 x %d partly) / %d of his asks and offers she was counted on in the last "
-            "%d days, %d ignored, %d answered in a later turn; a plain no counts as a response" %
-            (h["answered"], h["refused"], h["partly"], h["n"], RECENT_DAYS, h["ignored"], h["later_turn"]))
+    return ("(%d answered + 0.5 x %d partly) / %d of his asks and offers with a reply read in the last %d days, "
+            "%d left aside, %d answered in a later turn; %d declined, counted apart and outside the figure" %
+            (h["answered"], h["partly"], h["n"], RECENT_DAYS, h["ignored"], h["later_turn"], h["refused"]))
 
 
 # ---- the receptive lifecycle, apart from the intent's axis verdicts ----------------------------------------------
@@ -211,7 +215,8 @@ def partition(led, now=None, days=RECENT_DAYS, has_reply=None):
     """Every delivered move of the last `days` days in exactly one bucket, counts only:
         scored         a counted label (answered / partly / refused / ignored, after credits)
         no_bid         he asked and offered nothing
-        unclear        the evidence could not decide
+        refused        she plainly declined: a response, counted apart, outside the figure
+        unclear        the evidence could not decide (or her admitted reply held no words and no media)
         judge_failed   the judge never gave a clean answer and the record is terminal (budget apart below)
         budget         as judge_failed, the last failure being the week's budget
         pending_judge  her reply is in hand and the judge has not settled it yet
@@ -221,7 +226,8 @@ def partition(led, now=None, days=RECENT_DAYS, has_reply=None):
     import time
     now = now or time.time()
     cmap = credited(led)
-    out = {k: 0 for k in ("scored", "no_bid", "unclear", "judge_failed", "budget", "pending_judge", "pending", "silence")}
+    out = {k: 0 for k in ("scored", "refused", "no_bid", "unclear", "judge_failed", "budget", "pending_judge", "pending",
+                          "silence")}
     scored = {k: 0 for k in ENGAGEMENT}
     for r in (led if isinstance(led, list) else []):
         if not isinstance(r, dict) or r.get("status") != "delivered":
@@ -233,8 +239,10 @@ def partition(led, now=None, days=RECENT_DAYS, has_reply=None):
         rec = r.get("receptive") if isinstance(r.get("receptive"), dict) else None
         if lab in ENGAGEMENT:
             out["scored"] += 1; scored[lab] += 1
-        elif lab in ("no_bid", "unclear"):
+        elif lab in ("refused", "no_bid", "unclear"):
             out[lab] += 1
+        elif rec is not None and rec.get("terminal") and rec.get("status") == "no_evidence":
+            out["unclear"] += 1
         elif rec is not None and rec.get("terminal"):
             out["budget" if rec.get("status") == "budget" else "judge_failed"] += 1
         elif rec is not None or (has_reply(r) if has_reply else bool(r.get("response_text"))):

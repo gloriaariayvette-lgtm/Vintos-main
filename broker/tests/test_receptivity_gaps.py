@@ -47,12 +47,13 @@ def srow(i, hours_ago, label=None, base=NOW, **extra):
 
 
 class Construct(unittest.TestCase):
-    def test_a_plain_no_is_engagement_counted_apart(self):
-        led = [srow(i, i + 1, 'refused') for i in range(5)] + [srow(9, 9, 'ignored')]
-        h = RC.history(led, NOW.timestamp())
+    def test_a_plain_no_is_counted_apart_and_moves_the_figure_neither_way(self):
+        base = [srow(i, i + 1, 'answered') for i in range(5)] + [srow(9, 9, 'ignored')]
+        noes = [srow(20 + i, 20 + i, 'refused') for i in range(5)]
+        h0, h = RC.history(base, NOW.timestamp()), RC.history(base + noes, NOW.timestamp())
         self.assertEqual((h['refused'], h['ignored'], h['n']), (5, 1, 6))
-        self.assertEqual(RC.score(h), 0.83)                    # five plain noes are five responses
-        self.assertIn('5 refused', RC.counts_text(h)); self.assertIn('a plain no counts as a response', RC.counts_text(h))
+        self.assertEqual(RC.score(h), RC.score(h0))            # five plain noes neither lower nor raise it
+        self.assertIn('5 declined, counted apart', RC.counts_text(h))
 
     def test_rationale_claims_response_never_movability(self):
         src = (REPO / 'scripts' / 'priority_vector.py').read_text()
@@ -95,13 +96,19 @@ class Engine(unittest.TestCase):
         self.write(led)
 
     # ---- construct, end to end ---------------------------------------------------------------------------
-    def test_refusals_never_drive_her_priority_down_and_the_reason_claims_no_movability(self):
-        self.write([srow(i, i + 1, 'refused', base=datetime.now()) for i in range(6)])
+    def test_refusals_never_move_her_priority_and_the_reason_claims_no_movability(self):
+        now = datetime.now()
+        self.write([srow(i, i + 1, 'refused', base=now) for i in range(6)])
         rec = PV.declare()
-        self.assertEqual(rec['receptivity'], 1.0)
+        self.assertIsNone(rec['receptivity']); self.assertEqual(rec['weights'], F.MIDDLING)   # not the low branch
+        self.assertIn('she declined 6 of your recent asks; do not re-ask those', rec['why'])
+        self.write([srow(i, i + 1, 'refused', base=now) for i in range(6)] + [srow(10 + i, 10 + i, 'answered', base=now) for i in range(5)])
+        rec = PV.declare()
+        self.assertEqual(rec['receptivity'], 1.0)                                  # the noes neither raised nor lowered it
         self.assertEqual(rec['weights']['gloria'], max(rec['weights'].values()))
         self.assertNotIn('movable', rec['why']); self.assertNotIn('transformation', rec['why'])
-        self.assertIn('not whether she is willing to be moved', rec['why'])
+        self.assertIn('leave alone anything she declined', rec['why'])
+        self.assertIn('11 of 11 delivered moves had a reply that was read', rec['why'])
         rep = PV.receptivity_report()
         self.assertEqual((rep['measures'], rep['offer_acceptance'], rep['thresholds_validated'], rep['refused']),
                          ('response_engagement', None, False, 6))
@@ -155,9 +162,9 @@ class Engine(unittest.TestCase):
         self.assertNotIn('receptive_evidence', self.rows()[-1]); self.assertEqual(self.packets, [])
         self.assertEqual(PV.receptivity_report()['partition']['silence'], 1)
 
-    def test_a_judge_that_keeps_failing_becomes_a_counted_budget_exclusion(self):
+    def test_a_judge_that_keeps_failing_becomes_a_counted_judge_failure(self):
         with patch.object(RC, 'TRIES_MAX', 2):
-            with self.judge(status='budget'):
+            with self.judge(status='timeout'):
                 self.delivered(); E.resolve_previous(F.HER)
                 self.assertEqual(PV.receptivity_report()['partition']['pending_judge'], 1)
                 self.due_now(); E.resolve_previous('')
@@ -165,8 +172,40 @@ class Engine(unittest.TestCase):
             self.assertEqual(len(self.packets), 2)
             row = self.rows()[-1]
             self.assertTrue(row['receptive']['terminal']); self.assertTrue(RC.terminal(row))
+            self.assertNotIn('text', row['receptive_evidence']['first'])         # her words leave a closed record
             p = PV.receptivity_report()['partition']
-            self.assertEqual((p['budget'], p['pending_judge'], p['scored'], p['delivered']), (1, 0, 0, 1))
+            self.assertEqual((p['judge_failed'], p['pending_judge'], p['scored'], p['delivered']), (1, 0, 0, 1))
+
+    def test_the_budget_spends_no_try_and_only_days_end_it(self):
+        with patch.object(RC, 'TRIES_MAX', 2), self.judge(status='budget'):
+            self.delivered(); E.resolve_previous(F.HER)
+            for _ in range(4):
+                self.due_now(); E.resolve_previous('')
+            row = self.rows()[-1]
+            self.assertEqual((len(self.packets), row['receptive']['tries']), (5, 0)); self.assertFalse(RC.terminal(row))
+            led = self.rows(); led[-1]['delivered_at'] = led[-1]['timestamp'] = iso(8 * 24)   # a week on, the cap still shut
+            led[-1]['receptive_evidence']['first']['at'] = iso(8 * 24 - 1); self.write(led)
+            self.due_now(); E.resolve_previous('')
+        row = self.rows()[-1]
+        self.assertTrue(row['receptive']['terminal'])
+        self.assertEqual(PV.receptivity_report()['partition']['budget'], 1)
+
+    def test_an_answer_after_a_failed_selection_turn_is_not_her_follow_up(self):
+        with self.judge('ignored'):
+            self.delivered(); E.resolve_previous(F.HER)
+        E.record_failed_selection(RuntimeError('fixture'))                          # his reply went out untracked
+        E.note_response(FOLLOW_UP)
+        self.assertNotIn('later', self.rows()[0]['receptive_evidence'])
+
+    def test_admitted_evidence_with_nothing_in_it_is_closed_not_retried_for_ever(self):
+        now = datetime.now()
+        self.write([srow(1, 2, base=now, receptive_evidence={'first': {'text': 'GLORIA (now):   ', 'at': iso(1, now)}})])
+        with self.judge('answered'):
+            E.resolve_previous(''); E.resolve_previous('')
+        row = self.rows()[-1]
+        self.assertEqual(self.packets, []); self.assertTrue(RC.terminal(row))
+        self.assertEqual(row['receptive']['status'], 'no_evidence')
+        self.assertEqual(PV.receptivity_report()['partition']['unclear'], 1)
 
     # ---- coverage ----------------------------------------------------------------------------------------
     def test_an_answer_to_the_older_of_two_open_asks_credits_that_one_once(self):
@@ -236,11 +275,11 @@ class Engine(unittest.TestCase):
                dict(srow(11, 1, base=now), status='failed')]
         self.write(led)
         p = PV.receptivity_report()['partition']
-        self.assertEqual({k: p[k] for k in ('scored', 'no_bid', 'unclear', 'judge_failed', 'budget', 'pending_judge',
-                                            'pending', 'silence')},
-                         {'scored': 2, 'no_bid': 1, 'unclear': 1, 'judge_failed': 1, 'budget': 1, 'pending_judge': 2,
-                          'pending': 1, 'silence': 1})
-        self.assertEqual(p['delivered'], 10); self.assertEqual(p['scored_labels']['refused'], 1)
+        self.assertEqual({k: p[k] for k in ('scored', 'refused', 'no_bid', 'unclear', 'judge_failed', 'budget',
+                                            'pending_judge', 'pending', 'silence')},
+                         {'scored': 1, 'refused': 1, 'no_bid': 1, 'unclear': 1, 'judge_failed': 1, 'budget': 1,
+                          'pending_judge': 2, 'pending': 1, 'silence': 1})
+        self.assertEqual(p['delivered'], 10); self.assertEqual(p['scored_labels']['answered'], 1)
 
 
 class UsageUnlogged(unittest.TestCase):

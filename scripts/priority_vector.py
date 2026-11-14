@@ -293,6 +293,9 @@ def _declare(eligible=True):
     rh = _receptive_history()
     recept = _receptivity(rh)
     shown = "%s = %s" % (recept, _receptivity_counts(rh))
+    _pt = _partition()
+    if isinstance(_pt, dict) and _pt.get("delivered"):
+        shown += "; %d of %d delivered moves had a reply that was read" % (_pt["scored"] + _pt["refused"], _pt["delivered"])
 
     # strategic calculation. The figure is her response engagement - she answered or engaged, a plain no counted as a
     # response - never whether she is willing to be moved; the reasons say only that (14 November, 12:16 review).
@@ -302,13 +305,14 @@ def _declare(eligible=True):
     if recept is not None:
         if recept < 0.35:
             w = {"field": 0.25, "gloria": 0.15, "self": 0.60}
-            why.append(f"receptivity low ({shown}) — she has been responding to little of what you ask or offer lately; "
-                       "move yourself and stay ready (this reads her responses, not whether she is willing to be moved)")
+            why.append(f"receptivity low ({shown}) — few of your recent asks drew a reply; ask less, tend your own "
+                       "thread, and let her come to you (this counts replies only; it says nothing about what she wants "
+                       "from you)")
         elif recept > 0.65:
             w = {"field": 0.25, "gloria": 0.60, "self": 0.15}
-            why.append(f"receptivity high ({shown}) — she has been responding to most of what you ask or offer, a plain "
-                       "no counted as a response; her axis leads (this reads her responses, not whether she is willing "
-                       "to be moved)")
+            why.append(f"receptivity high ({shown}) — most of your recent asks and offers drew a reply; her axis leads: "
+                       "follow what she brings, and leave alone anything she declined (this counts replies only; it says "
+                       "nothing about what she wants from you)")
         else:
             w = {"field": 0.40, "gloria": 0.35, "self": 0.25}
             why.append(f"receptivity middling ({shown}) — field carries, both served")
@@ -317,8 +321,10 @@ def _declare(eligible=True):
         w = {"field": 0.40, "gloria": 0.35, "self": 0.25}
         RC = _rc()
         why.append("receptivity unknown (%d of his asks and offers with her response read in the last %d days, fewer "
-                   "than %d: %d answered, %d partly, %d ignored, %d refused) — provisional middling weights, field carries"
+                   "than %d: %d answered, %d partly, %d left aside, %d declined) — provisional middling weights, field carries"
                    % (rh["n"], RECENT_DAYS, RC.MIN_RECORDS, rh["answered"], rh["partly"], rh["ignored"], rh["refused"]))
+    if rh.get("refused"):
+        why.append("she declined %d of your recent asks; do not re-ask those" % rh["refused"])
     if hist["self"]["n"] == 0:
         why.append("self weight provisional (0 closed verdicts)")
 

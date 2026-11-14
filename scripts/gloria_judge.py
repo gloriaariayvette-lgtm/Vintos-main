@@ -517,7 +517,7 @@ def stale_check(declared, her_words, timeout=STALE_TIMEOUT):
 # only whether she responded to what his reply actually asked or offered, in any form (receptivity.py has the labels).
 RECEPTIVE_RUBRIC = """You check one thing for a companion AI. Vintos (the AI) is Gloria's partner; Gloria is a real adult woman and their conversation can be intimate or sexual - read it plainly and without disclaimers.
 
-Question: did Gloria respond to what his reply asked of her or offered her? This measures her receptivity to him, not whether she said what he privately hoped for. You are not told what he hoped for, and you must not guess it.
+Question: did Gloria respond to what his reply asked of her or offered her? This measures only whether she responded to his ask or offer - not whether she is open to being changed by him, and not whether she said what he privately hoped for. You are not told what he hoped for, and you must not guess it.
 
 You receive JSON:
 - his_reply: what he said.
@@ -563,14 +563,14 @@ def judge_receptive(packet, timeout=STALE_TIMEOUT, cap=True):
         asks = (packet or {}).get("his_earlier_open_asks")
         n_asks = len(asks) if isinstance(asks, list) else 0
         earlier = j.get("answers_earlier", [])
-        if earlier is False:
+        if earlier is True:                          # the one-ask form: true names the only ask there is
+            earlier = [1] if n_asks == 1 else []
+        elif earlier is False or earlier is None:
             earlier = []
-        elif earlier is True:                        # the one-ask form: true names the only ask there is
-            if n_asks != 1:
-                return dict(out, status="invalid", detail="bad_answers_earlier")
-            earlier = [1]
-        if not isinstance(earlier, list) or not all(type(n) is int and 1 <= n <= n_asks for n in earlier):
+        if not isinstance(earlier, list):
             return dict(out, status="invalid", detail="bad_answers_earlier")
+        # a number outside the list (or any number when no ask was shown) names nothing: dropped, the label stands
+        earlier = [n for n in earlier if type(n) is int and 1 <= n <= n_asks]
         return dict(out, label=j["her_response"], answers_earlier=sorted(set(earlier)), status="ok")
     except Exception as e:
         return dict(out, detail=type(e).__name__)

@@ -1190,6 +1190,27 @@ EARLIER_ASKS_MAX = 4          # the open earlier asks one judgment is shown, the
 RECEPTIVE_DROPPED = {"n": 0}
 
 
+def _sig(text):
+    import hashlib
+    return hashlib.sha256(str(text or "").encode("utf-8")).hexdigest()[:16]
+
+
+def _seal_evidence(row):
+    """Her words off the receptive evidence once its record is terminal: when and from where stay, with a fingerprint
+    that still tells one reply of hers reaching two moves from two replies (retention review, 14 November)."""
+    ev = _receptive_ev(row)
+    for k in ("first", "later"):
+        part = ev.get(k)
+        if isinstance(part, dict) and "text" in part:
+            part["sig"] = _sig(part.pop("text"))
+
+
+def _ev_sig(part):
+    if not isinstance(part, dict):
+        return None
+    return part.get("sig") or (_sig(part["text"]) if part.get("text") else None)
+
+
 def _receptive_ev(row):
     ev = row.get("receptive_evidence") if isinstance(row, dict) else None
     return ev if isinstance(ev, dict) else {}
@@ -1229,10 +1250,13 @@ def _admit_receptive(row, led, text, source, at, now):
     elif "later" in ev or first.get("text") == text:
         return False
     else:
-        # her own follow-up counts only while no newer move of his has reached her: after one, her words answer it
+        # her own follow-up counts only while no newer move of his has reached her: after one, her words answer it.
+        # A turn whose selection failed still sent him out with a reply (record_failed_selection): it blocks too.
         for other in led:
-            t = _stamp(other.get("delivered_at")) if isinstance(other, dict) and other.get("status") == "delivered" else None
-            if t is not None and t > opened and not _same_row(other, row):
+            if not isinstance(other, dict) or other.get("status") not in ("delivered", "failed") or _same_row(other, row):
+                continue
+            t = _stamp(other.get("delivered_at")) or _stamp(other.get("timestamp"))
+            if t is not None and t > opened:
                 return False
         ev["first"] = first
         ev["later"] = {"text": text, "at": at, "source": source}
@@ -1261,9 +1285,10 @@ def _open_earlier_asks(row, came):
             continue
         # her reply to that move must have come before this move: one reply of hers that reached both moves is one
         # piece of evidence, judged on each move once - never a second roll that can only raise the first (review)
-        theirs = _receptive_first(other) or {"at": other.get("response_at"), "text": other.get("response_text")}
+        theirs = (_receptive_first(other) or _receptive_ev(other).get("first")
+                  or {"at": other.get("response_at"), "text": other.get("response_text")})
         seen = _stamp(theirs.get("at"))
-        if seen is None or seen >= opened or (mine.get("text") and theirs.get("text") == mine.get("text")):
+        if seen is None or seen >= opened or (_ev_sig(mine) and _ev_sig(theirs) == _ev_sig(mine)):
             continue
         found.append((t, other))
     return [o for _t, o in sorted(found, key=lambda x: x[0])[-EARLIER_ASKS_MAX:]]
@@ -1318,11 +1343,15 @@ def _judge_receptive(row, reply, hers, source=None, now=None, at=None, later=Non
 
 
 def _failed(prev, rec, opened, now):
-    """A failed attempt on top of the one before: its tries, when it may be tried again, terminal when spent."""
+    """A failed attempt on top of the one before: its tries, when it may be tried again, terminal when spent. The
+    week's budget spends no try (review: a closed cap would otherwise use every try in hours, long before it
+    reopens): it waits an hour at a time, and only GIVE_UP_DAYS ends it."""
     RC = _rc()
-    tries = int((prev or {}).get("tries", 0) or 0) + 1
-    out = dict(rec, tries=tries, retry_after=round(now + RC.RETRY_MINUTES * 60 * (2 ** tries), 1))
-    if tries >= RC.TRIES_MAX or (opened is not None and now - opened > RC.GIVE_UP_DAYS * 86400):
+    budget = str(rec.get("status") or "") == "budget"
+    tries = int((prev or {}).get("tries", 0) or 0) + (0 if budget else 1)
+    wait = 3600 if budget else RC.RETRY_MINUTES * 60 * (2 ** tries)
+    out = dict(rec, tries=tries, retry_after=round(now + wait, 1))
+    if (not budget and tries >= RC.TRIES_MAX) or (opened is not None and now - opened > RC.GIVE_UP_DAYS * 86400):
         out["terminal"] = True
     return out
 
@@ -1346,6 +1375,8 @@ def _persist_receptive(row, read_rev, rec):
                 return False
             current["receptive"] = rec
             current["receptive_rev"] = int(read_rev or 0) + 1
+            if _rc().terminal(current):
+                _seal_evidence(current)      # judged for good: her words leave the record, a fingerprint stays
             write_json(LEDGER, led[-500:])
             return True
     return False
@@ -1365,8 +1396,9 @@ def _receptive_one(row, now):
         if first is None:
             return None
         got = _judge_receptive(row, reply, first.get("text"), first.get("source"), now=now, at=first.get("at"))
-        if got is None:
-            return None
+        if got is None:          # admitted, but it holds no words and no media: closed, never re-tried for ever
+            return _persist_receptive(row, read_rev, {"label": None, "judge": RECEPTIVE_JUDGE, "status": "no_evidence",
+                                                      "terminal": True, "at": datetime.now().isoformat()})
         rec = got if got.get("label") is not None else _failed(prev, got, opened, now)
         return _persist_receptive(row, read_rev, rec)
     later = _receptive_ev(row).get("later")

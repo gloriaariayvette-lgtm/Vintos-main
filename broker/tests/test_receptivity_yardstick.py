@@ -48,8 +48,10 @@ class Measure(unittest.TestCase):
         led = [rrow(1, 1, 'answered'), rrow(2, 2, 'partly'), rrow(3, 3, 'ignored'), rrow(4, 4, 'refused'),
                rrow(5, 5, 'answered'), rrow(6, 6, 'no_bid'), rrow(7, 7, 'unclear'), rrow(8, 8), rrow(9, 9, 'bogus')]
         h = self.h(led)
-        self.assertEqual((h['answered'], h['partly'], h['ignored'], h['refused'], h['n']), (2, 1, 1, 1, 5))
-        self.assertEqual(RC.score(h), 0.7)                     # (2 + 1 refused + 0.5) / 5: a plain no is a response, an ignore a zero
+        self.assertEqual((h['answered'], h['partly'], h['ignored'], h['refused'], h['n']), (2, 1, 1, 1, 4))
+        self.assertIsNone(RC.score(h))                         # a plain no is counted apart: 4 in the figure, under 5
+        h = self.h(led + [rrow(10, 10, 'answered')])
+        self.assertEqual(RC.score(h), 0.7)                     # (3 + 0.5) / 5: the refusal on neither side
 
     def test_minimum_and_window(self):
         self.assertIsNone(RC.score(self.h([rrow(i, i, 'answered') for i in range(4)])))
@@ -106,9 +108,11 @@ class Judge(unittest.TestCase):
     def test_answers_earlier_needs_an_earlier_ask(self):
         ans = json.dumps({'her_response': 'answered', 'answers_earlier': True})
         self.assertEqual(self.call(ans)['answers_earlier'], [1])                      # the one-ask form
-        self.assertIsNone(self.call(ans, packet={'his_earlier_open_asks': []})['label'])   # true with no ask: no receipt
+        got = self.call(ans, packet={'his_earlier_open_asks': []})                     # true with no ask: names nothing
+        self.assertEqual((got['label'], got['answers_earlier']), ('answered', []))
         listed = json.dumps({'her_response': 'answered', 'answers_earlier': [2]})
-        self.assertIsNone(self.call(listed)['label'])                                  # a number outside the list
+        got = self.call(listed)                                                        # a number outside the list: dropped
+        self.assertEqual((got['label'], got['answers_earlier']), ('answered', []))
         two = {'his_earlier_open_asks': [{'n': 1, 'his_reply': 'a'}, {'n': 2, 'his_reply': 'b'}]}
         self.assertEqual(self.call(listed, packet=two)['answers_earlier'], [2])
 
@@ -276,7 +280,7 @@ class Regrade(unittest.TestCase):
         self.assertEqual((code, rep['rows_changed'], rep['already_recorded']), (0, 5, 1))
         self.assertEqual(self.ledger.read_bytes(), before)
         self.assertEqual(rep['before']['old_landing_rate'], 0.0)
-        self.assertEqual((rep['after']['records'], rep['after']['receptivity']), (5, 0.7))   # 2 + 0.5 + 1 (refused) + 0 (live ignored) / 5
+        self.assertEqual((rep['after']['records'], rep['after']['receptivity'], rep['after']['refused']), (4, None, 1))   # the refusal apart: 4, under 5
 
     def test_apply_is_idempotent_and_revertible(self):
         before = json.loads(self.ledger.read_text())

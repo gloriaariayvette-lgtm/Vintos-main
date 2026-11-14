@@ -926,10 +926,10 @@ class IntentFieldsFix(unittest.TestCase):
         self.ledger([(1, 'NO')] * 5 + [(1, 'PARTIAL')])
         rec = PV.declare()
         self.assertEqual((rec['receptivity'], rec['weights']), (0.08, LOW))
-        self.assertIn('receptivity low (0.08 = (0 answered + 0 refused + 0.5 x 1 partly) / 6 of his asks and offers she '
-                      'was counted on in the last 14 days, 5 ignored, 0 answered in a later turn; a plain no counts as a '
-                      'response)', rec['why'])
-        self.assertIn('not whether she is willing to be moved', rec['why'])
+        self.assertIn('receptivity low (0.08 = (0 answered + 0.5 x 1 partly) / 6 of his asks and offers with a reply read '
+                      'in the last 14 days, 5 left aside, 0 answered in a later turn; 0 declined, counted apart and outside '
+                      'the figure; 6 of 6 delivered moves had a reply that was read)', rec['why'])
+        self.assertIn('it says nothing about what she wants from you', rec['why'])
         rep = PV.receptivity_report()
         self.assertEqual({k: v for k, v in rep.items() if k not in ('partition', 'offer_acceptance_note')},
                          {'window_days': 14, 'minimum_records': 5, 'response_window_hours': 48,
@@ -940,11 +940,11 @@ class IntentFieldsFix(unittest.TestCase):
         self.assertEqual(rep['partition']['scored'], 6)
         self.ledger([(1, 'YES')] * 2 + [(1, 'PARTIAL')] * 2 + [(1, 'NO')] * 2 + [(20, 'NO')] * 9)
         rec = PV.declare()
-        self.assertIn('receptivity middling (0.5 = (2 answered + 0 refused + 0.5 x 2 partly) / 6 of his asks', rec['why'])
+        self.assertIn('receptivity middling (0.5 = (2 answered + 0.5 x 2 partly) / 6 of his asks', rec['why'])
         self.ledger([(1, 'PARTIAL')] * 3)
         rec = PV.declare()
         self.assertIn('receptivity unknown (3 of his asks', rec['why'])
-        self.assertIn('fewer than 5: 0 answered, 3 partly, 0 ignored, 0 refused)', rec['why'])
+        self.assertIn('fewer than 5: 0 answered, 3 partly, 0 left aside, 0 declined)', rec['why'])
         self.assertIsNone(PV.receptivity_report()['receptivity']); self.assertEqual(PV.receptivity_report()['partly'], 3)
         before = {p.name: p.read_bytes() for p in self.mem.iterdir() if p.is_file()}
         PV.receptivity_report()
