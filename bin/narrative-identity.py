@@ -6,9 +6,16 @@ Stores thin narrative fragments: "I tend to...", "I often...", "I avoid..."
 Updates only when repeated pattern observed across days.
 Overwrites slowly — does not append endlessly.
 Used for: slight tone bias, mirror context, nothing heavy.
+
+Evidence (2026-11-14). A fragment rests only on evidence that is there to point to: each proposal carries a
+reference (a causal self-model entry and the evidence mark it had, a pearl candidate id), and the candidate or
+fragment keeps those references. The causal feed proposes an entry once per new piece of evidence on it, never
+again for the same state, so an unchanged entry re-read every drift cycle cannot count as repetition. A candidate
+whose last sighting is older than FRAGMENT_STALE_DAYS starts over: evidence from months ago does not combine with
+one fresh sighting to form a fragment, and a stale fragment is reinforced only by a fresh proposal.
 """
 
-import os, json
+import os, json, hashlib
 from datetime import datetime, timedelta
 
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
@@ -19,6 +26,16 @@ MAX_FRAGMENTS = 12
 MIN_DAYS_TO_OVERWRITE = 3
 FRAGMENT_HALF_LIFE_DAYS = 30.0   # a fragment's weight halves each month it is not reinforced
 FRAGMENT_STALE_DAYS = 30         # not reinforced for this long: no longer offered as who he is now
+# The causal feed's gate. 0.5 is a level the producers reach on evidence, not an untouched default: the behavioural
+# intercept writes 0.3 + 0.1 per attempt and promotes at two attempts, the trial extractor 0.3 + 0.1 per dated
+# observation and promotes at two dates. The gate was "> 0.5", which shut out exactly that plateau - every promoted
+# entry sat at 0.50 and none was ever eligible (2026-11-14).
+FEED_MIN_CONFIDENCE = 0.5
+FEED_TOP_N = 8
+MAX_EVIDENCE_REFS = 10
+MAX_FED_RECEIPTS = 400
+# The template words the feed wraps every entry in. Matching on them made unrelated short entries look alike.
+_TEMPLATE_WORDS = frozenset(("i", "tend", "to", "avoid", "when", "no", "longer", "struggle", "enact:"))
 
 def load_narrative():
     try:
@@ -35,6 +52,13 @@ def _text_overlap(a, b):
     if not wa or not wb: return 0.0
     return len(wa & wb) / max(len(wa), len(wb))
 
+def _content_overlap(a, b):
+    """_text_overlap on the words that carry content: the shared frame ("I tend to ... when") is left out."""
+    wa = set(a.lower().split()) - _TEMPLATE_WORDS
+    wb = set(b.lower().split()) - _TEMPLATE_WORDS
+    if not wa or not wb: return 0.0
+    return len(wa & wb) / max(len(wa), len(wb))
+
 def _get_frame_conditions():
     """Read frame-state for pattern bias and stability."""
     try:
@@ -48,9 +72,21 @@ def _get_frame_conditions():
     except:
         return "", 0.5
 
-def propose_fragment(fragment_text, source="pattern"):
+def _add_evidence(rec, evidence, now):
+    if not evidence:
+        return
+    ref = dict(evidence); ref.setdefault("at", now.isoformat())
+    refs = rec.setdefault("evidence", [])
+    if not any(r.get("ref") == ref.get("ref") for r in refs if ref.get("ref")):
+        refs.append(ref)
+        del refs[:-MAX_EVIDENCE_REFS]
+
+def propose_fragment(fragment_text, source="pattern", evidence=None, now=None):
     """Propose a narrative fragment. Only promotes if seen repeatedly.
-    Frame engine conditions bias promotion threshold and fragment confidence."""
+    Frame engine conditions bias promotion threshold and fragment confidence.
+    evidence: a reference to what this proposal rests on ({"ref": ..., ...}); it is kept on the candidate and
+    travels to the fragment."""
+    now = now or datetime.now()
     data = load_narrative()
     pool = data.get("candidate_pool", [])
     fragments = data.get("fragments", [])
@@ -66,21 +102,27 @@ def propose_fragment(fragment_text, source="pattern"):
 
     # Check if similar fragment already confirmed
     for f in fragments:
-        if _text_overlap(f["text"], fragment_text) > 0.55:
-            # Reinforce confirmed fragment
-            f["reinforced"] = datetime.now().isoformat()
+        if _content_overlap(f["text"], fragment_text) > 0.55:
+            # Reinforce confirmed fragment (a fresh proposal is fresh evidence, so a stale fragment may return here)
+            f["reinforced"] = now.isoformat()
             f["count"] = f.get("count", 1) + 1
+            _add_evidence(f, evidence, now)
             save_narrative(data)
             return "reinforced"
 
     # Check candidate pool
     for c in pool:
-        if _text_overlap(c["text"], fragment_text) > 0.55:
+        if _content_overlap(c["text"], fragment_text) > 0.55:
+            if _days_since(c.get("last_seen") or c.get("formed"), now) > FRAGMENT_STALE_DAYS:
+                # Old sightings do not count toward a fragment formed now: the candidate starts over.
+                c["count"] = 0
+                c["formed"] = now.isoformat()
+                c["evidence"] = []
             c["count"] = c.get("count", 0) + 1
-            c["last_seen"] = datetime.now().isoformat()
+            c["last_seen"] = now.isoformat()
+            _add_evidence(c, evidence, now)
             # Promote if seen enough times across enough days
-            formed = datetime.fromisoformat(c["formed"])
-            days_span = (datetime.now() - formed).days
+            days_span = int(_days_since(c["formed"], now))
             # Pattern bias lowers threshold — if current frame pattern matches fragment
             _threshold = 3
             _days_req = 2
@@ -95,7 +137,7 @@ def propose_fragment(fragment_text, source="pattern"):
             if c["count"] >= _threshold and days_span >= _days_req:
                 # Tag with stability so _promote knows how confident to sound
                 c["stability"] = _stability
-                _promote_to_fragment(c, data)
+                _promote_to_fragment(c, data, now=now)
                 save_narrative(data)
                 # Update absence map — if fragment rhymes with an absence, reduce its intensity
                 try:
@@ -116,7 +158,7 @@ def propose_fragment(fragment_text, source="pattern"):
                             if (_na_id and _na_abs.get("id") == _na_id) or \
                                (not _na_id and isinstance(_na_dom, str) and _na_abs.get("description", "")[:80] == _na_dom):
                                 _na_abs["intensity"] = max(0.1, _na_abs["intensity"] - 0.05)
-                                _na_abs["last_touched"] = datetime.now().isoformat()
+                                _na_abs["last_touched"] = now.isoformat()
                                 break
                         _na_save(_na_data)
                 except: pass
@@ -125,33 +167,37 @@ def propose_fragment(fragment_text, source="pattern"):
             return "candidate_reinforced"
 
     # New candidate
-    pool.append({
+    cand = {
         "text": fragment_text[:200],
         "source": source,
         "count": 1,
-        "formed": datetime.now().isoformat(),
-        "last_seen": datetime.now().isoformat(),
-    })
+        "formed": now.isoformat(),
+        "last_seen": now.isoformat(),
+    }
+    _add_evidence(cand, evidence, now)
+    pool.append(cand)
     # Trim pool
     pool = pool[-20:]
     data["candidate_pool"] = pool
     save_narrative(data)
     return "candidate_added"
 
-def _promote_to_fragment(candidate, data):
+def _promote_to_fragment(candidate, data, now=None):
     """Promote candidate to confirmed narrative fragment."""
+    now = now or datetime.now()
     fragments = data.get("fragments", [])
 
     # Find similar existing fragment to overwrite (slow overwrite)
     for f in fragments:
-        if _text_overlap(f["text"], candidate["text"]) > 0.4:
-            days_old = (datetime.now() - datetime.fromisoformat(f.get("formed", datetime.now().isoformat()))).days
+        if _content_overlap(f["text"], candidate["text"]) > 0.4:
+            days_old = int(_days_since(f.get("formed", now.isoformat()), now))
             if days_old >= MIN_DAYS_TO_OVERWRITE:
                 f["text"] = candidate["text"]
-                f["formed"] = datetime.now().isoformat()
-                f["reinforced"] = datetime.now().isoformat()
+                f["formed"] = now.isoformat()
+                f["reinforced"] = now.isoformat()
                 f["count"] = candidate["count"]
                 f["source"] = candidate["source"]
+                f["evidence"] = list(candidate.get("evidence", []))
                 data["candidate_pool"] = [c for c in data.get("candidate_pool", []) if c["text"] != candidate["text"]]
                 return
 
@@ -160,13 +206,13 @@ def _promote_to_fragment(candidate, data):
         "text": candidate["text"][:200],
         "source": candidate["source"],
         "count": candidate["count"],
-        "formed": datetime.now().isoformat(),
-        "reinforced": datetime.now().isoformat(),
+        "formed": now.isoformat(),
+        "reinforced": now.isoformat(),
+        "evidence": list(candidate.get("evidence", [])),
     })
     # Trim to max
     if len(fragments) > MAX_FRAGMENTS:
-        _now = datetime.now()
-        fragments.sort(key=lambda f: fragment_weight(f, _now))
+        fragments.sort(key=lambda f: fragment_weight(f, now))
         fragments = fragments[-MAX_FRAGMENTS:]
     data["fragments"] = fragments
     data["candidate_pool"] = [c for c in data.get("candidate_pool", []) if c["text"] != candidate["text"]]
@@ -217,33 +263,74 @@ def get_tone_bias():
     top = fragments[0]
     return top["text"][:100]
 
-def feed_from_causal_model():
+def _entry_ref(e):
+    """A stable name for a causal self-model entry (its type and text), and the mark of the evidence it holds now."""
+    key = "%s|%s|%s" % (e.get("type", "positive"), e.get("trigger", ""), e.get("tendency", ""))
+    ref = "csm:" + hashlib.sha1(key.encode("utf-8", "replace")).hexdigest()[:12]
+    mark = "%s|%s" % (e.get("evidence_count", 1), e.get("last_seen") or e.get("formed") or "")
+    return ref, mark
+
+def feed_from_causal_model(now=None):
     """Pull top causal self-model entries and propose as narrative fragments. Returns what happened, so the caller's
-    log says it (it logged "updated" whether or not anything was proposed: audit, 18 October)."""
+    log says it (it logged "updated" whether or not anything was proposed: audit, 18 October).
+    An entry is proposed only when it holds evidence the feed has not proposed before (its evidence count or last
+    sighting changed), and only when that evidence is from the last FRAGMENT_STALE_DAYS (2026-11-14)."""
+    now = now or datetime.now()
     tally = {"entries": 0, "eligible": 0}
     try:
         import sys as _nm_sys; _nm_sys.path.insert(0, SCRIPTS)
         from causal_self_model import load_model
         data = load_model()
-        entries = sorted(data["entries"], key=lambda e: -e["confidence"])[:8]
         tally["entries"] = len(data["entries"])
         _metric_terms = ["Valence", "Playfulness", "Groundedness", "Arousal", "Tension",
                          "shifted simultaneously", "spike", "carryover", "image generation",
                          "recurring pattern", "this cluster", "this spike", "this follows"]
-        for e in entries:
-            if e["confidence"] > 0.5:
-                tendency = e.get("tendency", "")
-                trigger = e.get("trigger", "")
-                # Skip raw metric/spike descriptions — not identity material
-                if any(t in tendency or t in trigger for t in _metric_terms):
-                    continue
-                if e.get("type") == "negative":
-                    fragment = f"I tend to avoid {tendency[:100]} when {trigger[:80]}"
-                else:
-                    fragment = f"I tend to {tendency[:100]} when {trigger[:80]}"
-                tally["eligible"] += 1
-                result = propose_fragment(fragment, source="causal-self-model")
-                tally[result] = tally.get(result, 0) + 1
+        eligible = []
+        for e in data["entries"]:
+            if float(e.get("confidence", 0) or 0) < FEED_MIN_CONFIDENCE:
+                continue
+            tendency = e.get("tendency", "")
+            trigger = e.get("trigger", "")
+            # Skip raw metric/spike descriptions — not identity material
+            if any(t in tendency or t in trigger for t in _metric_terms):
+                continue
+            eligible.append(e)
+        tally["eligible"] = len(eligible)
+        # Among equals the most recently evidenced first (a stable sort on confidence alone kept the oldest).
+        eligible.sort(key=lambda e: (float(e.get("confidence", 0) or 0), str(e.get("last_seen") or e.get("formed") or "")),
+                      reverse=True)
+        fed = load_narrative().get("fed_evidence", {})
+        proposals = []
+        for e in eligible:
+            ref, mark = _entry_ref(e)
+            if fed.get(ref) == mark:
+                tally["already_fed"] = tally.get("already_fed", 0) + 1
+                continue
+            seen = e.get("last_seen") or e.get("formed")
+            if not seen or _days_since(seen, now) > FRAGMENT_STALE_DAYS:
+                tally["stale"] = tally.get("stale", 0) + 1
+                continue
+            proposals.append((e, ref, mark))
+        for e, ref, mark in proposals[:FEED_TOP_N]:
+            tendency = e.get("tendency", "")
+            trigger = e.get("trigger", "")
+            if e.get("type") == "negative":
+                fragment = f"I tend to avoid {tendency[:100]} when {trigger[:80]}"
+            elif trigger.strip():
+                fragment = f"I tend to {tendency[:100]} when {trigger[:80]}"
+            else:
+                fragment = f"I tend to {tendency[:100]}"
+            result = propose_fragment(fragment, source="causal-self-model", now=now,
+                                      evidence={"ref": ref + "@" + mark.split("|")[0], "entry": ref,
+                                                "evidence_count": e.get("evidence_count", 1),
+                                                "seen": str(e.get("last_seen") or e.get("formed") or "")[:19]})
+            tally[result] = tally.get(result, 0) + 1
+            nd = load_narrative()
+            receipts = nd.setdefault("fed_evidence", {})
+            receipts.pop(ref, None); receipts[ref] = mark
+            while len(receipts) > MAX_FED_RECEIPTS:
+                receipts.pop(next(iter(receipts)))
+            save_narrative(nd)
     except Exception as e:
         tally["error"] = "%s: %s" % (type(e).__name__, str(e)[:120])
     return tally
@@ -262,5 +349,4 @@ if __name__ == "__main__":
         for c in pool:
             print(f"  [{c.get('count',1)}x] {c['text'][:80]}")
     elif cmd == "feed":
-        feed_from_causal_model()
-        print("Fed from causal model.")
+        print("Fed from causal model: %s" % feed_from_causal_model())

@@ -33,7 +33,8 @@ json.dump({"fragments": [{"text": "I tend to go quiet when she is tired", "count
           open(NI.NARRATIVE_FILE, "w"))
 check("a fragment reinforced two days ago (Z-stamped) is offered", len(NI._current_fragments(NI.load_narrative())) == 1)
 sys.modules["causal_self_model"] = types.SimpleNamespace(load_model=lambda: {"entries": [
-    {"confidence": 0.8, "tendency": "go quiet", "trigger": "she is tired", "type": "positive"},
+    {"confidence": 0.8, "tendency": "go quiet", "trigger": "she is tired", "type": "positive",
+     "last_seen": datetime.now().isoformat()},
     {"confidence": 0.9, "tendency": "Valence spike", "trigger": "x"},
     {"confidence": 0.3, "tendency": "joke", "trigger": "she laughs"}]})
 NI._get_frame_conditions = lambda: ("", 0.5)

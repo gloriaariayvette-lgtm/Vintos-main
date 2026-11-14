@@ -162,6 +162,19 @@ def extract_capacities(text, source, source_date):
         return []
 
 
+def promoted_tendency(rec):
+    """The text a capacity was promoted with. Recorded since 2026-11-14; for an older record it is the description
+    of the first instance on a second date (the one whose arrival promoted it)."""
+    if rec.get("promoted_tendency"):
+        return rec["promoted_tendency"]
+    inst = rec.get("instances", [])
+    first = inst[0].get("source_date") if inst else None
+    for i in inst:
+        if i.get("source_date") != first:
+            return i.get("description", "")
+    return inst[-1].get("description", "") if inst else ""
+
+
 def write_capacities(caps, source, source_date):
     """Accumulate capacities. Promote to the self-model at 2 distinct source dates.
 
@@ -189,6 +202,7 @@ def write_capacities(caps, source, source_date):
         if any(i.get("source_date") == source_date and i.get("source") == source
                for i in rec["instances"]):
             continue
+        new_date = source_date not in {i.get("source_date") for i in rec["instances"]}
         rec["instances"].append({
             "source": source,
             "source_date": source_date,
@@ -208,11 +222,31 @@ def write_capacities(caps, source, source_date):
                     confidence=min(0.9, 0.3 + len(dates) * 0.1),
                     source="trial-extractor",
                     entry_type="positive",
+                    occurrence_id="capacity:%s:%s" % (key, source_date),
                 )
                 rec["promoted"] = True
+                rec["promoted_tendency"] = rec["instances"][-1]["description"]
                 print(f"[Extractor] Capacity {key} promoted ({len(dates)} dates)")
             except Exception as _ce:
                 print(f"[Extractor] Capacity promote failed: {_ce}")
+        elif rec["promoted"] and new_date:
+            # A promoted capacity seen on a further date is further evidence for its entry. It used to stop here,
+            # so the entry kept its promotion confidence (0.50) however many dates followed (2026-11-14).
+            try:
+                import sys as _cs
+                _cs.path.insert(0, os.path.dirname(__file__))
+                from causal_self_model import add_entry
+                add_entry(
+                    trigger="",
+                    tendency=promoted_tendency(rec),
+                    confidence=min(0.9, 0.3 + len(dates) * 0.1),
+                    source="trial-extractor",
+                    entry_type="positive",
+                    occurrence_id="capacity:%s:%s" % (key, source_date),
+                )
+                print(f"[Extractor] Capacity {key} reinforced ({len(dates)} dates)")
+            except Exception as _ce:
+                print(f"[Extractor] Capacity reinforce failed: {_ce}")
     json.dump(led, open(CAP_LEDGER, "w"), indent=2)
     return added
 
