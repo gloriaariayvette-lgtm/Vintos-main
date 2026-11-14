@@ -37,6 +37,7 @@ MAX_EPISODES = 16                  # remembered sightings per tag key
 KEEP_PER_SEGMENT = 8               # frames' projected tokens kept per scene for recall (memory only)
 MAX_KEPT = 32                      # across scenes; the oldest scene's frames go first
 MAX_SEEN = 8192
+MEMORY_LABEL = 'CAMERA MEMORY, noted by the camera and never heard; not speech, never quote it as said'
 NOTE_CHARS = 900                   # the summary line budget (well inside the answer reserve)
 RECORD_CHARS = 240
 
@@ -87,10 +88,11 @@ def motion_phrase(seg):
     if m.get('moving'):
         way = direction(m['dx'], m['dy'])
         parts.append('something in view moved %s' % way if way else 'something in view moved, in no single clear direction')
-    if m.get('pans'):
-        way = direction(m['pan_dx'], m['pan_dy'])
-        if way:
-            parts.append('the whole view shifted %s' % way)
+    pan = direction(m['pan_dx'], m['pan_dy']) if m.get('pans') else None
+    if pan:
+        parts.append('the whole view shifted %s' % pan)
+    elif parts:
+        parts[-1] += ' while the camera held still'   # an object moved, not the camera
     return ' and '.join(parts) or None
 
 
@@ -369,7 +371,7 @@ class Mamepa:
             if seg['frames'] >= min_frames and len(frames) >= min_frames:
                 pick = np.unique(np.linspace(0, len(frames) - 1, min(max_frames, len(frames))).round().astype(int))
                 moved = motion_phrase(seg)
-                note = ('[CAMERA MEMORY RECALL: the frames stamped %s-%s just above are from an earlier scene '
+                note = ('[' + MEMORY_LABEL + ' - RECALL: the frames stamped %s-%s just above are from an earlier scene '
                         '(%d frames), shown again from memory%s; the current scene began at %s.]' % (
                             stamp(seg['start']), stamp(seg['end']), seg['frames'],
                             '; in that earlier scene ' + moved if moved else '', stamp(segs[-1]['start'])))
@@ -520,7 +522,7 @@ class Mamepa:
         cur = segs[-1]
         lines = []
         steady = 'little change' if cur['change'] < .5 else 'steady change' if cur['change'] < 1.2 else 'much change'
-        lines.append('[CAMERA MEMORY: the current scene began at %s and has lasted %d frame(s), with %s.' % (
+        lines.append('[' + MEMORY_LABEL + ': the current scene began at %s and has lasted %d frame(s), with %s.' % (
             stamp(cur['start']), cur['frames'], steady))
         onset = self.onset()
         present = [s for s in segs if s['start'] >= onset - 1e-6]

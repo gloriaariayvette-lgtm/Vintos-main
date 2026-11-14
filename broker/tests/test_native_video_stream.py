@@ -571,6 +571,89 @@ r = brk.frame(frame(50), at=2.)
 check('after a failed answer the held arrivals are committed in order and new ones are not held',
       held_after_fault == 1 and not r.get('deferred') and not brk.deferred
       and [s['at'] for s in brk.window() if s['kind'] == 'frame'] == [0., 1., 2.])
+quiet = LiveSession(mind, Backend(), clock=lambda: 0.)
+quiet.frame(frame(10), at=0.)
+check('with no sound in the window the question says none was captured (record-gap rule)',
+      'no sound was captured' in quiet.sound_note() and 'do not guess words' in quiet.sound_note())
+heard = LiveSession(mind, Backend(), clock=lambda: 0.)
+heard.frame(frame(10), at=0.)
+heard.audio(np.zeros(16000 * 2, np.float32) + .01, at=0.)
+heard._end_audio_span()
+check('with sound the question says it is heard directly, has no transcript, and words come only from it',
+      'heard directly' in heard.sound_note() and 'no written transcript' in heard.sound_note()
+      and 'Never take words from the picture' in heard.sound_note() and '(00:00-00:02)' in heard.sound_note())
+heard_ids = []
+_fw = heard.stream.forward
+heard.stream.forward = lambda e, c, v=False: (heard_ids.append(e[0, :, 0].tolist()), _fw(e, c, v))[1]
+heard.ask('what is moving?', max_tokens=1)
+enc = [float(t) for t in mind.tokenizer.encode(' ' + heard.sound_note())]
+check('the sound note opens the question', any(c[:len(enc)] == enc for c in heard_ids))
+check('the sound note can be turned off', LiveSession(mind, Backend(), clock=lambda: 0., sound_notes=False).sound_notes is False)
+sent = []
+cs = client.Stream.__new__(client.Stream)
+cs.pending, cs.session_id, cs.base = None, 'sid', 'http://127.0.0.1:9'
+cs._send = lambda url, body: (sent.append(body), {'checkpoint_sha256': client.ANCHOR_SHA256, 'native_video': True})[1]
+cs.ask('q', 8, recall=True, recall_earlier=False, recent_seconds=4)
+cs.ask('q', 8)
+check('the client can ask with the camera memory, and leaves the service defaults alone otherwise',
+      sent[0]['recall'] is True and sent[0]['recall_earlier'] is False and sent[0]['recent_seconds'] == 4.
+      and 'recall' not in sent[1] and 'recall_earlier' not in sent[1])
+class Hearer(Backend):
+    """Records each forward (values and the hidden set); decodes 'A B' then EOS on the hearing prompt, then EOS."""
+    def __init__(self): self.calls, self.hidden, self.k = [], None, 0
+    def forward(self, embeds, cache, vision=False):
+        Backend.forward(self, embeds, cache, vision)
+        self.calls.append((embeds[0, :, 0].tolist(), self.hidden))
+        scores = np.full(64, -5.)
+        if embeds.shape[1] > 1:
+            self.k = 0
+            scores[11 if self.hidden else 0] = 5.
+        else:
+            self.k += 1
+            scores[12 if self.k == 1 else 0] = 5.
+        return scores
+
+
+hb = Hearer()
+hs = LiveSession(mind, hb, clock=lambda: 0.)
+hs.frame(frame(10), at=0.)
+hs.audio(np.zeros(16000, np.float32) + .01, at=0.)
+hs.frame(frame(20), at=1.)
+hs.audio(np.zeros(16000, np.float32) + .01, at=1.)
+hs.ask('which way?', max_tokens=1)   # commits the pending close
+before = list(hs.cache)
+hb.calls = []
+hres = hs.ask('what is being said?', max_tokens=2)
+frame_pos = set(int(p) for p in hs.positions[np.isin(hs.owner, [i for i, x in hs.segments.items() if x['kind'] == 'frame'])])
+audio_pos = set(int(p) for p in hs.positions[np.isin(hs.owner, [i for i, x in hs.segments.items() if x['kind'] == 'audio'])])
+hear_calls = [c for c in hb.calls if c[1] and frame_pos <= c[1]]
+check('a speech question first hears the sound alone: frames and the sound pieces masked, then rolled back',
+      hear_calls and all(audio_pos <= c[1] for c in hear_calls) and hs.cache == before and hres['transcript'] == 'aa')
+hq = [c for c in hb.calls if c[0][:len(mind.tokenizer.encode(' [HEARD'))] == [float(t) for t in mind.tokenizer.encode(' [HEARD')]]
+check('the answer gets the transcript with its provenance and sees the window as usual', hq and hq[0][1] is None)
+check('the heard note says where the words came from, or that none could be made out',
+      'transcribed just now from the microphone' in hs.heard_note('hello there', 0., 4.)
+      and 'no words could be made out' in hs.heard_note('No words.', 0., 4.)
+      and 'no words could be made out' in hs.heard_note('The audio contains no discernible words.', 0., 4.)
+      and 'no words could be made out' in hs.heard_note('', 0., 4.))
+check('a transcript keeps only the spoken words, without a lead-in',
+      ': "Nor is it so."' in hs.heard_note('The words spoken in this clip are: "Nor is it so."', 0., 4.)
+      and 'words spoken' not in hs.heard_note('The words spoken in this clip are: "Nor is it so."', 0., 4.))
+hb.calls = []
+import native_video_runtime as _rt
+_floor, _rt.HEAR_MIN_CONFIDENCE = _rt.HEAR_MIN_CONFIDENCE, 1.01
+hs.ask('what is being said?', max_tokens=1)
+_rt.HEAR_MIN_CONFIDENCE = _floor
+check('an unsure transcript is not quoted: the words were not captured', hs.transcript == '' and any(
+      c[0][:len(mind.tokenizer.encode(' [HEARD: the'))] == [float(t) for t in mind.tokenizer.encode(' [HEARD: the')] for c in hb.calls))
+hb.calls = []
+hs.ask('which way does it move?', max_tokens=1)
+check('a speech question with no sound in the window has no hearing pass and says none was captured',
+      quiet.ask('what is being said?', max_tokens=1)['transcript'] is None)
+import native_video_runtime as _rt2
+check('the hearing request echoed back is not taken as speech', _rt2.HEAR_ECHO.search('Transcribe that, word for word.')
+      and _rt2.HEAR_ECHO.search('In this, word for word.') and not _rt2.HEAR_ECHO.search('He has grave doubts'))
+check('a question not about speech has no hearing pass', not any(c[1] for c in hb.calls) and hs.transcript is None)
 check('an answer never opens another thinking channel', ch.blocked == [7, 8] and 7 not in ch.ask('q', max_tokens=3)['tokens'])
 
 check('nothing but the test fixtures was written', not any(memory_dir.iterdir()))

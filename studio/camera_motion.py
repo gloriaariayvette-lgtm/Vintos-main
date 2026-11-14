@@ -37,6 +37,11 @@ def step(a, b):
     Returns {'dx', 'dy' (fractions of the view), 'reliable', 'changed' (fraction of the view)}."""
     a = np.asarray(a, np.float32)
     b = np.asarray(b, np.float32)
+    # Exposure and white balance: match the later frame's per-channel mean to the earlier one, so a gain change
+    # (auto-exposure, a light dimming) is neither motion nor a cut. A moving object barely moves the means.
+    gain = a.reshape(-1, 3).mean(0) / np.maximum(b.reshape(-1, 3).mean(0), 1e-3)
+    if np.all((gain > .5) & (gain < 2.)):
+        b = np.clip(b * gain, 0., 1.)
     diff = np.abs(a - b).max(-1)
     ys, xs = np.nonzero(diff > CHANGE)
     changed = len(ys) / float(diff.size)
