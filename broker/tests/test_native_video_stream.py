@@ -341,6 +341,79 @@ check('stream inputs cover RTSP, HTTP and local webcams through ffmpeg',
       '-rtsp_transport' in sources.ffmpeg_command('rtsp://cam/x') and 'avfoundation' in sources.ffmpeg_command('avfoundation:0'))
 paced = list(sources.replay_source([frame(1)] * 3, 2, clock=lambda: 0., sleep=lambda s: None))
 check('public replay yields frames with capture times', len(paced) == 3)
+
+# Live latency: what arrived during an answer is committed one item per step, and later arrivals queue behind it.
+held = LiveSession(mind, Slow(), clock=lambda: 0.)
+held.frame(frame(1), at=0)
+steps = held.ask_steps('q', max_tokens=3)
+next(steps)
+held.frame(frame(2), at=1); held.audio(np.zeros(6400, np.float32), at=1.2); held.frame(frame(3), at=1.4)
+order = []
+try:
+    while True:
+        next(steps)
+        if held.deferred and not order:
+            order.append('mid-flush')
+            r = held.frame(frame(4), at=1.6)
+            check('a frame arriving while held items are committed is encoded now and queued behind them',
+                  r.get('deferred') and held.deferred[-1][0] == 'frame')
+except StopIteration as done:
+    flushed = done.value
+check('held arrivals are committed one per step, in arrival order',
+      order == ['mid-flush'] and flushed['deferred_committed'] == 4 and not held.deferred
+      and [s['at'] for s in held.window() if s['kind'] == 'frame'] == [0., 1., 1.4, 1.6])
+check('a direct ask still commits everything before it returns',
+      LiveSession(mind, backend, clock=lambda: 0.).ask('q', max_tokens=2)['deferred_committed'] == 0)
+
+
+class FakePost:
+    """A loopback stand-in: an ask takes a moment, frames and audio return at once."""
+    def __init__(self):
+        self.paths, self.lock = [], threading.Lock()
+    def __call__(self, url, body):
+        path = url.split(':0', 1)[1]
+        with self.lock:
+            self.paths.append(path)
+        if path == '/video/start':
+            return {'session_id': 's'}
+        if path == '/video/ask':
+            _time.sleep(.2)
+            return {'text': 'ok', 'checkpoint_sha256': client.ANCHOR_SHA256, 'native_video': True}
+        return {'ingest_seconds': 0., 'frame_ref': 'sha256:x', 'at': body.get('at')}
+
+
+now = [100.]
+post = FakePost()
+live = client.Stream(post=post, clock=lambda: now[0],
+                     sampler=client.AdaptiveSampler(idle_fps=8, burst_fps=8, change=.5, tokens_per_second=2000))
+pending = live.ask('what moved?', 8, wait=False)
+sent_during = 0
+for k in range(3):
+    now[0] += .2
+    sent_during += live.offer(frame(k), captured=now[0]) is not None
+check('frames keep flowing while a question is being answered', sent_during == 3 and not pending.done())
+try:
+    live.ask('again?', wait=False); raise AssertionError('overlapping question accepted')
+except BlockingIOError:
+    pass
+check('one question at a time on a stream', pending.result(5)['text'] == 'ok')
+now[0] += 1
+check('a frame that is already stale is dropped before the sampler, not queued',
+      live.offer(frame(9), captured=now[0] - .5) is None and live.stale_dropped == 1 and live.sampler.skipped == 0)
+check('a fresh frame after a stale one is sent', live.offer(frame(10), captured=now[0]) is not None)
+check('a stream can keep every frame', client.Stream(post=FakePost(), max_lag=None).max_lag is None)
+answers = []
+src = [(frame(i), 200. + i * .1) for i in range(12)]
+now[0] = 200.
+def paced():
+    for rgb, at in src:
+        now[0] = at
+        yield rgb, at
+paths_before = len(post.paths)
+sources.run(live, paced(), ask_every=.5, question='q', on_answer=answers.append)
+check('the run loop asks on its own thread and still delivers every answer',
+      answers and all(a['text'] == 'ok' for a in answers) and post.paths[paths_before:].count('/video/frame') >= 5)
+live.finish()
 check('no file was written during the stream', not any(Path(scratch.name).iterdir()))
 
 # Sensory tap and AprilTags (fake detector; no frames or tags from any camera).

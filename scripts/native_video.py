@@ -5,6 +5,7 @@ import base64
 import hashlib
 import json
 import os
+import threading
 import time
 import urllib.parse
 import urllib.request
@@ -106,10 +107,51 @@ def encode_jpeg(rgb, quality=90):
     return out.getvalue()
 
 
-class Stream:
-    """One live session: frames and 16 kHz PCM16 packets on one timeline. Nothing is stored."""
+class PendingAnswer:
+    """A question being answered on its own thread while the stream keeps sending frames and audio. The service
+    takes those arrivals in between answer tokens, so capture never waits for an answer."""
 
-    def __init__(self, instruction=None, retain_frames=None, post=None, sampler=None, clock=time.monotonic, feed=None):
+    def __init__(self, call):
+        self._done = threading.Event()
+        self._result = self._error = None
+
+        def run():
+            try:
+                self._result = call()
+            except BaseException as exc:   # handed to whoever reads the result
+                self._error = exc
+            finally:
+                self._done.set()
+
+        threading.Thread(target=run, name="native-video-ask", daemon=True).start()
+
+    def done(self):
+        return self._done.is_set()
+
+    def wait(self, timeout=None):
+        return self._done.wait(timeout)
+
+    def result(self, timeout=None):
+        if not self._done.wait(timeout):
+            raise TimeoutError("The answer is still being decoded")
+        if self._error is not None:
+            raise self._error
+        return self._result
+
+
+class Stream:
+    """One live session: frames and 16 kHz PCM16 packets on one timeline. Nothing is stored.
+
+    ``max_lag``: a frame offered more than this many seconds after its capture is dropped before the sampler
+    (a fresher frame follows), so a stall never turns into a queue of stale frames. None keeps every frame."""
+
+    def __init__(self, instruction=None, retain_frames=None, post=None, sampler=None, clock=time.monotonic, feed=None,
+                 max_lag=.3):
+        if max_lag is not None and not 0 < float(max_lag) <= 10:
+            raise ValueError("Invalid frame lag limit")
+        self.max_lag = None if max_lag is None else float(max_lag)
+        self.stale_dropped = 0
+        self.pending = None
         self.base = verify() if post is None else "http://127.0.0.1:0"
         self._send = post or self._post
         self.sampler = sampler or AdaptiveSampler(clock=clock)
@@ -139,6 +181,9 @@ class Stream:
         """Sample, then send one frame if the sampler takes it. Returns the receipt or None."""
         if self.closed:
             raise ValueError("Stream closed")
+        if captured is not None and self.max_lag is not None and self.clock() - captured > self.max_lag:
+            self.stale_dropped += 1
+            return None
         reason = self.sampler.offer(rgb, captured)
         if reason is None:
             return None
@@ -159,16 +204,28 @@ class Stream:
         return self._send(self.base + "/video/audio", {"session_id": self.session_id, "at": self._at(captured),
                           "audio": base64.b64encode(pcm).decode()})
 
-    def ask(self, question, max_tokens=128):
-        result = self._send(self.base + "/video/ask", {"session_id": self.session_id, "question": question,
-                            "max_tokens": int(max_tokens)})
-        if result.get("checkpoint_sha256") != ANCHOR_SHA256 or result.get("native_video") is not True:
-            raise RuntimeError("Video answer came from an unverified checkpoint")
-        return result
+    def ask(self, question, max_tokens=128, wait=True):
+        """``wait=False`` returns a PendingAnswer at once, so the caller keeps capturing while it is decoded."""
+        if self.pending is not None and not self.pending.done():
+            raise BlockingIOError("An answer is already being decoded")
+
+        def call():
+            result = self._send(self.base + "/video/ask", {"session_id": self.session_id, "question": question,
+                                "max_tokens": int(max_tokens)})
+            if result.get("checkpoint_sha256") != ANCHOR_SHA256 or result.get("native_video") is not True:
+                raise RuntimeError("Video answer came from an unverified checkpoint")
+            return result
+
+        if wait:
+            return call()
+        self.pending = PendingAnswer(call)
+        return self.pending
 
     def finish(self):
         if self.closed:
             raise ValueError("Stream already closed")
+        if self.pending is not None:
+            self.pending.wait(180)   # let a pending answer finish before the stream ends
         self.closed = True
         return self._send(self.base + "/video/finish", {"session_id": self.session_id})
 

@@ -169,12 +169,21 @@ def ffmpeg_source(url, fps=4., width=640, clock=time.monotonic, popen=subprocess
 
 
 def run(stream, frames, ask_every=None, question=None, on_answer=None):
-    """Feed a source into a native_video.Stream through its adaptive sampler."""
-    last = None
+    """Feed a source into a native_video.Stream through its adaptive sampler. Questions are answered on their own
+    thread, so frames keep flowing while an answer is decoded (one question at a time)."""
+    last, pending = None, None
+
+    def deliver(answer):
+        if on_answer:
+            on_answer(answer.result())
+
     for rgb, captured in frames:
         stream.offer(rgb, captured)
-        if ask_every and question and (last is None or captured - last >= ask_every):
+        if pending is not None and pending.done():
+            deliver(pending); pending = None
+        if ask_every and question and pending is None and (last is None or captured - last >= ask_every):
             last = captured
-            answer = stream.ask(question)
-            if on_answer:
-                on_answer(answer)
+            pending = stream.ask(question, wait=False)
+    if pending is not None:
+        pending.wait(180)
+        deliver(pending)
