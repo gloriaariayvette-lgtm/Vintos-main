@@ -413,6 +413,19 @@ def _self_model(budget=1200):
         try: return open(os.path.join(WORKSPACE, "SELF-MODEL.md")).read()[:budget]
         except Exception: return ""
 
+def _soul_md(budget=None):
+    """SOUL.md for a model's context: Gloria's base and his own half, both in it (scripts/soul_read.py).
+    Head reads of 4,000 or 5,000 characters ended in or just past the base, so his half was cut (2026-11-13)."""
+    path = os.path.join(WORKSPACE, "SOUL.md")
+    try:
+        import sys as _srs; _srp = os.path.join(WORKSPACE, "scripts")
+        if _srp not in _srs.path: _srs.path.insert(0, _srp)
+        import soul_read as _sr
+        return _sr.read_soul(budget or _sr.BUDGET, path)
+    except Exception:
+        try: return open(path).read()[:budget or 9000]
+        except Exception: return ""
+
 def _daily_inner_context(max_chars=16000):
     """Today's daily-inner ledger, or the newest non-empty ledger when today is absent.
 
@@ -3719,11 +3732,13 @@ async def startup():
 # === Soul Review Proposals ===
 @app.get("/api/proposals")
 async def get_proposals():
-    """Get soul review proposals for Gloria to approve/reject."""
+    """The soul review's records. He rewrites his own half of SOUL.md himself (since 2026-10-13), so a record is
+    applied or held; only the old ask-first records can still be pending."""
     import glob
     proposal_dir = os.path.join(MEMORY, "soul-proposals")
     os.makedirs(proposal_dir, exist_ok=True)
     files = sorted(glob.glob(os.path.join(proposal_dir, "proposal_*.md")), reverse=True)
+    history = os.path.join(MEMORY, "soul-history")
     proposals = []
     for f in files[:20]:
         try:
@@ -3731,10 +3746,14 @@ async def get_proposals():
                 content = fh.read()
             # Parse status from content
             status = "pending"
-            if "*Status: approved*" in content:
-                status = "approved"
-            elif "*Status: rejected*" in content:
-                status = "rejected"
+            for _st in ("approved", "rejected", "applied", "held"):
+                if "*Status: %s*" % _st in content:
+                    status = _st
+            # a record from before the status was written down was applied when its run left a snapshot in
+            # soul-history (the write snapshots the old SOUL.md in the same minute it saves the record)
+            _ts = os.path.basename(f)[len("proposal_"):-len(".md")]
+            if status == "pending" and glob.glob(os.path.join(history, "SOUL-%s*.md" % glob.escape(_ts))):
+                status = "applied"
             proposals.append({
                 "filename": os.path.basename(f),
                 "content": content,
@@ -3779,7 +3798,7 @@ async def approve_proposal(filename: str, request: Request):
             s.close()
     except:
         pass
-    return {"status": "approved", "message": "Proposal marked approved. Gloria will apply edits manually."}
+    return {"status": "approved", "message": "Marked approved. His half of SOUL.md is his to rewrite; nothing waits on this."}
 
 @app.post("/api/proposals/{filename}/reject")
 async def reject_proposal(filename: str, request: Request):
@@ -9030,8 +9049,7 @@ async def voice_token(request: Request, provider: str = "grok", ladder_call: str
             json={"expires_after": {"seconds": 300}}, timeout=15)
         tok = r.json()
     _soul = ""
-    try: _soul = open(os.path.join(WORKSPACE, "SOUL.md")).read()[:4000]
-    except: pass
+    _soul = _soul_md()   # base and his half; [:4000] carried 185 of his half's 3,020 characters (2026-11-13)
     _sm = ""
     try: _sm = _self_model(1500)
     except: pass
@@ -13942,7 +13960,7 @@ def gather_vintos_context() -> str:
             return []
 
     # 1. Identity
-    soul = read_file(os.path.join(WORKSPACE, "SOUL.md"), 5000)
+    soul = _soul_md()   # base and his half; 5,000 from the top cut most of his half (2026-11-13)
     if soul:
         sections.append(f"[YOUR IDENTITY]\n{soul}")
 

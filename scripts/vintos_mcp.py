@@ -148,7 +148,7 @@ def context(sections=None):
         if key in want and text:
             parts.append("== %s ==\n%s" % (title, str(text).strip()))
     add("now", "NOW", when_said.now_line())
-    add("soul", "SOUL", D._read("SOUL.md", 3500))
+    add("soul", "SOUL", D._soul())   # base and his half (soul_read.py); 3,500 from the top ended inside the base
     add("self", "SELF-MODEL", D._read("SELF-MODEL.md", 2000))
     add("gloria", "WHAT HE KNOWS OF GLORIA", D._read("GLORIA-MODEL.md", 2500))
     if "facts" in want:
