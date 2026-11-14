@@ -23,6 +23,7 @@ bulbs); Slack had no way to reach it. Nothing here is new power, only a door, wi
   - every act is written to memory/house-actions.jsonl, and a failure says why in plain words.
 """
 from __future__ import annotations
+import shutil
 import importlib.util
 import json
 import os
@@ -99,6 +100,26 @@ def youtube_id(text):
     return t if re.fullmatch(r"[A-Za-z0-9_-]{11}", t) else ""
 
 
+YTDLP = os.environ.get("VINTOS_YTDLP") or shutil.which("yt-dlp") or os.path.expanduser("~/.local/bin/yt-dlp")
+
+
+def youtube_find(query, timeout=45):
+    """(id, title) of YouTube's top match for his words, or ('', why). yt-dlp's search: free and keyless."""
+    q = " ".join(str(query or "").split())[:200]
+    if not q:
+        return "", "say what to put on"
+    try:
+        r = subprocess.run([YTDLP, "--no-update", "--flat-playlist", "--no-warnings", "--print", "%(id)s\t%(title)s",
+                            "ytsearch1:" + q], capture_output=True, text=True, timeout=timeout)
+    except Exception as e:
+        return "", "YouTube search did not answer (%s)" % type(e).__name__
+    for line in (r.stdout or "").splitlines():
+        vid, _, title = line.partition("\t")
+        if re.fullmatch(r"[A-Za-z0-9_-]{11}", vid.strip()):
+            return vid.strip(), title.strip()
+    return "", "YouTube found nothing for: %s" % q
+
+
 def _he_is_driving():
     """True when the last thing that changed the TV was his, within DRIVING_H hours."""
     for r in reversed(_rows()):
@@ -164,13 +185,24 @@ def tv(arg, home=None, present=False):
         return bool(home.tv_on()), "TV on"
     vid = youtube_id(a)
     url = a[5:].strip() if word == "open" else a
+    found = ""
     if not vid and not re.match(r"https?://", url):
-        return False, "say a YouTube link, open <url>, on, off, pause, play, volume <n> or status"
+        if word not in ("find", "search", "watch", "put") or len(a.split()) < 2:
+            return False, "say find <what to put on>, a YouTube link, open <url>, on, off, pause, play, volume <n> or status"
+        words = a.split(None, 1)[1]
+        if word == "put" and words.lower().startswith("on "):
+            words = words[3:]
+        busy = _tv_free(home)
+        if busy:
+            return False, busy
+        vid, found = youtube_find(words)
+        if not vid:
+            return False, found
     busy = _tv_free(home)
     if busy:
         return False, busy
     if vid:
-        return bool(home.tv_youtube(vid)), "on the TV: https://youtu.be/%s" % vid
+        return bool(home.tv_youtube(vid)), "on the TV: %shttps://youtu.be/%s" % ((found + " ") if found else "", vid)
     why = _adb_ok(home)
     if why:
         return False, why
