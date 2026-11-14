@@ -48,8 +48,10 @@ class Measure(unittest.TestCase):
         led = [rrow(1, 1, 'answered'), rrow(2, 2, 'partly'), rrow(3, 3, 'ignored'), rrow(4, 4, 'refused'),
                rrow(5, 5, 'answered'), rrow(6, 6, 'no_bid'), rrow(7, 7, 'unclear'), rrow(8, 8), rrow(9, 9, 'bogus')]
         h = self.h(led)
-        self.assertEqual((h['answered'], h['partly'], h['ignored'], h['refused'], h['n']), (2, 1, 1, 1, 5))
-        self.assertEqual(RC.score(h), 0.5)                     # (2 + 0.5) / 5: a refusal and an ignore are zeros
+        self.assertEqual((h['answered'], h['partly'], h['ignored'], h['refused'], h['n']), (2, 1, 1, 1, 4))
+        self.assertIsNone(RC.score(h))                         # a plain no is counted apart: 4 in the figure, under 5
+        h = self.h(led + [rrow(10, 10, 'answered')])
+        self.assertEqual(RC.score(h), 0.7)                     # (3 + 0.5) / 5: the refusal on neither side
 
     def test_minimum_and_window(self):
         self.assertIsNone(RC.score(self.h([rrow(i, i, 'answered') for i in range(4)])))
@@ -89,7 +91,7 @@ class Measure(unittest.TestCase):
 class Judge(unittest.TestCase):
     def call(self, text, status='ok', packet=None):
         with patch.object(GJ, '_call', return_value=(status, text, 'd')):
-            return GJ.judge_receptive(packet or {'his_earlier_open_ask': 'an earlier ask'})
+            return GJ.judge_receptive(packet or {'his_earlier_open_asks': [{'n': 1, 'his_reply': 'an earlier ask'}]})
 
     def test_labels(self):
         for lab in RC.LABELS:
@@ -105,8 +107,14 @@ class Judge(unittest.TestCase):
 
     def test_answers_earlier_needs_an_earlier_ask(self):
         ans = json.dumps({'her_response': 'answered', 'answers_earlier': True})
-        self.assertTrue(self.call(ans)['answers_earlier'])
-        self.assertFalse(self.call(ans, packet={'his_earlier_open_ask': ''})['answers_earlier'])
+        self.assertEqual(self.call(ans)['answers_earlier'], [1])                      # the one-ask form
+        got = self.call(ans, packet={'his_earlier_open_asks': []})                     # true with no ask: names nothing
+        self.assertEqual((got['label'], got['answers_earlier']), ('answered', []))
+        listed = json.dumps({'her_response': 'answered', 'answers_earlier': [2]})
+        got = self.call(listed)                                                        # a number outside the list: dropped
+        self.assertEqual((got['label'], got['answers_earlier']), ('answered', []))
+        two = {'his_earlier_open_asks': [{'n': 1, 'his_reply': 'a'}, {'n': 2, 'his_reply': 'b'}]}
+        self.assertEqual(self.call(listed, packet=two)['answers_earlier'], [2])
 
     def test_rubric_never_sees_his_criterion_and_shares_the_cap(self):
         self.assertIn(GJ.SRC_RECEPTIVE, GJ.LIVE_SRCS)
@@ -135,7 +143,7 @@ class Engine(unittest.TestCase):
         self.packets = []
         def fake(packet):
             self.packets.append(packet)
-            return {'label': label, 'answers_earlier': earlier, 'status': 'ok', 'model': 'synthetic'}
+            return {'label': label, 'answers_earlier': [1] if earlier is True else (earlier or []), 'status': 'ok', 'model': 'synthetic'}
         return patch.object(E, '_receptive_judge', fake)
 
     def test_every_delivered_move_gets_her_response_whatever_her_axis(self):
@@ -179,9 +187,9 @@ class Engine(unittest.TestCase):
         first = self.rows()[-1]
         with self.judge('answered', earlier=True):
             self.delivered(); E.resolve_previous(F.HER_PLAN)
-        self.assertEqual(self.packets[0]['his_earlier_open_ask'], 'Here are both, and the tradeoff between them.')
+        self.assertEqual(self.packets[0]['his_earlier_open_asks'], [{'n': 1, 'his_reply': 'Here are both, and the tradeoff between them.'}])
         second = self.rows()[-1]
-        self.assertEqual(second['receptive']['credits'], first['intent_id'])
+        self.assertEqual(second['receptive']['credits'], [first['intent_id']])
         h = PV._receptive_history()
         self.assertEqual((h['answered'], h['ignored'], h['later_turn']), (2, 0, 1))
 
@@ -190,7 +198,7 @@ class Engine(unittest.TestCase):
             self.delivered(); E.resolve_previous(F.HER)
         with self.judge('answered', earlier=True):
             self.delivered(); E.resolve_previous(F.HER_PLAN)
-        self.assertEqual(self.packets[0]['his_earlier_open_ask'], '')
+        self.assertEqual(self.packets[0]['his_earlier_open_asks'], [])
         self.assertNotIn('credits', self.rows()[-1]['receptive'])
 
     def test_nothing_of_hers_is_no_record(self):
@@ -272,7 +280,7 @@ class Regrade(unittest.TestCase):
         self.assertEqual((code, rep['rows_changed'], rep['already_recorded']), (0, 5, 1))
         self.assertEqual(self.ledger.read_bytes(), before)
         self.assertEqual(rep['before']['old_landing_rate'], 0.0)
-        self.assertEqual((rep['after']['records'], rep['after']['receptivity']), (5, 0.5))   # 2 + 0.5 + 0 + 0 (live ignored) / 5
+        self.assertEqual((rep['after']['records'], rep['after']['receptivity'], rep['after']['refused']), (4, None, 1))   # the refusal apart: 4, under 5
 
     def test_apply_is_idempotent_and_revertible(self):
         before = json.loads(self.ledger.read_text())

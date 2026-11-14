@@ -105,17 +105,31 @@ def note(caller, model, usage, path=None):
     row = {"at": time.strftime("%Y-%m-%dT%H:%M:%S"), "caller": caller, "model": model,
            "in": int(u.get("input_tokens") or 0), "cache_read": int(u.get("cache_read_input_tokens") or 0),
            "cache_write": int(u.get("cache_creation_input_tokens") or 0), "out": int(u.get("output_tokens") or 0)}
+    logged = False
     try:
         p = path or USAGE
         os.makedirs(os.path.dirname(p), exist_ok=True)
         with open(p, "a") as f:
             f.write(json.dumps(row) + "\n")
+            f.flush(); os.fsync(f.fileno())
+        logged = True
     except OSError:
         pass
+    w = getattr(_NOTED, "box", None)
+    if isinstance(w, dict):
+        w["logged"] = logged                   # the caller watching this thread learns whether the line is on disk
     return row
 
 
 LAST = {}
+_NOTED = __import__("threading").local()
+
+
+def watch_note():
+    """A dict this thread's next usage line reports into: {"logged": True} once it is durably on disk, False when
+    its write failed; empty while no line was written. A spend cap settles a reservation on it (gloria_judge)."""
+    _NOTED.box = {}
+    return _NOTED.box
 
 
 def ask(model, system, user, max_tokens, caller="", timeout=300, post=None, key=None, effort=None, observer=None):

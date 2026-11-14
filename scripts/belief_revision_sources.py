@@ -22,10 +22,16 @@ Feeds, as of 14 November 2026:
   reality-anchor.json         statements and the contradiction links reality_anchor recorded between them.
 The world model's expectations are never scored, so no prediction error exists to feed: counted as zero.
 """
-import json, os
+import hashlib, json, os
 from datetime import datetime, timezone
 
 import belief_revision as BR
+
+
+def fingerprint(obj):
+    """A record's identity where the store gives it only a position (belief-sediment rows): belief_revision_live
+    finds the row by this, never by its index, which a decay pass can shift."""
+    return hashlib.sha256(json.dumps(obj, sort_keys=True, default=str).encode()).hexdigest()[:16]
 
 E_KIND = {"E1": "gloria", "E2": "observation", "E3": "private_record", "E4": "gloria"}
 CAUSALITY_SCHEMA = 2       # causality-engine.py CAUSALITY_SCHEMA
@@ -156,7 +162,8 @@ def causality(g, mem, now, stats):
         if not hs:
             continue
         bid = "c:belief:%d" % i
-        g.derived(bid, "belief", [[hyp_node(h)] for h in hs], confidence=b.get("confidence"), rule_reliability=0.9)
+        g.derived(bid, "belief", [[hyp_node(h)] for h in hs], confidence=b.get("confidence"), rule_reliability=0.9,
+                  fp=fingerprint(b.get("pattern")))
         for h in hs:
             by_hyp.setdefault(h, []).append(bid)
     for i, e in enumerate(_rows(_load(mem, "causal-self-model.json", {}), "entries")):

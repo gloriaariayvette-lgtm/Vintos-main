@@ -141,6 +141,7 @@ SCRIPTS="$SCRIPTS chemistry_probe.py chemistry_instrument_probe.py chemistry_mcp
 SCRIPTS="$SCRIPTS residual_shadow.py"   # prospective exact-input EmoClaw receipts; residual inference remains offline
 SCRIPTS="$SCRIPTS subcon_target.py aeon-bar-record.json"   # his subconscious stays on the 26B until AEON passes the whole bar (pinned record), 2026-11-07
 SCRIPTS="$SCRIPTS emotion_read.py reading.py introspective_planning.py tension_identity_audit.py dd_scene_quarantine.py want_learning.py conflict_surface.py velqan-coiner.py image_sight.py"   # 26B -> AEON (Gloria 2026-11-08): these follow the flag in the checkout since 7 November, but were in no list, so Aegis kept running copies that call the MacBook 26B directly. conflict_surface and velqan-coiner too: "I didn't hold those back. Aeon."
+SCRIPTS="$SCRIPTS belief_revision.py belief_revision_sources.py belief_revision_answer.py belief_revision_live.py"   # contradiction back-propagation, option (b) (Gloria 2026-11-14): records + local AEON checker; live only with BELIEF_REVISION=live in vintos.env
 SCRIPTS="$SCRIPTS dream_shadow.py"   # the dream shadow trial: AEON writes and judges beside the live dream, into memory/shadow/dream only (2026-11-07)
 SCRIPTS="$SCRIPTS dream_wholeday.py"   # the whole-day dream shadow (option 2): AEON reads his whole day, dreams and judges, into memory/shadow/dream only (2026-11-08)
 SCRIPTS="$SCRIPTS chemistry_reading.py"   # the reading an experiment is still owed, 2026-09-13
