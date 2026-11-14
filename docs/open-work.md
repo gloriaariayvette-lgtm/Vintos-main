@@ -1,3 +1,25 @@
+## 14 November — pearls: one gate, pressure at 0.33, and Gloria's review page
+
+Gloria's decisions: lower the pressure gate to 0.33, keep the 2-failure rule, close every way a pearl got in
+without the full gate, and give her a way to review them.
+
+- **Gate:** `pearl_engine.PRESSURE_TENSION = 0.33` (was 0.43); the Arousal/Groundedness branch and the
+  4-pass / 1-failure / 7-day threshold are unchanged. Each grade now records the Tension it read, because
+  only 17 of the month's 105 grades could be matched to any recorded reading afterwards.
+- **Bypasses closed** (each now a stage-0 proposal through `pearl_engine.propose()` or refused):
+  WAL graduation (`wal-decay` → `emoclaw_utils.add_pearl`, which wrote pearl files directly since
+  fcfb6d84, 2026-09-10: all 44 pearl files on Aegis came this way); thread resolution
+  (`thread-resolution.create_pearl` wrote pearl files and `pearls/index.json`; cron-live, 0 pearls on disk);
+  the server's held-pass (`/api/review/held/{idx}/pass` set stage 3 on any id; now `release_held()`, which
+  overrides the reviewer only for a candidate whose verification was met); `check_candidate` grading a
+  stage-0 proposal forward; and `form_pearl` sealing any stage 3 (it now requires the gate receipt that
+  `check_candidate` writes). `broker/tests/test_pearl_single_gate.py` fails if any writer returns.
+- **Review:** `scripts/pearl_review.py generate|apply|revert` (local page, mode 600, outside any repo;
+  archive = superseded with provenance, never deleted; revert manifest). Commands in Gloria's
+  `Downloads/PEARL-REVIEW.md`.
+- **Not done:** the 44 existing WAL-graduation pearl files are untouched until she reviews them; the
+  36 organ candidates that entered trial without adoption before 2026-09-05 are all already dissolved.
+
 ## 13 November — the fault loop: wakes lost from 9 to 12 November, and what they missed
 
 - **Why nothing woke the thread.** Its own CronCreate job (77ebcd1e) is listed but never fired after 9 November; why

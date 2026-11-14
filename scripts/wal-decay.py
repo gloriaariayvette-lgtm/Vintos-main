@@ -321,18 +321,19 @@ Respond with JSON: {{"1": "pearl", "2": "keep", "3": "demote"}}"""
                     print(f"  DEMOTE: {entry['content'][:60]}")
                     _sync_remove_from_autowal(entry['content'][:80])
                 elif decision == "pearl":
-                    print(f"  GRADUATE TO PEARL: {entry['content'][:60]}")
-                    # The pearl file is the durable record; if it cannot be
-                    # written the entry stays unreviewed so the next run retries.
+                    print(f"  PROPOSE AS PEARL: {entry['content'][:60]}")
+                    # A graduation is a PROPOSAL into the one pearl gate (Gloria 2026-11-14), never a
+                    # pearl file: it waits for his adoption, then verification, pressure and review.
+                    # If the proposal cannot be recorded the entry stays unreviewed so the next run retries.
                     try:
                         import sys as _wp_sys; _wp_sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
-                        from emoclaw_utils import add_pearl
-                        _pp = add_pearl(entry["content"], source="wal-graduation")
-                        if _pp:
-                            entry["pearl_path"] = _pp
-                        entry["pearl_graduated"] = True
+                        from pearl_engine import propose
+                        _pc = propose(entry["content"], "wal-graduation")
+                        if _pc:
+                            entry["pearl_candidate"] = _pc
+                        entry["pearl_proposed"] = True
                     except Exception as _pe:
-                        print(f"  pearl write failed, will retry: {_pe}")
+                        print(f"  pearl proposal failed, will retry: {_pe}")
                         entry["pearl_reviewed"] = False
             save_json(WAL_LOG, {"entries": keep})
             save_json(WAL_ARCHIVE, archive_data)

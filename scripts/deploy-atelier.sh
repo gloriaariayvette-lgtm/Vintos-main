@@ -231,7 +231,7 @@ atelier-door.sh atelier-canary.sh atelier-broker-watch.sh gloria-model-update.sh
 # the dreaming skill's two shell entry points live under skills/, not scripts/ or bin/
 SKILLFILES="skills/dreaming/scripts/dream-trigger.sh skills/dreaming/scripts/should-dream.sh"   # thread lifecycle, 2026-09-10
 DOMAINFILES="bin/server_domains/galleries.py bin/server_domains/music.py bin/server_domains/humor_wants.py bin/server_domains/landings.py bin/server_domains/journal.py"
-SCRIPTS="$SCRIPTS pearl-engine.py pearl_engine.py"
+SCRIPTS="$SCRIPTS pearl-engine.py pearl_engine.py pearl_review.py"   # pearl_review: Gloria's local review page + apply/revert (2026-11-14)
 SCRIPTS="$SCRIPTS gap_scan.py gap_review.py"   # the daily wall count and the Monday gap review into the Forge (2026-09-24)
 SCRIPTS="$SCRIPTS landings.py grok_subscription.py"   # her landing notes (2026-09-24); his Grok renders on her SuperGrok login (2026-09-25)
 SCRIPTS="$SCRIPTS failure_watch.py forge_tidy.py study_fix.py armed_watch.py promise_keeper.py"   # one morning message to Gloria when a part of him failed (2026-10-02); stop the old Lab write-ups (2026-10-03); his journal's promises made, reshaped or dropped (2026-10-03)
