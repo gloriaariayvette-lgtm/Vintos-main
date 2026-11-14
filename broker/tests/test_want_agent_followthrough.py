@@ -851,8 +851,9 @@ class Tests(unittest.TestCase):
         with patch.object(D,'STATE',str(self.mem/'room.json')),patch.object(D,'_guarded',lambda s:[]), \
              patch.object(D,'agent_owner_requests',owner):
             kw=dict(writer=self.writer,identity=lambda:'Fixture',notify=self.notify,complete=self.complete)
-            with self.assertRaises(RuntimeError):
-                D.agent_wants_pass(api,'fixture-channel','fixture-dot',self.state,self.now+2,rows=[row],**kw)
+            # one want's retry holds that want only, said with its reason; the pass itself goes on (14 November)
+            lines=D.agent_wants_pass(api,'fixture-channel','fixture-dot',self.state,self.now+2,rows=[row],**kw)
+            self.assertTrue(any('owner request retained for retry' in l for l in lines),lines)
             D.agent_wants_pass(api,'fixture-channel','fixture-dot',self.state,self.now+3,**kw)
             D.agent_wants_pass(api,'fixture-channel','fixture-dot',self.state,self.now+4,**kw)
         self.assertEqual(len(attempts),2);self.assertEqual(len(posts),1)

@@ -1,0 +1,31 @@
+{
+  "scope": "Camera mamepa (Mamba-JEPA over the sensory tap's frame embeddings) as the retention fix for the native video stream. Code: branch claude/camera-mamepa on top of claude/native-video-stream 2369e1fd. In the scored arm the video prompt gets the mamepa's summary as a note before the question and the answer sees frames from the mamepa's onset (start of the present happening, at least two frames) onward. Nothing else in the answer path changes.",
+  "registered_before_scoring": "2026-11-13, before any AEON embedding of the training data was computed, before the development check and before any fresh clip was generated",
+  "queue": "one lock hold under ~/physics-lab/train.lock, started only after the native-video fourth chain (gates4, waiter pid 46322) has finished; no queue jumping; one heavy GPU job at a time",
+  "training": {
+    "data": "synthetic only: camera_mamepa_train.synthetic_clip (own generator, seeds 7300000000+), 384 train / 48 selection / 48 test clips of 32 frames, encoded through the checkpoint's own vision projection (mean of 70 soft tokens). No registered evaluation seed, live frame, recording or downloaded video.",
+    "objective": "JEPA: predict the whitened latent of frames 1, 2 and 4 ahead from the carried SSM state; within-scene targets only; projection fixed (PCA-whitened, 64 axes); AdamW 1e-3 / 0.05, 30 epochs, early stopping on the selection split",
+    "keep_rule": "the SSM forecaster is kept only if its test-split loss (numpy inference path) is >= 5% below persistence; otherwise the checkpoint carries the fixed forecasters only. err_scale = median best-forecaster error on within-scene test transitions."
+  },
+  "development_choice_rule": "development clips only (resampler-development, seed 2026111322, 128 clips, 20 shape-free stills seeds 900000+i then the motion clip): run the mamepa arm with boundary 5, 10 and 20 on the same sessions; choose the highest development accuracy, ties to 10; write mamepa-choice.json before the fresh clips are generated; use it unchanged",
+  "clips": {
+    "generator": "the Codex's moving-square generator, unchanged (copied byte for byte); four 192x192 frames at 2 fps; 70 soft tokens per frame",
+    "apple5-A": {"seed": 2026111501, "count": 128, "speeds": [14, 16]},
+    "apple5-B": {"seed": 2026111502, "count": 256, "speeds": [14, 16], "stills_prefix": "plain_stills(1100000 + i, 20)"}
+  },
+  "bars": {
+    "retention_absolute": 0.688,
+    "retention_margin": 0.05,
+    "stream_vs_bulk_margin": 0.03,
+    "latency_added_p95_seconds": 0.1,
+    "rules": [
+      "retention: mamepa arm on apple5-B (20 stills first, default window) >= 0.688 AND >= stream_primary(apple5-B) - 0.05",
+      "motion (no regression): mamepa arm on the plain clips >= MLX-native bulk reference - 0.03 on apple5-A and apple5-B; reference parses on >= 90%",
+      "latency: p95 per-frame mamepa time < 0.1 s AND p95 over apple5-B questions of (first-token time with the note and view - first-token time without, same session, order alternated) + summary build time < 0.1 s",
+      "text parity (no regression): stream forward vs the NativeMind text route on the first 2,000 unique reviewed-eleven inputs by sha256: 0 argmax mismatches and maximum absolute error 0",
+      "vision (no regression): the original GGUF battery re-run on an owned loopback process (stopped afterwards) >= 19/22 with no lost cases; the stream-path diagnostic with recall on (one 280-token frame) reported"
+    ]
+  },
+  "scored_once": true,
+  "adoption": "none by this run: RECALL_DEFAULT stays False and nothing is merged to the deploy branch or deployed; Gloria decides after the numbers"
+}

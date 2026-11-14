@@ -17,6 +17,9 @@ BRAIN = os.environ.get("VINTOS_LOCAL_BRAIN", "aeon-gemma-4-12b")
 def _brain():
     """(chat url, model, extra fields) for his brain, read at each call so the subconscious flip (subcon_target.py)
     moves it to AEON with thinking off; an explicit VINTOS_LOCAL_BRAIN keeps the route it names."""
+    import native_audio
+    if native_audio.enabled():
+        return native_audio.verify() + "/v1/chat/completions", BRAIN, {}
     base, model, extra = LM, BRAIN, {}
     if "VINTOS_LOCAL_BRAIN" not in os.environ:
         try:
@@ -102,18 +105,28 @@ def _post(url, body, timeout):
     req = urllib.request.Request(url, data=json.dumps(body).encode(),
         headers={"Content-Type":"application/json"}, method="POST")
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as response:
+        import native_audio
+        open_url = (urllib.request.build_opener(urllib.request.ProxyHandler({})).open
+                    if native_audio.enabled() and url.startswith(native_audio.base_url() + "/") else urllib.request.urlopen)
+        with open_url(req, timeout=timeout) as response:
             return response.read(), response.headers
     except urllib.error.HTTPError as exc:
         raise RuntimeError("%s: %s" % (exc.code, exc.read().decode(errors="replace")[:300]))
 
 
 def models(active, evict_ears=False):
+    import native_audio
+    native = native_audio.enabled()
+    if active and native:
+        native_audio.verify()
+        native_audio.require_stage(STAGE)
     if active:
         _CALL["id"] = None
         call_id()
-    raw, _ = _post(STAGE + "/voice/models", {"active": bool(active),
-        "evict_ears": bool(evict_ears)}, 100)
+    body = {"active": bool(active), "evict_ears": bool(evict_ears)}
+    if native:
+        body["external_ears"] = True
+    raw, _ = _post(STAGE + "/voice/models", body, 100)
     return json.loads(raw)
 
 
@@ -126,20 +139,33 @@ def _display_text(text):
     return " ".join(out.split())
 
 
+def _hear_input(audio_b64, sample_rate):
+    import native_audio
+    if native_audio.enabled():
+        return native_audio.hear(audio_b64, sample_rate, _post)
+    raw, _ = _post(STAGE + "/listen", {"audio": audio_b64,
+        "sample_rate": int(sample_rate or 24000)}, 180)
+    return json.loads(raw)
+
+
+def _heard_content(heard, audio_b64, sample_rate, legacy_label="Gemma"):
+    import native_audio
+    if native_audio.enabled():
+        return native_audio.content(audio_b64, sample_rate)
+    evidence = {"reading": heard.get("audio_reading"), "pipeline": heard.get("ears"),
+                "audio_native_gemma": bool(heard.get("audio_native_gemma"))}
+    return ("Gloria said aloud:\n" + heard["transcript"] +
+            "\n\n[AUDIO-NATIVE READING — " + legacy_label + " received the recording itself:]\n" + json.dumps(evidence, ensure_ascii=False))
+
+
 def turn(audio_b64, sample_rate, instructions, framing="", ladder_call=None):
     """One turn. ladder_call: a call he started, already checked by the route against the call attention_call
     holds. It is the same turn, but what the house would capture of it for his memory waits with the call for
     her answer (how her voice sounded, both voices' audio), and her words do not reach the intent engine."""
-    heard_raw, _ = _post(STAGE + "/listen", {"audio": audio_b64,
-        "sample_rate": int(sample_rate or 24000)}, 180)
-    heard = json.loads(heard_raw)
+    heard = _hear_input(audio_b64, sample_rate)
     if not heard.get("ok") or not heard.get("transcript"):
         return {"ok":False,"stage":"ears","error":heard.get("error","no words heard"),"hearing":heard}
-    evidence = {"reading":heard.get("audio_reading"), "pipeline":heard.get("ears"),
-                "audio_native_gemma":bool(heard.get("audio_native_gemma"))}
-    user = ("Gloria said aloud:\n" + heard["transcript"] +
-            "\n\n[AUDIO-NATIVE READING — Gemma 3n received the recording itself:]\n" +
-            json.dumps(evidence, ensure_ascii=False))
+    user = _heard_content(heard, audio_b64, sample_rate, "Gemma 3n")
     from stratagem_turn import Interaction, control
     command = control(heard["transcript"])
     if command is not None:
@@ -249,7 +275,10 @@ def _brain_stream(system, user, max_tokens):
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]})
     req = urllib.request.Request(url, data=json.dumps(body).encode(),
                                  headers={"Content-Type": "application/json"}, method="POST")
-    with urllib.request.urlopen(req, timeout=180) as response:
+    import native_audio
+    open_url = (urllib.request.build_opener(urllib.request.ProxyHandler({})).open
+                if native_audio.enabled() else urllib.request.urlopen)
+    with open_url(req, timeout=180) as response:
         for line in response:
             line = line.decode("utf-8", "replace").strip()
             if not line.startswith("data:"):
@@ -258,9 +287,12 @@ def _brain_stream(system, user, max_tokens):
             if data == "[DONE]":
                 break
             try:
-                choices = json.loads(data).get("choices") or []
+                event = json.loads(data)
+                choices = event.get("choices") or []
             except ValueError:
                 continue
+            if event.get("error"):
+                raise RuntimeError("Native audio generation failed")
             for c in choices:
                 piece = (c.get("delta") or {}).get("content")
                 if piece:
@@ -375,15 +407,11 @@ def turn_stream(audio_b64, sample_rate, instructions, framing="", ladder_call=No
     import time as _t
     emit = emit or (lambda e: None)
     t0 = _t.monotonic(); timing = {}
-    heard_raw, _ = _post(STAGE + "/listen", {"audio": audio_b64, "sample_rate": int(sample_rate or 24000)}, 180)
-    heard = json.loads(heard_raw); timing["ears_s"] = round(_t.monotonic() - t0, 2)
+    heard = _hear_input(audio_b64, sample_rate); timing["ears_s"] = round(_t.monotonic() - t0, 2)
     if not heard.get("ok") or not heard.get("transcript"):
         return {"ok": False, "stage": "ears", "error": heard.get("error", "no words heard"), "hearing": heard}
     emit({"kind": "heard", "transcript": heard["transcript"]})
-    evidence = {"reading": heard.get("audio_reading"), "pipeline": heard.get("ears"),
-                "audio_native_gemma": bool(heard.get("audio_native_gemma"))}
-    user = ("Gloria said aloud:\n" + heard["transcript"] +
-            "\n\n[AUDIO-NATIVE READING — Gemma received the recording itself:]\n" + json.dumps(evidence, ensure_ascii=False))
+    user = _heard_content(heard, audio_b64, sample_rate)
     from stratagem_turn import Interaction, control, guard_reply
     command = control(heard["transcript"])
     if command is not None:

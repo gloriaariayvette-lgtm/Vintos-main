@@ -2460,11 +2460,15 @@ def main():
 
         # Specific operational wants need an agent-capable route, even when a
         # planner produced an easier but different song/reflection plan.
-        from want_agent import specific as _agent_specific, request as _agent_request
+        from want_agent import specific as _agent_specific, request as _agent_request, owned_by_room as _room_owned
         if _agent_specific(want):
             if _agent_request(want, "concrete task needs agent follow-through"):
                 log("  → Bound to agent room; handoff is not fulfillment")
                 continue
+        if _room_owned(want):
+            # its own unfinished agent-room request: the want lane works it, never this one too (14 November)
+            log("  → Owned by the agent room's want lane; not worked here as well")
+            continue
 
         if not _ensure_plan(want, force=bool(_args.force_want_id)):
             block = want.get("plan_block") or {}

@@ -129,6 +129,13 @@ def _promised_work(want):
                 and not (_NOT_WORK.search(text) or _POETIC.search(text) or _METAPHOR.search(text)))
 
 
+def owned_by_room(want):
+    """The one ownership test both lanes read (14 November): a want with its own unfinished agent-room request belongs
+    to the want lane, whatever its text has become; the router neither works it nor sends its email."""
+    a = (want.get('agent_work') or {}) if isinstance(want, dict) else {}
+    return bool(isinstance(a, dict) and a.get('request_id') and a.get('status') not in ('completed', 'dropped'))
+
+
 def bypass(want):
     return bool(want.get('timer_bypass') or ((want.get('journal_seeded') or want.get('source') == 'idle-journal') and specific(want)))
 
@@ -281,6 +288,19 @@ def verify(want, ws=None, *, clock_checks=None):
     return result, paths
 
 
+NO_AGENT_EMAIL = ('Do not email or message the person this task names, and do not draft that email: I send it myself, '
+                  'through my own email steps (search, what I know of them, draft, review, approval), after your result. '
+                  'Your part is the work and the evidence that email needs. ')
+
+
+def _asks_email(want):
+    try:
+        import want_email
+        return want_email.email_want(want.get('want', ''))
+    except Exception:
+        return False
+
+
 def opening(want, a, wid):
     # JSON quoting prevents a journal's newlines from becoming room control lines.
     return ('WORK REQUEST %s (%s; want %s)\nExact task: %s\n' % (a['request_id'], wid, want['id'], json.dumps(want['want'], ensure_ascii=False))
@@ -295,13 +315,14 @@ def opening(want, a, wid):
             'ask for only an authorization or credential the owner must supply. Code changes remain review branches; '
             'Gloria deploys. Purchases go to @Muse, who uses the existing BUY approval path; this is not permission to spend. '
             'A setup step, a new song, a journal reflection or a plan is not the requested analysis. '
-            'Report blockers in this thread and keep working on the other steps. '
+            'Report blockers in this thread and keep working on the other steps. %s'
             'When the whole task is complete, use scripts/want_agent.py result %s --summary "what was made" '
             '--acceptance "how the exact task was checked, including limits" --artifact memory/want-artifacts/requests/%s/output-file '
             '(repeat --artifact for each deliverable), then post WANT RESULT %s on its own line IN THIS THREAD. '
             'That verifies files, delivers them to Gloria and records that I did it. Never put secrets in the artifacts.'
             % (json.dumps(want.get('source_refs', []), ensure_ascii=False),
-               json.dumps(want.get('step_history', [])[-4:], ensure_ascii=False)[:1800], a['request_id'], a['request_id'], a['request_id']))
+               json.dumps(want.get('step_history', [])[-4:], ensure_ascii=False)[:1800],
+               NO_AGENT_EMAIL if _asks_email(want) else '', a['request_id'], a['request_id'], a['request_id']))
 
 
 def intake(state, post, save_state, now, *, ws=None, identity=None, prepare=None):
@@ -361,8 +382,25 @@ def intake(state, post, save_state, now, *, ws=None, identity=None, prepare=None
             save_state(state)  # recover this same work after a crash before the transport reply
         import want_working_thread as working
         if room_work.paused(work, now): continue
-        working.load(w, work, ws, identity)
+        try:
+            working.load(w, work, ws, identity)
+        except (ValueError, KeyError, TypeError, OSError) as exc:
+            # its own record is broken: it waits, said, and the next want may still be handed over (14 November)
+            lines.append('want %s not handed over: its working record: %s' % (w['id'], str(exc)[:160]))
+            continue
         if a.get('thread'):
+            continue
+        kept = working.retained_thread(w, ws)
+        if kept:
+            # The same want and request were handed over before (it was dismissed and adopted again): its agent already
+            # has the work in that thread. It goes on there; a second opening in a new thread would be the same work
+            # asked for twice, and a record bound to two threads (14 November).
+            _update(w['id'], rid, {'thread': kept['thread'], 'status': 'in_work', 'work_id': work['id'],
+                                   'resumed_thread': {'at': now}}, ws)
+            a.update(thread=kept['thread'], status='in_work', work_id=work['id'])
+            state['threads'] = list(dict.fromkeys(list(state.get('threads') or []) + [kept['thread']]))[-60:]
+            save_state(state)               # its replies there are read again
+            lines.append('want %s goes on in the thread it was handed over in before; not handed over twice' % w['id'])
             continue
         body = opening(w, a, work['id'])
         if prepare is not None:
@@ -706,6 +744,36 @@ def promise_twin(text):
     return r.get('id') if r else None
 
 
+_TO_GLORIA = re.compile(r'\b(?:bring|take|tell|show|send|give|pass)\w*\b.*\bGloria\b|\bGloria\b.*\b(?:bring|show|tell)\w*\b',
+                        re.I | re.S)
+SAME_REPLY_HOURS = 6
+
+
+def same_reply_promise(text, at, agent, rows):
+    """The live ordinary-lane want his same letter reply already made of this promise to bring Gloria something, or None.
+    want_email.promises_to_gloria turns a reply's FOR GLORIA line into "I want to bring Gloria what <agent> found for
+    her, as I told <agent> I would: ..." (source letter-promise), and email_commitments reads the same reply's promises:
+    the same promise, twice. The pair is the same agent's reply, within SAME_REPLY_HOURS."""
+    from datetime import datetime
+    if not _TO_GLORIA.search(str(text or '')) or not agent:
+        return None
+    try:
+        when = datetime.fromisoformat(str(at or '')[:19]).timestamp()
+    except ValueError:
+        return None
+    told = 'as I told %s I would' % agent
+    best = None
+    for w in rows:
+        if not (_live(w) and w.get('source') == 'letter-promise' and not w.get('agent_work') and told in str(w.get('want', ''))):
+            continue
+        made = _when(w)
+        if made is None or abs(made - when) > SAME_REPLY_HOURS * 3600:
+            continue
+        if best is None or abs(made - when) < abs(_when(best) - when):
+            best = w
+    return best
+
+
 def adopt_promises(*, ws=None, now=None, paused=False):
     """The newest promises he owes - in his email replies and his journal - that are literal work an agent can do
     become source-bound wants, once each, ADOPT_OPEN at a time (10 November: none ever had; about a hundred email
@@ -794,13 +862,18 @@ def adopt_promises(*, ws=None, now=None, paused=False):
         for kind, pid, source, rkind, sid, text, at, agent, done in found:
             if pid in taken: continue
             if kind == 'commitment':
-                # the same work already stands as a journal want: the promise joins it, once; no second want
-                jw = twin(text, [w for w in rows if _live(w) and w.get('source') == 'idle-journal'])
+                # the same work already stands as a journal want, or as the want his reply's FOR GLORIA line made in the
+                # ordinary lane (want_email.promises_to_gloria; 14 November: a reply's promise to bring her something
+                # was adopted here while the same reply's FOR GLORIA want was worked by the router): the promise
+                # joins it, once; no second want, no second lane
+                jw = (same_reply_promise(text, at, agent, rows)
+                      or twin(text, [w for w in rows if _live(w) and w.get('source') in ('idle-journal', 'letter-promise')]))
                 if jw is not None:
                     jw.setdefault('source_refs', []).append({'kind': 'commitment', 'id': pid})
                     if isinstance(jw.get('agent_work'), dict):
                         jw['agent_work'].setdefault('commitment_ids', []).append(pid)
-                    joined.append((pid, jw.get('id'))); taken.add(pid); continue
+                    joined.append((pid, 'journal' if jw.get('source') == 'idle-journal' else 'letter', jw.get('id')))
+                    taken.add(pid); continue
             if open_now + len(made) >= ADOPT_OPEN and pid not in orphans: continue
             row = dict(id=('ec-' if kind == 'commitment' else 'pr-') + pid.split('-', 1)[-1], want=text, source=source,
                        urgency='normal', intensity=3, timestamp=datetime.fromtimestamp(now or time.time()).isoformat(timespec='seconds'),
@@ -831,7 +904,7 @@ def adopt_promises(*, ws=None, now=None, paused=False):
              % (w['id'], w['adoption_released']['reason'].replace('_', ' '),
                 (' after %d h' % ADOPT_ANSWER_HOURS) if w['adoption_released']['hours'] else '', total) for w in released]
             + ['promise %s became a want for the work lane' % row['adopted_from'] for row in made]
-            + ['promise %s joined journal want %s (one want, not two)' % j for j in joined]
+            + ['promise %s joined %s want %s (one want, not two)' % j for j in joined]
             + (['promises re-adopted after their want was gone: %d (%s)' % (
                 len([r for r in made if r['adopted_from'] in orphans]),
                 ', '.join(r['adopted_from'] for r in made if r['adopted_from'] in orphans))]
@@ -915,7 +988,46 @@ def receive(rows, *, ws=None):
     return changed
 
 
-def finish(state, publish, notify, complete, save_state, now, *, ws=None, review=None):
+EMAIL_RETRY_HOURS = 2      # a held email step is tried again at the router's own pace, never every pass
+# An email step that cannot go out and will not by waiting: the want is finished without it, the reason kept on it.
+EMAIL_SETTLED = ('Gloria declined', 'the conversation with', 'was already emailed about this', 'wrote back',
+                 'not a want of the agent room')
+
+
+def _email_step(w, a, result, rid, revision, now, ws, email_step=None):
+    """A bound want that asks him to email someone sends it through want_email.run, the same steps (search, dossier,
+    person page, draft, review, Gloria's approval for a second email, contact record) as the router's email wants, once
+    its agent's work is done and delivered (Gloria, 14 November). The agent never sends it. None when the want may be
+    completed now; otherwise the line to say ('' for a quiet wait) and the want stays result_ready."""
+    try:
+        import want_email
+        if not want_email.email_want(w.get('want', '')):
+            return None
+    except Exception as exc:
+        return 'want %s email step not checked: %s' % (w.get('id'), str(exc)[:120])
+    step = a.get('email_step') or {}
+    if step.get('sent') or step.get('settled'):
+        return None
+    if step.get('held') and now - float(step.get('at') or 0) < EMAIL_RETRY_HOURS * 3600:
+        return ''
+    if email_step is None:
+        email_step = lambda want, res: want_email.run({}, want['want'], want['id'], lane='want-lane',
+                                                      work_found=res.get('summary', '') + '\n' + res.get('acceptance', ''))
+    try:
+        outcome = email_step(w, result)
+    except Exception as exc:
+        outcome = (False, '%s: %s' % (type(exc).__name__, str(exc)[:200]))
+    if isinstance(outcome, str):
+        record = {'sent': outcome[:300], 'at': now}
+    else:
+        why = str(outcome[1] if isinstance(outcome, tuple) and len(outcome) > 1 else 'held')
+        record = {('settled' if any(s in why for s in EMAIL_SETTLED) else 'held'): why[:300], 'at': now}
+    _update(w['id'], rid, {'email_step': record}, ws, expected_result=revision)
+    a['email_step'] = record
+    return 'want %s email step held: %s' % (w['id'], record['held'][:140]) if 'held' in record else None
+
+
+def finish(state, publish, notify, complete, save_state, now, *, ws=None, review=None, email_step=None):
     """Publish verified files, then ntfy through deliver, then the existing ending door.
 
     Every stage is retained on its want; a failed upload/notification is retried
@@ -977,6 +1089,10 @@ def finish(state, publish, notify, complete, save_state, now, *, ws=None, review
             if item:
                 working.append(w, item, ws, 'delivered:' + revision, 'delivery', result['summary'], at=now,
                                details={'publication': publication, 'delivery': delivery, 'acceptance': result['acceptance']})
+            said = _email_step(w, a, result, rid, revision, now, ws, email_step)
+            if said is not None:
+                if said: lines.append(said)
+                continue
             outcome = complete(w, result['summary'] + '\nDeliverables: ' + publication['url'])
             if not outcome or outcome.get('result') != 'fulfilled':
                 raise ValueError('ending door has not confirmed fulfillment')
