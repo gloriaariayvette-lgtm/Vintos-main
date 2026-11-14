@@ -297,6 +297,28 @@ def settle(rid, state, why=""):
         pass                                   # an unsettled reservation stays counted: the cap errs closed
 
 
+def _never_sent(e):
+    """True when no connection to the provider was ever made (a connect timeout, a refused connection, a name that
+    did not resolve): nothing can have been charged. Without this, every call during a network outage would stay
+    counted at its ceiling for the week and could shut the allowance with nothing spent."""
+    if type(e).__name__ == "ConnectTimeout":
+        return True
+    try:
+        from urllib3.exceptions import NewConnectionError, ConnectTimeoutError
+    except ImportError:
+        return False
+    x = e
+    for _ in range(6):
+        if x is None:
+            break
+        if isinstance(x, (NewConnectionError, ConnectTimeoutError)):
+            return True
+        r = getattr(x, "reason", None)
+        a = x.args[0] if getattr(x, "args", None) else None
+        x = r if isinstance(r, BaseException) else a if isinstance(a, BaseException) else (x.__cause__ or x.__context__)
+    return False
+
+
 _REFUSAL = re.compile(r"content[_ ]policy|safety|refus|flagged|moderation", re.I)
 
 
@@ -345,7 +367,7 @@ def _call(system, user, src, max_tokens=JUDGE_MAX_TOKENS, timeout=JUDGE_TIMEOUT,
     except Exception as e:
         # a timeout, a dropped connection, an unreadable reply: it may have been charged, and no usage line was
         # written, so its ceiling stays counted for the week (a connect timeout never reached the provider)
-        settle(rid, "released" if type(e).__name__ == "ConnectTimeout" else "uncertain", type(e).__name__)
+        settle(rid, "released" if _never_sent(e) else "uncertain", type(e).__name__)
         return "error", "", type(e).__name__
     settle(rid, "settled")
     stop = str(seen.get("stop_reason") or "")

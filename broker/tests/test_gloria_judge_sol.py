@@ -690,6 +690,24 @@ class SonnetTransport(unittest.TestCase):
         rows = (self.home / '.vintos/workspace/memory' / GJ.RESERVE_LOG).read_text()
         self.assertNotIn('SYNTHETIC-HER-WORDS', rows); self.assertNotIn('fixturekey', rows)
 
+    def test_a_call_that_never_connected_is_released_not_held_for_the_week(self):
+        """Review 14 November: a refused connection or an unresolved name never reached the provider, so nothing
+        was charged; held at its ceiling for 7 days, a network outage would shut the allowance with nothing spent.
+        A connection dropped after sending stays uncertain."""
+        import requests
+        from urllib3.exceptions import MaxRetryError, NewConnectionError, ProtocolError
+        never = requests.exceptions.ConnectionError(MaxRetryError(None, '/v1/messages',
+                                                                  NewConnectionError(None, 'fixture: refused')))
+        self.reply = never
+        self.assertEqual(GJ.judge(self.packet)['detail'], 'ConnectionError')
+        self.reply = requests.exceptions.ConnectTimeout('fixture')
+        GJ.judge(self.packet)
+        b = GJ.budget()
+        self.assertEqual((b['open_n'], b['uncertain_n'], b['counted_usd']), (0, 0, 0.0))
+        self.reply = requests.exceptions.ConnectionError(ProtocolError('Connection aborted.', ConnectionResetError()))
+        GJ.judge(self.packet)
+        self.assertEqual(GJ.budget()['uncertain_n'], 1)                                # it may have been charged
+
     def test_reservations_in_flight_count_so_two_callers_cannot_both_take_the_last_of_it(self):
         import threading
         ceil = GJ.ceiling(GJ.RUBRIC, json.dumps(self.packet, ensure_ascii=False), GJ.JUDGE_MAX_TOKENS)
