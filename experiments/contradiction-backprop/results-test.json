@@ -1,0 +1,273 @@
+{
+ "bars": {
+  "collateral_beliefs": 0.1,
+  "collateral_sources": 0.1,
+  "convergence": 0.9,
+  "margin": 0.1,
+  "precision": 0.75,
+  "recall": 0.7,
+  "top1": 0.75,
+  "top1_noisy": 0.6
+ },
+ "pass": {
+  "collateral_beliefs": true,
+  "collateral_sources": true,
+  "convergence": true,
+  "margin": true,
+  "precision": false,
+  "recall": false,
+  "top1": false,
+  "top1_noisy": false
+ },
+ "results": {
+  "lowest_confidence": {
+   "all": {
+    "collateral_beliefs": 0.3732,
+    "collateral_sources": 0.133,
+    "contradictions_with_fault": 1190,
+    "convergence": 0.9283,
+    "detectable_faults": 851,
+    "downstream_false_caught": 0.8827,
+    "networks": 600,
+    "precision": 0.568,
+    "recall": 0.658,
+    "top1": 0.5924
+   },
+   "chain": {
+    "collateral_beliefs": 0.4465,
+    "collateral_sources": 0.0965,
+    "contradictions_with_fault": 318,
+    "convergence": 0.8733,
+    "detectable_faults": 195,
+    "downstream_false_caught": 0.8366,
+    "networks": 150,
+    "precision": 0.4703,
+    "recall": 0.4872,
+    "top1": 0.4686
+   },
+   "multi": {
+    "collateral_beliefs": 0.1774,
+    "collateral_sources": 0.1014,
+    "contradictions_with_fault": 343,
+    "convergence": 0.94,
+    "detectable_faults": 258,
+    "downstream_false_caught": 0.8935,
+    "networks": 150,
+    "precision": 0.7101,
+    "recall": 0.7597,
+    "top1": 0.6968
+   },
+   "noisy": {
+    "collateral_beliefs": 0.5,
+    "collateral_sources": 0.2182,
+    "contradictions_with_fault": 316,
+    "convergence": 0.92,
+    "detectable_faults": 248,
+    "downstream_false_caught": 0.9518,
+    "networks": 150,
+    "precision": 0.4495,
+    "recall": 0.5927,
+    "top1": 0.5665
+   },
+   "single": {
+    "collateral_beliefs": 0.1948,
+    "collateral_sources": 0.1227,
+    "contradictions_with_fault": 213,
+    "convergence": 0.98,
+    "detectable_faults": 150,
+    "downstream_false_caught": 0.9137,
+    "networks": 150,
+    "precision": 0.674,
+    "recall": 0.8133,
+    "top1": 0.6479
+   }
+  },
+  "most_recent": {
+   "all": {
+    "collateral_beliefs": 0.1309,
+    "collateral_sources": 0.3608,
+    "contradictions_with_fault": 1190,
+    "convergence": 1.0,
+    "detectable_faults": 851,
+    "downstream_false_caught": 0.1909,
+    "networks": 600,
+    "precision": 0.0752,
+    "recall": 0.1105,
+    "top1": 0.0798
+   },
+   "chain": {
+    "collateral_beliefs": 0.0409,
+    "collateral_sources": 0.2624,
+    "contradictions_with_fault": 318,
+    "convergence": 1.0,
+    "detectable_faults": 195,
+    "downstream_false_caught": 0.2537,
+    "networks": 150,
+    "precision": 0.0732,
+    "recall": 0.1179,
+    "top1": 0.0755
+   },
+   "multi": {
+    "collateral_beliefs": 0.1129,
+    "collateral_sources": 0.4297,
+    "contradictions_with_fault": 343,
+    "convergence": 1.0,
+    "detectable_faults": 258,
+    "downstream_false_caught": 0.0997,
+    "networks": 150,
+    "precision": 0.0,
+    "recall": 0.0,
+    "top1": 0.0
+   },
+   "noisy": {
+    "collateral_beliefs": 0.2594,
+    "collateral_sources": 0.3818,
+    "contradictions_with_fault": 316,
+    "convergence": 1.0,
+    "detectable_faults": 248,
+    "downstream_false_caught": 0.2229,
+    "networks": 150,
+    "precision": 0.1818,
+    "recall": 0.2823,
+    "top1": 0.2215
+   },
+   "single": {
+    "collateral_beliefs": 0.0714,
+    "collateral_sources": 0.4387,
+    "contradictions_with_fault": 213,
+    "convergence": 1.0,
+    "detectable_faults": 150,
+    "downstream_false_caught": 0.1583,
+    "networks": 150,
+    "precision": 0.0047,
+    "recall": 0.0067,
+    "top1": 0.0047
+   }
+  },
+  "tms_bayes": {
+   "all": {
+    "collateral_beliefs": 0.0481,
+    "collateral_sources": 0.0852,
+    "contradictions_with_fault": 1190,
+    "convergence": 0.9817,
+    "detectable_faults": 851,
+    "downstream_false_caught": 0.9374,
+    "networks": 600,
+    "precision": 0.6691,
+    "recall": 0.6486,
+    "top1": 0.7202
+   },
+   "chain": {
+    "collateral_beliefs": 0.0031,
+    "collateral_sources": 0.0595,
+    "contradictions_with_fault": 318,
+    "convergence": 1.0,
+    "detectable_faults": 195,
+    "downstream_false_caught": 0.9683,
+    "networks": 150,
+    "precision": 0.614,
+    "recall": 0.5385,
+    "top1": 0.6447
+   },
+   "multi": {
+    "collateral_beliefs": 0.0,
+    "collateral_sources": 0.0558,
+    "contradictions_with_fault": 343,
+    "convergence": 1.0,
+    "detectable_faults": 258,
+    "downstream_false_caught": 0.89,
+    "networks": 150,
+    "precision": 0.812,
+    "recall": 0.7364,
+    "top1": 0.8222
+   },
+   "noisy": {
+    "collateral_beliefs": 0.1437,
+    "collateral_sources": 0.1745,
+    "contradictions_with_fault": 316,
+    "convergence": 0.9267,
+    "detectable_faults": 248,
+    "downstream_false_caught": 0.9157,
+    "networks": 150,
+    "precision": 0.4647,
+    "recall": 0.504,
+    "top1": 0.5759
+   },
+   "single": {
+    "collateral_beliefs": 0.0,
+    "collateral_sources": 0.0395,
+    "contradictions_with_fault": 213,
+    "convergence": 1.0,
+    "detectable_faults": 150,
+    "downstream_false_caught": 0.9712,
+    "networks": 150,
+    "precision": 0.8742,
+    "recall": 0.88,
+    "top1": 0.8826
+   }
+  },
+  "uniform": {
+   "all": {
+    "collateral_beliefs": 0.819,
+    "collateral_sources": 1.0,
+    "contradictions_with_fault": 1190,
+    "convergence": 1.0,
+    "detectable_faults": 851,
+    "downstream_false_caught": 0.997,
+    "networks": 600,
+    "precision": 0.2099,
+    "recall": 1.0,
+    "top1": 0.3274
+   },
+   "chain": {
+    "collateral_beliefs": 0.8931,
+    "collateral_sources": 1.0,
+    "contradictions_with_fault": 318,
+    "convergence": 1.0,
+    "detectable_faults": 195,
+    "downstream_false_caught": 1.0,
+    "networks": 150,
+    "precision": 0.1495,
+    "recall": 1.0,
+    "top1": 0.2427
+   },
+   "multi": {
+    "collateral_beliefs": 0.6882,
+    "collateral_sources": 1.0,
+    "contradictions_with_fault": 343,
+    "convergence": 1.0,
+    "detectable_faults": 258,
+    "downstream_false_caught": 0.9897,
+    "networks": 150,
+    "precision": 0.2464,
+    "recall": 1.0,
+    "top1": 0.3599
+   },
+   "noisy": {
+    "collateral_beliefs": 0.8969,
+    "collateral_sources": 1.0,
+    "contradictions_with_fault": 316,
+    "convergence": 1.0,
+    "detectable_faults": 248,
+    "downstream_false_caught": 1.0,
+    "networks": 150,
+    "precision": 0.2311,
+    "recall": 1.0,
+    "top1": 0.3595
+   },
+   "single": {
+    "collateral_beliefs": 0.6623,
+    "collateral_sources": 1.0,
+    "contradictions_with_fault": 213,
+    "convergence": 1.0,
+    "detectable_faults": 150,
+    "downstream_false_caught": 1.0,
+    "networks": 150,
+    "precision": 0.2377,
+    "recall": 1.0,
+    "top1": 0.3539
+   }
+  }
+ },
+ "split": "test"
+}

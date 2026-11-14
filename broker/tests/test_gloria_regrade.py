@@ -178,11 +178,11 @@ class Regrade(unittest.TestCase):
         rep = json.loads(out)
         exp_before = PV._axis_history(self.now, rj(self.ledger))['gloria']
         self.assertEqual(rep['receptivity_before']['verdicts'], exp_before['n'])
-        self.assertEqual(rep['receptivity_before']['receptivity'], PV._receptivity({'gloria': exp_before}))
+        self.assertEqual(rep['receptivity_before']['landing_rate'], PV._landing_rate({'gloria': exp_before}))
         self.run_cli('--labels', self.labels, '--now', NOW.isoformat())
         exp_after = PV._axis_history(self.now, rj(self.ledger))['gloria']
         self.assertEqual(rep['receptivity_after']['verdicts'], exp_after['n'])
-        self.assertEqual(rep['receptivity_after']['receptivity'], PV._receptivity({'gloria': exp_after}))
+        self.assertEqual(rep['receptivity_after']['landing_rate'], PV._landing_rate({'gloria': exp_after}))
         # in the window: rows 0-7, 10-12, 14 (13 is 40 days old). Three NOT_JUDGEABLEs leave the count.
         self.assertEqual((exp_before['YES'], exp_before['PARTIAL'], exp_before['NO'], exp_before['n']), (2, 1, 9, 12))
         self.assertEqual((exp_after['YES'], exp_after['PARTIAL'], exp_after['NO'], exp_after['n']), (2, 1, 6, 9))

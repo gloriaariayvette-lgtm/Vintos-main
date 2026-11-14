@@ -20,9 +20,13 @@ def check(name, ok, detail=""):
 
 check("the module writes only under scratch HOME", PV.MEM.startswith(HOME) and PV.LOG.startswith(HOME))
 
+_RECEPTIVE = {"YES": "answered", "PARTIAL": "partly", "NO": "ignored"}
 def _write_ledger(realized_rows):
-    # receptivity reads only recent verdicts, by the time of their own turn (10 November)
-    json.dump([{"realized": r, "timestamp": __import__("datetime").datetime.now().isoformat()} for r in realized_rows],
+    # receptivity reads only recent records, by the time of their own turn (10 November); since 14 November it reads
+    # her response to his move (row["receptive"]), so each synthetic row carries one beside its axis verdicts
+    json.dump([dict({"realized": r, "timestamp": __import__("datetime").datetime.now().isoformat()},
+                    **({"receptive": {"label": _RECEPTIVE[r["gloria"]]}} if r.get("gloria") in _RECEPTIVE else {}))
+               for r in realized_rows],
               open(os.path.join(MEM, "intent-ledger.json"), "w"))
 def _reset_state(neglect=None, streak=None):
     st = {}

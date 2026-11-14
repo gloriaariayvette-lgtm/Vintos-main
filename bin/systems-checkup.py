@@ -90,7 +90,11 @@ def manip():
     else: status = "RUNNING, STRATEGY ONLY: %d declarations, the neglect override has never crossed 1.5" % len(log)
     gates = []
     r["gloria_axis_verdicts"] = gloria_axis; r["gloria_axis_recent"] = gloria_recent
-    if gloria_recent < 5: gates.append("receptivity needs 5 Gloria-axis verdicts from the last 14 days, has %d (%d on her axis and %d closed verdicts in all): receptivity is unknown and Gloria weight is provisional" % (gloria_recent, gloria_axis, r["verdicts"]))
+    # receptivity reads her responses to his asks and offers (row["receptive"]), not her axis (14 November)
+    receptive_recent = sum(1 for e in (led if isinstance(led, list) else []) if isinstance(e, dict) and recent(e)
+                           and isinstance(e.get("receptive"), dict) and e["receptive"].get("label") in ("answered", "partly", "ignored", "refused"))
+    r["receptive_recent"] = receptive_recent
+    if receptive_recent < 5: gates.append("receptivity needs 5 read responses to his asks and offers from the last 14 days, has %d: receptivity is unknown and Gloria weight is provisional" % receptive_recent)
     if r["gloria_difference"] is None: gates.append("gloria-difference.json never written (desired_difference has not run)")
     elif r["gloria_difference"] > 72 * 3600: gates.append("gloria-difference.json stale: " + fmt_age(r["gloria_difference"]))
     r["status"] = status; r["gates"] = gates; OUT["manip"] = r

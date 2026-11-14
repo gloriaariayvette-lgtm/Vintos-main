@@ -209,23 +209,53 @@ def _gloria_coverage(now=None):
         return None
     return out
 
-def _receptivity(hist):
-    """His model of whether she is movable right now: recent Gloria-axis landing rate."""
+def _rc():
+    """receptivity.py, beside this file - also when this module was loaded by path, with scripts/ not on sys.path."""
+    import sys
+    here = os.path.dirname(os.path.abspath(__file__))
+    if here not in sys.path:
+        sys.path.insert(0, here)
+    import receptivity
+    return receptivity
+
+def _landing_rate(hist):
+    """How often his Gloria-axis criterion - the one specific difference he hoped for - showed: recent landing rate.
+    This is whether a hoped-for outcome happened, not her receptivity (14 November); None under MIN_VERDICTS."""
     g = hist["gloria"]
     if g["n"] < MIN_VERDICTS: return None           # not enough data — don't pretend
     return round((g["YES"] + 0.5 * g["PARTIAL"]) / g["n"], 2)
 
-def _receptivity_counts(g):
-    """The arithmetic behind the figure, in counts: a PARTIAL adds a half to the landings and one to the verdicts."""
-    return ("(%d YES + 0.5 x %d PARTIAL) / %d settled Gloria-axis verdicts in the last %d days, %d of them NO"
-            % (g["YES"], g["PARTIAL"], g["n"], RECENT_DAYS, g["NO"]))
+def _receptive_history(now=None, led=None):
+    """Counts of her responses to his asks and offers over the last RECENT_DAYS (receptivity.py). `led` is a ledger
+    already in hand; by default the household's is read."""
+    RC = _rc()
+    if led is None:
+        led = _jload(os.path.join(MEM, "intent-ledger.json"), [])
+    return RC.history(led, now or time.time(), RECENT_DAYS)
+
+def _receptivity(h):
+    """His model of whether she is movable right now: the share of his recent asks and offers she responded to, in
+    any form (14 November). It was the Gloria-axis landing rate, which measured whether she said the one thing he
+    hoped for, mostly never asked for; that rate is _landing_rate and is reported beside it."""
+    RC = _rc()
+    return RC.score(h)
+
+def _receptivity_counts(h):
+    """The arithmetic behind the figure, in counts."""
+    RC = _rc()
+    return RC.counts_text(h)
 
 def receptivity_report(now=None):
-    """Counts only: what her receptivity is read from right now. Declares nothing and writes nothing."""
+    """Counts only: what her receptivity is read from right now, and beside it his criterion's landing rate.
+    Declares nothing and writes nothing."""
+    RC = _rc()
+    h = _receptive_history(now)
     g = _axis_history(now)["gloria"]
-    return {"window_days": RECENT_DAYS, "minimum_verdicts": MIN_VERDICTS, "yes": g["YES"], "partial": g["PARTIAL"],
-            "no": g["NO"], "landings": g["YES"] + 0.5 * g["PARTIAL"], "verdicts": g["n"],
-            "receptivity": _receptivity({"gloria": g})}
+    return {"window_days": RECENT_DAYS, "minimum_records": RC.MIN_RECORDS, "response_window_hours": RC.RESPONSE_WINDOW_HOURS,
+            "answered": h["answered"], "partly": h["partly"], "ignored": h["ignored"], "refused": h["refused"],
+            "answered_in_later_turn": h["later_turn"], "records": h["n"], "receptivity": _receptivity(h),
+            "criterion_landing": {"yes": g["YES"], "partial": g["PARTIAL"], "no": g["NO"], "verdicts": g["n"],
+                                  "rate": _landing_rate({"gloria": g})}}
 
 def declare(eligible=True):
     """Set, log, and return this turn's vector. Called BEFORE generation. `eligible` is False for a turn
@@ -242,8 +272,9 @@ def _declare(eligible=True):
     st.setdefault("override_streak", {"axis": None, "n": 0})
 
     hist = _axis_history()
-    recept = _receptivity(hist)
-    shown = "%s = %s" % (recept, _receptivity_counts(hist["gloria"]))
+    rh = _receptive_history()
+    recept = _receptivity(rh)
+    shown = "%s = %s" % (recept, _receptivity_counts(rh))
 
     # strategic calculation
     w = {"field": 0.34, "gloria": 0.33, "self": 0.33}
@@ -261,10 +292,10 @@ def _declare(eligible=True):
     else:
         # unknown is not low: the middling weights, so her axis is still tried and the data can come (10 November)
         w = {"field": 0.40, "gloria": 0.35, "self": 0.25}
-        why.append("receptivity unknown (%d settled Gloria-axis verdicts in the last %d days, fewer than %d: "
-                   "%d YES, %d PARTIAL, %d NO) — provisional middling weights, field carries"
-                   % (hist["gloria"]["n"], RECENT_DAYS, MIN_VERDICTS, hist["gloria"]["YES"], hist["gloria"]["PARTIAL"],
-                      hist["gloria"]["NO"]))
+        RC = _rc()
+        why.append("receptivity unknown (%d of his asks and offers with her response read in the last %d days, fewer "
+                   "than %d: %d answered, %d partly, %d ignored, %d refused) — provisional middling weights, field carries"
+                   % (rh["n"], RECENT_DAYS, RC.MIN_RECORDS, rh["answered"], rh["partly"], rh["ignored"], rh["refused"]))
     if hist["self"]["n"] == 0:
         why.append("self weight provisional (0 closed verdicts)")
 

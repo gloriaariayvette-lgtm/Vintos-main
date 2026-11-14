@@ -218,12 +218,17 @@ def _journal_skill(skill, receipt, summary_text, files):
         stream.write(json.dumps(row,sort_keys=True)+"\n"); stream.flush(); os.fsync(stream.fileno())
 
 
+# how long a skill run may take before its outcome is unknown; lab_investigations waits this long after a
+# relay step was sent before it lets an investigation finish without that step's receipt
+SKILL_TIMEOUT = 660
+
+
 def run_skill(surface, skill, instruction, *, operation=None, input_files=None, transport=None):
     from plugin_catalog import skill_policy
     skill_policy(skill, surface, operation)
     inputs=_skill_inputs(input_files)
     response = _send({"action":"skill", "surface":surface, "skill":skill, "operation":operation,
-                      "instruction":instruction,"inputs":inputs}, timeout=660, transport=transport)
+                      "instruction":instruction,"inputs":inputs}, timeout=SKILL_TIMEOUT, transport=transport)
     if surface == "lab" and skill in ("sequence_viewer", "structure_viewer"):
         root = Path(MEMORY)/"chemistry-lab"/"artifacts"/skill.replace("_","-")
     else:
