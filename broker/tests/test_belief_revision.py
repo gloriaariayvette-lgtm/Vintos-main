@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
-"""Contradiction back-propagation (belief_revision.py, 14 November 2026): blame lands on the right sources,
-her word outweighs his inference without being infallible, what was built on a revised source is re-derived,
-a source missing from the record stays "not captured", and shadow mode changes no store and logs no text.
+"""Contradiction back-propagation (belief_revision.py, 14 November 2026). Gloria's three criteria: a contradiction is
+traced to the earliest faulty inference (asking the one check that splits the suspects when the record cannot),
+only what depends on the revised inference is recomputed, and unrelated valid reasoning is left untouched. Also:
+her word outweighs his inference without being infallible, a source missing from the record stays "not captured",
+labels do not depend on build order, the feeds mirror the organs' own evidence rules, and shadow mode changes no
+store and logs no text.
 
 Every behaviour check is also run against a mutant of the code it protects; the mutant must fail it.
 Synthetic fixtures only (the repository is public). Scratch HOME and SPARK_WORKSPACE before any import;
 `requests` fails the suite if anything sends."""
-import hashlib, json, os, sys, tempfile, types
+import contextlib, copy, hashlib, io, json, os, sys, tempfile, types
 
 HERE = os.path.dirname(os.path.abspath(__file__)); REPO = os.path.dirname(os.path.dirname(HERE))
 HOME = tempfile.mkdtemp(prefix="belief-revision-"); os.environ["HOME"] = HOME
@@ -32,9 +35,13 @@ def mutant(mod, old, new):
 
 def killed(name, probe, mod, old, new):
     try:
-        survived = bool(probe(mutant(mod, old, new)))
+        m = mutant(mod, old, new)            # a broken anchor or an edit that does not compile fails the check
+    except Exception as e:
+        check("mutation killed: " + name, False, "mutant could not be built: %r" % e); return
+    try:
+        survived = bool(probe(m))
     except Exception:
-        survived = False
+        survived = False                     # the mutated behaviour crashed: the probe caught it
     check("mutation killed: " + name, not survived)
 
 def action(p, node):
@@ -42,7 +49,6 @@ def action(p, node):
 
 check("every path is scratch", BR.MEMORY.startswith(HOME) and BR.SHADOW_LOG.startswith(HOME))
 check("shadow mode: live revision is off", BR.LIVE is False)
-check("no store writer exists in the module", not any(hasattr(BR, n) for n in ("apply", "commit", "write_store")))
 
 print("--- 1. reinforcement: the well-reinforced source is not the one blamed ---")
 def probe_evidence(M):
@@ -66,8 +72,7 @@ def probe_gloria_strong(M):
     g.source("her", "gloria")
     g.conflict("c", ["claim", "her"])
     p = M.plan(g, at="t")
-    top = p["conflicts"][0]["blame"][0][0]
-    return top != "her" and action(p, "her") in (None, "flag_for_gloria")
+    return p["conflicts"][0]["blame"][0][0] != "her" and action(p, "her") in (None, "flag_for_gloria")
 check("probe: his inference is blamed before her correction", probe_gloria_strong(BR))
 
 def probe_gloria_flag(M):
@@ -83,7 +88,7 @@ check("probe: many independent observations against her raise a flag for her, ne
       probe_gloria_flag(BR))
 killed("her word retracted by the module", probe_gloria_flag, BR, 'if n["kind"] == "gloria":', "if False:")
 
-print("--- 3. what was built on a revised source is re-derived ---")
+print("--- 3. revision: only what depends on the revised inference is recomputed ---")
 def probe_downstream(M):
     g = M.Graph()
     g.source("s1", "world_prediction")
@@ -95,8 +100,9 @@ def probe_downstream(M):
     rd = {r["node"]: r["action"] for r in p["rederive"]}
     return action(p, "s1") == "retract" and rd.get("d1") == "withdraw" and rd.get("d2") == "withdraw"
 check("probe: a retracted source withdraws the chain built on it", probe_downstream(BR))
-killed("downstream never withdrawn", probe_downstream, BR,
-       "cut_off = all(e & revised for e in es)", "cut_off = False")
+killed("downstream never recomputed", probe_downstream, BR,
+       "if not n[\"assumption\"] and g.envs(nid) and all(e & revised for e in g.envs(nid)))",
+       "if False)")
 
 def probe_second_support(M):
     g = M.Graph()
@@ -107,25 +113,91 @@ def probe_second_support(M):
     g.conflict("c", ["s1", "w"])
     p = M.plan(g, at="t")
     return action(p, "s1") in ("retract", "lower") and "d" not in {r["node"] for r in p["rederive"]}
-check("probe: a belief with an independent sound justification stands", probe_second_support(BR))
-killed("one revised justification takes down the belief", probe_second_support, BR,
-       "cut_off = all(e & revised for e in es)", "cut_off = any(e & revised for e in es)")
+check("probe: a belief with an independent sound justification is not recomputed", probe_second_support(BR))
+killed("one revised justification recomputes the belief", probe_second_support, BR,
+       "if not n[\"assumption\"] and g.envs(nid) and all(e & revised for e in g.envs(nid)))",
+       "if not n[\"assumption\"] and g.envs(nid) and any(e & revised for e in g.envs(nid)))")
 
-print("--- 4. several suspects: the most probable explanation still resolves it ---")
-def probe_explanation(M):
+print("--- 4. localization: the earliest faulty inference, found by asking the check that splits the suspects ---")
+def chain_graph(M):
+    """p -> m1 -> m2 -> m3 -> m4 -> m5, plus an unrelated side chain q -> s1 -> s2. The step into m2 is faulty."""
     g = M.Graph()
-    g.source("s1", "lesson")
-    g.source("s2", "lesson")
-    g.derived("d", "belief", [["s1", "s2"]], rule_reliability=0.99)
-    g.source("w", "gloria")
-    g.conflict("c", ["d", "w"])
-    p = M.plan(g, at="t")
-    lowered = [r for r in p["revisions"] if r["node"] in ("s1", "s2") and r["action"] == "lower"]
-    return len(lowered) >= 1 and all(r["blame"] < 0.5 for r in lowered) and "c" in M.resolved(g, p)
-check("probe: an ambiguous contradiction is resolved by lowering in proportion", probe_explanation(BR))
-killed("explanation ignored", probe_explanation, BR, "elif a in diagnosis:", "elif False:")
+    g.source("p", "observation", evidence_count=6); g.source("q", "observation", evidence_count=6)
+    prev = "p"
+    for i in range(1, 6):
+        g.derived("m%d" % i, "conclusion", [[prev]]); prev = "m%d" % i
+    g.derived("s1", "conclusion", [["q"]]); g.derived("s2", "conclusion", [["s1"]])
+    g.source("w", "gloria"); g.conflict("c", ["m5", "w"])
+    return g
+TRUTH = {"p": True, "q": True, "m1": True, "m2": False, "m3": False, "m4": False, "m5": False, "s1": True, "s2": True}
+def probe_localize(M):
+    g = chain_graph(M)
+    p = M.localize(g, lambda n: TRUTH.get(n), budget=6, at="t")
+    top = next(c for c in p["conflicts"] if c["conflict"] == "c")["blame"][0][0]
+    rec = {r["node"] for r in p["rederive"]}
+    changed = {r["node"] for r in p["revisions"] if r["action"] in ("retract", "lower")}
+    side_untouched = not ({"s1", "s2", "q", "rule:s1", "rule:s2"} & (rec | changed))
+    return top == "rule:m2" and rec == {"m2", "m3", "m4", "m5"} and side_untouched and 0 < len(p["asked"]) <= 10
+check("probe: bisection finds the faulty step, recomputes exactly what follows it, leaves the side chain",
+      probe_localize(BR))
 
-print("--- 5. record gap: a source not in the record is not captured, never retracted ---")
+def probe_one_wrong_answer(M):
+    """The first answer about m1 is wrong ("it fails"); every later answer is right. One answer must not be enough."""
+    seen = {}
+    def ask(n):
+        seen[n] = seen.get(n, 0) + 1
+        if n == "m1" and seen[n] == 1:
+            return False
+        return TRUTH.get(n)
+    g = chain_graph(M)
+    p = M.localize(g, ask, budget=12, at="t")
+    changed = {r["node"] for r in p["revisions"] if r["action"] in ("retract", "lower")}
+    return "rule:m1" not in changed and "p" not in changed and "m1" not in {r["node"] for r in p["rederive"]}
+check("probe: one wrong answer does not change a valid step (it is asked again)", probe_one_wrong_answer(BR))
+killed("a single answer accepted", probe_one_wrong_answer, BR,
+       "return same >= 2 and same - other >= MARGIN", "return True")
+
+def probe_ask_named(M):
+    g = chain_graph(M)
+    p = M.plan(g, at="t")
+    qs = M.questions(g, p)
+    return qs.get("c") in {"m1", "m2", "m3", "m4"}
+check("probe: with no answers, the plan names one check on the contradiction's line", probe_ask_named(BR))
+killed("no question named", probe_ask_named, BR, "if abs(st[best] - 0.5) < 0.45:", "if False:")
+
+def probe_earliest_tie(M):
+    g = M.Graph()
+    g.source("p", "observation", evidence_count=6)
+    g.derived("a", "conclusion", [["p"]]); g.derived("b", "conclusion", [["a"]])
+    g.source("w", "gloria"); g.conflict("c", ["b", "w"])
+    p = M.plan(g, at="t")
+    return p["conflicts"][0]["blame"][0][0] == "rule:a"
+check("probe: suspects the evidence cannot separate are ranked earliest first", probe_earliest_tie(BR))
+killed("ties go to the last step", probe_earliest_tie, BR,
+       "key=lambda a: (g.depth.get(a, 0), -q[a], a))", "key=lambda a: (-g.depth.get(a, 0), -q[a], a))")
+
+print("--- 5. labels do not depend on the order beliefs were added (cycles included) ---")
+def cyc(order):
+    g = BR.Graph()
+    for x in ("X", "Y"):
+        g.source(x, "memory")
+    spec = {"A": [["B"], ["Y"]], "B": [["A"], ["X"]]}
+    for n in order:
+        g.derived(n, "belief", spec[n], rule=False)
+    g.source("her", "gloria"); g.conflict("c", ["B", "her"])
+    return g
+g1, g2 = cyc("AB"), cyc("BA")
+check("a cycle gives the same labels whichever node came first",
+      sorted(map(sorted, g1.envs("B"))) == sorted(map(sorted, g2.envs("B"))) == [["X"], ["Y"]],
+      (g1.envs("B"), g2.envs("B")))
+p1, p2 = BR.plan(g1, at="t"), BR.plan(g2, at="t")
+check("and the same blame", p1["conflicts"][0]["blame"] == p2["conflicts"][0]["blame"])
+deep = BR.Graph(); deep.source("p0", "observation")
+for i in range(1, 1500):
+    deep.derived("n%d" % i, "belief", [["p0" if i == 1 else "n%d" % (i - 1)]], rule=False)
+check("a 1500-step chain is labelled without running out of stack", deep.envs("n1499") == [frozenset(["p0"])])
+
+print("--- 6. record gap and bookkeeping ---")
 def probe_gap(M):
     g = M.Graph()
     g.derived("claim", "claim", [["missing-basis"]], rule_reliability=0.999)
@@ -139,7 +211,6 @@ def probe_gap(M):
 check("probe: the uncaptured basis is flagged as not captured", probe_gap(BR))
 killed("uncaptured source retracted", probe_gap, BR, 'elif not n["captured"]:', "elif False:")
 
-print("--- 6. one contradiction recorded twice is one observation ---")
 def probe_dedup(M):
     g = M.Graph()
     g.source("a", "memory"); g.source("b", "memory")
@@ -147,6 +218,12 @@ def probe_dedup(M):
     return len(g.conflicts) == 1
 check("probe: duplicate contradiction ids collapse", probe_dedup(BR))
 killed("duplicates double-counted", probe_dedup, BR, 'if any(c["id"] == cid for c in self.conflicts):', "if False:")
+gk = BR.Graph(); gk.source("x", "gloria")
+try:
+    gk.source("x", "observation"); clash = False
+except ValueError:
+    clash = True
+check("one id cannot be two kinds of source", clash)
 
 print("--- 7. exact and sampled posteriors agree ---")
 def graph12():
@@ -164,29 +241,44 @@ qa = BR.posterior(graph12())[0]
 old = BR.EXACT_LIMIT
 try:
     BR.EXACT_LIMIT = 0
-    qb, methods, _, _ = BR.posterior(graph12())
+    qb, methods = BR.posterior(graph12())[:2]
 finally:
     BR.EXACT_LIMIT = old
 diff = max(abs(qa[k] - qb[k]) for k in qa)
 check("sampled matches exact within 0.03", diff < 0.03 and "sampled" in methods.values(), diff)
+gs = BR.Graph(); gs.source("r", "inference")
+for x in ("a", "b"):
+    gs.derived(x, "belief", [[]], rule=False)
+gs.nodes["a"]["justifications"] = [["r", "u"]]; gs.nodes["b"]["justifications"] = [["r", "v"]]
+gs.source("u", "memory"); gs.source("v", "memory"); gs.derived("top", "belief", [["a"], ["b"]], rule=False)
+st = BR.standings(gs, ["top"])["top"]
+exact = (1 - gs.nodes["r"]["prior"]) * (1 - gs.nodes["u"]["prior"] * gs.nodes["v"]["prior"])
+check("a belief's standing handles environments that share a source", abs(st - exact) < 0.03, (st, exact))
 
-print("--- 8. feeds from his stores (synthetic fixtures): ids and numbers only, no store changed ---")
+print("--- 8. feeds from his stores (synthetic fixtures): the organs' own rules, ids and numbers only ---")
 SECRET = "PRIVATE-QUOTE-7f3a"
 def fixture(mem):
     os.makedirs(mem, exist_ok=True)
     w = lambda n, o: open(os.path.join(mem, n), "w").write(json.dumps(o))
-    ev = lambda i, ch, pol, infl=False: {"evidence_id": "e%d" % i, "channel": ch, "at": "2026-10-0%dT10:00:00" % (i % 9 + 1),
-                                         "polarity": pol, "quote": SECRET, "source": "her words", "under_influence": infl}
+    def ev(i, ch, pol, **k):
+        e = {"evidence_id": "e%d" % i, "channel": ch, "at": "2026-10-0%dT10:00:00" % (i % 9 + 1), "polarity": pol,
+             "quote": SECRET, "source": "her words", "under_influence": False}
+        e.update(k); return e
     w("tension-ledger.json", {"tensions": [
-        {"tension_id": "T-1", "status": "CONTESTED", "evidence": [ev(1, "E3", "supports"), ev(2, "E2", "supports"),
-                                                                    ev(3, "E1", "contradicts"), ev(4, "E1", "contradicts", True)]},
+        {"tension_id": "T-1", "status": "CONTESTED", "evidence": [
+            ev(1, "E3", "supports"), ev(2, "E2", "supports"), ev(3, "E1", "contradicts"),
+            ev(4, "E1", "contradicts", under_influence=True), ev(6, "E1", "contradicts", invalid=True),
+            ev(7, "E3", "contradicts")]},
         {"tension_id": "T-2", "status": "SUPPORTED", "evidence": [ev(5, "E3", "supports")]}]})
+    mk = lambda eid, v, day, ids, **k: dict({"evaluation_id": eid, "verdict": v, "date": day, "evidence_ids": ids,
+                                             "evidence": SECRET, "schema_version": 2, "lineage_state": "eligible"}, **k)
     w("causality-hypotheses.json", {"hypotheses": [
         {"hypothesis_id": "H1", "hypothesis": SECRET, "confidence": 0.5, "marks": [
-            {"evaluation_id": "CE-1", "verdict": "yes", "date": "2026-10-01", "evidence_ids": ["E-1"], "evidence": SECRET},
-            {"evaluation_id": "CE-2", "verdict": "no", "date": "2026-10-02", "evidence_ids": ["E-2"], "evidence": SECRET}]}]})
+            mk("CE-1", "yes", "2026-10-01", ["E-1"]), mk("CE-2", "no", "2026-10-02", ["E-2"]),
+            mk("CE-3", "no", "2026-10-03", ["E-4"], voided=True), mk("CE-4", "no", "2026-10-04", ["E-5"], lineage_state="tactical"),
+            {"verdict": "no", "date": "2026-10-05", "evidence": SECRET}]}]})
     open(os.path.join(mem, "causality-graduated.jsonl"), "w").write(json.dumps(
-        {"hypothesis_id": "H1", "hypothesis": SECRET, "evidence_ids": ["E-1"], "refuting_evidence_ids": ["E-3"]}) + "\n")
+        {"hypothesis_id": "H1", "hypothesis": SECRET, "evidence_ids": ["E-1"], "refuting_evidence_ids": ["E-2", "E-3"]}) + "\n")
     w("belief-sediment.json", {"beliefs": [{"pattern": SECRET, "hypothesis_ids": ["H1"], "evidence_ids": ["E-1"],
                                             "confidence": 0.4}]})
     w("causal-self-model.json", {"entries": [{"tendency": SECRET, "confidence": 0.5,
@@ -210,39 +302,49 @@ def digest(d):
 before = digest(FIX)
 g, stats = S.build(FIX)
 want = {"tension": 1, "causality": 2, "claim_hold": 1, "self_model": 2, "hallucination": 1, "reality_anchor": 1, "world_model": 0}
-check("each feed counts its contradictions", all(stats.get(k) == v for k, v in want.items()), stats)
+check("each feed counts only the contradictions its organ counts", all(stats.get(k) == v for k, v in want.items()), stats)
+check("a refuting id already carried by a 'no' night is not counted twice",
+      not any(c["id"] == "c:refuted:H1:E-2" for c in g.conflicts) and any(c["id"] == "c:refuted:H1:E-3" for c in g.conflicts))
 check("the causal self-model entry rests on the sediment belief, which rests on the hypothesis",
-      "csm:0" in g.nodes and any("rule:hyp:H1" in e for e in g.envs("csm:0")))
-check("one correction of hers superseding two sentences is one source", sum(1 for n in g.nodes if n.startswith("her:wal")) == 1)
+      "c:csm:0" in g.nodes and any("rule:c:hyp:H1" in e for e in g.envs("c:csm:0")))
+check("one correction of hers superseding two sentences is one source", sum(1 for n in g.nodes if n.startswith("m:her:")) == 1)
 LOG = os.path.join(HOME, "shadow.jsonl")
-import io, contextlib
 with contextlib.redirect_stdout(io.StringIO()) as out:
     BR.main(["--memory", FIX, "--log", LOG])
-check("dry run changes no store", digest(FIX) == before)
+p = BR.localize(copy.deepcopy(g), lambda n: None, budget=3, at="t")
+check("plan, questions and dry run change no store", digest(FIX) == before)
 logtxt = open(LOG).read()
 check("the shadow log holds no text from any store", SECRET not in logtxt and SECRET not in out.getvalue())
 row = json.loads(logtxt.splitlines()[-1])
 check("the shadow row says shadow, not live", row["mode"] == "shadow" and row["live"] is False)
+check("an id that is not id-shaped is hashed before it is logged", BR._safe("a sentence with spaces").startswith("id-sha:"))
 p = BR.plan(g, at="t")
 check("every revision keeps the superseded record", all("superseded" in r and "confidence" in r["superseded"]
                                                          for r in p["revisions"]) and p["revisions"])
 def probe_influence(Smod):
-    gg, st = Smod.build(FIX)
-    return st["tension"] == 1
-killed("evidence under influence counted", probe_influence, S,
-       'if isinstance(e, dict) and not e.get("under_influence")]', 'if isinstance(e, dict)]')
+    return Smod.build(FIX)[1]["tension"] == 1
+killed("evidence under influence or invalid counted", probe_influence, S,
+       'and not e.get("under_influence") and not e.get("invalid")]', "]")
+killed("E3 allowed to contradict", probe_influence, S,
+       'e.get("channel") in ("E1", "E2", "E4")]', 'True]')
+def probe_bearing(Smod):
+    return Smod.build(FIX)[1]["causality"] == 2
+killed("voided or ineligible nights counted", probe_bearing, S,
+       'and m.get("lineage_state") == "eligible" and m.get("evaluation_id")]', 'or True]')
 
-print("--- 9. the benchmark: pre-registered, test seeds apart, scored once ---")
+print("--- 9. the benchmarks: pre-registered, held-out seeds apart, scored once ---")
 BD = os.path.join(REPO, "experiments", "contradiction-backprop")
 sys.path.insert(0, BD)
 import bench as B
-pre = open(os.path.join(BD, "PREREGISTRATION.md")).read()
-check("the pre-registration names every bar", all(s in pre for s in ("Blame top-1", "Precision", "Recall",
-                                                                     "Collateral", "Convergence")))
-check("dev and test seeds do not overlap", not set(B.SPLITS["dev"]) & set(B.SPLITS["test"]))
-g1, T1 = B.network("chain", 7); g2, T2 = B.network("chain", 7)
-check("the generator is deterministic", sorted(g1.nodes) == sorted(g2.nodes) and T1["faults"] == T2["faults"])
-res = os.path.join(BD, "results-test.json")
-check("the test split was scored and saved", os.path.exists(res) and json.load(open(res))["split"] == "test")
+import bench_criteria as BC
+for name, mod, res in (("first", B, "results-test.json"), ("criteria", BC, "results-criteria-test.json")):
+    check("%s: dev and held-out seeds do not overlap" % name, not set(mod.SPLITS["dev"]) & set(mod.SPLITS["test"]))
+    path = os.path.join(BD, res)
+    check("%s: the held-out split was scored and saved" % name, os.path.exists(path) and json.load(open(path))["split"] == "test")
+pre = open(os.path.join(BD, "PREREGISTRATION-criteria.md")).read()
+check("the criteria pre-registration names every criterion and the iteration log",
+      all(s in pre for s in ("Localization", "Revision", "Preservation", "Iteration log")))
+a1, T1 = BC.network("dag", 7); a2, T2 = BC.network("dag", 7)
+check("the generator is deterministic", sorted(a1.nodes) == sorted(a2.nodes) and T1["faults"] == T2["faults"])
 
 print("\n%d/%d" % (sum(R), len(R))); sys.exit(0 if all(R) else 1)

@@ -171,7 +171,7 @@ def tms(g, T):
     g2 = copy.deepcopy(g)
     for a in rev:
         g2.nodes[a]["prior"] = 0.95
-    g2._envs = None
+    g2._labels = None
     p2 = BR.plan(g2, at="bench")
     rev2 = _revised(p2)
     return {"top": top, "revised": rev, "withdrawn": wd, "lowered": lowered, "stable": not (rev2 - rev)}
@@ -281,7 +281,7 @@ def main():
     ap.add_argument("--split", choices=sorted(SPLITS), required=True)
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
-    if a.split == "test" and os.path.exists(a.out):
+    if a.split == "test" and (os.path.exists(a.out) or os.path.exists(os.path.join(HERE, "results-test.json"))):
         sys.exit("the test split is scored once; %s already exists" % a.out)
     res = run(a.split)
     doc = {"split": a.split, "results": res, "bars": BARS, "pass": verdict(res)}
