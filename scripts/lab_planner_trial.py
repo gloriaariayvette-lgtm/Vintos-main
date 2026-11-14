@@ -93,13 +93,13 @@ def _timeout():
         return DEFAULT_TIMEOUT
 
 
-def _ask(name, system, prompt):
+def _ask(name, system, prompt, timeout=None):
     """The trial model's reply, asked as it was evaluated offline: greedy, the planner's token budget, no thinking."""
     body = {'model': KNOWN[name], 'temperature': 0, 'seed': 0, 'max_tokens': MAX_TOKENS,
             'chat_template_kwargs': {'enable_thinking': False},
             'messages': [{'role': 'system', 'content': system}, {'role': 'user', 'content': prompt}]}
     req = urllib.request.Request(_url(), data=json.dumps(body).encode(), headers={'Content-Type': 'application/json'})
-    with urllib.request.urlopen(req, timeout=_timeout()) as response:
+    with urllib.request.urlopen(req, timeout=timeout or _timeout()) as response:
         data = json.loads(response.read())
     return str(((data.get('choices') or [{}])[0].get('message') or {}).get('content') or '')
 
@@ -139,13 +139,22 @@ def propose(system, prompt, investigation, note=None, planned=None):
     worm = name in WORM
     if worm:     # Craft and Lessons: the worm's planner sees its history and its worked examples before choosing
         try:
-            prompt, system = prompt + history(investigation, note), system + lessons()
+            prompt = prompt + history(investigation, note)
+        except Exception:
+            pass
+        try:
+            system = system + lessons()
         except Exception:
             pass
     started = time.time()
+    budget = _timeout()      # one budget for both attempts: the current model is never kept waiting past it
     for attempt in ((1, 2) if worm else (1,)):
+        left = budget - (time.time() - started)
+        if attempt > 1 and left < 5.0:             # no time for Compass's retry: the current model answers
+            call['reason'] = 'retry_no_time'
+            return call
         try:
-            reply = _ask(name, system, prompt)
+            reply = _ask(name, system, prompt, timeout=max(1.0, left))
         except urllib.error.HTTPError as exc:      # it answered, with an error (a prompt over its context): not down
             call.update(reason='trial_error', error='HTTP%d' % int(getattr(exc, 'code', 0) or 0),
                         trial_s=round(time.time() - started, 2))
@@ -157,7 +166,10 @@ def propose(system, prompt, investigation, note=None, planned=None):
         call['trial_s'] = round(time.time() - started, 2)
         _record(name, system, prompt, reply)
         if worm:     # the worm's Witness: the Lab's rules + its wrapper rules (an unreadable retry -> current model)
-            value, why, detail = witness(reply, prompt, investigation, note, planned)
+            try:
+                value, why, detail = witness(reply, prompt, investigation, note, planned)
+            except Exception as exc:               # an odd reply the wrapper rules cannot read: the current model
+                value, why, detail = None, 'witness_error', type(exc).__name__
         else:
             try:
                 value = lab._json_object(reply)
@@ -444,12 +456,14 @@ def history(investigation, note=None):
 def lessons():
     """Lessons: the worked examples as one block for the end of the system prompt ('' without the file)."""
     try:
-        with open(LESSONS) as f:
+        with open(LESSONS, encoding='utf-8') as f:
             rows = json.load(f).get('examples') or []
     except (OSError, ValueError, AttributeError):
         return ''
+    if not isinstance(rows, list):
+        return ''
     out = []
-    for k, r in enumerate(rows[:4], 1):
+    for k, r in enumerate([r for r in rows if isinstance(r, dict)][:4], 1):
         out.append('%d. %s\n   Refused: %s\n   Run instead: %s' % (k, str(r.get('situation') or '')[:400],
                                                                    str(r.get('refused') or '')[:300],
                                                                    str(r.get('instead') or '')[:300]))

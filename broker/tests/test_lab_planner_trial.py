@@ -36,7 +36,7 @@ def trial_rows(kind=None):
 
 
 def switch(value):
-    """vintos.env beside the scratch workspace, as Gloria's sits beside hers."""
+    """vintos.env beside the scratch workspace, as the live install's sits beside its workspace."""
     path = Path(T._env_path())
     if value is None:
         if path.exists():
@@ -373,6 +373,24 @@ class Worm(Base):
             I.turn('', ask=ask, execute=Mock(return_value=OUT))
         self.assertEqual(ask.call_count, 1)
         self.assertEqual(trial_rows('call')[0]['reason'], 'trial_down')
+
+    def test_one_time_budget_covers_both_attempts(self):
+        """Review 14 November: the retry never doubles the wait; with the budget spent, the current model answers."""
+        ask = Mock(return_value=OTHER)
+        with patch.object(T, '_ask', Mock(return_value='prose')) as trial, \
+                patch.object(T, '_timeout', Mock(return_value=4.0)):
+            I.turn('', ask=ask, execute=Mock(return_value=OUT))
+        self.assertEqual((trial.call_count, ask.call_count), (1, 1))
+        call, = trial_rows('call')
+        self.assertEqual((call['accepted'], call['first_reason'], call['reason']), (False, 'unreadable', 'retry_no_time'))
+
+    def test_a_reply_the_witness_cannot_read_falls_back_with_its_row(self):
+        ask = Mock(return_value=OTHER)
+        with patch.object(T, '_ask', Mock(return_value=FIRST)), \
+                patch.object(T, 'witness', Mock(side_effect=TypeError('odd'))):
+            I.turn('', ask=ask, execute=Mock(return_value=OUT))
+        self.assertEqual(ask.call_count, 1)
+        self.assertEqual(trial_rows('call')[0]['reason'], 'witness_error')
 
 
 class Report(unittest.TestCase):
