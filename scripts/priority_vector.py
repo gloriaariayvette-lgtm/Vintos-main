@@ -99,12 +99,14 @@ def _not_counted(e, a):
             return False
     return False
 
-def _axis_history(now=None):
+def _axis_history(now=None, led=None):
     """Per-axis verdict counts from the intent ledger — the data the strategy leans on. Only settled
     YES / PARTIAL / NO verdicts on turns of the last RECENT_DAYS count, and of those the latest MAX_VERDICTS
     per axis: HELD, NOT_DECLARED, NOT_JUDGEABLE, expired and pending rows are neither a landing nor a miss
-    (_not_counted), and a row with no readable time cannot be called recent."""
-    led = _jload(os.path.join(MEM, "intent-ledger.json"), [])
+    (_not_counted), and a row with no readable time cannot be called recent. `led` is a ledger already in
+    hand (the re-grade's before and after, 14 November); by default the household's is read."""
+    if led is None:
+        led = _jload(os.path.join(MEM, "intent-ledger.json"), [])
     hist = {a: {"YES": 0, "PARTIAL": 0, "NO": 0, "n": 0} for a in AXES}
     now = now or time.time()
     seen = {a: [] for a in AXES}

@@ -424,7 +424,7 @@ def add_to_reference(data):
     os.replace(_tmp, VELQAN_REF)
     try:   # review 156: every coinage is a versioned record too (word, meaning, version, when) - a later
            # coinage of the same word is version n+1 with the earlier meaning kept
-        _hp = os.path.join(os.path.dirname(VELQAN_REF), "memory", "velqan-coinages.jsonl")
+        _hp = os.path.join(os.path.dirname(VELQAN_REF), "velqan-coinages.jsonl")   # VELQAN_REF is already in memory/; memory/memory/ never existed, so no coinage history was ever kept (2026-11-14)
         _ver = 1
         try:
             for _ln in open(_hp):
