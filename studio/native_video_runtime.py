@@ -294,9 +294,10 @@ class LiveSession:
     def frame(self, rgb, at=None, soft_tokens=SOFT_TOKENS):
         """Append one frame through the native image projection. Returns a receipt; the frame is not kept.
         ``soft_tokens`` is the native budget: 70 for motion, up to 280 (the checkpoint default) for a still look.
-        While an answer is being decoded the frame is encoded now and enters the timeline right after the answer."""
+        While an answer is being decoded (or what arrived during it is still being committed) the frame is encoded
+        now and enters the timeline after everything that arrived before it."""
         prepared = self.prepare_frame(rgb, at, soft_tokens)
-        if self.answering:
+        if self.answering or self.deferred:
             self.deferred.append(("frame", prepared))
             return {"frame_ref": prepared["ref"], "at": round(prepared["at"], 3), "visual_tokens": int(prepared["embeds"].shape[1]),
                     "deferred": True, "evicted_segments": [], "ingest_seconds": prepared["seconds"]}
@@ -349,10 +350,14 @@ class LiveSession:
             raise ValueError("Expected a nonempty finite mono waveform in [-1, 1], at most eight seconds")
         started = time.perf_counter()
         at = self._seconds(at)
-        if self.answering:
+        if self.answering or self.deferred:
             self.deferred.append(("audio", x, at))
             return {"audio_tokens": self.audio_tokens, "pending_samples": len(self.audio_tail) + len(x),
                     "deferred": True, "evicted_segments": [], "ingest_seconds": time.perf_counter() - started}
+        return self._commit_audio(x, at, started)
+
+    def _commit_audio(self, x, at, started=None):
+        started = time.perf_counter() if started is None else started
         if self.audio_span is None:
             self.audio_span = self._open("audio", at, self.boa, audio_tokens=0, digest=hashlib.sha256())
         span = self.segments[self.audio_span]
@@ -516,17 +521,29 @@ class LiveSession:
                   "total_seconds": time.perf_counter() - started, "window": self.window(),
                   "cache_tokens": mark, "frames_seen": self.frames, "frames_evicted": self.evicted_frames,
                   "checkpoint_sha256": self.mind.sha, "native_video": True}
-        result["deferred_committed"] = self.flush_deferred()
+        # Commit what arrived during the answer one item per step, in arrival order, so the caller can take in
+        # new arrivals in between (they queue behind the held items, never ahead of them).
+        committed = 0
+        while self.deferred:
+            self._commit_deferred(self.deferred.pop(0))
+            committed += 1
+            if self.deferred:
+                yield len(tokens)
+        result["deferred_committed"] = committed
         return result
 
+    def _commit_deferred(self, item):
+        kind, *payload = item
+        if kind == "frame":
+            self.commit_frame(payload[0])
+        else:
+            self._commit_audio(payload[0], payload[1])
+
     def flush_deferred(self):
-        """Commit what arrived during an answer, in arrival order."""
+        """Commit everything that is held, in arrival order."""
         items, self.deferred = self.deferred, []
-        for kind, *payload in items:
-            if kind == "frame":
-                self.commit_frame(payload[0])
-            else:
-                self.audio(payload[0], payload[1])
+        for item in items:
+            self._commit_deferred(item)
         return len(items)
 
     def _choose(self, temperature):
