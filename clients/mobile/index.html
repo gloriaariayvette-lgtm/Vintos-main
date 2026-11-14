@@ -3448,11 +3448,11 @@ async function loadProposals() {
         const r = await VintosUI.request(API + '/api/proposals');
         const data = await r.json();
         if (!data.proposals || data.proposals.length === 0) {
-            feed.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--text-dim)">No proposals yet. Vintos reviews his SOUL.md on the 1st and 15th.</div>';
+            feed.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--text-dim)">No rewrites yet. Vintos rewrites his half of SOUL.md himself on the 1st and 15th.</div>';
             return;
         }
         feed.innerHTML = data.proposals.map(p => {
-            const statusColor = p.status === 'approved' ? '#7a9a6a' : p.status === 'rejected' ? '#9a6a6a' : 'var(--accent)';
+            const statusColor = (p.status === 'approved' || p.status === 'applied') ? '#7a9a6a' : p.status === 'rejected' ? '#9a6a6a' : p.status === 'held' ? '#9a8a6a' : 'var(--accent)';
             const statusLabel = p.status.toUpperCase();
             const buttons = p.status === 'pending' ? `
                 <div style="display:flex;gap:0.5rem;margin-top:0.75rem;">

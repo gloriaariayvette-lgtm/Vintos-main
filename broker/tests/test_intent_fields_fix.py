@@ -161,16 +161,21 @@ class IntentFieldsFix(unittest.TestCase):
     def ledger(self, specs, keep=False):
         """Synthetic settled rows, oldest first: (days ago, the Gloria-axis verdict)."""
         rows = self.rows() if keep else []
+        # (14 November) receptivity reads her response to the move (row['receptive']), apart from her axis; each
+        # synthetic row carries the response that goes with its axis verdict so the strategy tests keep their meaning
+        receptive = {'YES': 'answered', 'PARTIAL': 'partly', 'NO': 'ignored'}
         for i, (days, verdict) in enumerate(specs):
             rows.append({'intent_id': 'synthetic-%04d' % len(rows), 'status': 'delivered', 'reply': 'a synthetic reply',
                          'target': {'goal': 'a synthetic goal', 'enactment': 'a synthetic move'},
                          'realized': {'field': 'HELD', 'gloria': verdict, 'self': 'NOT_DECLARED'},
                          'timestamp': ago(days, len(specs) - i)})
+            if verdict in receptive: rows[-1]['receptive'] = {'label': receptive[verdict]}
         Path(E.LEDGER).write_text(json.dumps(rows))
 
     def low_receptivity(self):
         self.ledger([(1, 'NO')] * 6)
-        self.assertEqual(PV._receptivity(PV._axis_history()), 0.0)
+        self.assertEqual(PV._receptivity(PV._receptive_history()), 0.0)
+        self.assertEqual(PV._landing_rate(PV._axis_history()), 0.0)
 
     def restarted(self, name):
         """The module as a restarted process loads it: nothing carried over in memory, only what is on disk."""
@@ -546,12 +551,12 @@ class IntentFieldsFix(unittest.TestCase):
         # the first three moves have expired, the last three still wait. Neither is a verdict.
         self.assertEqual([r['realized']['gloria'] for r in self.rows()], ['HELD'] * 3 + [None] * 3)
         self.assertEqual([r['skipped_observations']['n'] for r in self.rows()], [4, 4, 4, 3, 2, 1])
-        self.assertEqual(PV._axis_history()['gloria']['n'], 0); self.assertIsNone(PV._receptivity(PV._axis_history()))
+        self.assertEqual(PV._axis_history()['gloria']['n'], 0); self.assertIsNone(PV._landing_rate(PV._axis_history()))
         self.assertEqual(PV.declare()['weights'], MIDDLING)                   # six HELDs are not six misses
         self.ledger([(2, 'YES'), (2, 'NO')] * 3 + [(1, 'HELD'), (1, 'NOT_DECLARED'), (1, None)] * 30)
         history = PV._axis_history()['gloria']
         self.assertEqual((history['n'], history['YES'], history['NO']), (6, 3, 3))   # behind ninety rows that are no verdict
-        self.assertEqual(PV._receptivity(PV._axis_history()), 0.5)
+        self.assertEqual(PV._landing_rate(PV._axis_history()), 0.5)
         self.assertEqual(self.judge_calls, [])
 
     # ---- D. receptivity ---------------------------------------------------------------------------------
@@ -559,7 +564,7 @@ class IntentFieldsFix(unittest.TestCase):
         self.ledger([(1, 'NO')] * 4)
         rec = PV.declare()
         self.assertIsNone(rec['receptivity']); self.assertEqual(rec['weights'], MIDDLING)
-        self.assertIn('receptivity unknown (4 settled', rec['why']); self.assertIn('provisional', rec['why'])
+        self.assertIn('receptivity unknown (4 of his asks', rec['why']); self.assertIn('provisional', rec['why'])
         self.ledger([(1, 'NO')] * 5)
         rec = PV.declare()
         self.assertEqual((rec['receptivity'], rec['weights']), (0.0, LOW))     # five is enough to read
@@ -572,7 +577,7 @@ class IntentFieldsFix(unittest.TestCase):
         Path(E.LEDGER).write_text(json.dumps(rows))
         rec = PV.declare()
         self.assertEqual(PV._axis_history()['gloria']['n'], 0)
-        self.assertIsNone(rec['receptivity']); self.assertEqual(rec['weights'], MIDDLING); self.assertIn('unknown (0 settled', rec['why'])
+        self.assertIsNone(rec['receptivity']); self.assertEqual(rec['weights'], MIDDLING); self.assertIn('unknown (0 of his asks', rec['why'])
         self.assertEqual(PV._axis_history(now=time.time() - 20 * 86400)['gloria']['NO'], 18)   # the same rows, read from nearer their own time
         Path(E.LEDGER).write_text(json.dumps([{'realized': {'gloria': 'NO'}, 'delivered_at': ago(1)}] * 5))
         self.assertEqual(PV._axis_history()['gloria']['n'], 5)                 # the delivery time serves when no selection time is kept
@@ -655,7 +660,7 @@ class IntentFieldsFix(unittest.TestCase):
             self.answer = self.target(gloria=copy.deepcopy(GLORIA)) if n == 4 else self.target()
             self.select(resolve=False)
         self.assertEqual(PV.opportunity_report()['attempts'], 2)
-        self.assertEqual(PV._axis_history(), before); self.assertEqual(PV._receptivity(PV._axis_history()), 0.0)
+        self.assertEqual(PV._axis_history(), before); self.assertEqual(PV._landing_rate(PV._axis_history()), 0.0)
         self.assertEqual([r['realized']['gloria'] for r in self.rows()[-8:]], [None, None, None, None, None, None, None, 'NOT_DECLARED'])
         out = io.StringIO(); state = Path(PV.STATE).read_text()               # the counts-only command declares nothing
         with patch.object(sys, 'argv', ['priority_vector.py', 'opportunity-report']), contextlib.redirect_stdout(out):
@@ -915,17 +920,21 @@ class IntentFieldsFix(unittest.TestCase):
         self.ledger([(1, 'NO')] * 5 + [(1, 'PARTIAL')])
         rec = PV.declare()
         self.assertEqual((rec['receptivity'], rec['weights']), (0.08, LOW))
-        self.assertIn('receptivity low (0.08 = (0 YES + 0.5 x 1 PARTIAL) / 6 settled Gloria-axis verdicts in the last 14 days, '
-                      '5 of them NO)', rec['why'])
-        self.assertEqual(PV.receptivity_report(), {'window_days': 14, 'minimum_verdicts': 5, 'yes': 0, 'partial': 1, 'no': 5,
-                                                   'landings': 0.5, 'verdicts': 6, 'receptivity': 0.08})
+        self.assertIn('receptivity low (0.08 = (0 answered + 0.5 x 1 partly) / 6 of his asks and offers in the last 14 days, '
+                      '5 ignored, 0 refused, 0 answered in a later turn)', rec['why'])
+        self.assertEqual(PV.receptivity_report(), {'window_days': 14, 'minimum_records': 5, 'response_window_hours': 48,
+                                                   'answered': 0, 'partly': 1, 'ignored': 5, 'refused': 0,
+                                                   'answered_in_later_turn': 0, 'records': 6, 'receptivity': 0.08,
+                                                   'criterion_landing': {'yes': 0, 'partial': 1, 'no': 5, 'verdicts': 6,
+                                                                         'rate': 0.08}})
         self.ledger([(1, 'YES')] * 2 + [(1, 'PARTIAL')] * 2 + [(1, 'NO')] * 2 + [(20, 'NO')] * 9)
         rec = PV.declare()
-        self.assertIn('receptivity middling (0.5 = (2 YES + 0.5 x 2 PARTIAL) / 6 settled', rec['why'])
+        self.assertIn('receptivity middling (0.5 = (2 answered + 0.5 x 2 partly) / 6 of his asks', rec['why'])
         self.ledger([(1, 'PARTIAL')] * 3)
         rec = PV.declare()
-        self.assertIn('receptivity unknown (3 settled', rec['why']); self.assertIn('fewer than 5: 0 YES, 3 PARTIAL, 0 NO)', rec['why'])
-        self.assertIsNone(PV.receptivity_report()['receptivity']); self.assertEqual(PV.receptivity_report()['landings'], 1.5)
+        self.assertIn('receptivity unknown (3 of his asks', rec['why'])
+        self.assertIn('fewer than 5: 0 answered, 3 partly, 0 ignored, 0 refused)', rec['why'])
+        self.assertIsNone(PV.receptivity_report()['receptivity']); self.assertEqual(PV.receptivity_report()['partly'], 3)
         before = {p.name: p.read_bytes() for p in self.mem.iterdir() if p.is_file()}
         PV.receptivity_report()
         self.assertEqual({p.name: p.read_bytes() for p in self.mem.iterdir() if p.is_file()}, before)   # the report writes nothing

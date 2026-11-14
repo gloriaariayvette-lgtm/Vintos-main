@@ -389,7 +389,8 @@ def form_pearl(candidate_id):
     # Update narrative identity
     try:
         from narrative_identity import propose_fragment
-        propose_fragment(f"I no longer struggle to enact: {cand['declaration']}", source="pearl")
+        propose_fragment(f"I no longer struggle to enact: {cand['declaration']}", source="pearl",
+                         evidence={"ref": "pearl:" + cand["id"], "passes": len(cand["verification"]["passes"])})
     except: pass
 
     # Mark candidate as formed

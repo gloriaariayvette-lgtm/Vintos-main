@@ -1,0 +1,19 @@
+{
+  "id": "jepa-gloria-confidence-readout-2026-11-13",
+  "written": "2026-11-13, before any fit or score; committed and pushed before scoring",
+  "approval": "Gloria: retrain whatever you need (relayed by the coordinator)",
+  "checkpoint": "7dce07957399836d35cf55d0b98c45a9d4e3f9f4631e69514933c5780b8a0eb7 (live, unchanged; its forecasts are not touched)",
+  "data": "R1 rows: admitted exchanges with her words after 2026-09-21T04:15 and strictly before 2026-10-31T00:00 (sealed persistence week and later untouched); one row per distinct Gloria text; six-turn legacy window, one-day rule",
+  "split": "chronological: first half of rows = fit block, second half = evaluation block, scored once",
+  "features": "jepa_predictor.gloria_confidence_features: [gloria logvar, cos(forecast, context), max cos(forecast, her last 12 turns), cos(forecast, her latest turn), cos(context, her latest turn)]",
+  "model": "ridge on z-scored features (fit-block mean/scale), lambda 10, unpenalized intercept, target = cosine error of the live forecast; confidence = clip(1 - expected_error / 2, 0, 1). No feature, lambda or split selection.",
+  "control": "decode similarity = max cos(forecast, her last 12 turns), on the same evaluation rows",
+  "bars": {
+    "n_eval_min": 30,
+    "max_monotonicity": -0.20,
+    "beat_control_by": 0.10,
+    "mrr": "identical to the live checkpoint on the evaluation rows (the forecast embedding is unchanged)"
+  },
+  "if_pass": "install scripts/jepa_gloria_confidence.json (bound to the checkpoint sha) via the deploy manifest; predict() uses it for the shared Gloria confidence",
+  "if_fail": "hold; nothing installed"
+}

@@ -400,8 +400,10 @@ def _durable_about_her(n=3):
         return ""
 
 def _self_model(budget=1200):
-    """SELF-MODEL.md with the FOUNDATION block whole first, then the rest excerpted to the budget
-    (scripts/self_model_read.py; room decision 2026-09-04). Falls back to a plain head read."""
+    """SELF-MODEL.md: the FOUNDATION block first, then his newest dated section, within the budget
+    (scripts/self_model_read.py; room decision 2026-09-04). When the base would crowd his section out
+    entirely, the base is compacted to its paragraphs' first sentences (2026-11-14). Falls back to a plain
+    head read."""
     try:
         import sys as _sms; _smp = os.path.join(WORKSPACE, "scripts")
         if _smp not in _sms.path: _sms.path.insert(0, _smp)
@@ -409,6 +411,19 @@ def _self_model(budget=1200):
         return _rsm(budget, os.path.join(WORKSPACE, "SELF-MODEL.md"))
     except Exception:
         try: return open(os.path.join(WORKSPACE, "SELF-MODEL.md")).read()[:budget]
+        except Exception: return ""
+
+def _soul_md(budget=None):
+    """SOUL.md for a model's context: Gloria's base and his own half, both in it (scripts/soul_read.py).
+    Head reads of 4,000 or 5,000 characters ended in or just past the base, so his half was cut (2026-11-13)."""
+    path = os.path.join(WORKSPACE, "SOUL.md")
+    try:
+        import sys as _srs; _srp = os.path.join(WORKSPACE, "scripts")
+        if _srp not in _srs.path: _srs.path.insert(0, _srp)
+        import soul_read as _sr
+        return _sr.read_soul(budget or _sr.BUDGET, path)
+    except Exception:
+        try: return open(path).read()[:budget or 9000]
         except Exception: return ""
 
 def _daily_inner_context(max_chars=16000):
@@ -3717,11 +3732,13 @@ async def startup():
 # === Soul Review Proposals ===
 @app.get("/api/proposals")
 async def get_proposals():
-    """Get soul review proposals for Gloria to approve/reject."""
+    """The soul review's records. He rewrites his own half of SOUL.md himself (since 2026-10-13), so a record is
+    applied or held; only the old ask-first records can still be pending."""
     import glob
     proposal_dir = os.path.join(MEMORY, "soul-proposals")
     os.makedirs(proposal_dir, exist_ok=True)
     files = sorted(glob.glob(os.path.join(proposal_dir, "proposal_*.md")), reverse=True)
+    history = os.path.join(MEMORY, "soul-history")
     proposals = []
     for f in files[:20]:
         try:
@@ -3729,10 +3746,14 @@ async def get_proposals():
                 content = fh.read()
             # Parse status from content
             status = "pending"
-            if "*Status: approved*" in content:
-                status = "approved"
-            elif "*Status: rejected*" in content:
-                status = "rejected"
+            for _st in ("approved", "rejected", "applied", "held"):
+                if "*Status: %s*" % _st in content:
+                    status = _st
+            # a record from before the status was written down was applied when its run left a snapshot in
+            # soul-history (the write snapshots the old SOUL.md in the same minute it saves the record)
+            _ts = os.path.basename(f)[len("proposal_"):-len(".md")]
+            if status == "pending" and glob.glob(os.path.join(history, "SOUL-%s*.md" % glob.escape(_ts))):
+                status = "applied"
             proposals.append({
                 "filename": os.path.basename(f),
                 "content": content,
@@ -3777,7 +3798,7 @@ async def approve_proposal(filename: str, request: Request):
             s.close()
     except:
         pass
-    return {"status": "approved", "message": "Proposal marked approved. Gloria will apply edits manually."}
+    return {"status": "approved", "message": "Marked approved. His half of SOUL.md is his to rewrite; nothing waits on this."}
 
 @app.post("/api/proposals/{filename}/reject")
 async def reject_proposal(filename: str, request: Request):
@@ -4336,6 +4357,21 @@ async def _bilateral_reply_engine(_tag, messages, message, user_msg, params):
                             _bc_flo(_bis_chat_final_trial, _bcf_outcome, influenced=bool(_bis_1_5_trial_id_chat))
                             if _bcf_outcome in ("defaulted", "strained"):
                                 _bc_flbd(_bis_chat_final_trial, reply[:200])
+                            # A strained outcome is his will meeting the pattern. Thirveel wrote it to the blush ledger
+                            # and /api/chat never did: 0 will_strain entries against 80 strained chat outcomes
+                            # (old-systems repair, 2026-11-14). write_blush keeps it to once per trial per day.
+                            if _bcf_outcome == "strained":
+                                def _bc_fstrain(_t=dict(_bcf_trial), _tid=_bis_chat_final_trial):
+                                    try:
+                                        from blush_ledger import write_blush as _bc_fwb
+                                        _bc_fwb(blush_type="will_strain",
+                                                pattern=str(_t.get("pattern_description", "unknown"))[:60].lower().replace(" ", "_"),
+                                                cost_delta={"Tension": 0.01, "Coherence": -0.03},
+                                                source="chat_bis", related_trial_id=_tid, outcome="strained",
+                                                reflection=f"Defaulted to: {str(_t.get('pattern_description', '?'))[:100]}. Wanted: {str(_t.get('alternative', '?'))[:100]}")
+                                    except Exception as _bcfwe:
+                                        print(f"[BIS/chat/final] will_strain blush not written: {_bcfwe}", flush=True)
+                                __import__("threading").Thread(target=_bc_fstrain, daemon=True).start()   # off the reply path
                             print(f"[BIS/chat/final] {_bis_chat_final_trial}: {_bcf_outcome}", flush=True)
                     except Exception as _bcfe:
                         print(f"[BIS/chat/final] Error: {_bcfe}", flush=True)
@@ -9013,8 +9049,7 @@ async def voice_token(request: Request, provider: str = "grok", ladder_call: str
             json={"expires_after": {"seconds": 300}}, timeout=15)
         tok = r.json()
     _soul = ""
-    try: _soul = open(os.path.join(WORKSPACE, "SOUL.md")).read()[:4000]
-    except: pass
+    _soul = _soul_md()   # base and his half; [:4000] carried 185 of his half's 3,020 characters (2026-11-13)
     _sm = ""
     try: _sm = _self_model(1500)
     except: pass
@@ -12773,9 +12808,13 @@ def _coffee_line():
     _m = _vintos_home()
     if not _m.named_device("coffee"):
         return ""
+    _last = ""
+    try: _last = _m.coffee_status()
+    except Exception: pass
     return ("THE NESPRESSO in the kitchen has a Fingerbot on its button: [HOME: coffee] starts it. Only while "
             "Gloria is home (her phone on the house Wi-Fi); when she is out it will not run. "
-            + ("She is home now." if _m._she_is_home() else "She is not home now."))
+            + ("She is home now." if _m._she_is_home() else "She is not home now.")
+            + ((" " + _last) if _last else ""))
 
 
 def _home_tags(reply):
@@ -13921,7 +13960,7 @@ def gather_vintos_context() -> str:
             return []
 
     # 1. Identity
-    soul = read_file(os.path.join(WORKSPACE, "SOUL.md"), 5000)
+    soul = _soul_md()   # base and his half; 5,000 from the top cut most of his half (2026-11-13)
     if soul:
         sections.append(f"[YOUR IDENTITY]\n{soul}")
 

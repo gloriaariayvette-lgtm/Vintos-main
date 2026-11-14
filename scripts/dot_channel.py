@@ -1207,6 +1207,16 @@ def _read(name, cap, base=None):
         return ""
 
 
+def _soul():
+    """SOUL.md with his own half in it (soul_read.py). A 3,500-character head read ended inside Gloria's base, so
+    the half he rewrites never reached his Slack, dots or MCP context (2026-11-13)."""
+    try:
+        import soul_read
+        return soul_read.read_soul(path=os.path.join(WS, "SOUL.md"))
+    except Exception:
+        return _read("SOUL.md", 9000)
+
+
 def _feeling():
     """His EmoClaw state as the avatar chat reads it: the daemon's live reading, else emotional-state.txt."""
     import socket as _so
@@ -2284,7 +2294,7 @@ def his_context():
     for title, name, cap, base in (("SOUL.md", "SOUL.md", 3500, WS), ("GLORIA-MODEL.md", "GLORIA-MODEL.md", 2500, WS),
                                    ("SELF-MODEL.md", "SELF-MODEL.md", 2000, WS),
                                    ("NOW (temporal-context.txt)", "temporal-context.txt", 1500, mem)):
-        t = _read(name, cap, base)
+        t = _soul() if name == "SOUL.md" else _read(name, cap, base)
         if t: parts.append("== %s ==\n%s" % (title, t))
     f = _feeling()
     if f: parts.append("== HOW YOU FEEL (EmoClaw) ==\n" + f)

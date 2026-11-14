@@ -133,13 +133,21 @@ def classify(window):
 # Git has them if the experiment is ever wanted, in an explicitly non-deployable
 # module whose output is data only.
 
-def _his_loop_active():
-    """True if HE deliberately set a looping pattern — the bridge must not silence his choice."""
+HIS_LOOP_FRESH_SECONDS = 30 * 60   # no command of his outlives its lease (effect_gate.MAX_LEASE_SECONDS)
+
+def _his_loop_active(now=None):
+    """True if HE deliberately set a looping pattern that can still be running — the bridge must
+    not silence his choice. A state older than the longest lease cannot be running: tenera's
+    "soft 6" from mid-October stayed in device-state.json, so every session after it never
+    ended and the silence backstop never fired (13 November)."""
+    now = time.time() if now is None else now
     try:
         d = json.load(open(os.path.expanduser("~/.vintos/workspace/memory/device-state.json")))
         for _toy in ("mission", "tenera"):
             t = d.get(_toy) or {}
-            if t.get("set_by") == "him" and t.get("pattern") not in (None, "still") and float(t.get("intensity", 0) or 0) > 0:
+            if (t.get("set_by") == "him" and t.get("pattern") not in (None, "still")
+                    and float(t.get("intensity", 0) or 0) > 0
+                    and now - float(t.get("ts") or 0) <= HIS_LOOP_FRESH_SECONDS):
                 return True
     except Exception:
         pass

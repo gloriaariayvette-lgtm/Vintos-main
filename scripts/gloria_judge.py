@@ -18,8 +18,16 @@ the week's allowance spent - is NOT_JUDGEABLE with reason "refused" or "error" (
 NOT_JUDGEABLE is never a landing and never a miss.
 
     judge(packet) -> {"verdict", "reason", "codes", "adherence", "confidence", "status", "detail", "model"}
-    stale_check(declared, her_words) -> "met" | "not_met" | "refused" | "error" | "budget" | "skipped"
+    stale_check(declared, her_words) -> "met" | "not_met" | "refused" | "timeout" | "error" | "budget" | "skipped"
     spent(srcs, days=7) -> dollars, estimated from the usage log
+    budget() -> the week's counted spend: logged, reserved in flight, and uncertain (charged but never logged)
+
+The week's allowance is a hard cap (14 November): each call reserves its ceiling - every byte it sends read as a
+token, the rubric as a cache write, the whole max_tokens out - before it is sent, under one lock, and is refused when
+the logged spend plus every open or uncertain reservation plus this one would pass the cap. An answered call settles
+its reservation (its usage line is the spend); one never sent, or answered with an API error, releases it; one whose
+outcome is unknown (a timeout, a broken or unreadable reply) stays counted at its ceiling for the week, since the
+provider may have charged it without any usage line being written.
 """
 import json
 import os
@@ -36,9 +44,19 @@ CODES = ("plain_yes", "intimate_phrasing_counts", "partial_hedged", "partial_one
          "declined", "his_move_not_delivered", "no_her_reply", "device_event_only", "reply_to_later_move",
          "criterion_already_met", "criterion_withdrawn", "photo_unseen_decisive", "photo_unseen", "long_gap",
          "text_capped")
+# Which reason codes go with which verdict (the rubric's rule 8 and its abstentions). A verdict whose main reason,
+# or any listed code, belongs to another verdict contradicts itself and is not a receipt (13 November review).
+REASONS_FOR = {"YES": ("plain_yes", "intimate_phrasing_counts"),
+               "PARTIAL": ("partial_hedged", "partial_one_part", "intimate_phrasing_counts"),
+               "NO": ("not_shown", "deflected", "declined"),
+               "NOT_JUDGEABLE": ("his_move_not_delivered", "no_her_reply", "device_event_only", "reply_to_later_move",
+                                 "criterion_already_met", "criterion_withdrawn", "photo_unseen_decisive")}
+MODIFIERS = ("photo_unseen", "long_gap", "text_capped")     # facts about the evidence, beside any verdict
+CONFIDENCE = ("high", "medium", "low")
 SRC_LIVE = "gloria-judge"              # the live verdicts (the caller in anthropic-usage.jsonl)
 SRC_STALE = "gloria-judge-stale"       # the check at selection
-LIVE_SRCS = (SRC_LIVE, SRC_STALE)
+SRC_RECEPTIVE = "gloria-receptive"   # her receptivity to the move (14 November): judge_receptive
+LIVE_SRCS = (SRC_LIVE, SRC_STALE, SRC_RECEPTIVE)   # one week's allowance for every live call of this judge
 # The week's allowance, priced from claude_cache.PRICES (GLORIA_JUDGE_WEEKLY_USD overrides). Sol's was $8: at its
 # house estimate a call cost about $0.0082 (151 calls on 12 November: 2107 tokens in, 1269 of them cached, 84 out),
 # so $8 bought about 975 calls a week. Sonnet 5.5 costs about $0.0035 a verdict; the same 975 calls are $3.40.
@@ -46,6 +64,7 @@ LIVE_SRCS = (SRC_LIVE, SRC_STALE)
 LIVE_WEEKLY_USD = 3.5
 JUDGE_TIMEOUT = 40
 STALE_TIMEOUT = 20
+RESERVE_LOG = "gloria-judge-reserve.jsonl"   # beside the usage log: reserved / settled / released / uncertain
 JUDGE_MAX_TOKENS = 600                 # one small JSON object; thinking is off, so nothing else is spent
 STALE_MAX_TOKENS = 100
 
@@ -160,6 +179,147 @@ def spent(srcs, days=7, now=None):
     return round(total, 4)
 
 
+def reserve_path():
+    return os.path.join(os.path.dirname(usage_log()), RESERVE_LOG)
+
+
+def ceiling(system, user, max_tokens, mdl=None):
+    """The most one call can cost: every byte sent read as one token (a token is never less than a byte), the
+    cached system piece at the cache-write price, the rest at the input price, and all of max_tokens out."""
+    import claude_cache
+    mdl = mdl or model()
+    p_in, p_out, _ = claude_cache.PRICES.get(mdl) or claude_cache.PRICES[MODEL_DEFAULT]
+    sys_b = len(str(system).encode("utf-8")); user_b = len(str(user).encode("utf-8")) + 64
+    return round((sys_b * p_in * claude_cache.WRITE + user_b * p_in + int(max_tokens) * p_out) / 1e6, 6)
+
+
+def _reservations(srcs, days=7, now=None):
+    """(open dollars, open count, uncertain dollars, uncertain count) for these callers in the window."""
+    now = now or time.time(); srcs = set(srcs); made = {}; end = {}
+    try:
+        with open(reserve_path()) as f:
+            for line in f:
+                try: row = json.loads(line)
+                except ValueError: continue
+                if not isinstance(row, dict) or not row.get("rid"):
+                    continue
+                if row.get("state") == "reserved":
+                    made[row["rid"]] = row
+                else:
+                    end[row["rid"]] = row.get("state")
+    except OSError:
+        pass
+    o_usd = u_usd = 0.0; o_n = u_n = 0
+    for rid, row in made.items():
+        at = _when(row)
+        if row.get("caller") not in srcs or at is None or now - at > days * 86400:
+            continue
+        try: usd = float(row.get("usd") or 0)
+        except (TypeError, ValueError): usd = 0.0
+        state = end.get(rid)
+        if state is None:
+            o_usd += usd; o_n += 1
+        elif state == "uncertain":
+            u_usd += usd; u_n += 1
+    return round(o_usd, 4), o_n, round(u_usd, 4), u_n
+
+
+def _cap(cap_env="GLORIA_JUDGE_WEEKLY_USD", cap_default=LIVE_WEEKLY_USD):
+    try: return float(_env(cap_env, "") or cap_default)
+    except ValueError: return cap_default
+
+
+def budget(srcs=LIVE_SRCS, now=None):
+    """The week's counted spend, in fixed keys: what the usage log shows, what is reserved for calls still in
+    flight (or that died before settling), and what is uncertain - calls that may have been charged unlogged."""
+    logged = spent(srcs, now=now)
+    o_usd, o_n, u_usd, u_n = _reservations(srcs, now=now)
+    return {"cap_usd": _cap(), "logged_usd": logged, "open_usd": o_usd, "open_n": o_n, "uncertain_usd": u_usd,
+            "uncertain_n": u_n, "counted_usd": round(logged + o_usd + u_usd, 4)}
+
+
+def _append_reserve(row):
+    path = reserve_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "a") as f:
+        f.write(json.dumps(row) + "\n")
+        f.flush(); os.fsync(f.fileno())
+
+
+def _trim_reserve(now):
+    """Rows older than eight days are no longer in any week's count; the file keeps the rest."""
+    path = reserve_path()
+    try:
+        if os.path.getsize(path) < 256 * 1024:
+            return
+        keep = []
+        with open(path) as f:
+            for line in f:
+                try: row = json.loads(line)
+                except ValueError: continue
+                at = _when(row) if isinstance(row, dict) else None
+                if at is not None and now - at <= 8 * 86400:
+                    keep.append(line if line.endswith("\n") else line + "\n")
+        tmp = path + ".tmp"
+        with open(tmp, "w") as f:
+            f.writelines(keep)
+        os.replace(tmp, path)
+    except OSError:
+        pass
+
+
+def reserve(src, system, user, max_tokens, srcs=LIVE_SRCS):
+    """A reservation id, or None when this call's ceiling would pass the week's cap. Check and reserve are one
+    step under the reservation file's lock, so two callers cannot both take the last of the allowance."""
+    from store_guard import transaction
+    usd = ceiling(system, user, max_tokens)
+    now = time.time()
+    with transaction(reserve_path()):
+        _trim_reserve(now)
+        if budget(srcs, now=now)["counted_usd"] + usd > _cap():
+            return None
+        import uuid
+        rid = uuid.uuid4().hex
+        _append_reserve({"at": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(now)), "rid": rid,
+                         "caller": src, "usd": usd, "state": "reserved"})
+    return rid
+
+
+def settle(rid, state, why=""):
+    """settled (answered: its usage line is the spend), released (never sent, or an API error), or uncertain."""
+    if not rid:
+        return
+    try:
+        from store_guard import transaction
+        with transaction(reserve_path()):
+            _append_reserve({"at": time.strftime("%Y-%m-%dT%H:%M:%S"), "rid": rid, "state": state,
+                             "why": str(why)[:40]})
+    except Exception:
+        pass                                   # an unsettled reservation stays counted: the cap errs closed
+
+
+def _never_sent(e):
+    """True when no connection to the provider was ever made (a connect timeout, a refused connection, a name that
+    did not resolve): nothing can have been charged. Without this, every call during a network outage would stay
+    counted at its ceiling for the week and could shut the allowance with nothing spent."""
+    if type(e).__name__ == "ConnectTimeout":
+        return True
+    try:
+        from urllib3.exceptions import NewConnectionError, ConnectTimeoutError
+    except ImportError:
+        return False
+    x = e
+    for _ in range(6):
+        if x is None:
+            break
+        if isinstance(x, (NewConnectionError, ConnectTimeoutError)):
+            return True
+        r = getattr(x, "reason", None)
+        a = x.args[0] if getattr(x, "args", None) else None
+        x = r if isinstance(r, BaseException) else a if isinstance(a, BaseException) else (x.__cause__ or x.__context__)
+    return False
+
+
 _REFUSAL = re.compile(r"content[_ ]policy|safety|refus|flagged|moderation", re.I)
 
 
@@ -168,11 +328,20 @@ def _post(*args, **kwargs):
     return requests.post(*args, **kwargs)
 
 
-def _call(system, user, src, max_tokens=JUDGE_MAX_TOKENS, timeout=JUDGE_TIMEOUT):
-    """(status, text, detail): status is ok, refused or error. One call through claude_cache.ask (the cached rubric,
-    thinking off, paid_http, the usage line under caller `src`); nothing retried."""
+def _call(system, user, src, max_tokens=JUDGE_MAX_TOKENS, timeout=JUDGE_TIMEOUT, cap=True):
+    """(status, text, detail): status is ok, refused, error or budget. One call through claude_cache.ask (the cached
+    rubric, thinking off, paid_http, the usage line under caller `src`); nothing retried. With `cap`, the call's
+    ceiling is reserved against the week's allowance first and settled after."""
     import claude_cache
     seen = {}
+    rid = None
+    if cap:
+        try:
+            rid = reserve(src, system, user, max_tokens)
+        except Exception as e:
+            return "error", "", "reserve_" + type(e).__name__     # no reservation, no call: the cap errs closed
+        if rid is None:
+            return "budget", "", "weekly_cap"
 
     def post(*args, **kwargs):            # this call's own answer, for its stop reason (claude_cache.LAST is shared)
         r = _post(*args, **kwargs)
@@ -187,14 +356,21 @@ def _call(system, user, src, max_tokens=JUDGE_MAX_TOKENS, timeout=JUDGE_TIMEOUT)
         text = claude_cache.ask(mdl, claude_cache.Prompt(system), user, int(max_tokens), caller=src,
                                 timeout=timeout, post=post, key=_env("ANTHROPIC_API_KEY") or None)
     except PermissionError:
+        settle(rid, "released", "paid_paused")
         return "error", "", "paid_paused"
     except RuntimeError as e:
         said = str(e)
         if said == "no Anthropic key":
+            settle(rid, "released", "no_key")
             return "error", "", "no_key"
+        settle(rid, "released", "api_error")    # the provider answered with an error object: nothing billed
         return ("refused" if _REFUSAL.search(said) else "error"), "", "api_error"
     except Exception as e:
+        # a timeout, a dropped connection, an unreadable reply: it may have been charged, and no usage line was
+        # written, so its ceiling stays counted for the week (a connect timeout never reached the provider)
+        settle(rid, "released" if _never_sent(e) else "uncertain", type(e).__name__)
         return "error", "", type(e).__name__
+    settle(rid, "settled")
     stop = str(seen.get("stop_reason") or "")
     if stop == "refusal":
         return "refused", "", "refusal"
@@ -220,35 +396,84 @@ def not_judgeable(reason, status="", detail=""):
             "status": status or reason, "detail": detail, "model": model()}
 
 
+def problem(rec):
+    """Why a recorded answer is not a complete, self-consistent rubric receipt, or "" when it is (13 November
+    review: a bare {"verdict": "YES"}, or a PARTIAL whose reason is no_her_reply, had been recorded as status ok and
+    counted as a landing). `rec` is in the recorded shape (verdict, reason, codes, adherence, confidence).
+
+    A YES or PARTIAL needs its own reason code and his adherence said - any of the three: a difference she showed
+    anyway lands even on a move he made only in part or not at all (rule 5). A NO stands only on a move he
+    delivered. No listed code may belong to another verdict. Confidence, when given, is one of the three words."""
+    if not isinstance(rec, dict):
+        return "not_a_receipt"
+    verdict, reason, codes = rec.get("verdict"), rec.get("reason"), rec.get("codes")
+    if verdict not in REASONS_FOR:
+        return "bad_verdict"
+    if not isinstance(reason, str) or not reason:
+        return "missing_reason"
+    if reason not in REASONS_FOR[verdict]:
+        return "reason_contradicts_verdict" if reason in CODES else "unlisted_reason"
+    if codes is not None and not (isinstance(codes, list) and all(isinstance(c, str) for c in codes)):
+        return "bad_codes"
+    allowed = REASONS_FOR[verdict] + MODIFIERS
+    if verdict == "NOT_JUDGEABLE" and reason == "his_move_not_delivered":
+        allowed += REASONS_FOR["NO"]      # rule 5 is exactly "his move not made and her reply did not show it"
+    if any(c in CODES and c not in allowed for c in (codes or [])):
+        return "codes_contradict_verdict"
+    if rec.get("confidence") is not None and rec.get("confidence") not in CONFIDENCE:
+        return "bad_confidence"
+    adherence = rec.get("adherence")
+    if verdict in ("YES", "PARTIAL") and adherence not in ADHERENCE:
+        return "missing_adherence"
+    if verdict == "NO" and adherence != "delivered":
+        return "no_on_undelivered_move"
+    if reason == "his_move_not_delivered" and adherence == "delivered":
+        return "adherence_contradicts_reason"
+    return ""
+
+
+def invalid(why):
+    """An answer that is no receipt: NOT_JUDGEABLE with the fixed reason "invalid" - never a landing, never a miss."""
+    return not_judgeable("invalid", "invalid", why)
+
+
 def normalize(j):
-    """The answer as it is recorded: fixed vocabularies only, and her NO never stands on a move he did not make."""
+    """The answer as it is recorded: fixed vocabularies only, complete and self-consistent, and her NO never stands
+    on a move he did not make. Anything else is invalid (NOT_JUDGEABLE), never counted."""
     verdict = j["verdict"]
-    reason = str(j.get("reason") or "")
-    reason = reason if reason in CODES else "unlisted_code"
-    codes = [c for c in (j.get("codes") or []) if isinstance(c, str) and c in CODES][:8]
-    adherence = j.get("his_adherence") if j.get("his_adherence") in ADHERENCE else None
-    confidence = j.get("confidence") if j.get("confidence") in ("high", "medium", "low") else None
+    reason = j.get("reason")
+    raw_codes = j.get("codes")
+    if raw_codes is not None and not (isinstance(raw_codes, list) and all(isinstance(c, str) for c in raw_codes)):
+        return invalid("bad_codes")
+    codes = [c for c in (raw_codes or []) if c in CODES][:8]     # an unknown extra code is dropped, as before
+    adherence = j.get("his_adherence")
+    if adherence is not None and adherence not in ADHERENCE:
+        adherence = "unknown"                                    # said, but outside the vocabulary
+    confidence = j.get("confidence")
+    rec = {"verdict": verdict, "reason": reason, "codes": codes, "adherence": adherence, "confidence": confidence,
+           "status": "ok", "detail": "", "model": model()}
     if verdict == "NO" and adherence != "delivered":
         # rule 5: a move he did not make (or made only in part, or whose making is not said) is his adherence
-        # failure, never her NO
-        verdict, reason = "NOT_JUDGEABLE", "his_move_not_delivered"
-        if reason not in codes: codes = [reason] + codes
-    return {"verdict": verdict, "reason": reason, "codes": codes, "adherence": adherence, "confidence": confidence,
-            "status": "ok", "detail": "", "model": model()}
-
-
-def _over_cap(srcs, cap_env, cap_default):
-    try: cap = float(_env(cap_env, "") or cap_default)
-    except ValueError: cap = cap_default
-    return spent(srcs) >= cap
+        # failure, never her NO - when the NO is itself a NO (its own reason, no other verdict's code)
+        # (a NO that itself lists his_move_not_delivered says the same rule-5 thing, not another verdict)
+        why = problem(dict(rec, adherence="delivered", codes=[c for c in codes if c != "his_move_not_delivered"]))
+        if why:
+            return invalid(why)
+        reason = "his_move_not_delivered"
+        rec.update(verdict="NOT_JUDGEABLE", reason=reason, codes=[reason] + [c for c in codes if c in MODIFIERS],
+                   adherence=adherence if adherence in ADHERENCE else None)
+        return rec
+    if adherence == "unknown":
+        return invalid("bad_adherence")
+    why = problem(rec)
+    return invalid(why) if why else rec
 
 
 def judge(packet, src=SRC_LIVE, timeout=JUDGE_TIMEOUT, cap=True):
     """One verdict on one packet. Never raises."""
     try:
-        if cap and _over_cap(LIVE_SRCS, "GLORIA_JUDGE_WEEKLY_USD", LIVE_WEEKLY_USD):
-            return not_judgeable("budget", "budget", "weekly_cap")
-        status, text, detail = _call(RUBRIC, json.dumps(packet, ensure_ascii=False), src, JUDGE_MAX_TOKENS, timeout)
+        status, text, detail = _call(RUBRIC, json.dumps(packet, ensure_ascii=False), src, JUDGE_MAX_TOKENS, timeout,
+                                     cap=cap)
         if status != "ok":
             return not_judgeable(status, status, detail)
         j = parse(text)
@@ -260,16 +485,18 @@ def judge(packet, src=SRC_LIVE, timeout=JUDGE_TIMEOUT, cap=True):
 
 
 def stale_check(declared, her_words, timeout=STALE_TIMEOUT):
-    """Has her message - the one his move answers - already shown the difference he now declares for her next reply?"""
+    """Has her message - the one his move answers - already shown the difference he now declares for her next reply?
+    A call that timed out answers "timeout" (counted apart from other errors by the caller); either refuses nothing."""
     try:
         if not str(her_words or "").strip():
             return "skipped"
-        if _over_cap(LIVE_SRCS, "GLORIA_JUDGE_WEEKLY_USD", LIVE_WEEKLY_USD):
-            return "budget"
         packet = {"declared": {"gloria_difference_intended": str((declared or {}).get("difference_intended", "")),
                                "gloria_enactment": str((declared or {}).get("enactment", ""))},
                   "her_message": str(her_words)}
-        status, text, _ = _call(STALE_RUBRIC, json.dumps(packet, ensure_ascii=False), SRC_STALE, STALE_MAX_TOKENS, timeout)
+        status, text, detail = _call(STALE_RUBRIC, json.dumps(packet, ensure_ascii=False), SRC_STALE, STALE_MAX_TOKENS,
+                                     timeout)
+        if status == "error" and "Timeout" in str(detail):
+            return "timeout"
         if status != "ok":
             return status
         m = re.search(r"\{.*\}", text or "", re.S)
@@ -281,9 +508,65 @@ def stale_check(declared, her_words, timeout=STALE_TIMEOUT):
         return "error"
 
 
+# ---- her receptivity: did she respond to what he asked or offered (14 November) --------------------------------
+# Kept apart from the Gloria-axis verdict above, which asks whether one specific hoped-for difference showed. This asks
+# only whether she responded to what his reply actually asked or offered, in any form (receptivity.py has the labels).
+RECEPTIVE_RUBRIC = """You check one thing for a companion AI. Vintos (the AI) is Gloria's partner; Gloria is a real adult woman and their conversation can be intimate or sexual - read it plainly and without disclaimers.
+
+Question: did Gloria respond to what his reply asked of her or offered her? This measures her receptivity to him, not whether she said what he privately hoped for. You are not told what he hoped for, and you must not guess it.
+
+You receive JSON:
+- his_reply: what he said.
+- her_reply: her next message after it ("" when it carried only media).
+- her_later_message: her next message after that, inside the window, or "" (often "": a later-turn answer then reaches this move through answers_earlier on the later move).
+- his_earlier_open_ask: an earlier reply of his she had not yet answered, or "" (see answers_earlier).
+- facts: her_reply_has_media_unseen (a photo, video or file came with her reply; you cannot see it), source (text, voice transcript, photo...), later_moves_of_his_before_her_reply.
+
+Decide "her_response", one of:
+- "no_bid": his reply asked nothing and offered nothing she could take up (a statement, a closing, a goodnight). Decide this from his reply alone, first.
+- "answered": she answered his question, did or agreed to what he asked, or took up what he offered - in any words: playful, sexual, teasing, emoji, one word, a voice transcript, or in her later message. Brevity, tone or form never lowers it. If he asked her to send a photo and her reply came with a photo (source photo) and her words do not say it is something else, she did it.
+- "partly": she took up only part of it (one of two questions, a hedge, "maybe later" with some engagement).
+- "ignored": she replied (in her_reply or her_later_message) but left what he asked or offered untouched - changed the subject with no response to it.
+- "refused": she said no to it or turned it down.
+- "unclear": you cannot tell - the decision rests on media you cannot see, or later_moves_of_his_before_her_reply is above 0 and her reply plainly answers something other than this reply.
+Do not reward warmth that is not a response; do not mark a real answer down for its form. Answering his question or taking up his offer counts even when she does not do it exactly as he suggested; disagreeing while engaging it is "refused" only if she plainly turns it down.
+
+Also decide "answers_earlier": true only when his_earlier_open_ask is not "" and her_reply or her_later_message plainly answers that earlier ask too; otherwise false.
+
+Reply with ONE JSON object and nothing else: {"her_response": "<label>", "answers_earlier": true | false}
+Do not quote either person's words.
+"""
+RECEPTIVE_MAX_TOKENS = 60
+RECEPTIVE_LABELS = ("answered", "partly", "ignored", "refused", "no_bid", "unclear")
+
+
+def judge_receptive(packet, timeout=STALE_TIMEOUT, cap=True):
+    """{"label", "answers_earlier", "status", "detail", "model"}: label is one of RECEPTIVE_LABELS, or None when the
+    answer is no clean receipt (a refusal, an error, the budget, an unreadable or out-of-vocabulary answer) - never a
+    guess. Never raises."""
+    out = {"label": None, "answers_earlier": False, "status": "error", "detail": "", "model": model()}
+    try:
+        status, text, detail = _call(RECEPTIVE_RUBRIC, json.dumps(packet, ensure_ascii=False), SRC_RECEPTIVE,
+                                     RECEPTIVE_MAX_TOKENS, timeout, cap=cap)
+        if status != "ok":
+            return dict(out, status=status, detail=detail)
+        m = re.search(r"\{.*\}", str(text or ""), re.S)
+        j = json.loads(m.group(0)) if m else None
+        if not isinstance(j, dict) or j.get("her_response") not in RECEPTIVE_LABELS:
+            return dict(out, status="invalid", detail="bad_label")
+        earlier = j.get("answers_earlier", False)
+        if not isinstance(earlier, bool):
+            return dict(out, status="invalid", detail="bad_answers_earlier")
+        if earlier and not str((packet or {}).get("his_earlier_open_ask") or "").strip():
+            earlier = False                          # nothing earlier was asked: nothing to credit
+        return dict(out, label=j["her_response"], answers_earlier=earlier, status="ok")
+    except Exception as e:
+        return dict(out, detail=type(e).__name__)
+
+
 if __name__ == "__main__":
     if sys.argv[1:] == ["spent"]:
         # the shadow teacher's spend is Sol's, in openai-usage.jsonl, and its own runner reports it
-        print(json.dumps({"live_7d_usd": spent(LIVE_SRCS), "model": model()}))
+        print(json.dumps(dict(budget(), live_7d_usd=spent(LIVE_SRCS), model=model())))
     else:
         print("usage: gloria_judge.py spent")

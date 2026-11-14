@@ -84,6 +84,37 @@ def _experiment_line(row):
     return f"- {subject}: execution={execution}; accuracy={accuracy}" + (f"; run={run_id}" if run_id else "")
 
 
+WITHHELD = "(a question already investigated and closed"   # lab_closed_redaction.PLACEHOLDER, as it begins
+LOW_VALUE = 2   # lab_findings.appraise: 1 = expected, retrieved or too thin; 0 = the appraisal could not be read
+
+
+def _withheld(question):
+    """The closed-question placeholder standing where a question should be: it is not a question he asked."""
+    return str(question or "").strip().startswith(WITHHELD)
+
+
+def _too_thin(row):
+    """A finding his own appraisal scored below LOW_VALUE (12 November: a raw UniProt sequence, value 1, was printed
+    as what the day found). A row with no appraisal at all is shown as before."""
+    appraisal = row.get("appraisal")
+    if not isinstance(appraisal, dict) or appraisal.get("value") is None:
+        return False
+    try:
+        return int(appraisal.get("value")) < LOW_VALUE
+    except (TypeError, ValueError):
+        return False
+
+
+def _mark_reference(question):
+    """A next question asking for a structure comparison it names no PDB entry for is marked, not offered as if it
+    could run (reference_compare needs an entry id and a span)."""
+    try:
+        from chemistry_reference_compare import mark_unnamed_reference
+    except Exception:
+        return question
+    return mark_unnamed_reference(question)
+
+
 def _recent_questions(notebook, sessions, n=2):
     """The n most recent next-questions, his own words — not a conclusion, just where he left off."""
     seen, out = set(), []
@@ -94,8 +125,8 @@ def _recent_questions(notebook, sessions, n=2):
             if isinstance(nested, dict): candidates.append(nested.get("next_question"))
         for value in candidates:
             v = str(value or "").strip()
-            if v and v not in seen:
-                seen.add(v); out.append(_clip(v, QUESTION_CHARS))
+            if v and v not in seen and not _withheld(v):
+                seen.add(v); out.append(_mark_reference(_clip(v, QUESTION_CHARS)))
                 if len(out) >= n: return out
     return out
 
@@ -157,11 +188,13 @@ def _finding_lines(notebook, day, n=4):
     out = []
     for row in notebook:
         if row.get("kind") != "investigation_finding": continue
+        if _withheld(row.get("question")) or _too_thin(row): continue
         q = _clip(row.get("question"), 160)
         result = _clip("; ".join(l.strip() for l in str(row.get("result") or "").splitlines() if l.strip()), 240)
         if q and result:
             out.append("- " + q + " — " + result)
     for row in _kept(day):
+        if _withheld(row.get("question")): continue
         q = _clip(row.get("question"), 160)
         what = _clip(row.get("finding") or row.get("why"), 240)
         if q and what:

@@ -1018,6 +1018,11 @@ def _rubric_judge(packet):
 
 GLORIA_STALE_BOUND = 2      # seconds her turn may wait on the check; a later answer is kept for the move (review)
 GLORIA_STALE_LATE = "gloria-stale-late.json"   # {intent_id: {"result", "at"}}: answers that came after the bound
+# Counts of every stale-check outcome by day (14 November: the fail-open path refused nothing and counted nothing).
+# {"YYYY-MM-DD": {"met": n, "not_met": n, "pending": n, "timeout": n, "error": n, ..., "late_met": n, ...}}. A check
+# still out at the bound counts "pending"; its own answer, when it comes, counts again as "late_<answer>".
+GLORIA_STALE_COUNTS = "gloria-stale-counts.json"
+STALE_OUTCOMES = ("met", "not_met", "skipped", "off", "pending", "timeout", "error", "refused", "budget")
 
 
 def _stale_late(intent_id):
@@ -1041,6 +1046,43 @@ def _stale_late_put(intent_id, result):
         pass
 
 
+def _stale_count(outcome, late=False):
+    """One outcome counted under today's date: fixed keys only, never words or ids; 60 days kept."""
+    o = str(outcome) if str(outcome) in STALE_OUTCOMES else "other"
+    key = ("late_" if late else "") + o
+    try:
+        from store_guard import transaction, write_json
+        path = os.path.join(MEM, GLORIA_STALE_COUNTS)
+        with transaction(path):
+            d = _load(GLORIA_STALE_COUNTS); d = d if isinstance(d, dict) else {}
+            day = datetime.now().strftime("%Y-%m-%d")
+            c = d.get(day) if isinstance(d.get(day), dict) else {}
+            c[key] = int(c.get(key, 0) or 0) + 1
+            d[day] = c
+            write_json(path, dict(sorted(d.items())[-60:]))
+    except Exception:
+        pass
+
+
+def stale_counts(days=7):
+    """Totals of each stale-check outcome over the last `days` days, plus failed (timeout, error, refused, budget,
+    and a late answer that was itself a failure) and unresolved (pending whose late answer never came)."""
+    d = _load(GLORIA_STALE_COUNTS); d = d if isinstance(d, dict) else {}
+    from datetime import timedelta
+    since = (datetime.now() - timedelta(days=max(0, int(days) - 1))).strftime("%Y-%m-%d")
+    tot = {}
+    for day, c in d.items():
+        if str(day) >= since and isinstance(c, dict):
+            for k, v in c.items():
+                try: tot[k] = tot.get(k, 0) + int(v)
+                except (TypeError, ValueError): pass
+    bad = ("timeout", "error", "refused", "budget", "other")
+    tot["failed"] = sum(tot.get(k, 0) + tot.get("late_" + k, 0) for k in bad)
+    late = sum(v for k, v in tot.items() if k.startswith("late_"))
+    tot["unresolved"] = max(0, tot.get("pending", 0) - late)
+    return tot
+
+
 def _stale_switch_off():
     """GLORIA_STALE_CHECK=0 in the environment or in vintos.env (read live, no restart needed)."""
     if os.environ.get("GLORIA_STALE_CHECK", "1").strip() == "0":
@@ -1057,6 +1099,12 @@ def _stale_gloria(ax, her_words, intent_id=None):
     Her turn waits on it GLORIA_STALE_BOUND seconds at most (a wall clock: a socket timeout does not cover DNS or a
     slow trickle). A check still out then is "pending" and refuses nothing; its answer, when it comes, is kept
     under the move's id, and a "met" settles that move's her-axis verdict in code as criterion_already_met."""
+    v = _stale_gloria_once(ax, her_words, intent_id)
+    _stale_count(v)
+    return v
+
+
+def _stale_gloria_once(ax, her_words, intent_id=None):
     if _stale_switch_off():
         return "off"
     if not str(her_words or "").strip():
@@ -1070,8 +1118,9 @@ def _stale_gloria(ax, her_words, intent_id=None):
             except Exception: v = "error"
             with guard:
                 box["v"] = v; late = box.get("late")
-            if late and intent_id:
-                _stale_late_put(intent_id, v)
+            if late:
+                _stale_count(v, late=True)
+                if intent_id: _stale_late_put(intent_id, v)
         worker = threading.Thread(target=_run, name="gloria-stale-check", daemon=True)
         worker.start(); worker.join(GLORIA_STALE_BOUND)
         with guard:
@@ -1105,6 +1154,98 @@ def _later_moves(row, until):
         if t is not None and opened < t < until:
             n += 1
     return n
+
+
+# ---- her receptivity to the move, apart from her axis (14 November) ------------------------------------------------
+# Her axis asks whether one specific hoped-for difference showed in her next reply inside 24 hours. Her receptivity
+# (receptivity.py) asks whether she responded to what his reply asked or offered, in any form, inside a fair window of
+# 48 hours - on every delivered move her own reply reaches, declared Gloria axis or not. A move she answered in a
+# later turn is credited by that later move's record (`credits`), never by writing to the earlier row.
+RECEPTIVE_JUDGE = "rubric_receptive_v1"
+
+
+def _rc():
+    """receptivity.py, beside this file."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    if here not in sys.path:
+        sys.path.insert(0, here)
+    import receptivity
+    return receptivity
+
+
+def _receptive_judge(packet):
+    import gloria_judge
+    return gloria_judge.judge_receptive(packet)
+
+
+def _open_earlier_ask(row, came):
+    """The latest earlier delivered move inside the window whose record says ignored or partly and that no later
+    record has credited yet, or None."""
+    RC = _rc()
+    led = _load("intent-ledger.json") or []
+    cmap = RC.credited(led)
+    opened = _stamp(row.get("delivered_at")) or _stamp(row.get("timestamp"))
+    best = None
+    for other in led:
+        if not isinstance(other, dict) or other.get("status") != "delivered" or _same_row(other, row):
+            continue
+        t = _stamp(other.get("delivered_at"))
+        if t is None or opened is None or came is None or t >= opened or came - t > RC.RESPONSE_WINDOW_HOURS * 3600:
+            continue
+        if RC.label_of(other) not in ("ignored", "partly") or RC.row_key(other) in cmap or not other.get("reply"):
+            continue
+        # her reply to that move must have come before this move: one reply of hers that reached both moves is one
+        # piece of evidence, judged on each move once - never a second roll that can only raise the first (review)
+        seen = _stamp(other.get("response_at"))
+        if seen is None or seen >= opened or (row.get("response_text") and other.get("response_text") == row.get("response_text")):
+            continue
+        if best is None or t > best[0]:
+            best = (t, other)
+    return best[1] if best else None
+
+
+def _judge_receptive(row, reply, hers, source=None, now=None):
+    """Her receptivity to this move: a record of fixed labels and counts, never words - or None when nothing of hers
+    came inside the window (silence is absence, never a refusal)."""
+    RC = _rc()
+    opened = _stamp(row.get("delivered_at")) or _stamp(row.get("timestamp"))
+    came = _stamp(row.get("response_at")) or now or datetime.now().timestamp()
+    if opened is None or came - opened > RC.RESPONSE_WINDOW_HOURS * 3600:
+        return None
+    words, media = _her_words(hers, source)
+    if not words and not media:
+        return None
+    earlier = _open_earlier_ask(row, came)
+    packet = {"his_reply": str(reply), "her_reply": words, "her_later_message": "",
+              "his_earlier_open_ask": str(earlier.get("reply") or "") if earlier else "",
+              "facts": {"her_reply_has_media_unseen": bool(media), "source": str(source or "text"),
+                        "later_moves_of_his_before_her_reply": _later_moves(row, came)}}
+    try:
+        got = _receptive_judge(packet)
+    except Exception as err:
+        got = {"label": None, "status": "error", "detail": type(err).__name__}
+    got = got if isinstance(got, dict) else {}
+    gap = (came - opened) / 3600
+    rec = RC.record(got.get("label"), RECEPTIVE_JUDGE, gap_hours=gap,
+                    credits=RC.row_key(earlier) if earlier is not None and got.get("answers_earlier") is True else None,
+                    status=str(got.get("status") or ""), model=got.get("model"))
+    if rec is None:      # no clean answer: kept for the audit, never counted
+        rec = {"label": None, "judge": RECEPTIVE_JUDGE, "at": datetime.now().isoformat(),
+               "status": str(got.get("status") or "error"), "detail": str(got.get("detail") or "")[:40]}
+    return rec
+
+
+def _note_receptive(row, reply, hers, source=None):
+    """Once per row; a failure here never stops the row's own resolution."""
+    if _rc().label_of(row) is not None or not row.get("delivered_at") or not reply:
+        return          # a record with no label (the judge failed, the cap) stays open for a later pass or a re-measure
+    try:
+        rec = _judge_receptive(row, reply, hers, source)
+    except Exception as err:
+        _turn_state_fault("resolve_previous.receptive", "error", err)
+        return
+    if rec is not None:
+        row["receptive"] = rec
 
 
 def _judge_gloria(row, tgt, ax, reply, hers, source=None, now=None):
@@ -1153,6 +1294,16 @@ def _judge_gloria(row, tgt, ax, reply, hers, source=None, now=None):
         got = {"verdict": "NOT_JUDGEABLE", "reason": "error", "status": "error", "detail": "no_verdict"}
     if got["verdict"] == "NO" and got.get("adherence") != "delivered":
         got = dict(got, verdict="NOT_JUDGEABLE", reason="his_move_not_delivered")   # his failure, never her NO
+    if got["verdict"] in ("YES", "PARTIAL"):
+        # a landing stands only on a complete, self-consistent receipt (13 November review): a bare YES, or a
+        # PARTIAL whose reason says she never replied, is invalid - NOT_JUDGEABLE, never counted
+        try:
+            import gloria_judge
+            why = gloria_judge.problem(got) or ("" if got.get("status") == "ok" else "status_not_ok")
+        except Exception as err:
+            why = "unchecked_%s" % type(err).__name__
+        if why:
+            got = {"verdict": "NOT_JUDGEABLE", "reason": "invalid", "status": "invalid", "detail": why}
     rec.update({k: got.get(k) for k in ("verdict", "reason", "codes", "adherence", "confidence", "status", "detail", "model")})
     rec["codes"] = [str(c) for c in (rec.get("codes") or [rec["reason"]])][:8]
     return rec
@@ -1167,17 +1318,28 @@ def note_response(raw, source=None):
     text = str(raw or "").strip()
     if not text:
         return
+    # Is this input her own words? A device event or room event is noted on an empty slot as before (the resolver
+    # counts it as a skipped observation and clears it), but it never keeps her reply out: her first words after a
+    # device event take the slot from it, here, under the ledger lock, so they are on the row durably before any
+    # resolver runs and survive a restart (13 November: a device input sitting in the slot made her next turn's
+    # words unrecordable, and the background resolver's rerun kept only the latest input, so her first reply was
+    # lost behind the device event). Her words, once there, are never replaced.
+    hers = not _her_follow_up(text, source)[1]
     from store_guard import transaction, write_json
     with transaction(LEDGER):
         led = _load("intent-ledger.json") or []
         changed = False
         for row in led:
-            if row.get("status") == "delivered" and not row.get("response_text"):
+            held = row.get("response_text")
+            if held and hers and _her_follow_up(held, row.get("response_source"))[1] in ("device_event_only", "not_her_words"):
+                held = None      # only a device or room event is given way; her reply already there stays
+            if row.get("status") == "delivered" and not held:
                 verdict = row.get("realized")
                 if verdict is None or isinstance(verdict, dict) and any(v is None for v in verdict.values()):
                     row["response_text"] = text
                     row["response_at"] = datetime.now().isoformat()   # when it came: the window is read against this, not against a later grading
                     if source: row["response_source"] = str(source)
+                    else: row.pop("response_source", None)            # a device event's source never stays beside her words
                     row["resolution_rev"] = int(row.get("resolution_rev", 0) or 0) + 1   # what a resolver reads has changed (round five)
                     changed = True
         if changed:
@@ -1332,6 +1494,10 @@ def _resolve_row(last, recent_text="", source=None):
                        "detail": {"axis": "field/gloria/self" if isinstance(r, dict) else "single"}})
         else:
             last.pop("response_text", None); last.pop("response_source", None); last.pop("response_at", None)   # the device event was not her reply: that is still to come
+        if _late and not _none:
+            # her words came after her axis's 24 hours: no verdict on her axis, but inside the fair window her
+            # response to the move still counts for her receptivity (14 November)
+            _note_receptive(last, reply, _hers, source)
         _land(last, _rev, fx)
         return
     if not isinstance(r, dict):
@@ -1397,6 +1563,7 @@ def _resolve_row(last, recent_text="", source=None):
     else: last.pop("held_reason", None)
     last["realized"] = r
     fx.append({"dest": "outcome", "verdict": dict(r), "detail": {"axis": "field/gloria/self"}})
+    _note_receptive(last, reply, recent_text, source)      # her receptivity to the move, whatever her axis says
     _land(last, _rev, fx)
 
 def record_pending(target, source="conversation", event_id=None, claim_once=False):
@@ -1576,8 +1743,11 @@ def _persist_resolution(row, read_rev=0, effects=()):
                 current["resolution_dropped"] = {"n": int(_d.get("n", 0) or 0) + 1, "reason": why, "at": datetime.now().isoformat()}
             else:
                 # Preserve deliveries/selections appended while the judge was running.
+                _had = {"receptive": copy.deepcopy(current.get("receptive"))}
                 current.update({key: copy.deepcopy(row[key]) for key in ("realized", "held_attempts", "held_reason", "skipped_observations",
-                                                                         "gloria_judge", "adherence") if key in row})
+                                                                         "gloria_judge", "adherence", "receptive") if key in row})
+                if _rc().label_of(_had) is not None:
+                    current["receptive"] = _had["receptive"]   # a labelled record is never replaced (a re-measure may have written it while this pass judged)
                 if "held_reason" not in row: current.pop("held_reason", None)
                 if "skipped_observations" in row and "response_text" not in row:
                     current.pop("response_text", None); current.pop("response_source", None); current.pop("response_at", None)   # so her next reply is stored

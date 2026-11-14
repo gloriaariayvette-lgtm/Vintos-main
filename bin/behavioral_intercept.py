@@ -15,6 +15,10 @@ from store_guard import transaction, write_json
 
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WORKSPACE, "memory")
+# Used by the blush write and the narrative feed below. It was never defined: both raised NameError inside a bare
+# except, so no blush was written on a default and the narrative feed never ran (2026-11-14).
+SCRIPTS = os.path.join(WORKSPACE, "scripts")
+NARRATIVE_LOG = "/tmp/narrative-identity.log"
 LEDGER = os.path.join(MEMORY, "trial-ledger.json")
 PENDING = os.path.join(MEMORY, ".pending-intercept.json")
 LM_URL = "http://127.0.0.1:8599/v1/chat/completions"
@@ -266,6 +270,46 @@ def _reinforce_inclination(trial_id, outcome):
     except Exception as e:
         print(f"[Intercept] reinforce error: {e}", file=__import__("sys").stderr)
 
+def _feed_narrative():
+    """Let narrative identity read the causal self-model now (it proposes only entries with new evidence)."""
+    try:
+        import subprocess as _ni_sub
+        _log = open(NARRATIVE_LOG, "a")
+        try:
+            _ni_sub.Popen(["python3", os.path.join(SCRIPTS, "narrative-identity.py"), "feed"],
+                          stdout=_log, stderr=_log)
+        finally:
+            _log.close()   # the child holds its own copy
+        return True
+    except Exception as _ni_e:
+        print(f"[Intercept] narrative feed failed: {_ni_e}", file=sys.stderr)
+        return False
+
+
+def _newest_attempt_at(trial):
+    """When the trial's newest attempt happened: the evidence a promotion rests on. Promotion can fire on a later
+    default, or on attempts counted long ago; add_entry stamped last_seen=now, so old evidence looked current
+    (review 2026-11-14). Falls back to the trial's creation date; None if neither is readable."""
+    best = None
+    for o in trial.get("outcomes") or []:
+        if o.get("outcome") not in ("attempted", "partial"):
+            continue
+        try:
+            ts = datetime.fromisoformat(str(o.get("timestamp"))[:26])
+        except Exception:
+            continue
+        if ts.tzinfo is not None:
+            ts = ts.astimezone().replace(tzinfo=None)
+        if best is None or ts > best:
+            best = ts
+    if best is not None:
+        return best.isoformat()
+    try:
+        return datetime.fromisoformat(str(trial.get("created"))[:26]).isoformat()
+    except Exception:
+        return None
+
+
 def log_outcome(trial_id, outcome, resistance=0.5, influenced=False):
     """outcome: attempted / defaulted / partial / missed / unknown (recorded, weightless).
     influenced=True when a BIS ban note was live in the generation that produced
@@ -363,7 +407,10 @@ def log_outcome(trial_id, outcome, resistance=0.5, influenced=False):
             except Exception as _to_e:
                 print(f"[Intercept] Third-order want failed: {_to_e}", file=__import__("sys").stderr)
         # Promote after 2+ attempts
-        if t.get("attempt_count", 0) >= 2 and t.get("status") == "active" and not t.get("promoted"):
+        # A trial with no readable evidence time does not promote (or change status) until it has one: stamping
+        # its entry with now would make old evidence look current (review 2026-11-14).
+        if (t.get("attempt_count", 0) >= 2 and t.get("status") == "active" and not t.get("promoted")
+                and _newest_attempt_at(t) is not None):
             # A permanent trial promotes once and stays active (audit, 18 October); any other leaves the list.
             if t.get("id", "").startswith("permanent_"):
                 t["promoted"] = datetime.now().isoformat()
@@ -374,25 +421,44 @@ def log_outcome(trial_id, outcome, resistance=0.5, influenced=False):
             try:
                 import sys as _csm_sys, os as _csm_os; _csm_sys.path.insert(0, _csm_os.path.expanduser("~/.vintos/workspace/scripts"))
                 from causal_self_model import add_entry
+                _seen = _newest_attempt_at(t)
                 add_entry(
                     trigger=t.get("trigger", ""),
                     tendency=t.get("pattern_description", ""),
                     confidence=min(0.9, 0.3 + t.get("attempt_count", 0) * 0.1),
                     source="behavioral-intercept",
-                    entry_type="negative"
+                    entry_type="negative",
+                    occurrence_id="bis:%s:%s" % (trial_id, datetime.now().date().isoformat()),
+                    seen_at=_seen,   # the newest attempt, never the time the promotion ran
                 )
                 # (door 3 removed 2026-08-09 — BIS submits evidence via add_entry; the gate decides)
             except Exception as _csm_e:
                 print(f"[Intercept] causal-self-model wire failed: {_csm_e}", file=__import__("sys").stderr)
-            # Feed narrative identity
+            _feed_narrative()
+        elif (t.get("promoted") and t.get("id", "").startswith("permanent_") and outcome == "attempted"
+              and not influenced):
+            # A permanent trial keeps meeting its standard after it promoted; that is further evidence for the entry
+            # it promoted into. Nothing carried it there, so the entry stayed at its promotion level (0.50) however
+            # often he did it (2026-11-14). One occurrence per trial per day; an attempt made under a live ban note
+            # is compliance, not evidence of change, and does not count.
             try:
-                import subprocess as _ni_sub
-                _ni_sub.Popen(
-                    ["python3", os.path.join(SCRIPTS, "narrative-identity.py"), "feed"],
-                    stdout=open("/tmp/narrative-identity.log", "a"),
-                    stderr=open("/tmp/narrative-identity.log", "a")
+                from causal_self_model import add_entry
+                # The confidence only applies if the entry has gone (trimmed) and is added again: it starts at the
+                # promotion level, not at 0.3 + 0.1 per attempt, which counts ban-note attempts and could start it
+                # at 0.9, above anything reinforcement can reach (review 2026-11-14).
+                _r = add_entry(
+                    trigger=t.get("trigger", ""),
+                    tendency=t.get("pattern_description", ""),
+                    confidence=0.5,
+                    source="behavioral-intercept",
+                    entry_type="negative",
+                    seen_at=t["outcomes"][-1]["timestamp"],   # the attempt just recorded
+                    occurrence_id="bis:%s:%s" % (trial_id, datetime.now().date().isoformat()),
                 )
-            except: pass
+                if _r in ("reinforced", "added"):
+                    _feed_narrative()
+            except Exception as _csm_e:
+                print(f"[Intercept] causal-self-model reinforce failed: {_csm_e}", file=__import__("sys").stderr)
         break
     save_ledger(ledger)
     # Update causality tally and hypothesis confidence

@@ -1,0 +1,21 @@
+{
+ "result": {
+  "n_fit": 39,
+  "n_eval": 39,
+  "eval_first": "2026-10-10",
+  "eval_last": "2026-10-26",
+  "monotonicity_conf_vs_err": -0.368,
+  "CONTROL_dsim_vs_err": -0.77,
+  "bins_low_mid_high_conf_err": [
+   0.4491,
+   0.4199,
+   0.3773
+  ],
+  "old_relative_logvar_mono_eval": 0.357,
+  "mrr_eval_live_forecast": 0.5363,
+  "forecast_embedding_changed": false,
+  "pass": false
+ },
+ "verdict": "HOLD: does not beat decode similarity by 0.10; nothing installed",
+ "model_checkpoint": "7dce07957399836d35cf55d0b98c45a9d4e3f9f4631e69514933c5780b8a0eb7"
+}
