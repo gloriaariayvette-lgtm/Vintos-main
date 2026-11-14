@@ -1,0 +1,32 @@
+{
+  "id": "jepa-ttt-replay-2026-11-14",
+  "registered": "2026-11-14",
+  "written_before": "any test-time-training variant was run or scored; only the frozen live checkpoint's full-sample numbers (already published as R1) were recomputed to check the replay matches R1",
+  "question": "Does test-time training (a small update on each realized Gloria turn, encoder frozen) fix the Gloria head's confidence without hurting its ranking?",
+  "data": {
+    "population": "R1's: admitted exchanges (jepa_self_head.exchanges) with her words, after the live checkpoint's training time (21 September 04:15) and before 31 October 00:00 local; one row per distinct Gloria text; input the six turns before the exchange, legacy schema; one-day rule as in build_pairs; every window ends on his reply",
+    "sealed_week": "nothing on or after 31 October is encoded, ranked or used as a candidate; the ranking pool and the joiner see only exchanges before the cutoff",
+    "n": 77,
+    "replica_check_frozen_full_sample": {"n": 77, "mrr": 0.518, "mono": 0.223, "control_dsim": -0.545, "r1_published": {"n": 78, "mrr": 0.513, "mono": 0.236, "control_dsim": -0.535}},
+    "split": "chronological: the first 38 rows (selection half) and the last 39 rows (scoring half). Online state carries over: a variant enters the scoring half with whatever it learned in the selection half."
+  },
+  "protocol": "each step: forecast (embedding + confidence), then reveal the target, then (TTT variants) update. Forecasts are always made before the update that uses their own target.",
+  "scored_by": "jepa_ranking_audit.evaluate/_summary (ranking, controls: context-copy, voice centroid, recent turn) and jepa_calibration_audit.joined_rows/spear/bins (confidence vs cosine error, control decode similarity), unchanged",
+  "confidence": "-logvar of the Gloria row (the head's own confidence), except F3b",
+  "variants": {
+    "F0": {"what": "frozen live checkpoint (baseline)"},
+    "F1": {"what": "TTT readout only: Gloria head layer + Gloria logvar row; trunk and encoder frozen; one Adam step on the newest outcome; grad clip 1.0", "grid": {"lr": [1e-05, 0.0001, 0.001]}},
+    "F2": {"what": "TTT readout with a replay buffer (latest 16 outcomes) and an EWC anchor to the live weights (diagonal Fisher from the pre-checkpoint Gloria pairs, mean-normalized)", "grid": {"lr": [0.0001, 0.001], "lambda": [0.1, 1.0, 10.0]}},
+    "F3a": {"what": "confidence head updated online: Gloria logvar row only, replay buffer 16, prediction untouched", "grid": {"lr": [0.0001, 0.001, 0.01]}},
+    "F3b": {"what": "confidence head updated online: ridge on forecast-time features (-logvar, decode similarity, novelty) refit after each outcome on all past outcomes; -logvar until 8 outcomes exist", "grid": {"ridge_lambda": [0.1, 1.0, 10.0]}}
+  },
+  "selection_rule": "on the selection half only, per family: eligible if all predictions finite, max relative weight change <= 0.05, and MRR >= F0's MRR - 0.02; choose the smallest (monotonicity - control); ties go to the first in grid order. One configuration per family goes to the scoring half, scored once.",
+  "pass_bar_scoring_half": {
+    "ranking": "MRR >= F0's MRR on the same turns",
+    "confidence": "Spearman(confidence, cosine error) <= -0.20 AND <= control (decode similarity) - 0.10",
+    "drift": "max relative change of the updated weights <= 0.05; all forecasts finite",
+    "collapse": "mean pairwise cosine of scoring-half predictions <= F0's + 0.05",
+    "cost": "reported: median milliseconds per update on CPU (bar <= 250)"
+  },
+  "decision": "a variant passes only if every bar holds. If one passes, it is implemented as an optional off-by-default online-update mode (anchored, rollback, update log). If none passes, nothing is implemented and the reading is reported."
+}
