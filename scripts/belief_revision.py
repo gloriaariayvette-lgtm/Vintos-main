@@ -29,8 +29,10 @@ items and inference steps the wrong belief was built from. This module does, tru
   6. Only what depends on a revised source is recomputed: a belief every one of whose justifications passes through
      a revised source. A belief with an independent sound justification, and everything unrelated, is untouched.
 
-SHADOW MODE ONLY. This module has no code that writes his stores. `shadow()` appends what it WOULD revise, as ids,
-kinds and numbers - never text - to a shadow log. Turning on live revision is Gloria's decision.
+This module has no code that writes his stores. `shadow()` appends what it WOULD revise, as ids, kinds and numbers -
+never text - to a shadow log. Check questions are answered by belief_revision_answer (his records, then the local
+checker; Gloria's option (b), 14 November 2026), and the only writer is belief_revision_live, which does nothing
+unless BELIEF_REVISION=live is in vintos.env.
 
     python3 belief_revision.py --memory DIR [--log PATH | --no-log]    # dry run over the stores in DIR (a copy)
 """
@@ -574,6 +576,7 @@ def localize(g, ask, budget=12, per_conflict=3, accuracy=0.9, at=None):
     contradiction, `budget` in all), adding each answer as evidence: True (it holds) is a passing check, False a
     contradiction from the check, None (cannot tell) adds nothing. Returns the final plan and the checks asked."""
     asked = []
+    answers = []
     spent = {}
     verified = {}
     p = plan(g, at=at)
@@ -605,14 +608,15 @@ def localize(g, ask, budget=12, per_conflict=3, accuracy=0.9, at=None):
                     break
             if not node:
                 break
-        ans = ask(node)
+        ans, acc, prov = _answer(ask(node), accuracy)
         asked.append((node, ans))
+        answers.append({"node": node, "answer": ans, "accuracy": acc, "provenance": prov})
         if ans is True:
-            g.confirm(node, accuracy=accuracy)
+            g.confirm(node, accuracy=acc)
             g.confirmations[-1]["check"] = True
         elif ans is False:
             k = sum(1 for n, _ in asked if n == node)        # a second opinion is a second, separate check
-            w = g.source("check:%s:%d" % (node, k), "observation", reliability=accuracy)
+            w = g.source("check:%s:%d" % (node, k), "observation", reliability=acc)
             g.conflict("check:%s:%d" % (node, k), [node, w], kind="check")
         p = plan(g, at=at)
     # no single check answer may change a source on its own: a revision that would not survive dropping any one
@@ -622,8 +626,27 @@ def localize(g, ask, budget=12, per_conflict=3, accuracy=0.9, at=None):
     if hold:
         p = plan(g, at=at, hold=hold)
     p["asked"] = [[n, a] for n, a in asked]
+    p["answers"] = answers
     p["held"] = sorted(hold)
     return p
+
+
+def _answer(raw, accuracy):
+    """An answer as (True | False | None, the accuracy to weigh it with, its provenance). `ask` may return a bare
+    True / False / None (weighed with `accuracy`), or {"answer", "accuracy", "provenance"} from an answerer that
+    knows how reliable each answer is (belief_revision_answer: a record, or the checker's measured accuracy)."""
+    prov = None
+    if isinstance(raw, dict):
+        a, prov = raw.get("answer"), raw.get("provenance")
+        try:
+            acc = float(raw.get("accuracy") or accuracy)
+        except (TypeError, ValueError):
+            acc = accuracy
+    else:
+        a, acc = raw, accuracy
+    if a is not True and a is not False:
+        return None, float(accuracy), prov
+    return a, min(max(float(acc), 0.5), 0.995), prov
 
 
 def fragile(g, node):
