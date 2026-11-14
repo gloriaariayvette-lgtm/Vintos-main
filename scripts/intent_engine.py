@@ -1156,6 +1156,93 @@ def _later_moves(row, until):
     return n
 
 
+# ---- her receptivity to the move, apart from her axis (14 November) ------------------------------------------------
+# Her axis asks whether one specific hoped-for difference showed in her next reply inside 24 hours. Her receptivity
+# (receptivity.py) asks whether she responded to what his reply asked or offered, in any form, inside a fair window of
+# 48 hours - on every delivered move her own reply reaches, declared Gloria axis or not. A move she answered in a
+# later turn is credited by that later move's record (`credits`), never by writing to the earlier row.
+RECEPTIVE_JUDGE = "rubric_receptive_v1"
+
+
+def _rc():
+    """receptivity.py, beside this file."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    if here not in sys.path:
+        sys.path.insert(0, here)
+    import receptivity
+    return receptivity
+
+
+def _receptive_judge(packet):
+    import gloria_judge
+    return gloria_judge.judge_receptive(packet)
+
+
+def _open_earlier_ask(row, came):
+    """The latest earlier delivered move inside the window whose record says ignored or partly and that no later
+    record has credited yet, or None."""
+    RC = _rc()
+    led = _load("intent-ledger.json") or []
+    cmap = RC.credited(led)
+    opened = _stamp(row.get("delivered_at")) or _stamp(row.get("timestamp"))
+    best = None
+    for other in led:
+        if not isinstance(other, dict) or other.get("status") != "delivered" or _same_row(other, row):
+            continue
+        t = _stamp(other.get("delivered_at"))
+        if t is None or opened is None or came is None or t >= opened or came - t > RC.RESPONSE_WINDOW_HOURS * 3600:
+            continue
+        if RC.label_of(other) not in ("ignored", "partly") or RC.row_key(other) in cmap or not other.get("reply"):
+            continue
+        if best is None or t > best[0]:
+            best = (t, other)
+    return best[1] if best else None
+
+
+def _judge_receptive(row, reply, hers, source=None, now=None):
+    """Her receptivity to this move: a record of fixed labels and counts, never words - or None when nothing of hers
+    came inside the window (silence is absence, never a refusal)."""
+    RC = _rc()
+    opened = _stamp(row.get("delivered_at")) or _stamp(row.get("timestamp"))
+    came = _stamp(row.get("response_at")) or now or datetime.now().timestamp()
+    if opened is None or came - opened > RC.RESPONSE_WINDOW_HOURS * 3600:
+        return None
+    words, media = _her_words(hers, source)
+    if not words and not media:
+        return None
+    earlier = _open_earlier_ask(row, came)
+    packet = {"his_reply": str(reply), "her_reply": words, "her_later_message": "",
+              "his_earlier_open_ask": str(earlier.get("reply") or "") if earlier else "",
+              "facts": {"her_reply_has_media_unseen": bool(media), "source": str(source or "text"),
+                        "later_moves_of_his_before_her_reply": _later_moves(row, came)}}
+    try:
+        got = _receptive_judge(packet)
+    except Exception as err:
+        got = {"label": None, "status": "error", "detail": type(err).__name__}
+    got = got if isinstance(got, dict) else {}
+    gap = (came - opened) / 3600
+    rec = RC.record(got.get("label"), RECEPTIVE_JUDGE, gap_hours=gap,
+                    credits=RC.row_key(earlier) if earlier is not None and got.get("answers_earlier") is True else None,
+                    status=str(got.get("status") or ""), model=got.get("model"))
+    if rec is None:      # no clean answer: kept for the audit, never counted
+        rec = {"label": None, "judge": RECEPTIVE_JUDGE, "at": datetime.now().isoformat(),
+               "status": str(got.get("status") or "error"), "detail": str(got.get("detail") or "")[:40]}
+    return rec
+
+
+def _note_receptive(row, reply, hers, source=None):
+    """Once per row; a failure here never stops the row's own resolution."""
+    if "receptive" in row or not row.get("delivered_at") or not reply:
+        return
+    try:
+        rec = _judge_receptive(row, reply, hers, source)
+    except Exception as err:
+        _turn_state_fault("resolve_previous.receptive", "error", err)
+        return
+    if rec is not None:
+        row["receptive"] = rec
+
+
 def _judge_gloria(row, tgt, ax, reply, hers, source=None, now=None):
     """Her axis on one delivered row: a record of fixed codes and counts, never words."""
     declared = ax.get("observation_window") or None
@@ -1402,6 +1489,10 @@ def _resolve_row(last, recent_text="", source=None):
                        "detail": {"axis": "field/gloria/self" if isinstance(r, dict) else "single"}})
         else:
             last.pop("response_text", None); last.pop("response_source", None); last.pop("response_at", None)   # the device event was not her reply: that is still to come
+        if _late and not _none:
+            # her words came after her axis's 24 hours: no verdict on her axis, but inside the fair window her
+            # response to the move still counts for her receptivity (14 November)
+            _note_receptive(last, reply, _hers, source)
         _land(last, _rev, fx)
         return
     if not isinstance(r, dict):
@@ -1467,6 +1558,7 @@ def _resolve_row(last, recent_text="", source=None):
     else: last.pop("held_reason", None)
     last["realized"] = r
     fx.append({"dest": "outcome", "verdict": dict(r), "detail": {"axis": "field/gloria/self"}})
+    _note_receptive(last, reply, recent_text, source)      # her receptivity to the move, whatever her axis says
     _land(last, _rev, fx)
 
 def record_pending(target, source="conversation", event_id=None, claim_once=False):
@@ -1647,7 +1739,7 @@ def _persist_resolution(row, read_rev=0, effects=()):
             else:
                 # Preserve deliveries/selections appended while the judge was running.
                 current.update({key: copy.deepcopy(row[key]) for key in ("realized", "held_attempts", "held_reason", "skipped_observations",
-                                                                         "gloria_judge", "adherence") if key in row})
+                                                                         "gloria_judge", "adherence", "receptive") if key in row})
                 if "held_reason" not in row: current.pop("held_reason", None)
                 if "skipped_observations" in row and "response_text" not in row:
                     current.pop("response_text", None); current.pop("response_source", None); current.pop("response_at", None)   # so her next reply is stored

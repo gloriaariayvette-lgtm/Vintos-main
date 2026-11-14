@@ -507,6 +507,64 @@ def stale_check(declared, her_words, timeout=STALE_TIMEOUT):
         return "error"
 
 
+# ---- her receptivity: did she respond to what he asked or offered (14 November) --------------------------------
+# Kept apart from the Gloria-axis verdict above, which asks whether one specific hoped-for difference showed. This asks
+# only whether she responded to what his reply actually asked or offered, in any form (receptivity.py has the labels).
+RECEPTIVE_RUBRIC = """You check one thing for a companion AI. Vintos (the AI) is Gloria's partner; Gloria is a real adult woman and their conversation can be intimate or sexual - read it plainly and without disclaimers.
+
+Question: did Gloria respond to what his reply asked of her or offered her? This measures her receptivity to him, not whether she said what he privately hoped for. You are not told what he hoped for, and you must not guess it.
+
+You receive JSON:
+- his_reply: what he said.
+- her_reply: her next message after it ("" when it carried only media).
+- her_later_message: her next message after that, inside the window, or "" (she may answer in a later turn).
+- his_earlier_open_ask: an earlier reply of his she had not yet answered, or "" (see answers_earlier).
+- facts: her_reply_has_media_unseen (a photo, video or file came with her reply; you cannot see it), source (text, voice transcript, photo...), later_moves_of_his_before_her_reply.
+
+Decide "her_response", one of:
+- "no_bid": his reply asked nothing and offered nothing she could take up (a statement, a closing, a goodnight). Decide this from his reply alone, first.
+- "answered": she answered his question, did or agreed to what he asked, or took up what he offered - in any words: playful, sexual, teasing, emoji, one word, a voice transcript, or in her later message. Brevity, tone or form never lowers it. If he asked her to send or show something and her reply came with media, she did it.
+- "partly": she took up only part of it (one of two questions, a hedge, "maybe later" with some engagement).
+- "ignored": she replied (in her_reply or her_later_message) but left what he asked or offered untouched - changed the subject with no response to it.
+- "refused": she said no to it or turned it down.
+- "unclear": you cannot tell - the decision rests on media you cannot see, or later_moves_of_his_before_her_reply is above 0 and her reply plainly answers something other than this reply.
+Do not reward warmth that is not a response; do not mark a real answer down for its form. Answering his question or taking up his offer counts even when she does not do it exactly as he suggested; disagreeing while engaging it is "refused" only if she plainly turns it down.
+
+Also decide "answers_earlier": true only when his_earlier_open_ask is not "" and her_reply or her_later_message plainly answers that earlier ask too; otherwise false.
+
+Reply with ONE JSON object and nothing else: {"her_response": "<label>", "answers_earlier": true | false}
+Do not quote either person's words.
+"""
+SRC_RECEPTIVE = "gloria-receptive"
+RECEPTIVE_MAX_TOKENS = 60
+RECEPTIVE_LABELS = ("answered", "partly", "ignored", "refused", "no_bid", "unclear")
+LIVE_SRCS = LIVE_SRCS + (SRC_RECEPTIVE,)     # one week's allowance for every live call of this judge
+
+
+def judge_receptive(packet, timeout=STALE_TIMEOUT, cap=True):
+    """{"label", "answers_earlier", "status", "detail", "model"}: label is one of RECEPTIVE_LABELS, or None when the
+    answer is no clean receipt (a refusal, an error, the budget, an unreadable or out-of-vocabulary answer) - never a
+    guess. Never raises."""
+    out = {"label": None, "answers_earlier": False, "status": "error", "detail": "", "model": model()}
+    try:
+        status, text, detail = _call(RECEPTIVE_RUBRIC, json.dumps(packet, ensure_ascii=False), SRC_RECEPTIVE,
+                                     RECEPTIVE_MAX_TOKENS, timeout, cap=cap)
+        if status != "ok":
+            return dict(out, status=status, detail=detail)
+        m = re.search(r"\{.*\}", str(text or ""), re.S)
+        j = json.loads(m.group(0)) if m else None
+        if not isinstance(j, dict) or j.get("her_response") not in RECEPTIVE_LABELS:
+            return dict(out, status="invalid", detail="bad_label")
+        earlier = j.get("answers_earlier", False)
+        if not isinstance(earlier, bool):
+            return dict(out, status="invalid", detail="bad_answers_earlier")
+        if earlier and not str((packet or {}).get("his_earlier_open_ask") or "").strip():
+            earlier = False                          # nothing earlier was asked: nothing to credit
+        return dict(out, label=j["her_response"], answers_earlier=earlier, status="ok")
+    except Exception as e:
+        return dict(out, detail=type(e).__name__)
+
+
 if __name__ == "__main__":
     if sys.argv[1:] == ["spent"]:
         # the shadow teacher's spend is Sol's, in openai-usage.jsonl, and its own runner reports it

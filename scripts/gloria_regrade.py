@@ -151,9 +151,10 @@ def apply(led, changes, at):
 
 
 def receptivity(led, now):
+    # the Gloria-axis landing rate this re-grade moves; her receptivity is read apart since 14 November
     g = priority_vector._axis_history(now, led)["gloria"]
     return {"yes": g["YES"], "partial": g["PARTIAL"], "no": g["NO"], "verdicts": g["n"],
-            "receptivity": priority_vector._receptivity({"gloria": g})}
+            "landing_rate": priority_vector._landing_rate({"gloria": g})}
 
 
 def backup_path(ledger):
