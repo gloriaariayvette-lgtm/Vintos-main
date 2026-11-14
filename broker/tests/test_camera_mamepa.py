@@ -279,14 +279,10 @@ check('by default the answer path is untouched', qcall(svc.stream.calls)[2] is N
       and qcall(svc.stream.calls)[0] == [float(t) for t in Tok().encode(' q<end>')])
 svc.stream.calls = []
 svc.dispatch('/video/ask', {'session_id': sid, 'question': 'q', 'max_tokens': 2, 'recall': True})
-note, view = mam.summary()['text'], mam.view()
-enc = [float(t) for t in Tok().encode(' ' + note)]
-qi = next(i for i, c in enumerate(svc.stream.calls) if c[0][:len(enc)] == enc)
-win = svc.active[1]
-all_frames = set(int(p) for p in win.positions[np.isin(win.owner, [i for i, x in win.segments.items() if x['kind'] == 'frame'])])
-check('with recall the summary is the note and the present is read again from its kept frames, without the window',
-      len(view) >= 1 and sum(1 for c in svc.stream.calls[:qi] if c[1]) == len(view)
-      and all(c[2] == all_frames for c in svc.stream.calls))
+note = mam.summary()['text']
+check('with recall the summary is the note and the onset is the view',
+      qcall(svc.stream.calls)[0][:len(note)] == [float(t) for t in Tok().encode(' ' + note)][:len(note)]
+      and (qcall(svc.stream.calls)[2] is not None) == (mam.onset() > 0))
 check('the summary is readable on the inference thread', svc.dispatch_read(mam.summary)['segments'] >= 1)
 svc.dispatch('/video/abort', {'session_id': sid})
 check('nothing was written outside the scratch checkpoints', sorted(p.name for p in tmp.iterdir() if p.is_file())
@@ -420,7 +416,5 @@ check('the summary says what moved in the present and in the earlier scene, nami
       'Since 00:02, something in view moved down.' in text and 'In the earlier scene 00:00-00:01, something in view moved left.' in text
       and 'square' not in text)
 check('the recall note says how the earlier scene moved', 'in that earlier scene something in view moved left' in mo.recall()['note'])
-check('the view is the kept frames of the present happening, oldest first',
-      [f[1] for f in mo.view()] == [('B', k) for k in range(6)] and [f[1] for f in mo.view(3)][-1] == ('B', 5))
 check('motion records survive a dump', json.loads(json.dumps(mo.dump()))['segments'][-1]['motion']['moving'] == 5)
 print('all camera mamepa checks passed')

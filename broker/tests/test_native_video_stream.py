@@ -521,5 +521,30 @@ loop.frame(frame(10), at=0.)
 toks = loop.ask('what is moving?', max_tokens=24)['tokens']
 runs = [tuple(toks[i:i + 4]) for i in range(len(toks) - 3)]
 check('a greedy answer that would loop does not repeat any four-token run', len(runs) == len(set(runs)) and len(toks) == 24)
+g = guard_repeats(np.zeros(12), [1, 2, 3, 4, 9, 2, 3], keys=['the', 'blue', 'square', 'is', 'the', 'blue', 'square'])
+check('runs are compared by their keys, so a case or space variant cannot restart a loop', g[4] == -np.inf)
+
+
+class Channeler(Backend):
+    """Would open a second thinking channel first (token 7 stands for <|channel>)."""
+    def forward(self, embeds, cache, vision=False):
+        Backend.forward(self, embeds, cache, vision)
+        scores = np.full(16, -5.); scores[7] = 9.; scores[0] = 1. if len(cache) % 2 else -9.; scores[3] = 2.
+        return scores
+
+
+class ChannelTok(Tokenizer):
+    unk_token_id = 99
+    def convert_tokens_to_ids(self, tokens):
+        return [{'<|channel>': 7, '<channel|>': 8}.get(t, 99) for t in tokens]
+
+
+class ChannelMind(Mind):
+    tokenizer = ChannelTok()
+
+
+ch = LiveSession(ChannelMind(), Channeler(), clock=lambda: 0.)
+ch.frame(frame(10), at=0.)
+check('an answer never opens another thinking channel', ch.blocked == [7, 8] and 7 not in ch.ask('q', max_tokens=3)['tokens'])
 
 check('nothing but the test fixtures was written', not any(memory_dir.iterdir()))

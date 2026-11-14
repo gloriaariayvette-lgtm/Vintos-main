@@ -217,24 +217,19 @@ class VideoService:
                     raise BlockingIOError("An answer is already being decoded")
                 recent = body.get("recent_seconds", RECENT_SECONDS_DEFAULT)
                 view_from = note = recalled = None
-                fresh = False
                 if self.mamepa is not None and body.get("recall", RECALL_DEFAULT):
                     memory = self.mamepa.summary()
                     note = memory.get("text")
                     if body.get("recall_view", True):
-                        # the present happening, read again from its kept frames without what came before it;
-                        # the onset mask is the fallback when no frames were kept
-                        recalled = self.mamepa.view() or None
-                        fresh = bool(recalled)
-                        view_from = None if recalled else memory.get("onset")
+                        view_from = memory.get("onset")
                 if self.mamepa is not None and body.get("recall_earlier"):
                     # an earlier scene, shown again; the current view is not narrowed for such a question
                     earlier = self.mamepa.recall()
                     if earlier:
-                        recalled, note, view_from, fresh = earlier["frames"], earlier["note"], None, False
+                        recalled, note, view_from = earlier["frames"], earlier["note"], None
                 steps = session.ask_steps(str(body["question"]), min(int(body.get("max_tokens", 128)), LIVE_ANSWER_TOKENS),
                                           float(body.get("temperature", 0)), None,
-                                          None if recent is None else float(recent), view_from, note, recalled, fresh)
+                                          None if recent is None else float(recent), view_from, note, recalled)
                 return _Answer(steps)   # decoded token by token between arrivals; the reply waits for the end
             elif path == "/video/finish":
                 window = session.window()

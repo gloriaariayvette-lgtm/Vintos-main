@@ -45,12 +45,14 @@ ANSWER_RESERVE = 640         # question plus answer budget kept free at all time
 PREFIX, QUERY = -1, -2       # owners of the open-turn prefix and of a rolled-back question/answer
 
 
-def guard_repeats(scores, history, penalty=REPEAT_PENALTY, ngram=NO_REPEAT_NGRAM):
+def guard_repeats(scores, history, keys=None, penalty=REPEAT_PENALTY, ngram=NO_REPEAT_NGRAM):
     """Keep an answer from looping on itself ("the oration of the oration of ..."): every token already in this
     answer is penalised (HF-style: positive scores divided, negative multiplied), and a token that would repeat an
-    ``ngram``-token run already in the answer is ruled out. Only the answer's own tokens count, so the first token
-    (and with it every one-word answer) is never changed."""
+    ``ngram``-token run already in the answer is ruled out. ``keys`` (one per history token, e.g. its text lowercased
+    without spaces) let "The blue square" and " the blue square" count as the same run. Only the answer's own tokens
+    count, so the first token (and with it every one-word answer) is never changed."""
     history = list(history)
+    keys = list(keys) if keys is not None else history
     if not history:
         return scores
     seen = np.unique(np.asarray(history, dtype=np.int64))
@@ -58,9 +60,9 @@ def guard_repeats(scores, history, penalty=REPEAT_PENALTY, ngram=NO_REPEAT_NGRAM
     s = scores[seen]
     scores[seen] = np.where(s > 0, s / penalty, s * penalty)
     if ngram > 1 and len(history) >= ngram - 1:
-        tail = tuple(history[-(ngram - 1):])
+        tail = tuple(keys[-(ngram - 1):])
         for i in range(len(history) - ngram + 1):
-            if tuple(history[i:i + ngram - 1]) == tail:
+            if tuple(keys[i:i + ngram - 1]) == tail:
                 scores[history[i + ngram - 1]] = -np.inf
     return scores
 
@@ -263,6 +265,13 @@ class LiveSession:
         left, self.closing = prompt.split(STREAM_MARKER)
         tok = self.tokenizer
         self.boi, self.eoi = self._ids(tok.boi_token), self._ids(tok.eoi_token)
+        # The prompt already holds the empty thinking block (enable_thinking=False); an answer never opens another
+        # channel or turn (it showed as a leading "thought" in live answers).
+        convert = getattr(tok, "convert_tokens_to_ids", None)
+        unk = getattr(tok, "unk_token_id", None)
+        self.blocked = sorted({i for i in (convert(["<|channel>", "<channel|>", "<|turn>"]) if convert else [])
+                               if isinstance(i, int) and i >= 0 and i != unk})
+        self._keys = {}
         self.boa, self.eoa = self._ids(getattr(tok, "boa_token", "<|audio>")), self._ids(getattr(tok, "eoa_token", "<audio|>"))
         self.cache = stream.new_cache()
         self.next_pos = 0              # absolute position of the next committed token (rolled-back questions excluded)
@@ -485,10 +494,10 @@ class LiveSession:
         return [dict({k: v for k, v in s.items() if k != "digest"}, segment=i) for i, s in sorted(self.segments.items())]
 
     def ask(self, question, max_tokens=128, temperature=0, on_text=None, recent_seconds=None, view_from=None,
-            note=None, recall_frames=None, fresh=False):
+            note=None, recall_frames=None):
         """Answer from the retained window, then roll the question and answer back out of the cache."""
         steps = self.ask_steps(question, max_tokens, temperature, on_text, recent_seconds, view_from, note,
-                               recall_frames, fresh)
+                               recall_frames)
         while True:
             try:
                 next(steps)
@@ -496,7 +505,7 @@ class LiveSession:
                 return done.value
 
     def ask_steps(self, question, max_tokens=128, temperature=0, on_text=None, recent_seconds=None, view_from=None,
-                  note=None, recall_frames=None, fresh=False):
+                  note=None, recall_frames=None):
         """The same answer one token per step, so a caller can take in arrivals between tokens: while it runs,
         frames are encoded and audio held, and both enter the timeline right after the answer is rolled back.
         ``recent_seconds`` limits the answer to frames from the last N seconds before the question (older
@@ -506,9 +515,7 @@ class LiveSession:
         ``recall_frames`` is a list of (stream seconds, projected embeddings) kept by the camera mamepa from an
         earlier scene that has left the window; each is shown again as a stamped image span just before the note.
         Recalled frames are always read with the retained frames masked, so what is shown again is seen as it was,
-        not through the scene that followed it. ``fresh`` masks every retained frame for the question and answer
-        too (the recalled frames are then the whole view; e.g. the camera mamepa's kept frames of the present
-        happening, read without what came before them); an empty question then repeats the session instruction.
+        not through the scene that followed it.
         All of these are rolled back with the answer."""
         if self.closed:
             raise ValueError("Session is closed")
@@ -524,8 +531,6 @@ class LiveSession:
         self._text(close_ids, close_owner)
         mark = self.stream.length(self.cache)
         question = str(question).strip()
-        if fresh and not question:
-            question = self.instruction
         note = str(note or "").strip()
         question_ids = self._ids((" " + note if note else "") + (" " + question if question else "") + self.closing)
         if len(question_ids) + int(max_tokens) > ANSWER_RESERVE:
@@ -547,8 +552,6 @@ class LiveSession:
             hidden = set(int(p) for p in self.positions[np.isin(self.owner, old)])
         window_frames = [i for i, s in self.segments.items() if s["kind"] == "frame"]
         everything = set(int(p) for p in self.positions[np.isin(self.owner, window_frames)])
-        if fresh:
-            hidden = everything or None
         recall_hidden = (everything | (hidden or set())) or None
         tokens, finish_reason, first = [], "length", None
         self.answering = True
@@ -614,10 +617,18 @@ class LiveSession:
             self._commit_deferred(item)
         return len(items)
 
+    def _key(self, token):
+        key = self._keys.get(token)
+        if key is None:
+            key = self._keys[token] = self.tokenizer.decode([token], skip_special_tokens=False).strip().lower() or token
+        return key
+
     def _choose(self, temperature, history=()):
         scores = self.scores.copy()
         scores[self.mind.suppress] = -np.inf
-        scores = guard_repeats(scores, history)
+        if self.blocked:
+            scores[self.blocked] = -np.inf
+        scores = guard_repeats(scores, history, [self._key(t) for t in history])
         if not temperature:
             return int(np.argmax(scores))
         scaled = scores.astype(np.float64) / temperature

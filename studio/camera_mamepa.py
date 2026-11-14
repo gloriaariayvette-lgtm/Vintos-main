@@ -377,19 +377,6 @@ class Mamepa:
                         'segment': {k: seg[k] for k in ('start', 'end', 'frames')}}
         return None
 
-    def view(self, max_frames=KEEP_PER_SEGMENT):
-        """Kept frames of the present happening (from the onset on), oldest first, at most ``max_frames`` (evenly
-        spaced, the newest always included), so a question can see them again without what came before."""
-        onset = self.onset()
-        if onset is None:
-            return []
-        sids = {s.get('sid') for s in self.current() if s['start'] >= onset - 1e-6}
-        frames = sorted(((k['at'], k['tokens']) for k in self.kept if k['sid'] in sids and k['at'] >= onset - 1e-6),
-                        key=lambda f: f[0])
-        if len(frames) > max_frames:
-            pick = np.unique(np.linspace(0, len(frames) - 1, max_frames).round().astype(int))
-            frames = [frames[i] for i in pick]
-        return frames
 
     def _decay(self, dt):
         """Pure passage of time with nothing seen: levels hold, the realized-error memory fades."""
