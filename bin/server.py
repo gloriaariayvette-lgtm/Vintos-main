@@ -400,8 +400,10 @@ def _durable_about_her(n=3):
         return ""
 
 def _self_model(budget=1200):
-    """SELF-MODEL.md with the FOUNDATION block whole first, then the rest excerpted to the budget
-    (scripts/self_model_read.py; room decision 2026-09-04). Falls back to a plain head read."""
+    """SELF-MODEL.md: the FOUNDATION block first, then his newest dated section, within the budget
+    (scripts/self_model_read.py; room decision 2026-09-04). When the base would crowd his section out
+    entirely, the base is compacted to its paragraphs' first sentences (2026-11-14). Falls back to a plain
+    head read."""
     try:
         import sys as _sms; _smp = os.path.join(WORKSPACE, "scripts")
         if _smp not in _sms.path: _sms.path.insert(0, _smp)

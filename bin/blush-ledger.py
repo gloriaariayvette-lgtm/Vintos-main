@@ -321,9 +321,11 @@ def write_blush(
         # every entry from today, not the last 20: /api/chat now writes will_strain too (2026-11-14), and a busy
         # day can push the morning's entry for the same trial past a fixed window
         recent_strain = []
+        import re as _cre
         for e in reversed(entries):
-            if str(e.get("timestamp", ""))[:10] != today:
-                if str(e.get("timestamp", ""))[:10] < today:
+            day = str(e.get("timestamp", ""))[:10]
+            if day != today:
+                if _cre.match(r"^\d{4}-\d{2}-\d{2}$", day) and day < today:
                     break
                 continue
             if e.get("type") == blush_type and e.get("related_trial_id") == related_trial_id:

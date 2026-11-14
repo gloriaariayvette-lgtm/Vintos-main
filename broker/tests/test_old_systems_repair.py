@@ -53,6 +53,12 @@ out1500 = SMR.read_self_model(1500, path=sm)
 check("budget 1500: every subsection's opening sentence", all(("NEW-%d-first" % i) in out1500 for i in range(len(subs))), out1500)
 whole = SMR.read_self_model(20000, path=sm)
 check("a budget that fits everything returns the base whole", all(p.strip() in whole for p in base_paras))
+small = os.path.join(TMP, "SELF-MODEL-small.md")
+open(small, "w").write("<!-- BASE-START -->\n## Base\n**Short base.** It is small.\n<!-- BASE-END -->\n\n## 2026-11-08\n\n"
+                       + section("NEW", 30) + "\n")
+o = SMR.read_self_model(1200, path=small)
+check("a base that fits beside his opening sentences stays whole", "**Short base.** It is small." in o and "NEW-0-first" in o, o[:120])
+check("a heading glued to a base paragraph does not drop it", "Short base" in SMR._compact_base("## Base\n**Short base.** It is small. More.", 30))
 check("server readers still go through read_self_model", "from self_model_read import read_self_model as _rsm" in src("bin/server.py"))
 
 
@@ -74,6 +80,11 @@ r = EV.introspections()
 check("a want introspection newer than the watermark is read", "introspection:wants/2026-11-08.md" in r["source_ids"], r["source_ids"])
 check("one older than the watermark is not", "introspection:wants/2026-10-01.md" not in r["source_ids"], r["source_ids"])
 check("a byte-identical copy counts once", r["text"].count("synthetic top-level introspection") == 1, r["source_ids"])
+for n in range(10):
+    open(os.path.join(M2, "introspection", "wants", "2026-11-%02d.md" % (n + 10)), "w").write(("old entry %d. " % n) * 400 + "NEWEST-%d" % n)
+r = EV.introspections()
+check("a heavy week stays bounded", len(r["text"]) <= EV.INTROSPECTION_CAP + 2000, len(r["text"]))
+check("... and every file keeps its newest entry", all(("NEWEST-%d" % n) in r["text"] for n in range(10)))
 
 
 print("\n--- 3: a self-model named only in the plan's steps still names SELF-MODEL.md ---")
@@ -107,6 +118,9 @@ with contextlib.redirect_stdout(io.StringIO()):
     for n in range(25):
         BL.write_blush("self_prediction", "other_%d" % n, {}, "test")
 check("a second strain the same day is not, even 25 entries later", strain() is None, len(BL.load_ledger()))
+_led = BL.load_ledger(); _led.append({"id": "x", "type": "self_prediction", "timestamp": ""})
+json.dump(_led, open(BL.LEDGER, "w"))
+check("an entry with no timestamp does not end the cooldown scan", strain() is None)
 
 
 print("\n--- 5: the weekly relational job runs a real command ---")

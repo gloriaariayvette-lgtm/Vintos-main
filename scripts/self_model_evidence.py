@@ -74,6 +74,7 @@ INTROSPECTION_DIRS = ("introspection", "introspections")
 # memory/introspection/wants/YYYY-MM-DD.md. Only top-level *.md was globbed, so all of them (103 on
 # 2026-11-14) were skipped. Those subfolders are read too, under the same watermark/cutoff rules.
 INTROSPECTION_SUBDIRS = ("wants",)
+INTROSPECTION_CAP = 24000   # characters of introspection text in one weekly prompt
 
 
 def introspection_dirs():
@@ -130,6 +131,12 @@ def introspections():
             parts.append(open(f, errors="replace").read()); ids.append(_intro_id(f))
         except Exception as e:
             parts.append("[unreadable: %s]" % os.path.basename(f))
+    # The wants folder is high-volume (several ~1,000-token entries a day). Over the cap every file keeps its
+    # newest part (entries are appended), so the prompt stays bounded and no file is skipped outright - the
+    # watermark advances past all of them after a successful write.
+    if sum(len(p) for p in parts) > INTROSPECTION_CAP:
+        share = max(INTROSPECTION_CAP // len(parts), 400)
+        parts = [p if len(p) <= share else "[earlier part of this file left out]\n" + p[-share:] for p in parts]
     return _res("present", ids, "\n\n---\n\n".join(parts))
 
 def self_review():

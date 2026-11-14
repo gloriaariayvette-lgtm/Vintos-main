@@ -10,8 +10,8 @@ portrait; one that arrives whole can be revised on purpose.
 2026-11-14 (old-systems repair): the base is 1,258 characters, so at the 800/1200 budgets his own weekly
 section (written after the BASE by bin/self-model-update.sh) got 0 lines, and at 1500 only headings - from
 his side the self-model looked frozen at the base. When the whole file does not fit, the base stays whole
-if it is at most half the budget; otherwise it is given BASE_SHARE of it as the first sentence of each
-authored paragraph and spends the rest on his NEWEST dated section: the first sentence of every subsection first,
+if it fits beside the first sentence of every subsection of his section (or is at most half the budget);
+otherwise it is compacted to the first sentence of each authored paragraph and spends the rest on his NEWEST dated section: the first sentence of every subsection first,
 then further sentences while room remains. When everything fits, or there is no budget, nothing changes.
 """
 import os, re, json
@@ -121,7 +121,8 @@ def _compact_base(base, room):
         return base
     firsts = []
     for p in _paragraphs(base):
-        if p.lstrip().startswith("#"):
+        p = "\n".join(l for l in p.splitlines() if not l.lstrip().startswith("#")).strip()
+        if not p:
             continue
         firsts.append(_SENT.split(p.replace("\n", " "), 1)[0].strip())
     out = []
@@ -137,7 +138,7 @@ def _compact_base(base, room):
     return "\n".join(out)
 
 
-def _digest(date, body, room):
+def _digest(date, body, room, depth_limit=None):
     """His section in round-robin: every subsection's first sentence before any second one."""
     groups, title, buf = [], "", []
     for line in (body or "").splitlines():
@@ -164,6 +165,8 @@ def _digest(date, body, room):
     if len(head) > room:
         return ""
     depth = max((len(s) for _, s in sents), default=0)
+    if depth_limit is not None:
+        depth = min(depth, depth_limit)
     for k in range(depth):
         for gi, (t, ss) in enumerate(sents):
             if k >= len(ss):
@@ -202,8 +205,15 @@ def read_self_model(budget=1200, path=None):
         return _compact_base(base, budget) if base else ""
     if not base:
         return _digest(date, body, budget)
-    b = base if len(base) <= budget // 2 else _compact_base(base, int(budget * BASE_SHARE))
+    # the base stays whole when it fits beside every subsection's opening sentence (review, 2026-11-14)
+    minimum = len(_digest(date, body, 10 ** 9, depth_limit=1))
+    if len(base) + 2 + minimum <= budget or len(base) <= budget // 2:
+        b = base
+    else:
+        b = _compact_base(base, max(int(budget * BASE_SHARE), budget - 2 - minimum))
     tail = _digest(date, body, budget - len(b) - 2)
+    if not b:
+        return tail
     return b + ("\n\n" + tail if tail else "")
 
 if __name__ == "__main__":
