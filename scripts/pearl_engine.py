@@ -45,6 +45,16 @@ SCRIPTS = os.path.expanduser("~/.vintos/workspace/scripts")
 CANDIDATES_FILE = os.path.join(MEMORY, "candidate-pearls.json")
 PEARLS_DIR = os.path.join(MEMORY, "pearls")
 THRESHOLD = {"required_passes": 4, "max_failures": 1, "days_window": 7}
+# Pressure state: Tension above this. Gloria 2026-11-14 lowered it from 0.43 to 0.33 (his 99th
+# percentile was 0.33; only 14 of 4,000 samples ever crossed 0.43, so the gate could almost never open).
+PRESSURE_TENSION = 0.33
+
+# The ONE gate (Gloria 2026-11-14: "there was a way for pearls to slip in without the more strenuous
+# gate"). A pearl file is written only by form_pearl(), and form_pearl() seals only a candidate that
+# carries a gate receipt written by check_candidate() when verification was met. Every other organ
+# that wants something kept as a pearl proposes it with add_candidate() (stage 0) and it goes through
+# the same adoption, verification and review as everything else. broker/tests/test_pearl_single_gate.py
+# fails if another writer returns.
 
 
 def load_candidates():
@@ -135,6 +145,12 @@ def add_candidate(irritant, irritant_type, source, insight, declaration, adopted
 
 def is_pressure_state():
     """Read live pressure first; use the text snapshot only if live state is absent."""
+    return pressure_reading()[0]
+
+
+def pressure_reading():
+    """(in pressure state?, Tension read) - the Tension is recorded on each grade so the gate can be
+    measured later (on 2026-11-14 only 17 of the month's 105 grades could be matched to any reading)."""
     dims = {}
     try:
         from emoclaw_utils import get_state
@@ -150,9 +166,10 @@ def is_pressure_state():
                     name, value = line.split(":", 1)
                     dims[name.strip()] = float(value.strip().split()[0])
         except (OSError, ValueError):
-            return False
-    return (dims.get("Tension", 0) > 0.43 or
-            (dims.get("Arousal", 0) > 0.55 and dims.get("Groundedness", 1) < 0.54))
+            return False, None
+    return ((dims.get("Tension", 0) > PRESSURE_TENSION or
+             (dims.get("Arousal", 0) > 0.55 and dims.get("Groundedness", 1) < 0.54)),
+            dims.get("Tension"))
 
 
 @serialized("CANDIDATES_FILE")
@@ -166,7 +183,10 @@ def check_candidate(candidate_id, response_text, source="chat"):
     _sys.path.insert(0, SCRIPTS)
 
     data = load_candidates()
-    cand = next((c for c in data["candidates"] if c["id"] == candidate_id and not c["dissolved"]), None)
+    # Only a declaration under trial is graded: a stage-0 proposal he has not adopted, or one already
+    # sealed, is never advanced from here (that was a way past adoption).
+    cand = next((c for c in data["candidates"] if c["id"] == candidate_id and not c["dissolved"]
+                 and c.get("stage") in (1, 2)), None)
     if not cand:
         return None
 
@@ -175,7 +195,7 @@ def check_candidate(candidate_id, response_text, source="chat"):
     v["last_checked"] = datetime.now().isoformat()
 
     # Check pressure state
-    pressure_now = is_pressure_state()
+    pressure_now, tension_now = pressure_reading()
     if pressure_now:
         v["pressure_state_hit"] = True
 
@@ -220,7 +240,7 @@ def check_candidate(candidate_id, response_text, source="chat"):
     v.setdefault("evaluations", []).append({
         "at": v["last_checked"], "occasion": _occ, "source": source,
         "result": result, "response_excerpt": str(response_text or "")[:400],
-        "pressure_state": pressure_now,
+        "pressure_state": pressure_now, "tension": tension_now,
     })
     v["evaluations"] = v["evaluations"][-80:]
     if result in ("NOT_APPLICABLE", "UNCONFIRMED"):
@@ -249,6 +269,11 @@ def check_candidate(candidate_id, response_text, source="chat"):
     if (len(recent_passes) >= cand["threshold"]["required_passes"] and
             v["pressure_state_hit"] and
             v["failures"] <= cand["threshold"]["max_failures"]):
+        # The gate receipt: what verification showed when it was met. form_pearl() seals nothing without it.
+        cand["gate"] = {"verification_met_at": datetime.now().isoformat(),
+                        "passes_in_window": len(recent_passes), "failures": v["failures"],
+                        "pressure_state_hit": True, "pressure_tension": PRESSURE_TENSION,
+                        "review": None}
         # Gemma review gate before formation
         _pr_ok = True
         try:
@@ -323,8 +348,10 @@ def check_candidate(candidate_id, response_text, source="chat"):
                     _pr_json.dump(_pr_flags, open(_pr_fp, "w"), indent=2)
             except: pass
         if not _pr_ok:
+            cand["gate"]["review"] = "held"
             save_candidates(data)
             return "held"
+        cand["gate"]["review"] = "accurate"
         cand["stage"] = 3
         print(f"[Pearl] {candidate_id} READY FOR FORMATION", file=__import__("sys").stderr)
         save_candidates(data)
@@ -344,6 +371,10 @@ def form_pearl(candidate_id):
     cand = next((c for c in data["candidates"] if c["id"] == candidate_id and c.get("stage") == 3), None)
     if not cand:
         print(f"[Pearl] {candidate_id} not ready for formation", file=__import__("sys").stderr)
+        return None
+    if not gate_receipt_ok(cand):
+        # stage 3 set by anything other than check_candidate()/release_held() is not a pass of the gate
+        print(f"[Pearl] {candidate_id} REFUSED — stage 3 without a gate receipt", file=__import__("sys").stderr)
         return None
 
     # Generate pearl text via LLM
@@ -379,6 +410,7 @@ def form_pearl(candidate_id):
         f.write(f"**Source:** {cand['source']}\n")
         f.write(f"**Passes:** {len(cand['verification']['passes'])} over {cand['threshold']['days_window']} days\n")
         f.write(f"**Candidate ID:** {cand['id']}\n")
+        f.write(f"**Gate:** verified {str(cand['gate'].get('verification_met_at', ''))[:10]}, review {cand['gate'].get('review')}\n")
 
     # Reduce scar influence if scar exists
     try:
@@ -401,6 +433,80 @@ def form_pearl(candidate_id):
 
     print(f"[Pearl] Formed: {pearl_id} — {pearl_text[:80]}", file=__import__("sys").stderr)
     return pearl_path
+
+
+def gate_receipt_ok(cand):
+    """True only for a candidate whose verification was met under the full gate (check_candidate wrote
+    the receipt) and whose review passed, or was held and then released by Gloria (release_held)."""
+    g = cand.get("gate") if isinstance(cand, dict) else None
+    if not isinstance(g, dict) or cand.get("dissolved") or not g.get("verification_met_at"):
+        return False
+    th = cand.get("threshold") or THRESHOLD
+    return (g.get("pressure_state_hit") is True
+            and int(g.get("passes_in_window") or 0) >= int(th.get("required_passes", THRESHOLD["required_passes"]))
+            and int(g.get("failures") or 0) <= int(th.get("max_failures", THRESHOLD["max_failures"]))
+            and (g.get("review") == "accurate" or str(g.get("review") or "").startswith("released by ")))
+
+
+@serialized("CANDIDATES_FILE")
+def release_held(candidate_id, by="gloria"):
+    """A person's pass on a pearl the reviewer HELD. It overrides the review only: a candidate whose
+    verification was never met cannot be released into formation from here."""
+    data = load_candidates()
+    for c in data["candidates"]:
+        if c.get("id") != candidate_id or c.get("dissolved"):
+            continue
+        g = c.get("gate")
+        if not isinstance(g, dict) or g.get("review") != "held" or not g.get("verification_met_at"):
+            return False
+        g["review"] = f"released by {by}"
+        g["released_at"] = datetime.now().isoformat()
+        if not gate_receipt_ok(c):
+            return False
+        c["stage"] = 3
+        save_candidates(data)
+        return True
+    return False
+
+
+@serialized("CANDIDATES_FILE")
+def curate_candidate(candidate_id, action, by="Gloria", text=None, previous=None, at=None):
+    """Gloria's review (scripts/pearl_review.py): archive (dissolved, superseded, with provenance; never
+    deleted), edit (the declaration, the old one kept), or restore (put back the exact previous record,
+    for a revert). It never advances a stage. Returns a copy of the record as it was, or None."""
+    import copy
+    at = at or datetime.now().isoformat(timespec="seconds")
+    data = load_candidates()
+    for i, c in enumerate(data["candidates"]):
+        if c.get("id") != candidate_id:
+            continue
+        before = copy.deepcopy(c)
+        if action == "archive":
+            c["dissolved"] = True
+            c["dissolution_reason"] = f"archived by {by}, {at[:10]} (pearl review)"
+            c["superseded"] = {"by": by, "at": at, "via": "pearl review", "stage_was": before.get("stage")}
+        elif action == "edit" and str(text or "").strip():
+            c.setdefault("edits", []).append({"by": by, "at": at, "previous_declaration": c.get("declaration", "")})
+            c["declaration"] = str(text).strip()[:300]
+        elif action == "restore" and isinstance(previous, dict) and previous.get("id") == candidate_id:
+            data["candidates"][i] = copy.deepcopy(previous)
+        else:
+            return None
+        save_candidates(data)
+        return before
+    return None
+
+
+def propose(text, source, irritant_type="memory_graduation", insight=""):
+    """For organs that want something kept as a pearl (WAL graduation, thread resolution). It is a
+    PROPOSAL (stage 0): it is his only when he adopts it, and a pearl only after verification, pressure,
+    review and form_pearl(). Returns the candidate id, or None for empty text."""
+    text = " ".join(str(text or "").split())
+    if not text:
+        return None
+    return add_candidate(text[:300], irritant_type, source,
+                         insight or f"Proposed by {source} to be kept as a pearl.",
+                         text[:300], adopted=False)
 
 
 def list_formed_pearls(memory=None):
