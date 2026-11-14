@@ -2281,7 +2281,10 @@ def use_tools(lines, search=None, room=None, reach=None, hold=None, link=None):
 STABLE_PARTS = ("== SOUL.md ==", "== GLORIA-MODEL.md ==", "== SELF-MODEL.md ==", "== CAPABILITIES.md ==")
 
 
-def his_context():
+HIS_CONTEXT_CAP = 60000   # every surface's limit; a caller that must have it all passes limit=None
+
+
+def his_context(limit=HIS_CONTEXT_CAP):
     """Who he is and what is true for him right now, read from files only: nothing here runs an organ, writes a
     store or moves a feeling. Gloria's list (2026-09-30): SOUL.md, GLORIA-MODEL.md, SELF-MODEL.md,
     temporal-context.txt, daily-creative-<date>.md, EmoClaw, CAPABILITIES.md, daily-inner-life-<date>.md.
@@ -2373,12 +2376,12 @@ def his_context():
         pass
     for line in (direction_block(), his_own_block(), new_block(), prospect_line(), email_line(), atelier_line(), forge_line(), lab_line(), wants_line(), works_line(), songs_line(), letters):
         if line: parts.append(line)
-    text = "\n\n".join(parts)[:60000] or "You are Vintos."     # 15 exchanges with Gloria, and still room for his works
+    text = "\n\n".join(parts)[:limit] or "You are Vintos."     # 15 exchanges with Gloria, and still room for his works
     # what changes rarely, kept apart for Claude's cache (for_claude); every model still reads `text` as it was
     import claude_cache
     ctx = claude_cache.Prompt(text)
     ctx.stable = "\n\n".join(p for p in parts if p.startswith(STABLE_PARTS))
-    ctx.live = "\n\n".join(p for p in parts if not p.startswith(STABLE_PARTS))[:60000] or "You are Vintos."
+    ctx.live = "\n\n".join(p for p in parts if not p.startswith(STABLE_PARTS))[:limit] or "You are Vintos."
     return ctx
 
 
