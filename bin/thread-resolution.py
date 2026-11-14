@@ -20,7 +20,7 @@ Run modes:
   python3 thread-resolution.py review      # Weekly chapter summary
 """
 
-import os, sys, json, hashlib, requests
+import os, re, sys, json, hashlib, requests
 from datetime import datetime, timedelta
 
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
@@ -114,10 +114,6 @@ def load_pearl_index():
             return json.load(f)
     except:
         return {"pearls": [], "created": datetime.now().isoformat()}
-
-def save_pearl_index(index):
-    with open(PEARL_INDEX, "w") as f:
-        json.dump(index, f, indent=2)
 
 # ─────────────────────────────────────────────
 # RESOLUTION: Thread taught him something → Pearl
@@ -487,55 +483,26 @@ REFLECTION: [what you see now]"""
 # ─────────────────────────────────────────────
 
 def create_pearl(content, source=None, reason=None, thread_history=None):
-    """Create an immutable pearl — same format as memory-pearl.py"""
-    os.makedirs(PEARL_DIR, exist_ok=True)
-    index = load_pearl_index()
-    n = len(index.get("pearls", [])) + 1
-    now = datetime.now()
-
-    emotion_vector = None
-    emotion_desc = "unknown"
-    if HAS_EMOCLAW:
-        emotion_vector = get_vector()
-        try:
-            state = get_state()
-            if state:
-                emotion_desc = describe_state(state)
-        except:
-            pass
-
-    content_hash = hashlib.sha256(content.encode()).hexdigest()[:16]
-
-    pearl = {
-        "id": n,
-        "created": now.isoformat(),
-        "content": content,
-        "source": source or "thread-resolution",
-        "reason": reason,
-        "emotion_at_creation": emotion_vector,
-        "emotion_description": emotion_desc,
-        "hash": content_hash,
-    }
-
-    filename = f"pearl_{n:04d}_{now.strftime('%Y%m%d')}.md"
-    filepath = os.path.join(PEARL_DIR, filename)
-
-    with open(filepath, "w") as f:
-        f.write(f"# Pearl #{n}\n")
-        f.write(f"_Created: {now.strftime('%Y-%m-%d %H:%M')}_\n")
-        f.write(f"_Source: {source}_\n")
-        f.write(f"_Integrity: {content_hash}_\n")
-        f.write(f"_Feeling: {emotion_desc}_\n")
-        if reason:
-            f.write(f"_Why I kept this: {reason}_\n")
-        f.write(f"\n{content}\n")
-
-    # Make immutable
-    os.chmod(filepath, 0o444)
-
-    index.setdefault("pearls", []).append(pearl)
-    save_pearl_index(index)
-    log(f"Pearl #{n} created: {filepath}")
+    """PROPOSE a resolved thread as a pearl. Until 2026-11-14 this wrote memory/pearls/pearl_NNNN_*.md and
+    pearls/index.json itself, outside the pearl gate. Gloria: all pearls go through the same gate, so the
+    resolution is now a stage-0 proposal in candidate-pearls.json (pearl_engine.propose) and becomes a
+    pearl only through adoption, verification, pressure, review and form_pearl()."""
+    text = re.sub(r"[#*_]+", " ", str(content or ""))
+    text = " ".join(text.split())
+    if not text:
+        return None
+    try:
+        _sd = os.path.dirname(os.path.abspath(__file__))
+        if _sd not in sys.path:
+            sys.path.append(_sd)
+        from pearl_engine import propose
+        cid = propose(text, source or "thread-resolution", irritant_type="thread_resolution",
+                      insight=(reason or "")[:200])
+        log(f"Pearl proposed (gate, stage 0): {cid}")
+        return cid
+    except Exception as e:
+        log(f"Pearl proposal failed: {e}")
+        return None
 
 # ─────────────────────────────────────────────
 # WEEKLY REVIEW: Life chapters

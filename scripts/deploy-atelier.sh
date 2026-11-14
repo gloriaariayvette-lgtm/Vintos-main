@@ -231,7 +231,7 @@ atelier-door.sh atelier-canary.sh atelier-broker-watch.sh gloria-model-update.sh
 # the dreaming skill's two shell entry points live under skills/, not scripts/ or bin/
 SKILLFILES="skills/dreaming/scripts/dream-trigger.sh skills/dreaming/scripts/should-dream.sh"   # thread lifecycle, 2026-09-10
 DOMAINFILES="bin/server_domains/galleries.py bin/server_domains/music.py bin/server_domains/humor_wants.py bin/server_domains/landings.py bin/server_domains/journal.py"
-SCRIPTS="$SCRIPTS pearl-engine.py pearl_engine.py"
+SCRIPTS="$SCRIPTS pearl-engine.py pearl_engine.py pearl_review.py"   # pearl_review: Gloria's local review page + apply/revert (2026-11-14)
 SCRIPTS="$SCRIPTS gap_scan.py gap_review.py"   # the daily wall count and the Monday gap review into the Forge (2026-09-24)
 SCRIPTS="$SCRIPTS landings.py grok_subscription.py"   # her landing notes (2026-09-24); his Grok renders on her SuperGrok login (2026-09-25)
 SCRIPTS="$SCRIPTS failure_watch.py forge_tidy.py study_fix.py armed_watch.py promise_keeper.py"   # one morning message to Gloria when a part of him failed (2026-10-02); stop the old Lab write-ups (2026-10-03); his journal's promises made, reshaped or dropped (2026-10-03)
@@ -281,6 +281,8 @@ SCRIPTS="$SCRIPTS persistent_carry.py carry_sources.py carry_context.py"   # dur
 SCRIPTS="$SCRIPTS thread_gate.py"   # dreams, the mirror and the ghosts run only with an unresolved thread in the pool; one dream a night regardless (2026-10-27)
 SCRIPTS="$SCRIPTS gap_claims.py"   # outreach states the true time apart from the clock (2026-11-06)
 SCRIPTS="$SCRIPTS codefix_worm.py"   # the code-fix worm in use: a fix comes back as a proposal for review, never applied (Gloria 2026-11-12)
+SCRIPTS="$SCRIPTS native_audio.py"   # explicit local waveform route; disabled until configured
+SCRIPTS="$SCRIPTS native_video.py native_video_sources.py"   # explicit local live-frame route and frame sources; disabled until configured
 SCRIPTS="$SCRIPTS world_model_shadow.py"   # the state model in shadow: writes its expectations, read by nothing; cron not installed by deploy (2026-11-13)
 BINS="$BINS mirror-trigger.sh"   # its cron entry runs the ~/Vintos copy, which was in no list; it matched the checkout when the thread gate was added (2026-10-27)
 

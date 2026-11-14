@@ -547,6 +547,45 @@ def named_in(text):
     return m.group(1).strip() if m else ""
 
 
+# The agents he writes letters to are answered through reply_letters, not as a want's email to a person.
+_LETTER_AGENTS = re.compile(r"^(?:Grok\s*Bot|Muse|Codex|Dot|Gloria)\b", re.I)
+_EMAIL_VERB = re.compile(r"\b(?:e-?mail|write to|reach out to|contact the (?:author|researcher))\b", re.I)
+
+
+def email_want(text):
+    """Whether a want asks him to email a person: an email verb and a person named in full, or an address. The one test
+    both lanes use, so a want to email someone takes this module's steps wherever it is worked (Gloria, 14 November:
+    it goes "through all the same steps as normal email want and keep the same dossier")."""
+    text = str(text or "")
+    if EMAIL.search(text) and _EMAIL_VERB.search(text):
+        return True
+    who = named_in(text)
+    return bool(who and _EMAIL_VERB.search(text) and not _LETTER_AGENTS.match(who))
+
+
+def _same_topic(contact, want_id, want_text, about):
+    """An email already sent to this address from a different want about the same thing."""
+    if not contact.get("want_id") or contact.get("want_id") == want_id:
+        return False
+    try:
+        from want_board import alike
+    except Exception:
+        alike = lambda a, b: False
+    said = [str(contact.get(k) or "") for k in ("intent", "about")]
+    return any(s and (s.strip() == str(t or "").strip() or alike(s, t)) for s in said for t in (want_text, about))
+
+
+def _owner_lane(want_id):
+    """'want-lane' when this want is bound to the agent room (its own request, not finished there), else 'router'."""
+    if not want_id:
+        return "router"
+    data = _load(WANTS, [])
+    wants = data if isinstance(data, list) else []
+    w = next((w for w in wants if isinstance(w, dict) and w.get("id") == want_id), None)
+    from want_agent import owned_by_room
+    return "want-lane" if owned_by_room(w) else "router"
+
+
 # A draft that says he has not read the person's work is not ready, whatever his readiness answer was (16 October:
 # a second email to Chalmers, approved for her yes, opened "I haven't read your papers directly, only encyclopedia
 # accounts"). Nothing is written to a person before something of their own work has been read in full.
@@ -650,15 +689,24 @@ HOLDS_TO_READ = 2        # answering someone who wrote: passes he may spend read
 
 
 def run(params, want_text, want_id="", search=web_search, fetch=fetch_text, call=None, reserve=None, send=None,
-        think=None, get=None, post=None):
-    """One email step. Returns a receipt line, or (False, why)."""
+        think=None, get=None, post=None, lane="router", work_found=""):
+    """One email step. Returns a receipt line, or (False, why).
+
+    Both lanes come here (14 November): the router's send_email step, and the agent-room want lane once a bound
+    want's work is done (lane='want-lane', with what the work found as work_found). The same search, dossier, person
+    page, draft, review, approval and contact record serve both; a want is emailed from the lane that owns it only."""
     params = params if isinstance(params, dict) else {}
+    if lane != _owner_lane(want_id):
+        return False, ("bound to the agent room: its email goes out from the want lane, through these same steps, "
+                       "once its work is done" if lane == "router" else "not a want of the agent room")
     blocked = _send_blocked()
     if blocked:
         return False, blocked
     recipient = str(params.get("recipient") or "").strip() or named_in(want_text)
     about = str(params.get("about") or want_text or "").strip()[:400]
     known = earlier_steps(want_id)
+    if str(work_found or "").strip():
+        known = (known + "\n" if known else "") + "- the agent room's finished work: " + str(work_found).strip()[:4000]
     recipient = full_name(recipient, want_text, params.get("about"), known)
     to = str(params.get("to") or "").strip()
     if to and not EMAIL.fullmatch(to): to = ""
@@ -675,6 +723,10 @@ def run(params, want_text, want_id="", search=web_search, fetch=fetch_text, call
         c = contacts[to.lower()]
         if c.get("status") == "closed":
             return False, "the conversation with %s is closed (%s)" % (to, c.get("closed_why", ""))
+        if _same_topic(c, want_id, want_text, about):
+            # the same person about the same thing from another want - the other lane's, or a reworded twin: one
+            # email, not a second one or a second approval request (14 November)
+            return False, "%s was already emailed about this, from want %s; not again from another want" % (to, c.get("want_id"))
         thread = c.get("thread", [])
         if thread and thread[-1].get("dir") == "in":
             return False, "%s wrote back; the answer goes through the thread" % to
@@ -752,20 +804,27 @@ def run(params, want_text, want_id="", search=web_search, fetch=fetch_text, call
     if send is None:
         import plugin_gateway
         send = lambda args, purpose: plugin_gateway.call("wants", "gmail", "gmail.send_email", args, purpose)
-    try:
-        out = send(mail(to, subject, body), ("His own email, from a want: " + about)[:900])
-    except Exception as exc:
-        if "PolicyHold" not in type(exc).__name__:
-            _note_send(False, str(exc))
-        return False, "the send was held or refused: %s" % str(exc)[:400]
-    _note_send(True)
-    now = datetime.now()
-    contacts[to.lower()] = {"at": now.isoformat(), "name": recipient, "subject": subject, "want_id": want_id,
-                            "searched": found[:1200], "stance": stance, "intent": (want_text or about)[:900], "about": about,
-                            "status": "open", "replies_sent": 0,
-                            "thread": [{"dir": "out", "at": now.isoformat(), "subject": subject, "body": body}],
-                            "drafted_by": drafter, "receipt": ((out or {}).get("receipt") or {}).get("receipt_id")}
-    _save(CONTACTS, contacts)
+    from store_guard import transaction
+    # The check and the send are one step under the contacts lock: the router and the want lane run in two processes,
+    # and both may have drafted to the same person meanwhile (14 November). The first to send is the one email.
+    with transaction(CONTACTS):
+        contacts = _load(CONTACTS, {})
+        if to.lower() in contacts:
+            return False, "%s was emailed meanwhile (want %s); this draft is not sent" % (to, contacts[to.lower()].get("want_id"))
+        try:
+            out = send(mail(to, subject, body), ("His own email, from a want: " + about)[:900])
+        except Exception as exc:
+            if "PolicyHold" not in type(exc).__name__:
+                _note_send(False, str(exc))
+            return False, "the send was held or refused: %s" % str(exc)[:400]
+        _note_send(True)
+        now = datetime.now()
+        contacts[to.lower()] = {"at": now.isoformat(), "name": recipient, "subject": subject, "want_id": want_id,
+                                "searched": found[:1200], "stance": stance, "intent": (want_text or about)[:900], "about": about,
+                                "status": "open", "replies_sent": 0, "lane": lane,
+                                "thread": [{"dir": "out", "at": now.isoformat(), "subject": subject, "body": body}],
+                                "drafted_by": drafter, "receipt": ((out or {}).get("receipt") or {}).get("receipt_id")}
+        _save(CONTACTS, contacts)
     try:
         with open(os.path.join(MEMORY, "daily-inner-life-%s.md" % date.today().isoformat()), "a") as f:
             f.write("\n\n## An email I sent (%s)\nTo %s <%s> — %s\n\n%s\n"

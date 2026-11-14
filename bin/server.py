@@ -8693,13 +8693,11 @@ async def pass_held_item(idx: int, request: Request):
             cid = item.get("candidate_id", "")
             if cid:
                 import sys as _pe_sys; _pe_sys.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
-                from pearl_engine import load_candidates, save_candidates
-                data = load_candidates()
-                for c in data.get("candidates", []):
-                    if c.get("id") == cid:
-                        c["stage"] = 3
-                        break
-                save_candidates(data)
+                # Her pass overrides the reviewer's hold only; release_held() refuses a candidate whose
+                # verification was never met (until 2026-11-14 this set stage 3 on any id).
+                from pearl_engine import release_held
+                if not release_held(cid, by="gloria"):
+                    return {"success": False, "error": "not a held pearl whose verification was met"}
         json.dump(flags, open(flags_path, "w"), indent=2)
         return {"success": True, "action": "passed"}
     except Exception as e:
