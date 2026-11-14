@@ -888,7 +888,7 @@ check("Grok Bot posting through Gloria's login, signed, is Grok Bot, not Gloria"
       D._who(S6.msgs[-1], SELF, DOT) == "agent" and D._agent_name(S6.msgs[-1]) == "Grok Bot"
       and D._who({"user": GLORIA, "text": "Good morning"}, SELF, DOT) == "gloria")
 check("he hears Muse by its sign, not as Gloria, and Grok Bot by name",
-      heard and "Muse: [Muse] Found 3 load cell listings" in heard[-1] and "Grok Bot: Top X posts" in heard[-1]
+      heard and "Muse: Found 3 load cell listings" in heard[-1] and "Grok Bot: Top X posts" in heard[-1]
       and "Gloria: [Muse]" not in heard[-1], heard[-1][-600:] if heard else heard)
 _said = S6.posted[-1]["text"]
 check("his @GrokBot question goes to Grok Bot as a real mention, without pinging dot",

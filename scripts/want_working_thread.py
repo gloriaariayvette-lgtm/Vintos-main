@@ -35,7 +35,7 @@ def binding(want, state, thread=None, *, respect_pause=True):
 
 def trusted(row):
     return row.get('who') == 'dot' or (row.get('who') == 'agent'
-        and row.get('agent_authenticated') is True and row.get('name') in ('Claude Code', 'Muse', 'Grok Bot'))
+        and row.get('agent_authenticated') is True and row.get('name') in ('Claude Code', 'Muse', 'Grok Bot', 'Dot'))
 
 
 def bound_rows(rows, wants, state):

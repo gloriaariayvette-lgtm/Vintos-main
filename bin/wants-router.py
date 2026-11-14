@@ -2802,6 +2802,17 @@ def main():
                     os.environ["INTROSPECT_SEED_CONTEXT"] = "\n".join(_seed_parts)
                 else:
                     os.environ["INTROSPECT_SEED_CONTEXT"] = ""
+                # An email want's reflection also weighs what his agents brought for it, labelled with who brought it,
+                # beside his own steps' findings: the same opinion step, with their material (agent_research, 14 November)
+                if action == "introspect" and is_multistep:
+                    try:
+                        sys.path.insert(0, SCRIPTS)
+                        import agent_research as _ar
+                        _brought = _ar.seed_block(want)
+                        if _brought:
+                            os.environ["INTROSPECT_SEED_CONTEXT"] = (os.environ.get("INTROSPECT_SEED_CONTEXT", "") + "\n\n" + _brought).strip()
+                    except Exception as _are:
+                        log(f"  → agents' material not added to the reflection: {str(_are)[:120]}")
                 from want_stance import call_action
                 if action == "make_video":
                     _ran, success = call_action(action, action_fn, want, text, want.get("reasoning", ""), immediate=want.get("manually_routed", False))

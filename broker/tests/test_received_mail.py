@@ -194,7 +194,8 @@ out = E.run({"recipient": "Michael S. A. Graziano", "about": "singular attention
             if "deciding whether you are ready" in system else "a position")
 E._study = _study0
 check("the Graziano draft is written with Grok Bot's letter in front of it, said as Grok Bot's",
-      drafts and "From Grok Bot" in drafts[0] and "attention is singular" in drafts[0] and "not Gloria's" in drafts[0], drafts[:1])
+      # since 14 November an agent's letter item is shown as what that agent brought (agent_research), labelled
+      drafts and "Brought by Grok Bot" in drafts[0] and "attention is singular" in drafts[0] and "not Gloria's" in drafts[0], drafts[:1])
 check("the paper the letter pointed to is read in full before writing", studied and ARXIV in studied[0], studied)
 check("nothing was drafted, so nothing was sent", isinstance(out, tuple) and out[0] is False and not SENT, (out, SENT))
 
