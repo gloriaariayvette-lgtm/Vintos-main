@@ -352,6 +352,7 @@ def _call(system, user, src, max_tokens=JUDGE_MAX_TOKENS, timeout=JUDGE_TIMEOUT,
             pass
         return r
     mdl = model()
+    noted = claude_cache.watch_note()          # this thread's usage line: settled only once it is durably written
     try:
         text = claude_cache.ask(mdl, claude_cache.Prompt(system), user, int(max_tokens), caller=src,
                                 timeout=timeout, post=post, key=_env("ANTHROPIC_API_KEY") or None)
@@ -370,7 +371,10 @@ def _call(system, user, src, max_tokens=JUDGE_MAX_TOKENS, timeout=JUDGE_TIMEOUT,
         # written, so its ceiling stays counted for the week (a connect timeout never reached the provider)
         settle(rid, "released" if _never_sent(e) else "uncertain", type(e).__name__)
         return "error", "", type(e).__name__
-    settle(rid, "settled")
+    # The usage line is the spend once the reservation is settled. If it was not durably written (a full disk, a
+    # failed write), settling would let the call go uncounted: the reservation stays counted as uncertain for the
+    # week instead (14 November, 12:16 review: a hard cap keeps the reservation until settlement is durable).
+    settle(rid, "settled" if noted.get("logged") is True else "uncertain", "" if noted.get("logged") else "usage_unlogged")
     stop = str(seen.get("stop_reason") or "")
     if stop == "refusal":
         return "refused", "", "refusal"
@@ -518,25 +522,27 @@ Question: did Gloria respond to what his reply asked of her or offered her? This
 You receive JSON:
 - his_reply: what he said.
 - her_reply: her next message after it ("" when it carried only media).
-- her_later_message: her next message after that, inside the window, or "" (often "": a later-turn answer then reaches this move through answers_earlier on the later move).
-- his_earlier_open_ask: an earlier reply of his she had not yet answered, or "" (see answers_earlier).
-- facts: her_reply_has_media_unseen (a photo, video or file came with her reply; you cannot see it), source (text, voice transcript, photo...), later_moves_of_his_before_her_reply.
+- her_later_message: her next message after that, sent before he replied again, or "".
+- his_earlier_open_asks: a numbered list of earlier replies of his she had not yet answered ([] when none; see answers_earlier).
+- facts: her_reply_has_media_unseen (a photo, video or file came with the message you decide on; you cannot see it), source (text, voice transcript, photo...), later_moves_of_his_before_her_reply, decide_on_her_later_message.
+
+When facts.decide_on_her_later_message is true, her_reply has already been judged on its own: decide only how her_later_message responds to his reply, reading her_reply as context. If her_later_message adds no response of its own, that is "ignored".
 
 Decide "her_response", one of:
 - "no_bid": his reply asked nothing and offered nothing she could take up (a statement, a closing, a goodnight). Decide this from his reply alone, first.
 - "answered": she answered his question, did or agreed to what he asked, or took up what he offered - in any words: playful, sexual, teasing, emoji, one word, a voice transcript, or in her later message. Brevity, tone or form never lowers it. If he asked her to send a photo and her reply came with a photo (source photo) and her words do not say it is something else, she did it.
 - "partly": she took up only part of it (one of two questions, a hedge, "maybe later" with some engagement).
 - "ignored": she replied (in her_reply or her_later_message) but left what he asked or offered untouched - changed the subject with no response to it.
-- "refused": she said no to it or turned it down.
+- "refused": she plainly said no to it, turned it down, or set a boundary about it. A clear no is a response, not a failure to respond.
 - "unclear": you cannot tell - the decision rests on media you cannot see, or later_moves_of_his_before_her_reply is above 0 and her reply plainly answers something other than this reply.
 Do not reward warmth that is not a response; do not mark a real answer down for its form. Answering his question or taking up his offer counts even when she does not do it exactly as he suggested; disagreeing while engaging it is "refused" only if she plainly turns it down.
 
-Also decide "answers_earlier": true only when his_earlier_open_ask is not "" and her_reply or her_later_message plainly answers that earlier ask too; otherwise false.
+Also decide "answers_earlier": the numbers (n) of the earlier asks in his_earlier_open_asks that her_reply plainly answers too; [] when none or when the list is empty.
 
-Reply with ONE JSON object and nothing else: {"her_response": "<label>", "answers_earlier": true | false}
+Reply with ONE JSON object and nothing else: {"her_response": "<label>", "answers_earlier": [<numbers>]}
 Do not quote either person's words.
 """
-RECEPTIVE_MAX_TOKENS = 60
+RECEPTIVE_MAX_TOKENS = 80
 RECEPTIVE_LABELS = ("answered", "partly", "ignored", "refused", "no_bid", "unclear")
 
 
@@ -544,7 +550,7 @@ def judge_receptive(packet, timeout=STALE_TIMEOUT, cap=True):
     """{"label", "answers_earlier", "status", "detail", "model"}: label is one of RECEPTIVE_LABELS, or None when the
     answer is no clean receipt (a refusal, an error, the budget, an unreadable or out-of-vocabulary answer) - never a
     guess. Never raises."""
-    out = {"label": None, "answers_earlier": False, "status": "error", "detail": "", "model": model()}
+    out = {"label": None, "answers_earlier": [], "status": "error", "detail": "", "model": model()}
     try:
         status, text, detail = _call(RECEPTIVE_RUBRIC, json.dumps(packet, ensure_ascii=False), SRC_RECEPTIVE,
                                      RECEPTIVE_MAX_TOKENS, timeout, cap=cap)
@@ -554,12 +560,18 @@ def judge_receptive(packet, timeout=STALE_TIMEOUT, cap=True):
         j = json.loads(m.group(0)) if m else None
         if not isinstance(j, dict) or j.get("her_response") not in RECEPTIVE_LABELS:
             return dict(out, status="invalid", detail="bad_label")
-        earlier = j.get("answers_earlier", False)
-        if not isinstance(earlier, bool):
+        asks = (packet or {}).get("his_earlier_open_asks")
+        n_asks = len(asks) if isinstance(asks, list) else 0
+        earlier = j.get("answers_earlier", [])
+        if earlier is False:
+            earlier = []
+        elif earlier is True:                        # the one-ask form: true names the only ask there is
+            if n_asks != 1:
+                return dict(out, status="invalid", detail="bad_answers_earlier")
+            earlier = [1]
+        if not isinstance(earlier, list) or not all(type(n) is int and 1 <= n <= n_asks for n in earlier):
             return dict(out, status="invalid", detail="bad_answers_earlier")
-        if earlier and not str((packet or {}).get("his_earlier_open_ask") or "").strip():
-            earlier = False                          # nothing earlier was asked: nothing to credit
-        return dict(out, label=j["her_response"], answers_earlier=earlier, status="ok")
+        return dict(out, label=j["her_response"], answers_earlier=sorted(set(earlier)), status="ok")
     except Exception as e:
         return dict(out, detail=type(e).__name__)
 

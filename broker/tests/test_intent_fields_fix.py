@@ -48,6 +48,11 @@ LOW = {'field': .25, 'gloria': .15, 'self': .6}
 MIDDLING = {'field': .4, 'gloria': .35, 'self': .25}
 
 
+def axes(row):
+    """A row without its receptive record and evidence: those have their own lifecycle (14 November, 12:16)."""
+    return {k: v for k, v in row.items() if k not in ('receptive', 'receptive_evidence', 'receptive_rev')}
+
+
 def ago(days, minutes=0):
     return (datetime.now() - timedelta(days=days, minutes=minutes)).isoformat()
 
@@ -417,7 +422,7 @@ class IntentFieldsFix(unittest.TestCase):
         self.assertIn('Which alternative would you choose?', seen); self.assertNotIn('pressed the button', seen)
         self.assertEqual((row['skipped_observations']['n'], row['response_source']), (2, 'chat'))
         E.resolve_previous(HER); E.resolve_previous('GLORIA (now): And one more thing.'); E.resolve_previous(BUTTON, source='gcs')
-        self.assertEqual(len(self.judge_calls), 1); self.assertEqual(self.rows()[-1], row)   # settled once: nothing grades it again
+        self.assertEqual(len(self.judge_calls), 1); self.assertEqual(axes(self.rows()[-1]), axes(row))   # settled once: nothing grades it again
         self.assertEqual(sys.modules['outcome_join'].record.call_count, 1)
         history = PV._axis_history()['gloria']
         self.assertEqual((history['n'], history['PARTIAL']), (1, 1))
@@ -436,7 +441,7 @@ class IntentFieldsFix(unittest.TestCase):
         self.assertEqual(len(self.judge_calls), 3)
         self.assertNotIn('skipped_observations', late)
         self.verdict = 'NO'; E.resolve_previous(HER); E.resolve_previous('GLORIA (now): And one more thing.')
-        self.assertEqual(len(self.judge_calls), 3); self.assertEqual(self.rows(), [early, late])   # each row once
+        self.assertEqual(len(self.judge_calls), 3); self.assertEqual([axes(r) for r in self.rows()], [axes(early), axes(late)])   # each row once
         self.assertEqual(sys.modules['outcome_join'].record.call_count, 2)
         history = PV._axis_history()['gloria']
         self.assertEqual((history['n'], history['YES'], history['NO']), (1, 1, 0))
@@ -914,22 +919,28 @@ class IntentFieldsFix(unittest.TestCase):
         self.assertEqual((row['realized']['gloria'], row['not_declared_reason']), ('NOT_DECLARED', {'gloria': 'criterion_evidence_missing'}))
         self.verdict = 'NO'; E.resolve_previous(HER)
         self.assertEqual(self.rows()[-1]['realized'], {'field': 'NO', 'gloria': 'NOT_DECLARED', 'self': 'NO'})
-        self.assertEqual(PV.receptivity_report(), before)                      # six NO, as before: nothing was added
+        self.assertEqual({k: v for k, v in PV.receptivity_report().items() if k != 'partition'},
+                         {k: v for k, v in before.items() if k != 'partition'})   # six NO, as before: nothing was counted
 
     def test_receptivity_reason_and_report_state_the_counts(self):
         self.ledger([(1, 'NO')] * 5 + [(1, 'PARTIAL')])
         rec = PV.declare()
         self.assertEqual((rec['receptivity'], rec['weights']), (0.08, LOW))
-        self.assertIn('receptivity low (0.08 = (0 answered + 0.5 x 1 partly) / 6 of his asks and offers in the last 14 days, '
-                      '5 ignored, 0 refused, 0 answered in a later turn)', rec['why'])
-        self.assertEqual(PV.receptivity_report(), {'window_days': 14, 'minimum_records': 5, 'response_window_hours': 48,
-                                                   'answered': 0, 'partly': 1, 'ignored': 5, 'refused': 0,
-                                                   'answered_in_later_turn': 0, 'records': 6, 'receptivity': 0.08,
-                                                   'criterion_landing': {'yes': 0, 'partial': 1, 'no': 5, 'verdicts': 6,
-                                                                         'rate': 0.08}})
+        self.assertIn('receptivity low (0.08 = (0 answered + 0 refused + 0.5 x 1 partly) / 6 of his asks and offers she '
+                      'was counted on in the last 14 days, 5 ignored, 0 answered in a later turn; a plain no counts as a '
+                      'response)', rec['why'])
+        self.assertIn('not whether she is willing to be moved', rec['why'])
+        rep = PV.receptivity_report()
+        self.assertEqual({k: v for k, v in rep.items() if k not in ('partition', 'offer_acceptance_note')},
+                         {'window_days': 14, 'minimum_records': 5, 'response_window_hours': 48,
+                          'answered': 0, 'partly': 1, 'ignored': 5, 'refused': 0,
+                          'answered_in_later_turn': 0, 'records': 6, 'receptivity': 0.08,
+                          'measures': 'response_engagement', 'offer_acceptance': None, 'thresholds_validated': False,
+                          'criterion_landing': {'yes': 0, 'partial': 1, 'no': 5, 'verdicts': 6, 'rate': 0.08}})
+        self.assertEqual(rep['partition']['scored'], 6)
         self.ledger([(1, 'YES')] * 2 + [(1, 'PARTIAL')] * 2 + [(1, 'NO')] * 2 + [(20, 'NO')] * 9)
         rec = PV.declare()
-        self.assertIn('receptivity middling (0.5 = (2 answered + 0.5 x 2 partly) / 6 of his asks', rec['why'])
+        self.assertIn('receptivity middling (0.5 = (2 answered + 0 refused + 0.5 x 2 partly) / 6 of his asks', rec['why'])
         self.ledger([(1, 'PARTIAL')] * 3)
         rec = PV.declare()
         self.assertIn('receptivity unknown (3 of his asks', rec['why'])

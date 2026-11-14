@@ -45,7 +45,7 @@ check("the vector is logged immutably and the state persisted",
 # --- 2. strategy leans on receptivity from the intent ledger --------------------------------------
 _reset_state(); _write_ledger([{ "gloria": "YES", "field": "YES"}] * 5)
 rec = PV.declare()
-check("high receptivity puts Gloria's transformation in the lead",
+check("high receptivity (her response engagement) puts her axis in the lead",
       rec["receptivity"] is not None and rec["receptivity"] > 0.65 and rec["weights"]["gloria"] == max(rec["weights"].values()), rec)
 _reset_state(); _write_ledger([{ "gloria": "NO"}] * 5)
 rec = PV.declare()

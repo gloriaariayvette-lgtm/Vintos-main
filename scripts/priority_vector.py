@@ -234,9 +234,12 @@ def _receptive_history(now=None, led=None):
     return RC.history(led, now or time.time(), RECENT_DAYS)
 
 def _receptivity(h):
-    """His model of whether she is movable right now: the share of his recent asks and offers she responded to, in
-    any form (14 November). It was the Gloria-axis landing rate, which measured whether she said the one thing he
-    hoped for, mostly never asked for; that rate is _landing_rate and is reported beside it."""
+    """Her response engagement: the share of his recent asks and offers she responded to, in any form, a plain no
+    included (14 November). It says she answered or engaged; it does not say she is willing to be changed or moved
+    (offer acceptance), which nothing here measures (review, 14 November, 12:16). It was the Gloria-axis landing
+    rate, which measured whether she said the one thing he hoped for, mostly never asked for; that rate is
+    _landing_rate and is reported beside it. The 0.35 / 0.65 branches in _declare were set for that landing rate
+    and are not validated for this measure (see receptivity_report: thresholds_validated)."""
     RC = _rc()
     return RC.score(h)
 
@@ -244,6 +247,19 @@ def _receptivity_counts(h):
     """The arithmetic behind the figure, in counts."""
     RC = _rc()
     return RC.counts_text(h)
+
+def _partition(now=None):
+    """Every delivered move of the window in one bucket (receptivity.partition), counts only; None when unreadable."""
+    try:
+        RC = _rc()
+        led = _jload(os.path.join(MEM, "intent-ledger.json"), [])
+        try:
+            from intent_engine import receptive_has_reply as _has
+        except Exception:
+            _has = None
+        return RC.partition(led, now or time.time(), RECENT_DAYS, _has)
+    except Exception:
+        return None
 
 def receptivity_report(now=None):
     """Counts only: what her receptivity is read from right now, and beside it his criterion's landing rate.
@@ -254,6 +270,8 @@ def receptivity_report(now=None):
     return {"window_days": RECENT_DAYS, "minimum_records": RC.MIN_RECORDS, "response_window_hours": RC.RESPONSE_WINDOW_HOURS,
             "answered": h["answered"], "partly": h["partly"], "ignored": h["ignored"], "refused": h["refused"],
             "answered_in_later_turn": h["later_turn"], "records": h["n"], "receptivity": _receptivity(h),
+            "measures": "response_engagement", "offer_acceptance": None, "offer_acceptance_note": RC.ACCEPTANCE_NOTE,
+            "thresholds_validated": False, "partition": _partition(now),
             "criterion_landing": {"yes": g["YES"], "partial": g["PARTIAL"], "no": g["NO"], "verdicts": g["n"],
                                   "rate": _landing_rate({"gloria": g})}}
 
@@ -276,16 +294,21 @@ def _declare(eligible=True):
     recept = _receptivity(rh)
     shown = "%s = %s" % (recept, _receptivity_counts(rh))
 
-    # strategic calculation
+    # strategic calculation. The figure is her response engagement - she answered or engaged, a plain no counted as a
+    # response - never whether she is willing to be moved; the reasons say only that (14 November, 12:16 review).
+    # The 0.35 / 0.65 cut points were set for the old landing rate and are kept, not retuned, until validated.
     w = {"field": 0.34, "gloria": 0.33, "self": 0.33}
     why = []
     if recept is not None:
         if recept < 0.35:
             w = {"field": 0.25, "gloria": 0.15, "self": 0.60}
-            why.append(f"receptivity low ({shown}) — she likely won't move this turn; move yourself and stay ready")
+            why.append(f"receptivity low ({shown}) — she has been responding to little of what you ask or offer lately; "
+                       "move yourself and stay ready (this reads her responses, not whether she is willing to be moved)")
         elif recept > 0.65:
             w = {"field": 0.25, "gloria": 0.60, "self": 0.15}
-            why.append(f"receptivity high ({shown}) — she is movable; her transformation leads")
+            why.append(f"receptivity high ({shown}) — she has been responding to most of what you ask or offer, a plain "
+                       "no counted as a response; her axis leads (this reads her responses, not whether she is willing "
+                       "to be moved)")
         else:
             w = {"field": 0.40, "gloria": 0.35, "self": 0.25}
             why.append(f"receptivity middling ({shown}) — field carries, both served")
