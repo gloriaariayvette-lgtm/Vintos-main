@@ -42,9 +42,9 @@ def plan(led, labels):
         if not isinstance(row, dict):
             continue
         label = labels.get(row_id(row))
-        if "receptive" in row:
+        if RC.label_of(row) is not None:
             counts["already_recorded"] += label is not None
-            continue
+            continue                    # a labelled record stands; one with no label (a failed live judgment) is open
         if label is None:
             counts["no_label"] += 1
             continue
@@ -107,7 +107,11 @@ def revert(ledger):
                 row.pop("receptive")
                 n += 1
         if n:
-            shutil.copy2(ledger, backup_path(ledger).replace(".bak-regrade-", ".bak-receptive-"))
+            bak = backup_path(ledger).replace(".bak-regrade-", ".bak-receptive-")
+            before = _strict_load(ledger)
+            shutil.copy2(ledger, bak)
+            if _strict_load(bak) != before:
+                raise LedgerUnreadable("backup does not read back equal")
             store_guard.save_json(ledger, led)
         return {"mode": "reverted", "rows_reverted": n}
 

@@ -1194,6 +1194,11 @@ def _open_earlier_ask(row, came):
             continue
         if RC.label_of(other) not in ("ignored", "partly") or RC.row_key(other) in cmap or not other.get("reply"):
             continue
+        # her reply to that move must have come before this move: one reply of hers that reached both moves is one
+        # piece of evidence, judged on each move once - never a second roll that can only raise the first (review)
+        seen = _stamp(other.get("response_at"))
+        if seen is None or seen >= opened or (row.get("response_text") and other.get("response_text") == row.get("response_text")):
+            continue
         if best is None or t > best[0]:
             best = (t, other)
     return best[1] if best else None
@@ -1232,8 +1237,8 @@ def _judge_receptive(row, reply, hers, source=None, now=None):
 
 def _note_receptive(row, reply, hers, source=None):
     """Once per row; a failure here never stops the row's own resolution."""
-    if "receptive" in row or not row.get("delivered_at") or not reply:
-        return
+    if _rc().label_of(row) is not None or not row.get("delivered_at") or not reply:
+        return          # a record with no label (the judge failed, the cap) stays open for a later pass or a re-measure
     try:
         rec = _judge_receptive(row, reply, hers, source)
     except Exception as err:
@@ -1738,8 +1743,11 @@ def _persist_resolution(row, read_rev=0, effects=()):
                 current["resolution_dropped"] = {"n": int(_d.get("n", 0) or 0) + 1, "reason": why, "at": datetime.now().isoformat()}
             else:
                 # Preserve deliveries/selections appended while the judge was running.
+                _had = {"receptive": copy.deepcopy(current.get("receptive"))}
                 current.update({key: copy.deepcopy(row[key]) for key in ("realized", "held_attempts", "held_reason", "skipped_observations",
                                                                          "gloria_judge", "adherence", "receptive") if key in row})
+                if _rc().label_of(_had) is not None:
+                    current["receptive"] = _had["receptive"]   # a labelled record is never replaced (a re-measure may have written it while this pass judged)
                 if "held_reason" not in row: current.pop("held_reason", None)
                 if "skipped_observations" in row and "response_text" not in row:
                     current.pop("response_text", None); current.pop("response_source", None); current.pop("response_at", None)   # so her next reply is stored

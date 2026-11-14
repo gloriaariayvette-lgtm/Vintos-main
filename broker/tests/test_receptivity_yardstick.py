@@ -112,6 +112,16 @@ class Judge(unittest.TestCase):
         self.assertIn(GJ.SRC_RECEPTIVE, GJ.LIVE_SRCS)
         self.assertIn('not whether she said what he privately hoped for', GJ.RECEPTIVE_RUBRIC)
 
+    def test_receptive_spend_counts_against_the_weekly_cap(self):
+        with tempfile.TemporaryDirectory() as d:
+            log = os.path.join(d, 'anthropic-usage.jsonl')
+            with open(log, 'w') as f:
+                f.write(json.dumps({'at': datetime.now().strftime('%Y-%m-%dT%H:%M:%S'), 'caller': GJ.SRC_RECEPTIVE,
+                                    'model': GJ.MODEL_DEFAULT, 'in': 2000000, 'out': 0}) + '\n')
+            with patch.object(GJ, 'usage_log', return_value=log), patch.object(GJ, '_cap', return_value=1.0):
+                self.assertIsNone(GJ.reserve(GJ.SRC_LIVE, 'system', 'user', 10))
+                self.assertGreater(GJ.budget()['logged_usd'], 1.0)
+
 
 class Engine(unittest.TestCase):
     setUp = F.IntentFieldsFix.setUp
@@ -198,6 +208,32 @@ class Engine(unittest.TestCase):
         self.assertEqual(rec['weights']['gloria'], max(rec['weights'].values()))
         self.assertEqual(PV.receptivity_report()['criterion_landing']['rate'], 0.0)
 
+    def test_one_reply_reaching_two_moves_is_no_open_ask(self):
+        now = datetime.now()
+        early = rrow(1, 5, 'ignored', delivered_at=iso(5, now), timestamp=iso(5, now), response_at=iso(1, now), response_text='X')
+        this = rrow(2, 3, None, delivered_at=iso(3, now), timestamp=iso(3, now), response_at=iso(1, now), response_text='X')
+        Path(E.LEDGER).write_text(json.dumps([early, this]))
+        self.assertIsNone(E._open_earlier_ask(this, E._stamp(this['response_at'])))       # her one reply came after both
+        early['response_at'] = iso(4, now); early['response_text'] = 'Y'
+        Path(E.LEDGER).write_text(json.dumps([early, this]))
+        self.assertEqual(E._open_earlier_ask(this, E._stamp(this['response_at']))['intent_id'], 'syn-001')
+        early['response_text'] = 'X'                                                         # the same words: one reply
+        Path(E.LEDGER).write_text(json.dumps([early, this]))
+        self.assertIsNone(E._open_earlier_ask(this, E._stamp(this['response_at'])))
+
+    def test_a_failed_record_stays_open_and_a_labelled_one_is_never_replaced(self):
+        with self.judge(None):
+            self.delivered(); E.resolve_previous(F.HER)
+        row = self.rows()[-1]; self.assertIsNone(row['receptive']['label'])
+        with self.judge('answered'):
+            E._note_receptive(row, 'a synthetic reply', F.HER)
+        self.assertEqual(row['receptive']['label'], 'answered')                  # retried once a judge answers
+        led = self.rows(); led[-1]['receptive'] = {'label': 'refused', 'judge': RR.JUDGE}
+        Path(E.LEDGER).write_text(json.dumps(led))
+        stale = dict(led[-1], receptive={'label': 'answered', 'judge': E.RECEPTIVE_JUDGE})
+        E._persist_resolution(stale, int(led[-1].get('resolution_rev', 0) or 0))
+        self.assertEqual(self.rows()[-1]['receptive']['label'], 'refused')
+
     def test_an_unreadable_answer_is_kept_but_never_counted(self):
         with self.judge(None):
             self.delivered(); E.resolve_previous(F.HER)
@@ -252,6 +288,18 @@ class Regrade(unittest.TestCase):
         self.assertEqual((rep['mode'], rep['rows_changed']), ('nothing_to_do', 0)); self.assertEqual(self.ledger.read_bytes(), once)
         code, rep = self.run_cli('--revert')
         self.assertEqual(rep['rows_reverted'], 5); self.assertEqual(json.loads(self.ledger.read_text()), before)
+
+    def test_a_failed_live_record_is_open_to_the_re_measure(self):
+        rows = json.loads(self.ledger.read_text()); rows[5]['receptive'] = {'label': None, 'status': 'budget'}
+        self.ledger.write_text(json.dumps(rows))
+        code, rep = self.run_cli('--labels', str(self.labels), '--now', NOW.isoformat())
+        self.assertEqual(rep['rows_changed'], 6)
+        self.assertEqual(json.loads(self.ledger.read_text())[5]['receptive']['judge'], RR.JUDGE)
+
+    def test_credit_needs_her_reply_time(self):
+        early = rrow(1, 10, 'ignored'); later = rrow(2, 5, 'answered')
+        later['receptive']['credits'] = 'syn-001'
+        self.assertEqual(RC.credited([early, later]), {})
 
     def test_unusable_labels_are_refused(self):
         rows = json.loads(self.ledger.read_text())

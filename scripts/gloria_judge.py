@@ -55,7 +55,8 @@ MODIFIERS = ("photo_unseen", "long_gap", "text_capped")     # facts about the ev
 CONFIDENCE = ("high", "medium", "low")
 SRC_LIVE = "gloria-judge"              # the live verdicts (the caller in anthropic-usage.jsonl)
 SRC_STALE = "gloria-judge-stale"       # the check at selection
-LIVE_SRCS = (SRC_LIVE, SRC_STALE)
+SRC_RECEPTIVE = "gloria-receptive"   # her receptivity to the move (14 November): judge_receptive
+LIVE_SRCS = (SRC_LIVE, SRC_STALE, SRC_RECEPTIVE)   # one week's allowance for every live call of this judge
 # The week's allowance, priced from claude_cache.PRICES (GLORIA_JUDGE_WEEKLY_USD overrides). Sol's was $8: at its
 # house estimate a call cost about $0.0082 (151 calls on 12 November: 2107 tokens in, 1269 of them cached, 84 out),
 # so $8 bought about 975 calls a week. Sonnet 5.5 costs about $0.0035 a verdict; the same 975 calls are $3.40.
@@ -517,13 +518,13 @@ Question: did Gloria respond to what his reply asked of her or offered her? This
 You receive JSON:
 - his_reply: what he said.
 - her_reply: her next message after it ("" when it carried only media).
-- her_later_message: her next message after that, inside the window, or "" (she may answer in a later turn).
+- her_later_message: her next message after that, inside the window, or "" (often "": a later-turn answer then reaches this move through answers_earlier on the later move).
 - his_earlier_open_ask: an earlier reply of his she had not yet answered, or "" (see answers_earlier).
 - facts: her_reply_has_media_unseen (a photo, video or file came with her reply; you cannot see it), source (text, voice transcript, photo...), later_moves_of_his_before_her_reply.
 
 Decide "her_response", one of:
 - "no_bid": his reply asked nothing and offered nothing she could take up (a statement, a closing, a goodnight). Decide this from his reply alone, first.
-- "answered": she answered his question, did or agreed to what he asked, or took up what he offered - in any words: playful, sexual, teasing, emoji, one word, a voice transcript, or in her later message. Brevity, tone or form never lowers it. If he asked her to send or show something and her reply came with media, she did it.
+- "answered": she answered his question, did or agreed to what he asked, or took up what he offered - in any words: playful, sexual, teasing, emoji, one word, a voice transcript, or in her later message. Brevity, tone or form never lowers it. If he asked her to send a photo and her reply came with a photo (source photo) and her words do not say it is something else, she did it.
 - "partly": she took up only part of it (one of two questions, a hedge, "maybe later" with some engagement).
 - "ignored": she replied (in her_reply or her_later_message) but left what he asked or offered untouched - changed the subject with no response to it.
 - "refused": she said no to it or turned it down.
@@ -535,10 +536,8 @@ Also decide "answers_earlier": true only when his_earlier_open_ask is not "" and
 Reply with ONE JSON object and nothing else: {"her_response": "<label>", "answers_earlier": true | false}
 Do not quote either person's words.
 """
-SRC_RECEPTIVE = "gloria-receptive"
 RECEPTIVE_MAX_TOKENS = 60
 RECEPTIVE_LABELS = ("answered", "partly", "ignored", "refused", "no_bid", "unclear")
-LIVE_SRCS = LIVE_SRCS + (SRC_RECEPTIVE,)     # one week's allowance for every live call of this judge
 
 
 def judge_receptive(packet, timeout=STALE_TIMEOUT, cap=True):

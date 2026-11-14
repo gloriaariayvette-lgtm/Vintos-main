@@ -87,7 +87,7 @@ def credited(led):
         rec = r.get("receptive")
         if not isinstance(rec, dict) or not rec.get("credits"):
             continue
-        k = str(rec["credits"]); opened = when.get(k); came = _stamp(r.get("response_at")) or _when(r)
+        k = str(rec["credits"]); opened = when.get(k); came = _stamp(r.get("response_at"))   # her reply's own time only
         if opened is None or came is None or came < opened:
             continue
         if came - opened <= RESPONSE_WINDOW_HOURS * 3600:
