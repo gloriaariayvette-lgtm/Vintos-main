@@ -18,8 +18,16 @@ the week's allowance spent - is NOT_JUDGEABLE with reason "refused" or "error" (
 NOT_JUDGEABLE is never a landing and never a miss.
 
     judge(packet) -> {"verdict", "reason", "codes", "adherence", "confidence", "status", "detail", "model"}
-    stale_check(declared, her_words) -> "met" | "not_met" | "refused" | "error" | "budget" | "skipped"
+    stale_check(declared, her_words) -> "met" | "not_met" | "refused" | "timeout" | "error" | "budget" | "skipped"
     spent(srcs, days=7) -> dollars, estimated from the usage log
+    budget() -> the week's counted spend: logged, reserved in flight, and uncertain (charged but never logged)
+
+The week's allowance is a hard cap (14 November): each call reserves its ceiling - every byte it sends read as a
+token, the rubric as a cache write, the whole max_tokens out - before it is sent, under one lock, and is refused when
+the logged spend plus every open or uncertain reservation plus this one would pass the cap. An answered call settles
+its reservation (its usage line is the spend); one never sent, or answered with an API error, releases it; one whose
+outcome is unknown (a timeout, a broken or unreadable reply) stays counted at its ceiling for the week, since the
+provider may have charged it without any usage line being written.
 """
 import json
 import os
@@ -55,6 +63,7 @@ LIVE_SRCS = (SRC_LIVE, SRC_STALE)
 LIVE_WEEKLY_USD = 3.5
 JUDGE_TIMEOUT = 40
 STALE_TIMEOUT = 20
+RESERVE_LOG = "gloria-judge-reserve.jsonl"   # beside the usage log: reserved / settled / released / uncertain
 JUDGE_MAX_TOKENS = 600                 # one small JSON object; thinking is off, so nothing else is spent
 STALE_MAX_TOKENS = 100
 
@@ -169,6 +178,147 @@ def spent(srcs, days=7, now=None):
     return round(total, 4)
 
 
+def reserve_path():
+    return os.path.join(os.path.dirname(usage_log()), RESERVE_LOG)
+
+
+def ceiling(system, user, max_tokens, mdl=None):
+    """The most one call can cost: every byte sent read as one token (a token is never less than a byte), the
+    cached system piece at the cache-write price, the rest at the input price, and all of max_tokens out."""
+    import claude_cache
+    mdl = mdl or model()
+    p_in, p_out, _ = claude_cache.PRICES.get(mdl) or claude_cache.PRICES[MODEL_DEFAULT]
+    sys_b = len(str(system).encode("utf-8")); user_b = len(str(user).encode("utf-8")) + 64
+    return round((sys_b * p_in * claude_cache.WRITE + user_b * p_in + int(max_tokens) * p_out) / 1e6, 6)
+
+
+def _reservations(srcs, days=7, now=None):
+    """(open dollars, open count, uncertain dollars, uncertain count) for these callers in the window."""
+    now = now or time.time(); srcs = set(srcs); made = {}; end = {}
+    try:
+        with open(reserve_path()) as f:
+            for line in f:
+                try: row = json.loads(line)
+                except ValueError: continue
+                if not isinstance(row, dict) or not row.get("rid"):
+                    continue
+                if row.get("state") == "reserved":
+                    made[row["rid"]] = row
+                else:
+                    end[row["rid"]] = row.get("state")
+    except OSError:
+        pass
+    o_usd = u_usd = 0.0; o_n = u_n = 0
+    for rid, row in made.items():
+        at = _when(row)
+        if row.get("caller") not in srcs or at is None or now - at > days * 86400:
+            continue
+        try: usd = float(row.get("usd") or 0)
+        except (TypeError, ValueError): usd = 0.0
+        state = end.get(rid)
+        if state is None:
+            o_usd += usd; o_n += 1
+        elif state == "uncertain":
+            u_usd += usd; u_n += 1
+    return round(o_usd, 4), o_n, round(u_usd, 4), u_n
+
+
+def _cap(cap_env="GLORIA_JUDGE_WEEKLY_USD", cap_default=LIVE_WEEKLY_USD):
+    try: return float(_env(cap_env, "") or cap_default)
+    except ValueError: return cap_default
+
+
+def budget(srcs=LIVE_SRCS, now=None):
+    """The week's counted spend, in fixed keys: what the usage log shows, what is reserved for calls still in
+    flight (or that died before settling), and what is uncertain - calls that may have been charged unlogged."""
+    logged = spent(srcs, now=now)
+    o_usd, o_n, u_usd, u_n = _reservations(srcs, now=now)
+    return {"cap_usd": _cap(), "logged_usd": logged, "open_usd": o_usd, "open_n": o_n, "uncertain_usd": u_usd,
+            "uncertain_n": u_n, "counted_usd": round(logged + o_usd + u_usd, 4)}
+
+
+def _append_reserve(row):
+    path = reserve_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "a") as f:
+        f.write(json.dumps(row) + "\n")
+        f.flush(); os.fsync(f.fileno())
+
+
+def _trim_reserve(now):
+    """Rows older than eight days are no longer in any week's count; the file keeps the rest."""
+    path = reserve_path()
+    try:
+        if os.path.getsize(path) < 256 * 1024:
+            return
+        keep = []
+        with open(path) as f:
+            for line in f:
+                try: row = json.loads(line)
+                except ValueError: continue
+                at = _when(row) if isinstance(row, dict) else None
+                if at is not None and now - at <= 8 * 86400:
+                    keep.append(line if line.endswith("\n") else line + "\n")
+        tmp = path + ".tmp"
+        with open(tmp, "w") as f:
+            f.writelines(keep)
+        os.replace(tmp, path)
+    except OSError:
+        pass
+
+
+def reserve(src, system, user, max_tokens, srcs=LIVE_SRCS):
+    """A reservation id, or None when this call's ceiling would pass the week's cap. Check and reserve are one
+    step under the reservation file's lock, so two callers cannot both take the last of the allowance."""
+    from store_guard import transaction
+    usd = ceiling(system, user, max_tokens)
+    now = time.time()
+    with transaction(reserve_path()):
+        _trim_reserve(now)
+        if budget(srcs, now=now)["counted_usd"] + usd > _cap():
+            return None
+        import uuid
+        rid = uuid.uuid4().hex
+        _append_reserve({"at": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(now)), "rid": rid,
+                         "caller": src, "usd": usd, "state": "reserved"})
+    return rid
+
+
+def settle(rid, state, why=""):
+    """settled (answered: its usage line is the spend), released (never sent, or an API error), or uncertain."""
+    if not rid:
+        return
+    try:
+        from store_guard import transaction
+        with transaction(reserve_path()):
+            _append_reserve({"at": time.strftime("%Y-%m-%dT%H:%M:%S"), "rid": rid, "state": state,
+                             "why": str(why)[:40]})
+    except Exception:
+        pass                                   # an unsettled reservation stays counted: the cap errs closed
+
+
+def _never_sent(e):
+    """True when no connection to the provider was ever made (a connect timeout, a refused connection, a name that
+    did not resolve): nothing can have been charged. Without this, every call during a network outage would stay
+    counted at its ceiling for the week and could shut the allowance with nothing spent."""
+    if type(e).__name__ == "ConnectTimeout":
+        return True
+    try:
+        from urllib3.exceptions import NewConnectionError, ConnectTimeoutError
+    except ImportError:
+        return False
+    x = e
+    for _ in range(6):
+        if x is None:
+            break
+        if isinstance(x, (NewConnectionError, ConnectTimeoutError)):
+            return True
+        r = getattr(x, "reason", None)
+        a = x.args[0] if getattr(x, "args", None) else None
+        x = r if isinstance(r, BaseException) else a if isinstance(a, BaseException) else (x.__cause__ or x.__context__)
+    return False
+
+
 _REFUSAL = re.compile(r"content[_ ]policy|safety|refus|flagged|moderation", re.I)
 
 
@@ -177,11 +327,20 @@ def _post(*args, **kwargs):
     return requests.post(*args, **kwargs)
 
 
-def _call(system, user, src, max_tokens=JUDGE_MAX_TOKENS, timeout=JUDGE_TIMEOUT):
-    """(status, text, detail): status is ok, refused or error. One call through claude_cache.ask (the cached rubric,
-    thinking off, paid_http, the usage line under caller `src`); nothing retried."""
+def _call(system, user, src, max_tokens=JUDGE_MAX_TOKENS, timeout=JUDGE_TIMEOUT, cap=True):
+    """(status, text, detail): status is ok, refused, error or budget. One call through claude_cache.ask (the cached
+    rubric, thinking off, paid_http, the usage line under caller `src`); nothing retried. With `cap`, the call's
+    ceiling is reserved against the week's allowance first and settled after."""
     import claude_cache
     seen = {}
+    rid = None
+    if cap:
+        try:
+            rid = reserve(src, system, user, max_tokens)
+        except Exception as e:
+            return "error", "", "reserve_" + type(e).__name__     # no reservation, no call: the cap errs closed
+        if rid is None:
+            return "budget", "", "weekly_cap"
 
     def post(*args, **kwargs):            # this call's own answer, for its stop reason (claude_cache.LAST is shared)
         r = _post(*args, **kwargs)
@@ -196,14 +355,21 @@ def _call(system, user, src, max_tokens=JUDGE_MAX_TOKENS, timeout=JUDGE_TIMEOUT)
         text = claude_cache.ask(mdl, claude_cache.Prompt(system), user, int(max_tokens), caller=src,
                                 timeout=timeout, post=post, key=_env("ANTHROPIC_API_KEY") or None)
     except PermissionError:
+        settle(rid, "released", "paid_paused")
         return "error", "", "paid_paused"
     except RuntimeError as e:
         said = str(e)
         if said == "no Anthropic key":
+            settle(rid, "released", "no_key")
             return "error", "", "no_key"
+        settle(rid, "released", "api_error")    # the provider answered with an error object: nothing billed
         return ("refused" if _REFUSAL.search(said) else "error"), "", "api_error"
     except Exception as e:
+        # a timeout, a dropped connection, an unreadable reply: it may have been charged, and no usage line was
+        # written, so its ceiling stays counted for the week (a connect timeout never reached the provider)
+        settle(rid, "released" if _never_sent(e) else "uncertain", type(e).__name__)
         return "error", "", type(e).__name__
+    settle(rid, "settled")
     stop = str(seen.get("stop_reason") or "")
     if stop == "refusal":
         return "refused", "", "refusal"
@@ -302,18 +468,11 @@ def normalize(j):
     return invalid(why) if why else rec
 
 
-def _over_cap(srcs, cap_env, cap_default):
-    try: cap = float(_env(cap_env, "") or cap_default)
-    except ValueError: cap = cap_default
-    return spent(srcs) >= cap
-
-
 def judge(packet, src=SRC_LIVE, timeout=JUDGE_TIMEOUT, cap=True):
     """One verdict on one packet. Never raises."""
     try:
-        if cap and _over_cap(LIVE_SRCS, "GLORIA_JUDGE_WEEKLY_USD", LIVE_WEEKLY_USD):
-            return not_judgeable("budget", "budget", "weekly_cap")
-        status, text, detail = _call(RUBRIC, json.dumps(packet, ensure_ascii=False), src, JUDGE_MAX_TOKENS, timeout)
+        status, text, detail = _call(RUBRIC, json.dumps(packet, ensure_ascii=False), src, JUDGE_MAX_TOKENS, timeout,
+                                     cap=cap)
         if status != "ok":
             return not_judgeable(status, status, detail)
         j = parse(text)
@@ -325,16 +484,18 @@ def judge(packet, src=SRC_LIVE, timeout=JUDGE_TIMEOUT, cap=True):
 
 
 def stale_check(declared, her_words, timeout=STALE_TIMEOUT):
-    """Has her message - the one his move answers - already shown the difference he now declares for her next reply?"""
+    """Has her message - the one his move answers - already shown the difference he now declares for her next reply?
+    A call that timed out answers "timeout" (counted apart from other errors by the caller); either refuses nothing."""
     try:
         if not str(her_words or "").strip():
             return "skipped"
-        if _over_cap(LIVE_SRCS, "GLORIA_JUDGE_WEEKLY_USD", LIVE_WEEKLY_USD):
-            return "budget"
         packet = {"declared": {"gloria_difference_intended": str((declared or {}).get("difference_intended", "")),
                                "gloria_enactment": str((declared or {}).get("enactment", ""))},
                   "her_message": str(her_words)}
-        status, text, _ = _call(STALE_RUBRIC, json.dumps(packet, ensure_ascii=False), SRC_STALE, STALE_MAX_TOKENS, timeout)
+        status, text, detail = _call(STALE_RUBRIC, json.dumps(packet, ensure_ascii=False), SRC_STALE, STALE_MAX_TOKENS,
+                                     timeout)
+        if status == "error" and "Timeout" in str(detail):
+            return "timeout"
         if status != "ok":
             return status
         m = re.search(r"\{.*\}", text or "", re.S)
@@ -349,6 +510,6 @@ def stale_check(declared, her_words, timeout=STALE_TIMEOUT):
 if __name__ == "__main__":
     if sys.argv[1:] == ["spent"]:
         # the shadow teacher's spend is Sol's, in openai-usage.jsonl, and its own runner reports it
-        print(json.dumps({"live_7d_usd": spent(LIVE_SRCS), "model": model()}))
+        print(json.dumps(dict(budget(), live_7d_usd=spent(LIVE_SRCS), model=model())))
     else:
         print("usage: gloria_judge.py spent")
