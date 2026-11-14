@@ -45,6 +45,17 @@ the reply he actually gave (`bin/avatar_dryrun.py` with no line given: her real 
 the candidate's reply beside it), and saves nothing. If something a test needs is not there yet, it fills
 in on its own from her ordinary use: say that, and never ask her to make it happen.
 
+## See every experiment through: diagnose failures, then iterate (Gloria, 14 November 2026)
+
+A failed score is where the work starts, not where it ends. Gloria: "We should all get better at locating the reasoning and retesting until the proposed idea is truly worked through."
+
+- **When something fails, open the failing cases.** Find out why it failed, with evidence: which items, which conditions, in which direction. Don't stop at "missed the bar".
+- **Make a hypothesis, fix it, and retest** on dev or selection data. Repeat until the idea is truly worked through, or until the root cause is shown to be a hard limit (say what the limit is and how you know).
+- **Stay honest.** Pre-register the bars. Score the held-out or sealed set once, at the end, for the version you worked through. Never tune on a set you score.
+- **Keep an iteration log** (attempt → result → root cause → next) and put it in the report.
+- **Report what you worked through,** not just pass or fail: what you tried, what the root cause was, and what fixed it or why it can't be fixed.
+- Example: on 14 November the emotion readers went from 0 to 10 of 11 emotions readable in every context. The first scores looked like a dead end; opening the failures showed whole-input reading was mixing in the other person's state, and reading at the narrator's own clause fixed it.
+
 ## Deploying to Aegis — the only safe way
 
 Aegis is the machine that serves her. Nothing reaches it except through her hands, by this route:
