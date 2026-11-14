@@ -170,3 +170,17 @@ two-answer majority (iteration 11) is kept.
 1.00). Every remaining side error needs two or more wrong check answers that agree. With answers wrong 10-15% of the
 time that is the floor for any rule that acts on checks at all; more reliable answers make such runs rarer. The module
 is frozen here and the held-out seeds are scored once.
+
+## Held-out result (seeds 5000-5149, 600 networks, scored once at commit c370b3bb)
+
+| Criterion | Metric | TMS-Bayes with checks | Passive (no checks) | Blame the last step | Bar | Met |
+|---|---|---|---|---|---|---|
+| Localization | earliest faulty step, top-1 | **0.89** | 0.61 | 0.42 | >= 0.80, +0.20 | yes |
+| Revision | precision of recomputed set | **0.99** | 0.80 | 0.91 | >= 0.90 | yes |
+| Revision | recall of recomputed set | **0.94** | 0.95 | 0.74 | >= 0.90 | yes |
+| Revision | conclusions correct | **0.98** | 0.93 | 0.93 | >= 0.95 | yes |
+| Preservation | independent valid nodes unchanged | **0.997** | 0.952 | 0.987 | >= 0.98 | yes |
+| Preservation | side (unrelated) nodes unchanged | **0.9987** | 0.982 | 0.984 | 1.00 | **no** |
+
+Checks asked: 5.9 per network on average (chain 4.6, dag 4.3, noisy 6.7, two_faults 8.1). By scenario,
+localization was chain 0.93, dag 0.91, noisy 0.86, two_faults 0.87; side preservation was 1.00 on chains.
