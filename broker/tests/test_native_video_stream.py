@@ -545,6 +545,32 @@ class ChannelMind(Mind):
 
 ch = LiveSession(ChannelMind(), Channeler(), clock=lambda: 0.)
 ch.frame(frame(10), at=0.)
+
+
+class Breaks(Backend):
+    """The first single-token decode step fails, after a frame arrived mid-answer."""
+    def forward(self, embeds, cache, vision=False):
+        out = Backend.forward(self, embeds, cache, vision)
+        if embeds.shape[1] == 1 and getattr(self, 'armed', False):
+            self.armed = False
+            brk.frame(frame(30), at=1.)          # arrives while the answer is being decoded: held
+            raise RuntimeError('backend fault')
+        return out
+
+
+bk = Breaks()
+brk = LiveSession(mind, bk, clock=lambda: 0.)
+brk.frame(frame(10), at=0.)
+bk.armed = True
+try:
+    brk.ask('q', max_tokens=4); raise AssertionError('fault swallowed')
+except RuntimeError:
+    pass
+held_after_fault = len(brk.deferred)
+r = brk.frame(frame(50), at=2.)
+check('after a failed answer the held arrivals are committed in order and new ones are not held',
+      held_after_fault == 1 and not r.get('deferred') and not brk.deferred
+      and [s['at'] for s in brk.window() if s['kind'] == 'frame'] == [0., 1., 2.])
 check('an answer never opens another thinking channel', ch.blocked == [7, 8] and 7 not in ch.ask('q', max_tokens=3)['tokens'])
 
 check('nothing but the test fixtures was written', not any(memory_dir.iterdir()))

@@ -56,7 +56,7 @@ def stamp(seconds):
 
 # ---------------------------------------------------------------- pixel motion per scene (camera_motion.py)
 
-WHOLE_VIEW_CUT = .6     # a step that changed more of the view than this with no consistent shift is a cut
+from camera_motion import WHOLE_VIEW as WHOLE_VIEW_CUT   # more of the view changed than this, no consistent shift: a cut
 
 
 def _add_motion(seg, move):

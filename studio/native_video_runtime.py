@@ -251,6 +251,7 @@ class LiveSession:
         self.last_small = None
         self.answering = False                     # while True, frames and audio are encoded/held, then committed
         self.deferred = []
+        self.committing = False                    # while True, an answer's held items are being committed
         if not 1 <= int(retain_frames) <= 64 or not 0 <= int(retain_audio_tokens) <= 750:
             raise ValueError("Invalid retention window")
         self.mind, self.stream, self.tokenizer = mind, stream, mind.tokenizer
@@ -269,8 +270,11 @@ class LiveSession:
         # channel or turn (it showed as a leading "thought" in live answers).
         convert = getattr(tok, "convert_tokens_to_ids", None)
         unk = getattr(tok, "unk_token_id", None)
-        self.blocked = sorted({i for i in (convert(["<|channel>", "<channel|>", "<|turn>"]) if convert else [])
-                               if isinstance(i, int) and i >= 0 and i != unk})
+        try:
+            found = convert(["<|channel>", "<channel|>", "<|turn>"]) if convert else []
+        except Exception:
+            found = []
+        self.blocked = sorted({i for i in found if isinstance(i, int) and i >= 0 and i != unk})
         self._keys = {}
         self.boa, self.eoa = self._ids(getattr(tok, "boa_token", "<|audio>")), self._ids(getattr(tok, "eoa_token", "<audio|>"))
         self.cache = stream.new_cache()
@@ -337,6 +341,7 @@ class LiveSession:
         While an answer is being decoded (or what arrived during it is still being committed) the frame is encoded
         now and enters the timeline after everything that arrived before it."""
         prepared = self.prepare_frame(rgb, at, soft_tokens)
+        self._recover_held()
         if self.answering or self.deferred:
             self.deferred.append(("frame", prepared))
             return {"frame_ref": prepared["ref"], "at": round(prepared["at"], 3), "visual_tokens": int(prepared["embeds"].shape[1]),
@@ -395,6 +400,7 @@ class LiveSession:
             raise ValueError("Expected a nonempty finite mono waveform in [-1, 1], at most eight seconds")
         started = time.perf_counter()
         at = self._seconds(at)
+        self._recover_held()
         if self.answering or self.deferred:
             self.deferred.append(("audio", x, at))
             return {"audio_tokens": self.audio_tokens, "pending_samples": len(self.audio_tail) + len(x),
@@ -595,13 +601,24 @@ class LiveSession:
         # Commit what arrived during the answer one item per step, in arrival order, so the caller can take in
         # new arrivals in between (they queue behind the held items, never ahead of them).
         committed = 0
-        while self.deferred:
-            self._commit_deferred(self.deferred.pop(0))
-            committed += 1
-            if self.deferred:
-                yield len(tokens)
+        self.committing = True
+        try:
+            while self.deferred:
+                self._commit_deferred(self.deferred.pop(0))
+                committed += 1
+                if self.deferred:
+                    yield len(tokens)
+        finally:
+            self.committing = False
         result["deferred_committed"] = committed
         return result
+
+    def _recover_held(self):
+        """Items are held only while an answer is decoded or its held items are being committed. If an answer
+        failed (or was abandoned) before committing them, commit them now, in order, so later arrivals are never
+        held forever."""
+        if self.deferred and not self.answering and not self.committing:
+            self.flush_deferred()
 
     def _commit_deferred(self, item):
         kind, *payload = item
