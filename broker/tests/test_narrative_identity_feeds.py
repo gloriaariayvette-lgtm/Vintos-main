@@ -345,6 +345,38 @@ def g_promo(csm, bi, te):
     bi.log_outcome("trial_a", "attempted")
     E = csm.load_model()["entries"]
     out.append(("a promotion on an attempt made now is current", len(E) == 1 and seen(E[0]) == D(0), E))
+    reset_stores()
+    t = _trial("trial_a", 2)   # no dated attempt and no creation date
+    _ledger([t])
+    bi.log_outcome("trial_a", "missed")
+    L = json.load(open(os.path.join(MEM, "trial-ledger.json")))["trials"][0]
+    E = csm.load_model()["entries"]
+    out.append(("a trial with no evidence time neither promotes nor changes status",
+                E == [] and L.get("status") == "active" and not L.get("promoted"), (L, E)))
+    # a misdated (future) session is not the newest evidence
+    reset_stores()
+    te.write_capacities(cap("misdated"), "journal", D(-3))
+    te.write_capacities(cap("old"), "journal", D(100))
+    E = csm.load_model()["entries"]
+    out.append(("a future source date is not the promotion's evidence", len(E) == 1 and seen(E[0]) == D(100), E))
+    # a full store: an entry formed today from old evidence holds no grace over entries with fresh evidence
+    reset_stores()
+    fresh = [{"trigger": "", "tendency": "synthetic fresh tendency %d" % i, "type": "positive", "confidence": 0.5,
+              "evidence_count": 1, "formed": TS(30), "last_seen": TS(1), "imprint": False} for i in range(39)]
+    backlog = {"trigger": "", "tendency": "synthetic backlog tendency", "type": "positive", "confidence": 0.5,
+               "evidence_count": 1, "formed": TS(0), "last_seen": TS(120), "imprint": False}
+    json.dump({"entries": fresh + [backlog]}, open(csm.MODEL_FILE, "w"))
+    csm.add_entry("", "an unrelated new tendency", confidence=0.3, source="trial-extractor")
+    T = [e["tendency"] for e in csm.load_model()["entries"]]
+    out.append(("a backlog-formed entry is trimmed before fresh ones",
+                len(T) == 40 and "synthetic backlog tendency" not in T and "an unrelated new tendency" in T, T))
+    reset_stores()
+    json.dump({"entries": [dict(f) for f in fresh] + [dict(fresh[0], tendency="synthetic fresh tendency x")]},
+              open(csm.MODEL_FILE, "w"))
+    csm.add_entry("", "a stale new tendency", confidence=0.5, source="trial-extractor", seen_at=D(120))
+    T = [e["tendency"] for e in csm.load_model()["entries"]]
+    out.append(("an entry formed from stale evidence does not force its way into a full store",
+                len(T) == 40 and "a stale new tendency" not in T, T))
     return out
 
 csm = load("csm"); bi = load("bi"); te = load("te")
@@ -375,6 +407,11 @@ MUTANTS = [
     ("pte", "oldest date instead of newest", ("max(out).isoformat()", "min(out).isoformat()"), g_promo),
     ("pbi", "trial promotion stamped now", ("seen_at=_seen,", "seen_at=None,"), g_promo),
     ("pbi", "a default counts as the evidence", ('if o.get("outcome") not in ("attempted", "partial"):\n            continue', "pass"), g_promo),
+    ("pcsm", "grace by formed alone", ("max(_age_days(e.get(\"formed\"), now),\n                           _age_days(e.get(\"last_seen\") or e.get(\"formed\"), now))",
+                                         "_age_days(e.get(\"formed\"), now)"), g_promo),
+    ("pcsm", "stale new entry force-kept", ("keep=None if stale else entry", "keep=entry"), g_promo),
+    ("pte", "future dates count as newest", ("if d <= today:", "if True:"), g_promo),
+    ("pbi", "promotes without an evidence time", ("\n                and _newest_attempt_at(t) is not None)", ")"), g_promo),
     ("pbi", "no fallback to the trial's date", ('return datetime.fromisoformat(str(trial.get("created"))[:26]).isoformat()', "return None"), g_promo),
 ]
 for kind, name, mutation, group in MUTANTS:

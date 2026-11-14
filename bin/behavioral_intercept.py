@@ -407,7 +407,10 @@ def log_outcome(trial_id, outcome, resistance=0.5, influenced=False):
             except Exception as _to_e:
                 print(f"[Intercept] Third-order want failed: {_to_e}", file=__import__("sys").stderr)
         # Promote after 2+ attempts
-        if t.get("attempt_count", 0) >= 2 and t.get("status") == "active" and not t.get("promoted"):
+        # A trial with no readable evidence time does not promote (or change status) until it has one: stamping
+        # its entry with now would make old evidence look current (review 2026-11-14).
+        if (t.get("attempt_count", 0) >= 2 and t.get("status") == "active" and not t.get("promoted")
+                and _newest_attempt_at(t) is not None):
             # A permanent trial promotes once and stays active (audit, 18 October); any other leaves the list.
             if t.get("id", "").startswith("permanent_"):
                 t["promoted"] = datetime.now().isoformat()
@@ -419,8 +422,6 @@ def log_outcome(trial_id, outcome, resistance=0.5, influenced=False):
                 import sys as _csm_sys, os as _csm_os; _csm_sys.path.insert(0, _csm_os.path.expanduser("~/.vintos/workspace/scripts"))
                 from causal_self_model import add_entry
                 _seen = _newest_attempt_at(t)
-                if _seen is None:
-                    raise ValueError("no readable evidence time")
                 add_entry(
                     trigger=t.get("trigger", ""),
                     tendency=t.get("pattern_description", ""),

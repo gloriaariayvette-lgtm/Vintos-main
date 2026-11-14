@@ -174,7 +174,8 @@ def add_entry(trigger, tendency, confidence=0.3, source="causality", entry_type=
     entries.append(entry)
 
     if len(entries) > MAX_ENTRIES:
-        entries = _trim(entries, keep=entry)
+        # an entry formed from stale evidence competes on its (faded) retention score like any other
+        entries = _trim(entries, keep=None if stale else entry)
     data["entries"] = entries
     save_model(data)
     return "added"
@@ -202,8 +203,12 @@ def _trim(entries, keep=None, now=None):
     now = now or datetime.now()
     others = [e for e in entries if e is not keep]
     room = MAX_ENTRIES - (1 if keep is not None else 0)
-    young = [e for e in others if _age_days(e.get("formed"), now) < NEW_ENTRY_GRACE_DAYS]
-    old = [e for e in others if _age_days(e.get("formed"), now) >= NEW_ENTRY_GRACE_DAYS]
+    # Grace is for new evidence: an entry formed today from old evidence (a backlog promotion) is not young, or it
+    # would hold its place over entries with fresh evidence (review 2026-11-14).
+    _young = lambda e: max(_age_days(e.get("formed"), now),
+                           _age_days(e.get("last_seen") or e.get("formed"), now)) < NEW_ENTRY_GRACE_DAYS
+    young = [e for e in others if _young(e)]
+    old = [e for e in others if not _young(e)]
     old.sort(key=lambda e: _retention_score(e, now), reverse=True)
     young.sort(key=lambda e: _retention_score(e, now), reverse=True)
     if len(young) >= room:

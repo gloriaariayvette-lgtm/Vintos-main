@@ -194,12 +194,15 @@ def _newest_date(dates):
     with it: add_entry used to stamp last_seen=now, so a capacity promoted from a backlog of old sessions looked
     current to narrative identity and to retention (review 2026-11-14)."""
     from datetime import date as _d
+    today = _d.today()
     out = []
     for s in dates:
         try:
-            out.append(_d.fromisoformat(str(s)[:10]))
+            d = _d.fromisoformat(str(s)[:10])
         except Exception:
-            pass
+            continue
+        if d <= today:   # a misdated (future) session is not evidence of now
+            out.append(d)
     return max(out).isoformat() if out else None
 
 
