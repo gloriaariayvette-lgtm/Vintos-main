@@ -107,3 +107,40 @@ recall 0.920, conclusions 0.972, preservation 0.9945, side **0.9988**, upstream 
 answers 0.978 precise. Every bar passes on development. By scenario: side 1.00 on chains, dags and two_faults,
 0.996 on noisy (wrong witnesses). The answerer and the module are frozen here (commit below) and the held-out seeds
 are scored once.
+
+## Held-out result (seeds 9000-9074 per scenario, 300 networks, scored once at commit fb072908)
+
+`results-answerer-test.json`. Every bar passes; live mode may be offered to Gloria.
+
+| What | Metric | Answerer in the loop | Simulated answers | Blame the last step | Bar | Met |
+|---|---|---|---|---|---|---|
+| Answerer | precision of definite answers | **0.975** (1127 / 1156) | - | - | >= 0.90 | yes |
+| Answerer | coverage where the records show it | **0.986** | - | - | >= 0.80 | yes |
+| Localization | earliest faulty step, top-1 | **0.863** | 0.884 | 0.437 | >= 0.80, +0.20 | yes |
+| Revision | precision of recomputed set | **0.977** | 0.987 | 0.894 | >= 0.90 | yes |
+| Revision | recall of recomputed set | **0.927** | 0.942 | 0.767 | >= 0.90 | yes |
+| Revision | conclusions correct | **0.972** | 0.979 | 0.932 | >= 0.95 | yes |
+| Preservation | independent valid nodes unchanged | **0.9953** | 0.9969 | 0.9827 | >= 0.98 | yes |
+| Preservation | side (unrelated) nodes unchanged | **0.9998** | 0.998 | 0.980 | >= 0.998 | yes |
+
+Overall coverage was 0.76: the checker said unsure on 98% of beliefs with no record and 83% of those with only his
+own earlier belief, which is what it should do. Its mistakes: stale records (an older observation contradicting a
+newer one) 15 of 215 wrong, and guesses on "only his own belief" 10 of 23 wrong. 5.1 checks per network.
+Against Gloria's original side bar of 1.00: 0.9998, one changed unrelated node in the noisy scenario.
+
+The "simulated" column is the current module answering from the truth with 10-15% flips, run on the same seeds; it
+is not the frozen criteria result (`results-criteria-test.json`, other seeds), which stays as recorded. With bare
+True/False answers the changes since that freeze cannot trigger (every question node has a truth value, so no answer
+is ever unknown, and the 0.995 accuracy cap does not bind at 0.85-0.90); the one difference is that a check's own
+witness is no longer offered as a corroboration question.
+
+## After the held-out run: independent review (live layer only)
+
+A reviewer subagent found three blockers and five should-fixes in the live layer, all fixed before merge; none touch
+localize() or the answerer's scoring path, so the held-out result stands: the checker URL must be exactly the
+shim's AEON-only path on port 8599 (a longer /gemma-aegis-local/ path could fall back to a hosted model); a
+sediment belief is found by the fingerprint taken when the graph was built, and a confidence is changed only while
+it is still what the plan saw; nothing under a tension she CONFIRMED is changed; its own writes are never read back
+as record answers (known from the revision log, not only the record's mark); a reverted revision is not re-applied;
+the apply phase holds the log's lock and re-reads the switch; the log row is written before the store under the
+store's lock.

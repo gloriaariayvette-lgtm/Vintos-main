@@ -81,7 +81,12 @@ def refused(u):
 for u in ("http://127.0.0.1:8599/v1/chat/completions", "http://127.0.0.1:8599/gemma-aegis/v1/chat/completions",
           "http://127.0.0.1:8599/pool/aeon/v1/chat/completions", "https://api.x.ai/gemma-aegis-local/v1/chat/completions",
           "http://100.72.225.119:8599/gemma-aegis-local/v1/chat/completions", "https://127.0.0.1:8599/gemma-aegis-local/x",
-          "http://user@127.0.0.1:8599/gemma-aegis-local/x"):
+          "http://user@127.0.0.1:8599/gemma-aegis-local/x",
+          # review 1: the shim routes AEON-only on the exact path; these reach the pool chain that ends at x.ai
+          "http://127.0.0.1:8599/gemma-aegis-local/x", "http://127.0.0.1:8599/gemma-aegis-local/../v1/chat/completions",
+          "http://127.0.0.1:8599/gemma-aegis-local/v1/chat/completions/",
+          "http://127.0.0.1:9999/gemma-aegis-local/v1/chat/completions",
+          "http://127.0.0.1/gemma-aegis-local/v1/chat/completions"):
     check("refused before any call: %s" % u, refused(u))
 os.environ["BELIEF_REVISION_CHECKER_URL"] = "https://api.x.ai/v1/chat/completions"
 CALLS.clear()
@@ -93,9 +98,11 @@ def _refused(M, u):
         M.check_url(u); return False
     except ValueError:
         return True
-killed("the shim's hosted path allowed", lambda M: _refused(M, "http://127.0.0.1:8599/v1/chat/completions"), A,
-       'ALLOWED_PATHS = ("/gemma-aegis-local/",)', 'ALLOWED_PATHS = ("/",)')
-killed("any host allowed", lambda M: _refused(M, "http://100.72.225.119:8599/gemma-aegis-local/x"), A,
+killed("a path under the lane allowed", lambda M: _refused(M, "http://127.0.0.1:8599/gemma-aegis-local/x"), A,
+       "if u.path != ALLOWED_PATH:", "if not u.path.startswith(ALLOWED_PATH[:19]):")
+killed("any port allowed", lambda M: _refused(M, "http://127.0.0.1:9999/gemma-aegis-local/v1/chat/completions"), A,
+       "or port != SHIM_PORT:", "or False:")
+killed("any host allowed", lambda M: _refused(M, "http://100.72.225.119:8599/gemma-aegis-local/v1/chat/completions"), A,
        'u.hostname not in ALLOWED_HOSTS', 'False')
 
 print("--- 2. only AEON's answer counts; unsure or unsure-sounding is unknown ---")
@@ -290,7 +297,14 @@ was_her = [e for t in before_obj["tension-ledger.json"]["tensions"] for e in t["
 check("her words are never revised", her == was_her)
 check("only his private reading (E3) is ever invalidated",
       all(e["channel"] == "E3" for t in led for e in t["evidence"] if e.get("invalid")))
-check("a tension she CONFIRMED is not changed", next(t for t in led if t["tension_id"] == "T-3")["status"] == "CONFIRMED")
+t3_was = next(t for t in before_obj["tension-ledger.json"]["tensions"] if t["tension_id"] == "T-3")
+check("a tension she CONFIRMED is not changed at all, nor the readings under it",
+      next(t for t in led if t["tension_id"] == "T-3") == t3_was)
+def probe_confirmed(M):
+    data = {"tensions": [{"tension_id": "T", "status": "CONFIRMED", "evidence": [{"evidence_id": "x", "channel": "E3"}]}]}
+    return M.target("t:ev:x", "retract", 0.5, MEM)[0].locate(data) is None
+killed("readings under a confirmed tension revisable", probe_confirmed, L,
+       'if t.get("status") == "CONFIRMED":', "if False:")
 log = [json.loads(l) for l in open(os.path.join(MEM, L.LOG_NAME))]
 check("every change is logged with the whole superseded record", len(log) == len(applied)
       and all(r["superseded"] and r["was"] != r["now"] and r["rev"].startswith("REV-") for r in log))
@@ -320,7 +334,8 @@ def probe_self_witness(M):
     rs = M.StoreRecords(d)
     return rs.settle("t:tension:X") is None and rs.settle("t:tension:Y") == (False, "tension-ledger status REVOKED")
 check("a status set by belief revision itself never settles a question (it would confirm itself)", probe_self_witness(A))
-killed("its own revision taken as a record", probe_self_witness, A, 'if t and not t.get("belief_revision"):', "if t:")
+killed("its own revision taken as a record", probe_self_witness, A,
+       'not t.get("belief_revision") and node not in self.own', "node not in self.own")
 
 print("--- 8. once only, rate-limited, one note a day ---")
 snap = digest(MEM)
@@ -347,8 +362,8 @@ def probe_once_only(M):
         os.environ.pop("BELIEF_REVISION")
     return n1 and not set(n1) & set(tried)
 check("probe: a second night does not compound the same revisions, even when the marks were lost", probe_once_only(L))
-killed("revisions repeated every run", probe_once_only, L, "        if node in revised_nodes:\n            continue",
-       "        if False:\n            continue")
+killed("revisions repeated every run", probe_once_only, L, "            if node in revised_nodes:\n                continue",
+       "            if False:\n                continue")
 def probe_marked_once(M):
     d = os.path.join(HOME, "probe-marked-%d" % len(CALLS)); fixture(d)
     t = M.target("c:hyp:H1", "lower", 0.5, d)[0]
@@ -417,9 +432,77 @@ def probe_revert(M):
     return parsed(d, STORES) == b
 killed("revert leaves the revised value", probe_revert, L, 'rec[row["field"]] = row["was"]', "pass")
 
+print("--- 9b. review fixes: the right record, compare-and-set, a revert stays, no self-witness ---")
+def probe_shifted(M):
+    """The plan saw sediment row 0 = A; before the write, a decay pass removed A, so row 0 is now B. Nothing changes."""
+    d = os.path.join(HOME, "probe-shift-%d" % len(CALLS)); os.makedirs(d, exist_ok=True)
+    import belief_revision_sources as S
+    json.dump({"beliefs": [{"pattern": "B", "confidence": 0.5}]}, open(os.path.join(d, "belief-sediment.json"), "w"))
+    t = M.target("c:belief:0", "lower", 0.5, d, plan={"fp": S.fingerprint("A"), "confidence": 0.5})[0]
+    row, why = M.apply(t, d, {})
+    return row is None and json.load(open(os.path.join(d, "belief-sediment.json")))["beliefs"][0]["confidence"] == 0.5
+check("probe: a sediment row that moved since the plan is never mistaken for another", probe_shifted(L))
+killed("the row at the old index revised", probe_shifted, L,
+       'return Target(node, "belief-sediment.json", "confidence", _by_index("beliefs", i, "pattern", plan["fp"]),',
+       'return Target(node, "belief-sediment.json", "confidence", (lambda data: data["beliefs"][i]),')
+def probe_cas(M):
+    d = os.path.join(HOME, "probe-cas-%d" % len(CALLS)); fixture(d)
+    t = M.target("c:hyp:H1", "lower", 0.5, d, plan={"confidence": "medium"})[0]       # the store says "high" now
+    row, why = M.apply(t, d, {})
+    return row is None and "changed since the plan" in why
+check("probe: a confidence that changed since the plan is not overwritten", probe_cas(L))
+killed("no compare-and-set", probe_cas, L, "if t.expect is not None and cur != t.expect:", "if False:")
+def probe_revert_stays(M):
+    d = os.path.join(HOME, "probe-stays-%d" % len(CALLS)); fixture(d)
+    os.environ["BELIEF_REVISION"] = "live"
+    try:
+        n1 = {x["node"] for x in M.run(d, transport=aeon(), send=send, at="2026-11-14T10:00:00Z")["applied"]}
+        M.revert(d)
+        n2 = {x["node"] for x in M.run(d, transport=aeon(), send=send, at="2026-11-15T10:00:00Z")["applied"]}
+    finally:
+        os.environ.pop("BELIEF_REVISION")
+    return n1 and not n1 & n2
+check("probe: a reverted revision is not applied again the next night", probe_revert_stays(L))
+killed("reverted revisions re-applied", probe_revert_stays, L,
+       'revised_nodes = {r["node"] for r in rows if r.get("node")}',
+       'revised_nodes = {x["node"] for x in in_force(mem).values()}')
+def probe_no_self_witness_after_rewrite(M):
+    d = os.path.join(HOME, "probe-own-%d" % len(CALLS)); os.makedirs(d, exist_ok=True)
+    json.dump({"tensions": [{"tension_id": "X", "status": "CONTRADICTED", "evidence": []}]},
+              open(os.path.join(d, "tension-ledger.json"), "w"))            # the mark is gone (another organ rewrote)
+    open(os.path.join(d, "belief-revisions.jsonl"), "w").write(json.dumps({"rev": "REV-1", "node": "t:tension:X"}) + "\n")
+    return M.StoreRecords(d).settle("t:tension:X") is None
+check("probe: its own write is no witness even after the mark was dropped", probe_no_self_witness_after_rewrite(A))
+killed("own write read back as a record", probe_no_self_witness_after_rewrite, A,
+       'and node not in self.own:', ':')
+def probe_switch_mid_run(M):
+    d = os.path.join(HOME, "probe-mid-%d" % len(CALLS)); fixture(d); b = parsed(d, STORES)
+    os.environ["BELIEF_REVISION"] = "live"
+    real = M.BR.localize
+    def off_midway(*a, **k):
+        p = real(*a, **k); os.environ["BELIEF_REVISION"] = "off"; return p
+    M.BR.localize = off_midway
+    try:
+        out = M.run(d, transport=aeon(), send=send, at="2026-11-14T10:00:00Z")
+    finally:
+        M.BR.localize = real; os.environ.pop("BELIEF_REVISION", None)
+    return out["ran"] is False and parsed(d, STORES) == b
+check("probe: switching it off while the checks run means nothing is applied", probe_switch_mid_run(L))
+killed("switch read only at the start", probe_switch_mid_run, L,
+       'if not dry and mode() != "live":\n            stopped, wants = True, {}', 'if False:\n            stopped, wants = True, {}')
+
 print("--- 10. deploy: the modules ship ---")
 dep = open(os.path.join(REPO, "scripts", "deploy-atelier.sh")).read()
 check("the deploy installs all four modules", all(m in dep for m in ("belief_revision.py", "belief_revision_sources.py",
                                                                    "belief_revision_answer.py", "belief_revision_live.py")))
+
+BD = os.path.join(REPO, "experiments", "contradiction-backprop"); sys.path.insert(0, BD)
+import bench_answerer as BA
+check("answerer benchmark: dev and held-out seeds do not overlap, nor the criteria benchmark's held-out",
+      not set(BA.SPLITS["dev"]) & set(BA.SPLITS["test"]) and not set(BA.SPLITS["test"]) & set(range(5000, 5150)))
+res = json.load(open(BA.TEST_RESULT))
+check("answerer benchmark: held-out scored once, saved, and every pre-registered bar met",
+      res["split"] == "test" and all(res["pass"].values()) and res["checker"]["url"] == A.CHECKER_URL)
+check("the benchmark checker URL is the one live uses", A.check_url(A.CHECKER_URL) == A.CHECKER_URL)
 
 print("\n%d/%d" % (sum(R), len(R))); sys.exit(0 if all(R) else 1)

@@ -29,7 +29,9 @@ import json, os, random, re, time, urllib.error, urllib.parse, urllib.request
 CHECKER_URL = "http://127.0.0.1:8599/gemma-aegis-local/v1/chat/completions"
 CHECKER_MODEL = "aeon/gemma-4-12b"
 ALLOWED_HOSTS = ("127.0.0.1", "localhost", "::1")
-ALLOWED_PATHS = ("/gemma-aegis-local/",)          # the shim's AEON-on-Aegis lane: no pool spill, no hosted fallback
+SHIM_PORT = 8599
+ALLOWED_PATH = "/gemma-aegis-local/v1/chat/completions"   # the shim's AEON-on-Aegis lane, exactly: no pool spill,
+                                                          # no hosted fallback (bin/vintos_claude_shim.py provider_chain)
 AEON_PROVIDERS = ("aegis_gemma",)
 RECORD_ACCURACY = 0.95       # a record that states the standing outright: right unless the record itself is wrong
 CHECKER_ACCURACY = 0.97      # measured on the development seeds (bench_answerer.py: 849 of 868 definite answers
@@ -40,6 +42,7 @@ MAX_TOKENS = 60
 TIMEOUT_S = 90
 MAX_RECORDS = 12
 MAX_CHARS = 360              # one record line, clipped
+REVISION_LOG = "belief-revisions.jsonl"      # belief_revision_live.LOG_NAME: what this module itself changed
 PRIORITY_FILE = "/tmp/velaris-chat-priority"   # her live chat has the GPU: no check is asked while it is fresh
 
 SYSTEM = (
@@ -54,11 +57,16 @@ SYSTEM = (
 def check_url(url):
     """The checker may only reach the house shim's AEON-only lane on this machine. Anything else is refused."""
     u = urllib.parse.urlparse(url or "")
-    if u.scheme != "http" or u.hostname not in ALLOWED_HOSTS or u.username or u.password or u.query:
+    try:
+        port = u.port
+    except ValueError:
+        port = None
+    if u.scheme != "http" or u.hostname not in ALLOWED_HOSTS or u.username or u.password or u.query \
+            or u.params or u.fragment or port != SHIM_PORT:
         raise ValueError("belief revision checker: only the local house shim is allowed, not %r" % (u.hostname or url))
-    if not any(u.path.startswith(p) for p in ALLOWED_PATHS):
-        raise ValueError("belief revision checker: path %s can reach another provider; allowed: %s"
-                         % (u.path, ", ".join(ALLOWED_PATHS)))
+    # the shim routes AEON-only on this exact path; any other /gemma-aegis* path may fall back to a hosted model
+    if u.path != ALLOWED_PATH:
+        raise ValueError("belief revision checker: path %s can reach another provider; only %s" % (u.path, ALLOWED_PATH))
     return url
 
 
@@ -226,6 +234,7 @@ class StoreRecords:
         import belief_revision_sources as S
         self.g = graph
         load = lambda n, d: S._load(mem, n, d)
+        self.own = {str(r.get("node")) for r in load(REVISION_LOG, []) if isinstance(r, dict) and r.get("node")}
         rows = S._rows
         self.tensions = {str(t.get("tension_id")): t for t in rows(load("tension-ledger.json", {}), "tensions")}
         self.t_ev = {}
@@ -256,8 +265,9 @@ class StoreRecords:
     def settle(self, node):
         if node.startswith("t:tension:"):
             t = self.tensions.get(node[10:])
-            # a status this module's own live revision set is not a witness: it would confirm itself
-            if t and not t.get("belief_revision"):
+            # a status this module's own live revision set is not a witness: it would confirm itself. Known by the
+            # revision log, not only the record's mark, which another organ's rewrite can drop (review 4)
+            if t and not t.get("belief_revision") and node not in self.own:
                 st = str(t.get("status") or "")
                 if st in ("REVOKED", "CONTRADICTED") or t.get("lifecycle") == "CONTRADICTED":
                     return False, "tension-ledger status %s" % (st or t.get("lifecycle"))

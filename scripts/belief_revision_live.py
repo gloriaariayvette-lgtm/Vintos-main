@@ -7,7 +7,8 @@ Aegis). This module is the only one that writes, and only when vintos.env says
 
     BELIEF_REVISION=live
 
-Anything else (or nothing) is off: `run` then does nothing at all. What live mode may do:
+Anything else (or nothing) is off: `run` then does nothing at all (`run --dry-run` still asks the local checker
+and writes nothing). What live mode may do:
 
   * Revise only HIS beliefs, inferences and readings, each through one field its readers already honour:
       a tension he inferred      tension-ledger.json   status -> CONTRADICTED (withdraw) / SUPPORTED -> HYPOTHESIS (lower)
@@ -26,7 +27,7 @@ Anything else (or nothing) is off: `run` then does nothing at all. What live mod
   * At most MAX_PER_DAY store changes a day (BELIEF_REVISION_MAX_PER_DAY); the rest wait, most blamed first.
   * Every change is a compare-and-set under the store's lock (store_guard.transaction), logged with the whole
     superseded record in belief-revisions.jsonl, and marked on the record ("belief_revision": rev id, field, was).
-    A record already revised and not reverted is not revised again.
+    A record revised once is never revised again by this module, and one she reverted stays reverted.
 
     python3 belief_revision_live.py run [--memory DIR] [--dry-run] [--checks N]
     python3 belief_revision_live.py list                    # revisions in force
@@ -111,6 +112,7 @@ class Target:
 
     def __init__(self, node, store, field, locate, new_value, why=""):
         self.node, self.store, self.field, self.locate, self.new_value, self.why = node, store, field, locate, new_value, why
+        self.expect = None                  # when set, the field must still hold this value (compare-and-set)
 
 
 def _list(data, key):
@@ -157,8 +159,18 @@ def _level(withdraw):
     return new
 
 
-def target(node, action, factor, mem):
-    """(Target, None) for a node this module may revise, or (None, why it is only flagged)."""
+def target(node, action, factor, mem, plan=None):
+    """(Target, None) for a node this module may revise, or (None, why it is only flagged).
+    plan: the graph node's meta as the plan saw it ({"fp", "confidence"}): a sediment belief is found by the
+    fingerprint taken when the graph was built, and a confidence is only changed while it is still what the plan
+    saw (review 2: a decay pass may move or change the list while the checks are being asked)."""
+    t, why = _target(node, action, factor, mem, plan or {})
+    if t is not None and plan and node.startswith(("c:belief:", "c:hyp:")) and "confidence" in plan:
+        t.expect = plan["confidence"]
+    return t, why
+
+
+def _target(node, action, factor, mem, plan):
     if node.startswith(SELF_MODEL_PREFIXES):
         return None, "self-model entry: flagged, never revised"
     withdraw = action in ("retract", "withdraw")
@@ -177,6 +189,8 @@ def target(node, action, factor, mem):
             for t in _list(data, "tensions") or []:
                 for e in (t.get("evidence") or []) if isinstance(t, dict) else []:
                     if isinstance(e, dict) and str(e.get("evidence_id")) == eid:
+                        if t.get("status") == "CONFIRMED":
+                            return None              # nothing under a tension she confirmed is changed (review 3)
                         return e if e.get("channel") == "E3" else None    # only his private reading
             return None
         return Target(node, "tension-ledger.json", "invalid", locate, lambda cur: True if cur is not True else None,
@@ -189,11 +203,9 @@ def target(node, action, factor, mem):
             i = int(node[9:])
         except ValueError:
             return None, "unreadable id"
-        rows = _list(store_guard.load_json(os.path.join(mem, "belief-sediment.json"), {}), "beliefs") or []
-        if not (0 <= i < len(rows)) or not isinstance(rows[i], dict):
-            return None, "record not found"
-        return Target(node, "belief-sediment.json", "confidence",
-                      _by_index("beliefs", i, "pattern", _fp(rows[i].get("pattern"))),
+        if not plan.get("fp"):
+            return None, "no fingerprint from the plan: not revised"
+        return Target(node, "belief-sediment.json", "confidence", _by_index("beliefs", i, "pattern", plan["fp"]),
                       _numeric(FLOOR if withdraw else factor)), None
     if node.startswith("r:"):
         eid = node[2:]
@@ -235,6 +247,9 @@ def apply(t, mem, meta, dry=False):
             out["why"] = "already revised (%s)" % mark.get("rev")
             return None
         cur = rec.get(t.field)
+        if t.expect is not None and cur != t.expect:
+            out["why"] = "changed since the plan (%s is %r, the plan saw %r)" % (t.field, cur, t.expect)
+            return None
         new = t.new_value(cur)
         if new is None or new == cur:
             out["why"] = "nothing to change (%s is %r)" % (t.field, cur)
@@ -243,6 +258,9 @@ def apply(t, mem, meta, dry=False):
                           superseded=copy.deepcopy(rec))
         if dry:
             return None
+        # the log row first, still under the store's lock: a crash after it leaves a row whose change never landed
+        # (revert then says "changed since"), never a change no row can find (review 7)
+        _append(os.path.join(mem, LOG_NAME), out["row"])
         rec[t.field] = new
         rec["belief_revision"] = {"rev": rev, "field": t.field, "was": cur, "at": out["row"]["at"]}
         return data
@@ -251,8 +269,6 @@ def apply(t, mem, meta, dry=False):
     store_guard.locked_update(path, mutate, default={}, reader="belief_revision_live")
     if "row" not in out:
         return None, out.get("why")
-    if not dry:
-        _append(os.path.join(mem, LOG_NAME), out["row"])
     return out["row"], None
 
 
@@ -332,9 +348,10 @@ def tell_her(flags, mem, send=None, today=None):
         row, _line = gloria_asks.tell(note, by="belief_revision", where="belief revision", send=send)
     except Exception:
         row = None
+    pushed = bool(row and row.get("pushed"))       # kept for her but not pushed: told again on a later day
     for f in new:
-        f["told"] = bool(row)
-        f["told_at"] = _now() if row else ""
+        f["told"] = pushed
+        f["told_at"] = _now() if pushed else ""
     return row
 
 
@@ -385,26 +402,38 @@ def run(mem=None, dry=False, checks=CHECKS, transport=None, send=None, at=None):
         f = (d["standing_after"] / d["standing_before"]) if d["standing_before"] else 0.0
         want(d["node"], d["action"], round(min(1.0, f), 4), None, "rests on a revised source")
     plan_rows, applied, deferred = [], [], []
-    room = max(0, max_per_day() - applied_today(mem, at[:10]))
-    revised_nodes = {r["node"] for r in in_force(mem).values()}
-    for node, w in sorted(wants.items(), key=lambda kv: (-(kv[1]["blame"] or 0), kv[0])):
-        t, why = target(node, w["action"], w["factor"], mem)
-        if t is None:
-            k = "self_model" if node.startswith(SELF_MODEL_PREFIXES) else "record"
-            _flag(flags, node, k, why, w["blame"], at)
-            flagged[k] += 1
-            continue
-        if node in revised_nodes:
-            continue                                             # revised before and still in force: once is enough
-        if not dry and len(applied) >= room:
-            deferred.append(node)
-            continue
-        meta = {"action": w["action"], "blame": w["blame"], "why": w["why"], "mode": "dry-run" if dry else "live",
-                "answers": [{"node": a["node"], "answer": a["answer"], "by": (a.get("provenance") or {}).get("by")}
-                            for a in p.get("answers") or []][:24]}
-        row, why = apply(t, mem, meta, dry=dry)
-        if row:
-            (plan_rows if dry else applied).append({k: row[k] for k in ("rev", "node", "store", "field", "was", "now")})
+    stopped = False
+    # the whole apply phase holds the revision log's lock: two runs at once cannot both spend the day's limit, and
+    # the switch is read again here, so turning it off while the checks were being asked takes effect (review 6)
+    with store_guard.transaction(os.path.join(mem, LOG_NAME)):
+        if not dry and mode() != "live":
+            stopped, wants = True, {}
+        room = max(0, max_per_day() - applied_today(mem, at[:10]))
+        rows = _read_jsonl(os.path.join(mem, LOG_NAME))
+        revised_nodes = {r["node"] for r in rows if r.get("node")}   # in force, or reverted (her no stands, review 5)
+        for node, w in sorted(wants.items(), key=lambda kv: (-(kv[1]["blame"] or 0), kv[0])):
+            gn = g.nodes.get(node) or {}
+            t, why = target(node, w["action"], w["factor"], mem,
+                            plan=dict(gn.get("meta") or {}, **({"confidence": gn["confidence"]}
+                                                              if gn.get("confidence") is not None else {})))
+            if t is None:
+                k = "self_model" if node.startswith(SELF_MODEL_PREFIXES) else "record"
+                _flag(flags, node, k, why, w["blame"], at)
+                flagged[k] += 1
+                continue
+            if node in revised_nodes:
+                continue                                         # revised once already (or reverted): never again
+            if not dry and len(applied) >= room:
+                deferred.append(node)
+                continue
+            meta = {"action": w["action"], "blame": w["blame"], "why": w["why"], "mode": "dry-run" if dry else "live",
+                    "answers": [{"node": a["node"], "answer": a["answer"], "by": (a.get("provenance") or {}).get("by")}
+                                for a in p.get("answers") or []][:24]}
+            row, why = apply(t, mem, meta, dry=dry)
+            if row:
+                (plan_rows if dry else applied).append({k: row[k] for k in ("rev", "node", "store", "field", "was", "now")})
+    if stopped:
+        return {"ran": False, "reason": "BELIEF_REVISION was turned off during the run; nothing applied"}
     if not dry:
         store_guard.write_json(os.path.join(mem, FLAGS_NAME), flags, reader="belief_revision_live")
         told = tell_her(flags, mem, send=send, today=at[:10])
