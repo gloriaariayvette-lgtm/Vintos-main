@@ -299,7 +299,33 @@ def _reconcile(investigation, step, data):
     _store_result(step, result)
     step['state_at'] = lab.now_iso()
     step['reconciled'] = dict(was, by='receipt', receipt_id=step.get('execution_receipt_id'), at=step['state_at'])
+    if step.get('id') in (investigation.get('unsettled') or []):
+        # it finished incomplete without this step: the receipt is recorded, once (only an unknown step reaches
+        # here), and the review it already had is kept; it is not reopened
+        step['reconciled']['late'] = True
+        lab._append(lab.NOTEBOOK, {'at': step['state_at'], 'kind': 'late_receipt', 'investigation': investigation.get('id'),
+                                   'step': step.get('id'), 'receipt_id': step.get('execution_receipt_id'),
+                                   'investigation_state': investigation.get('state')})
     return True
+
+
+def _relay_deadline(step):
+    """When an unknown relay step may be finished without: its durable dispatch time plus the relay's own send
+    timeout, as epoch seconds. None (wait for a receipt, as before) for any other step, and for a relay step whose
+    dispatch time is missing or unreadable. The timeout is a wait, not proof of what the provider did: the step stays
+    outcome_unknown, and its exact request stays held, either way."""
+    import lab_instruments
+    import plugin_gateway
+    request = step.get('executed_request') or step.get('request') or {}
+    if step.get('route') != 'instrument' or not isinstance(request, dict) or request.get('skill') not in lab_instruments.RELAY:
+        return None
+    try:
+        sent = datetime.fromisoformat(str(step['dispatched_at']))
+        if sent.tzinfo is None:
+            return None
+        return sent.timestamp() + plugin_gateway.SKILL_TIMEOUT
+    except (KeyError, TypeError, ValueError):
+        return None
 
 
 def reconcile(investigation_id, step_id=None):
@@ -1295,12 +1321,30 @@ def _budget_spent(investigation):
     return ''
 
 
-def _review(investigation, context, ask):
+UNSETTLED_REASON = 'sent; outcome unknown and no receipt retained, so it is missing evidence, not a result'
+
+
+def _review(investigation, context, ask, unsettled=()):
     """The finish review: the existing scientific reflection on every retained output, against the unchanged question.
-    Answered, the investigation is 'answered' and its finding is recorded. Returns (notebook row, answered)."""
+    Answered, the investigation is 'answered' and its finding is recorded. Returns (notebook row, answered).
+
+    unsettled: relay steps sent whose outcome is still unknown. The review goes ahead without them, each named as
+    missing evidence, and the row says it is incomplete. With no other output to read, nothing is reviewed and
+    nothing is claimed: the row says so and the investigation closes unanswered."""
     original = {'question':investigation['question'], 'line_id':investigation.get('line_id')}
     observations = _with_named_records(investigation['question'], investigation['steps'], _observations(investigation['steps']))
+    if unsettled:
+        observations['outputs_not_reviewed'] = list(observations.get('outputs_not_reviewed') or []) + [
+            {'step': s.get('id'), 'output_file': None, 'reason': UNSETTLED_REASON} for s in unsettled]
     left_out = observations.get('outputs_not_reviewed') or []
+    if unsettled and not (observations.get('additional_source') or {}).get('receipt', {}).get('records'):
+        row = {'at': lab.now_iso(), 'kind': 'investigation_review', 'investigation': investigation['id'],
+               'inquiry': original, 'answers_question': 'no: no retained output could be reviewed',
+               'missing_evidence': '; '.join('%s %s' % (x['step'], x['reason']) for x in left_out[:3]),
+               'outputs_not_reviewed': left_out, 'reviewed': False}
+        investigation.update(state='unanswered', closed_reason='finished incomplete: no retained output could be '
+                             'reviewed and %d sent step(s) have no receipt' % len(unsettled))
+        return row, False
     if left_out and not (observations.get('additional_source') or {}).get('receipt', {}).get('records'):
         # not one output could be used: nothing to review, and the model is not asked to judge nothing
         raise ValueError('no retained output could be reviewed: %s'
@@ -1876,6 +1920,24 @@ def _close_late_repeat(data, investigation, question, note):
     return None
 
 
+def _withheld(text):
+    """The closed-question placeholder (lab_closed_redaction) given back as if it were a question."""
+    return __import__('lab_closed_redaction').is_placeholder(text)
+
+
+def _drop_withheld(data, investigation):
+    """A fresh investigation whose only question is the withheld-question placeholder is not opened: it is dropped
+    before any step and written down, and the Lab's ordinary turn runs instead."""
+    data['investigations'] = [i for i in data['investigations'] if i is not investigation]
+    _save(data)
+    lab._append(lab.NOTEBOOK, {'at': lab.now_iso(), 'kind': 'investigation_refused_placeholder',
+                               'line_id': investigation.get('line_id'),
+                               'why': 'the planner gave back the withheld closed-question placeholder, not a question',
+                               'truth_status': 'refused_before_any_execution'})
+    _CURRENT.clear()
+    return None
+
+
 def _settle_question(investigation, value, data, context, ask, note):
     """(value, refused): the opening proposal with its question settled, or refused=True when it repeats a closed
     investigation's question and the investigation was not opened. A question already investigated is asked once more
@@ -1884,10 +1946,15 @@ def _settle_question(investigation, value, data, context, ask, note):
     asked = ''
     for attempt in (0, 1):
         given = str(value.get('question') or '').strip()
+        if _withheld(given):
+            given = ''      # the withheld-question placeholder echoed back is no question (12 November)
         # A retry that leaves out "question" still asks the one it was told repeats: read as no question at all, it
         # opened unchecked and a later turn wrote the old question back in (2 November: the pendrin 653-729
         # question opened 69 times since 28 October, every one after a refusal).
         question = given or had or asked
+        if not question and _withheld(value.get('question')):
+            _drop_withheld(data, investigation)
+            return None, True
         asked = question
         earlier = _same_question(question, None, data) if question else []
         if not earlier:
@@ -2069,6 +2136,9 @@ def _turn(context, *, ask=None, execute=None):
     investigation.pop('deferred_until', None)
     if not investigation.get('question'):
         filled = str(value.get('question') or '')
+        if _withheld(filled):
+            return _refuse(data, investigation, 'the planner gave back the withheld closed-question placeholder, '
+                                                'not a question')
         # A question written in after opening is checked as an opening one is: a repeat is not taken up here either
         repeated = _late_repeat(filled, data) if filled else None
         if repeated is not None:
@@ -2446,12 +2516,30 @@ def _carry_out(data, investigation, value, plan_ref, context, ask, execute, may_
         unknown = [s for s in unknown if s.get('state') == 'outcome_unknown']
         if settled:
             _save(data)
-        if unknown:
+        # A relay step sent and never settled (its process ended, or the relay failed after sending) blocked finish
+        # for good: on 10 and 12 November three investigations were refused 37-41 times each, every 45 s, until they
+        # stalled. Such a step may be finished without once the relay's own send timeout has passed since it was
+        # sent; until then the investigation waits, set aside. Any other unknown step, or a relay step whose send
+        # time is not recorded, still blocks finish. Either way the step stays outcome_unknown (its exact request
+        # stays held), and a receipt that arrives later still settles it (_reconcile).
+        deadlines = {s.get('id'): _relay_deadline(s) for s in unknown}
+        blocking = [s for s in unknown if deadlines[s.get('id')] is None]
+        if blocking:
             # the fault line keeps 240 characters: the ids come first, so the alert alone says which step to reconcile
-            more = ' (+%d more)' % (len(unknown) - 1) if len(unknown) > 1 else ''
+            more = ' (+%d more)' % (len(blocking) - 1) if len(blocking) > 1 else ''
             raise Unreconciled(('cannot finish with an unreconciled execution outcome: %s%s; no matching receipt'
-                                % (_named(investigation, unknown[0]), more))[:240])
-        row, answered = _review(investigation, context, ask)
+                                % (_named(investigation, blocking[0]), more))[:240])
+        if unknown and max(deadlines.values()) > time.time():
+            # waiting is not a failure: no planning failure is counted, and the planner is not asked again until then
+            investigation['deferred_until'] = max(deadlines.values())
+            _save(data)
+            return {'kind': 'investigation_wait', 'investigation': investigation['id'], 'state': 'finish_deferred',
+                    'retry_at': investigation['deferred_until'], 'unsettled': [s.get('id') for s in unknown]}
+        if unknown:
+            investigation.update(incomplete=True, unsettled=[s.get('id') for s in unknown])
+        row, answered = _review(investigation, context, ask, unsettled=unknown)
+        if unknown:
+            row.update(incomplete=True, unsettled=[s.get('id') for s in unknown])
         if not answered:
             # Unanswered: it stays open to gather more, but a finish adds no step, so the step budget alone would
             # never close an investigation the planner keeps trying to finish. Three unanswered reviews close it.
@@ -2466,7 +2554,8 @@ def _carry_out(data, investigation, value, plan_ref, context, ask, execute, may_
         _save(data); lab._append(lab.NOTEBOOK, row)
         return row
     step = {'id':'S-'+uuid.uuid4().hex[:12], 'at':lab.now_iso(), 'route':route,
-            'question':str(value.get('step_question') or investigation['question']),
+            'question':str((value.get('step_question') if not _withheld(value.get('step_question')) else '')
+                           or investigation['question']),
             'request':request, 'input_refs':_inputs(request), 'why':str(value.get('why') or ''),
             'origin':'autonomous_lab', 'tool':tool_name(route,request), **({'authored_route':authored_route} if authored_route else {}),
             **({'plan_ref':plan_ref} if plan_ref else {}),

@@ -48,6 +48,12 @@ MIN_PRESENCE_HOLDOUT = 10   # audited replies said AFTER the checkpoint before p
 MIN_REALIZED_FOR_RETRAIN = 30
 MIN_CALIBRATION_HOLDOUT_FOR_RETRAIN = 30
 EMB_MODEL = "nomic-ai/nomic-embed-text-v1"
+# After-reply forecasts (13 November). The two-hourly cron alone forecast before only 63 of the 159 exchanges
+# since the 21 September checkpoint, and most of its joined targets were a later sitting's opener (median
+# 10 h after the forecast). The on-message job, launched when her message arrives, now waits for his reply
+# to land and forecasts then: after his reply, before her next message. The cron stays the fallback.
+AFTER_REPLY_WAIT = 900      # seconds after her message's arrival; past this the job gives up
+AFTER_REPLY_POLL = 5
 
 def log(m): print("[jepa]", m, flush=True)
 def load(p, d):
@@ -531,11 +537,111 @@ def _conf(lv):
     lv = max(-6.0, min(6.0, float(lv)))
     return round(1.0 / (1.0 + float(np.exp(lv))), 3)   # tight variance -> high confidence
 
-def predict(model_path=MODEL, out_path=OUT, history_path=None, shadow=False):
+def _forecast_lock(out_path):
+    """One forecast writer at a time per output: the cron and an after-reply job must not interleave
+    their history lines or both write a row for the same window."""
+    try:
+        import fcntl
+        lk = open(out_path + ".lock", "a+")
+        fcntl.flock(lk, fcntl.LOCK_EX)
+        return lk
+    except Exception:
+        return None
+
+
+def predict(model_path=MODEL, out_path=OUT, history_path=None, shadow=False, enc=None, trigger="cron", side_feeds=True):
+    """trigger names who asked ("cron" or "after_reply"); it is recorded on the history row. side_feeds=False
+    leaves the latent stream and the LAM cascade to the scheduled job, so their cadence does not change."""
+    lk = _forecast_lock(out_path)
+    try:
+        return _predict(model_path, out_path, history_path, shadow, enc, trigger, side_feeds)
+    finally:
+        if lk is not None:
+            try: lk.close()
+            except Exception: pass
+
+
+def _reply_state(turns, arrived_at):
+    """'replied' once a reply of his at or after her message's arrival is the latest live turn. The chat
+    record writes her message and his reply together, when the reply lands."""
+    if not turns:
+        return "waiting"
+    last = turns[-1]
+    at = _epoch(last.get("timestamp"))
+    if last.get("role") == "assistant" and at is not None and at >= arrived_at - 1:
+        return "replied"
+    return "waiting"
+
+
+def _newer_arrival(arrived_at, pending_dir=None, on_message_log=None):
+    """True when another message of hers arrived after this one: that message's own job forecasts after
+    its reply, and a forecast made now could postdate her arrival (a target already sent)."""
+    pending_dir = pending_dir or os.path.join(MEMORY, "jepa-self-pending")
+    try:
+        for name in os.listdir(pending_dir):
+            try:
+                if int(name.split("-", 1)[0]) / 1000.0 > arrived_at + 0.5:
+                    return True
+            except Exception:
+                continue
+    except Exception:
+        pass
+    from jepa_ranking_audit import _jsonl
+    for r in _jsonl(on_message_log or os.path.join(MEMORY, "jepa-self-forecasts.jsonl"))[-50:]:
+        try:
+            if float(r.get("arrived_at") or 0) > arrived_at + 0.5:
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def after_reply(arrived_at, enc=None, wait=AFTER_REPLY_WAIT, poll=AFTER_REPLY_POLL, sleep=None, clock=None,
+                encoder_factory=None, hold=None):
+    """Called by the on-message job once its own forecast is written. Waits (without an encoder) for his
+    reply to her message, then makes the production and shadow forecasts: the moment the next Gloria turn
+    is genuinely ahead. hold() is a context manager taken after the wait, around the encoder and both
+    forecasts (the on-message job passes its own lock, so two of her messages never hold two encoders).
+    Returns the states; never raises."""
+    import time as _t, contextlib
+    sleep, clock = sleep or _t.sleep, clock or _t.time
+    try:
+        while True:
+            turns = turns_of(load(CHAT, []))
+            state = _reply_state(turns, arrived_at)
+            if state == "replied":
+                break
+            if clock() - arrived_at > wait:
+                log("after-reply: no reply within %ds; no forecast" % wait); return {"state": "NO_REPLY"}
+            sleep(poll)
+        with (hold() if hold else contextlib.nullcontext()):
+            # checked under the hold: a newer message's job may have logged its arrival while this one waited
+            if _newer_arrival(arrived_at):
+                log("after-reply: she wrote again; that message's job forecasts"); return {"state": "SUPERSEDED"}
+            enc = enc or (encoder_factory or encoder)()
+            out = {"state": "FORECAST", "production": None, "shadow": None}
+            try:
+                r = predict(enc=enc, trigger="after_reply", side_feeds=False)
+                out["production"] = (r or {}).get("state", "WRITTEN") if isinstance(r, dict) else None
+            except Exception as e:
+                log("after-reply production forecast failed: %s" % type(e).__name__)
+            if os.path.exists(SHADOW_MODEL):
+                try:
+                    r = predict(SHADOW_MODEL, SHADOW_OUT, SHADOW_HISTORY, shadow=True, enc=enc, trigger="after_reply")
+                    out["shadow"] = (r or {}).get("state", "WRITTEN") if isinstance(r, dict) else None
+                except Exception as e:
+                    log("after-reply shadow forecast failed: %s" % type(e).__name__)
+            return out
+    except Exception as e:
+        log("after-reply forecast unavailable: %s" % type(e).__name__)
+        return {"state": "ERROR"}
+
+
+def _predict(model_path, out_path, history_path, shadow, enc, trigger, side_feeds):
     import numpy as np, torch
     # This scheduled job also advances the optional stream when chat is unchanged.
     # Failure adds no evidence and never prevents the original head forecast.
-    if not shadow:
+    if not shadow and side_feeds:
         try:
             from latent_feed import refresh
             refresh(memory=MEMORY)
@@ -568,7 +674,7 @@ def predict(model_path=MODEL, out_path=OUT, history_path=None, shadow=False):
     if unchanged_forecast(out_path, loaded_checkpoint, _context_id):
         log("unchanged context — retained existing forecast; no history row written")
         return {"state": "UNCHANGED_CONTEXT", "checkpoint_id": loaded_checkpoint, "context_id": _context_id}
-    enc = encoder()
+    enc = enc or encoder()
     xe = np.asarray(enc.encode([ctx], show_progress_bar=False), dtype="float32")
     with torch.no_grad():
         g_pred, s_pred, p_pred, logvar = net(torch.tensor(xe))
@@ -723,7 +829,7 @@ def predict(model_path=MODEL, out_path=OUT, history_path=None, shadow=False):
            "variance_qualified": (_cg is not None),
            "empirical_calibration": ("RELEASED under " + _cal_v["gloria"].get("criteria_version", "?")) if all(v.get("state") == "RELEASED" for v in _cal_v.values()) else "UNVERIFIED - variance gate passed is NOT calibration; see jepa-calibration.json when the audit has >=30 held-out predictions (Vrika, 2026-08-10)",
            "context_schema": _schema, "architecture": ck.get("architecture", "shared-v1"),
-           "shadow_only": bool(shadow),
+           "shadow_only": bool(shadow), "trigger": trigger,
            "note": "embedding prediction; confidence = trained logvar (Vrika repair 2026-08-10); decode_similarity = nearest-turn cosine, NOT confidence; shadow checkpoints may never steer"}
     if _gloria_fc is not None:
         # These fields feed the existing prose/readiness path. Confidence retains
@@ -745,6 +851,9 @@ def predict(model_path=MODEL, out_path=OUT, history_path=None, shadow=False):
         hist_line = {"checkpoint_id": _ck_id, "ts": _ht.time(), "iso": __import__("datetime").datetime.now().isoformat(),
                      "prediction_id": out["prediction_id"], "context_id": out["context_id"],
                      "context_last_event": out["context_last_event"],
+                     # who asked, and whose turn closed the window: a window that ends on her
+                     # message forecasts a turn she has already sent (the joiners skip it)
+                     "trigger": trigger, "context_last_role": (turns[-1].get("role") if turns else None),
                      "context_schema": _schema,
                      "context_emb": [round(float(x), 4) for x in xe[0]],
                      "gloria": {"confidence": gloria["confidence"], "confidence_placeholder": _cg is None,
@@ -774,7 +883,7 @@ def predict(model_path=MODEL, out_path=OUT, history_path=None, shadow=False):
         open(_hp, "a").write(json.dumps(hist_line) + "\n")
     except Exception as _he:
         log(f"history append failed: {_he}")
-    if not shadow and os.path.exists(os.path.join(MEMORY, "jepa-readouts", "lam-linear.npz")):
+    if not shadow and side_feeds and os.path.exists(os.path.join(MEMORY, "jepa-readouts", "lam-linear.npz")):
         try:
             import lam
             lam.predict(enc=enc)

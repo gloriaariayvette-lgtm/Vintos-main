@@ -258,6 +258,31 @@ class EngineOnSol(unittest.TestCase):
         self.assertEqual((row['realized']['gloria'], row['gloria_judge']['reason']), ('NOT_JUDGEABLE', 'criterion_already_met'))
         self.assertEqual(PV._axis_history()['gloria']['n'], 0)
 
+    def test_an_incomplete_or_contradictory_landing_is_invalid_and_never_counted(self):
+        """13 November review: a bare YES, or a PARTIAL whose reason says she never replied, had landed. Whoever
+        answers, the engine keeps a landing only on a complete, self-consistent receipt."""
+        for answer, why in (({'verdict': 'YES', 'status': 'ok'}, 'missing_reason'),
+                            (dict(SOL_YES, verdict='PARTIAL', reason='no_her_reply'), 'reason_contradicts_verdict'),
+                            (dict(SOL_YES, adherence=None), 'missing_adherence'),
+                            (dict(SOL_YES, codes=['plain_yes', 'not_shown']), 'codes_contradict_verdict'),
+                            (dict(SOL_YES, status='unparsed'), 'status_not_ok')):
+            with self.subTest(why=why):
+                Path(E.LEDGER).write_text('[]'); self.move()
+                with self.sol(answer):
+                    E.resolve_previous(HER)
+                row = self.rows()[-1]
+                self.assertEqual((row['realized']['gloria'], row['gloria_judge']['reason'], row['gloria_judge']['status'],
+                                  row['gloria_judge']['detail']), ('NOT_JUDGEABLE', 'invalid', 'invalid', why))
+                self.assertEqual(PV._axis_history()['gloria']['n'], 0)
+        for adherence in ('partly', 'not_delivered'):                       # rule 5: she showed it anyway
+            with self.subTest(adherence=adherence):
+                Path(E.LEDGER).write_text('[]'); self.move()
+                with self.sol(dict(SOL_YES, verdict='PARTIAL', reason='partial_one_part', codes=['partial_one_part'],
+                                   adherence=adherence)):
+                    E.resolve_previous(HER)
+                self.assertEqual(self.rows()[-1]['realized']['gloria'], 'PARTIAL')
+                self.assertEqual(PV._axis_history()['gloria']['PARTIAL'], 1)
+
     # ---- the judge off her turn --------------------------------------------------------------------------
     def blocking_sol(self, release):
         """A Sol that holds its answer until `release`; its packets are kept in self.packets."""
@@ -370,6 +395,36 @@ class EngineOnSol(unittest.TestCase):
         self.assertEqual(PV.WINDOW_EXPIRED, E.WINDOW_EXPIRED); self.assertEqual(PV.HER_REPLY_HOURS, E.DEVICE_WAIT_HOURS)
 
 
+    def test_every_stale_check_outcome_is_counted_failures_and_late_answers_too(self):
+        """14 November acceptance: the fail-open path refused nothing and counted nothing, so its failures were
+        invisible. Each outcome is counted by day under fixed keys; a check still out at the bound counts pending,
+        and its late answer counts again as late_<answer>."""
+        import threading, time
+        with patch.object(GJ, 'stale_check', return_value='met'):
+            STALE_GLORIA(GLORIA, 'yes'); STALE_GLORIA(GLORIA, '')
+        for raised in (RuntimeError('fixture'),):
+            with patch.object(GJ, 'stale_check', side_effect=raised):
+                self.assertEqual(STALE_GLORIA(GLORIA, 'yes'), 'error')
+        with patch.object(GJ, 'stale_check', return_value='timeout'):
+            self.assertEqual(STALE_GLORIA(GLORIA, 'yes'), 'timeout')
+        release = threading.Event(); self.addCleanup(release.set)
+        def slow(ax, words):
+            release.wait(10); return 'timeout'
+        with patch.object(GJ, 'stale_check', slow), patch.object(E, 'GLORIA_STALE_BOUND', 0.2):
+            self.assertEqual(STALE_GLORIA(GLORIA, 'yes', intent_id='i1'), 'pending')
+            self.assertEqual(E.stale_counts()['unresolved'], 1)
+            release.set()
+            for _ in range(100):
+                if E.stale_counts().get('late_timeout'): break
+                time.sleep(0.05)
+        got = E.stale_counts()
+        self.assertEqual({k: got.get(k, 0) for k in ('met', 'skipped', 'error', 'timeout', 'pending', 'late_timeout')},
+                         {'met': 1, 'skipped': 1, 'error': 1, 'timeout': 1, 'pending': 1, 'late_timeout': 1})
+        self.assertEqual((got['failed'], got['unresolved']), (3, 0))
+        stored = json.dumps(E._load(E.GLORIA_STALE_COUNTS))
+        self.assertNotIn('yes', stored); self.assertNotIn('i1', stored)                 # counts only, no words or ids
+
+
 class FakeReply:
     def __init__(self, body): self.body = body
     def json(self):
@@ -477,6 +532,75 @@ class SonnetTransport(unittest.TestCase):
         self.reply = self.answer({'verdict': 'NO', 'reason': 'declined', 'his_adherence': 'delivered'})
         self.assertEqual(GJ.judge(self.packet)['verdict'], 'NO')
 
+    def test_an_answer_that_is_no_complete_receipt_is_invalid(self):
+        """13 November review: parse checked only the verdict word, so {"verdict": "YES"} came back YES with status
+        ok. A receipt needs its verdict's own reason, his adherence on a landing, and no code of another verdict."""
+        full = {'verdict': 'YES', 'reason': 'plain_yes', 'codes': ['plain_yes'], 'his_adherence': 'delivered',
+                'confidence': 'high'}
+        cases = [({'verdict': 'YES'}, 'missing_reason'),
+                 ({'verdict': 'PARTIAL', 'reason': 'no_her_reply'}, 'reason_contradicts_verdict'),
+                 (dict(full, verdict='PARTIAL', reason='no_her_reply', codes=['no_her_reply']), 'reason_contradicts_verdict'),
+                 (dict(full, reason='made_up'), 'unlisted_reason'),
+                 (dict(full, reason=['plain_yes']), 'missing_reason'),
+                 ({k: v for k, v in full.items() if k != 'his_adherence'}, 'missing_adherence'),
+                 (dict(full, his_adherence='mostly'), 'bad_adherence'),
+                 (dict(full, codes='plain_yes'), 'bad_codes'),
+                 (dict(full, codes=['plain_yes', 'his_move_not_delivered']), 'codes_contradict_verdict'),
+                 (dict(full, verdict='PARTIAL', reason='partial_hedged', codes=['plain_yes']), 'codes_contradict_verdict'),
+                 (dict(full, confidence='certain'), 'bad_confidence'),
+                 (dict(full, verdict='NO', reason='plain_yes'), 'reason_contradicts_verdict'),
+                 (dict(full, verdict='NO', reason='not_shown', his_adherence='partly', codes=['plain_yes']),
+                  'codes_contradict_verdict'),
+                 (dict(full, verdict='NOT_JUDGEABLE', reason='his_move_not_delivered', codes=['his_move_not_delivered']),
+                  'adherence_contradicts_reason'),
+                 (dict(full, verdict='NOT_JUDGEABLE', reason='plain_yes'), 'reason_contradicts_verdict')]
+        for raw, why in cases:
+            with self.subTest(raw=raw):
+                self.reply = self.answer(raw)
+                got = GJ.judge(self.packet)
+                self.assertEqual((got['verdict'], got['reason'], got['status'], got['detail']),
+                                 ('NOT_JUDGEABLE', 'invalid', 'invalid', why))
+        kept = [(full, 'YES', 'plain_yes'),
+                (dict(full, his_adherence='not_delivered'), 'YES', 'plain_yes'),          # her difference happened anyway
+                (dict(full, verdict='PARTIAL', reason='partial_one_part', codes=['partial_one_part', 'long_gap'],
+                      his_adherence='partly', confidence='low'), 'PARTIAL', 'partial_one_part'),
+                (dict(full, reason='intimate_phrasing_counts', codes=['plain_yes', 'intimate_phrasing_counts', 'photo_unseen']),
+                 'YES', 'intimate_phrasing_counts'),
+                ({k: v for k, v in full.items() if k != 'confidence'}, 'YES', 'plain_yes'),
+                (dict(full, verdict='NO', reason='deflected', codes=['deflected', 'text_capped']), 'NO', 'deflected'),
+                ({'verdict': 'NOT_JUDGEABLE', 'reason': 'no_her_reply'}, 'NOT_JUDGEABLE', 'no_her_reply')]
+        for raw, verdict, reason in kept:
+            with self.subTest(kept=raw):
+                self.reply = self.answer(raw)
+                got = GJ.judge(self.packet)
+                self.assertEqual((got['verdict'], got['reason'], got['status']), (verdict, reason, 'ok'))
+                self.assertEqual(GJ.problem(got), '')
+
+    def test_his_undelivered_move_keeps_its_receipt_and_adherence(self):
+        """13 November re-review: under rule 5 her reply did not show the difference on a move he did not (fully)
+        make, so a NOT_JUDGEABLE his_move_not_delivered that also lists not_shown / deflected / declined, or a NO
+        that lists his_move_not_delivered, is that rule said plainly - not a contradiction. It stays his adherence
+        failure, with his adherence kept, never "invalid"."""
+        base = {'reason': 'his_move_not_delivered', 'confidence': 'high'}
+        for raw in (dict(base, verdict='NOT_JUDGEABLE', codes=['his_move_not_delivered', 'not_shown'], his_adherence='partly'),
+                    dict(base, verdict='NOT_JUDGEABLE', codes=['his_move_not_delivered', 'deflected', 'long_gap'],
+                         his_adherence='not_delivered'),
+                    {'verdict': 'NO', 'reason': 'not_shown', 'codes': ['not_shown', 'his_move_not_delivered'],
+                     'his_adherence': 'partly', 'confidence': 'medium'}):
+            with self.subTest(raw=raw):
+                self.reply = self.answer(raw)
+                got = GJ.judge(self.packet)
+                self.assertEqual((got['verdict'], got['reason'], got['status'], got['adherence']),
+                                 ('NOT_JUDGEABLE', 'his_move_not_delivered', 'ok', raw['his_adherence']))
+        for raw in (dict(base, verdict='NOT_JUDGEABLE', codes=['no_her_reply', 'not_shown'], reason='no_her_reply'),
+                    {'verdict': 'NO', 'reason': 'not_shown', 'codes': ['not_shown', 'his_move_not_delivered'],
+                     'his_adherence': 'delivered'}):
+            with self.subTest(still_invalid=raw):
+                self.reply = self.answer(raw)
+                got = GJ.judge(self.packet)
+                self.assertEqual((got['verdict'], got['reason'], got['detail']),
+                                 ('NOT_JUDGEABLE', 'invalid', 'codes_contradict_verdict'))
+
     def test_no_key_or_paused_calls_send_nothing(self):
         with patch.dict(os.environ, ANTHROPIC_API_KEY=''):
             got = GJ.judge(self.packet)
@@ -531,6 +655,76 @@ class SonnetTransport(unittest.TestCase):
         self.assertEqual(self.usage()[-1]['caller'], 'gloria-judge-stale')
         self.reply = self.answer('', stop='refusal')
         self.assertEqual(GJ.stale_check({'difference_intended': 'x'}, 'words'), 'refused')
+
+
+    def test_a_timed_out_call_stays_counted_and_the_cap_is_hard(self):
+        """14 November acceptance: a call that timed out may have been charged with no usage line, so the cap read
+        from the usage log alone could be overspent. Each call reserves its ceiling first; an answered call settles
+        to its usage line, one never sent is released, and one whose outcome is unknown stays counted."""
+        self.reply = TimeoutError('fixture: no answer in time')
+        got = GJ.judge(self.packet)
+        self.assertEqual((got['reason'], got['detail']), ('error', 'TimeoutError'))
+        self.assertEqual(GJ.stale_check({'difference_intended': 'x'}, 'words'), 'timeout')   # counted apart
+        b = GJ.budget()
+        self.assertEqual((b['logged_usd'], b['open_n'], b['uncertain_n']), (0.0, 0, 2))
+        ceil = GJ.ceiling(GJ.RUBRIC, json.dumps(self.packet, ensure_ascii=False), GJ.JUDGE_MAX_TOKENS)
+        self.assertGreater(b['uncertain_usd'], ceil)                                    # both ceilings counted
+        self.assertEqual(b['counted_usd'], round(b['uncertain_usd'], 4))
+        # an answered call settles: its usage line is the spend, the reservation no longer counts
+        self.reply = self.answer({'verdict': 'YES', 'reason': 'plain_yes', 'his_adherence': 'delivered'})
+        self.assertEqual(GJ.judge(self.packet)['verdict'], 'YES')
+        b2 = GJ.budget()
+        self.assertEqual((b2['open_n'], b2['uncertain_n']), (0, 2))
+        self.assertAlmostEqual(b2['logged_usd'], 0.0155)
+        # paid calls paused: nothing sent, the reservation released
+        (self.home / '.vintos').mkdir(parents=True, exist_ok=True); (self.home / '.vintos/paid-outbound.paused').write_text('')
+        GJ.judge(self.packet); (self.home / '.vintos/paid-outbound.paused').unlink()
+        self.assertEqual(GJ.budget()['uncertain_n'], 2)
+        # the cap: logged + uncertain + this call's ceiling may not pass it; the timed-out spend now decides
+        cap = b2['counted_usd'] + 0.0001                                              # less than either ceiling
+        n = len(self.sent)
+        with patch.dict(os.environ, GLORIA_JUDGE_WEEKLY_USD=str(cap)):
+            self.assertEqual(GJ.judge(self.packet)['reason'], 'budget')
+            self.assertEqual(GJ.stale_check({'difference_intended': 'x'}, 'words'), 'budget')
+        self.assertEqual(len(self.sent), n)
+        rows = (self.home / '.vintos/workspace/memory' / GJ.RESERVE_LOG).read_text()
+        self.assertNotIn('SYNTHETIC-HER-WORDS', rows); self.assertNotIn('fixturekey', rows)
+
+    def test_a_call_that_never_connected_is_released_not_held_for_the_week(self):
+        """Review 14 November: a refused connection or an unresolved name never reached the provider, so nothing
+        was charged; held at its ceiling for 7 days, a network outage would shut the allowance with nothing spent.
+        A connection dropped after sending stays uncertain."""
+        import requests
+        from urllib3.exceptions import MaxRetryError, NewConnectionError, ProtocolError
+        never = requests.exceptions.ConnectionError(MaxRetryError(None, '/v1/messages',
+                                                                  NewConnectionError(None, 'fixture: refused')))
+        self.reply = never
+        self.assertEqual(GJ.judge(self.packet)['detail'], 'ConnectionError')
+        self.reply = requests.exceptions.ConnectTimeout('fixture')
+        GJ.judge(self.packet)
+        b = GJ.budget()
+        self.assertEqual((b['open_n'], b['uncertain_n'], b['counted_usd']), (0, 0, 0.0))
+        self.reply = requests.exceptions.ConnectionError(ProtocolError('Connection aborted.', ConnectionResetError()))
+        GJ.judge(self.packet)
+        self.assertEqual(GJ.budget()['uncertain_n'], 1)                                # it may have been charged
+
+    def test_reservations_in_flight_count_so_two_callers_cannot_both_take_the_last_of_it(self):
+        import threading
+        ceil = GJ.ceiling(GJ.RUBRIC, json.dumps(self.packet, ensure_ascii=False), GJ.JUDGE_MAX_TOKENS)
+        inside = threading.Event(); release = threading.Event(); self.addCleanup(release.set)
+        def hold(url, timeout=None, json=None, headers=None):
+            self.sent.append(1); inside.set(); release.wait(10)
+            return FakeReply(self.answer({'verdict': 'YES', 'reason': 'plain_yes', 'his_adherence': 'delivered'}))
+        self.stack.enter_context(patch.object(GJ, '_post', hold))
+        out = {}
+        with patch.dict(os.environ, GLORIA_JUDGE_WEEKLY_USD=str(ceil * 1.5)):
+            t = threading.Thread(target=lambda: out.setdefault('a', GJ.judge(self.packet))); t.start()
+            self.assertTrue(inside.wait(5))
+            self.assertEqual(GJ.budget()['open_n'], 1)                                  # in flight, counted
+            self.assertEqual(GJ.judge(self.packet)['reason'], 'budget')                 # the second is refused
+            release.set(); t.join(5)
+        self.assertEqual(out['a']['verdict'], 'YES'); self.assertEqual(len(self.sent), 1)
+        self.assertEqual(GJ.budget()['open_n'], 0)
 
 
 if __name__ == '__main__':

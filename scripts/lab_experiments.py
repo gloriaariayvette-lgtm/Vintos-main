@@ -55,7 +55,8 @@ EXPERIMENTS = {
                  "limits": "molecule one of H2 | HeH+ | LiH; at most 9 bond lengths in angstrom (the bench keeps the "
                            "first 9); LiH freezes the lithium core; the bench stops a run after %d s, so LiH takes "
                            "few lengths" % BENCH_SECONDS,
-                 "returns": "per bond length, the VQE energy against Hartree-Fock and the exact (FCI) ground energy, "
+                 "returns": "per bond length, the VQE energy against Hartree-Fock and the exact ground energy of the same "
+                            "frozen-core active space it searches (full all-electron FCI is shown beside it), "
                             "in Hartree: a bond's dissociation curve, and how far the quantum search is from exact"},
 }
 

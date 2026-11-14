@@ -2503,7 +2503,7 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
             entry["step_history"] = []
             try:
                 from want_contract import contract_for as _entry_contract
-                entry["plan_contract"] = _entry_contract(want_text)
+                entry["plan_contract"] = _entry_contract(want_text, steps)
             except Exception:
                 pass
             # Do NOT set capability or multistep here — let router assign after 8h hold

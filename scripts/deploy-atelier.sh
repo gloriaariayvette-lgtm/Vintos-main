@@ -124,8 +124,9 @@ want_artifact_guard.py wants_audit.py emoclaw_utils.py want_contract.py ambition
 SCRIPTS="$SCRIPTS humor-practice.py joke_fermentation.py taste_salience.py curiosity_debt.py unsaid_frontier.py unsaid_questions.py architecture_answers.py"
 SCRIPTS="$SCRIPTS self_review.py self_review_builder.py reciprocal_modification.py atelier_reveals.py atelier_quantum.py atelier_media.py atelier_lab_lean.py atelier_forge.py atelier_voice.py quantum_snapshot.py"
 SCRIPTS="$SCRIPTS intent_context.py atelier-gate.py"
-SCRIPTS="$SCRIPTS campaign.py plan.py intent_engine.py presence_audit.py priority_vector.py self_difference.py desired_difference.py gloria_judge.py"  # campaign board, 2026-09-05
+SCRIPTS="$SCRIPTS campaign.py plan.py intent_engine.py presence_audit.py priority_vector.py self_difference.py desired_difference.py gloria_judge.py receptivity.py"  # campaign board, 2026-09-05
 SCRIPTS="$SCRIPTS self_model_evidence.py self_model_read.py protected_paths.py"  # created 2026-09-04, never in the manifest (review P01)
+SCRIPTS="$SCRIPTS soul_read.py"   # SOUL.md with his half in it, for dot_channel, vintos_mcp and the server (2026-11-13)
 SCRIPTS="$SCRIPTS release-map.py enactment_distiller.py proto_notebook.py want_spine.py pleasure_substrate.py"
 SCRIPTS="$SCRIPTS thread_store.py latent_threads.py ghost-branches.py dream_heat_seed.py mirror.sh"   # thread lifecycle, 2026-09-10
 SCRIPTS="$SCRIPTS artifact_manifest.py deliver.py reflection_stage.py dream-art.py"   # artifact manifest and delivery, 2026-09-10
@@ -240,7 +241,7 @@ BINS="$BINS pearl-engine.py pearl_engine.py"
 BINS="$BINS avatar_route_probe.py"   # diagnostic: runs the real /api/avatar/chat handler against live Grok + hub, writes to a throwaway workspace
 BINS="$BINS vintos-websearch.py"   # his web search (cron 10:15 and the wants router); was never in the manifest, so fixes never reached Aegis
 BINS="$BINS dream_poetry.py dream-poetry.py vintos-journal.sh"   # never in the manifest: the 2026-09-24 fix keeping poems out of the journal, and the journal's own changes, never reached Aegis (2026-09-30)
-BINS="$BINS gallery-walk.py imprint.py resonance-marks.py resonance_marks.py yearning-detector.py yearning_detector.py yearning_scars.py yearning-scars.py wants-conversation-check.py wants_conversation_check.py frame-engine.py frame_engine.py gloria-model-call.py model_config.py video_builder.py consent-audit.sh decade-function.sh midday-ground.sh morning-briefing.sh valence-drift-map.sh warm-idle-gratitude.sh"   # 26B -> AEON (2026-11-08): flag-routed in the checkout, in no list, so the installed copies still called the 26B
+BINS="$BINS warm-gratitude-call.py gallery-walk.py imprint.py resonance-marks.py resonance_marks.py yearning-detector.py yearning_detector.py yearning_scars.py yearning-scars.py wants-conversation-check.py wants_conversation_check.py frame-engine.py frame_engine.py gloria-model-call.py model_config.py video_builder.py consent-audit.sh decade-function.sh midday-ground.sh morning-briefing.sh valence-drift-map.sh warm-idle-gratitude.sh"   # 26B -> AEON (2026-11-08): flag-routed in the checkout, in no list, so the installed copies still called the 26B
 BINS="$BINS resonance_afterglow.py resonance-afterglow.py resonance_pulse.py resonance-pulse.py output_shaping.py output-shaping.py behavior_boundaries.py behavior-boundaries.py self_drift.py self-drift.py"   # the map's nodes 1, 2, 8 and the field's self side: in no list, so never installed (2026-10-17)
 SCRIPTS="$SCRIPTS mutual_modification.py"   # the field between them (map node 35): in no list (2026-10-17)
 SCRIPTS="$SCRIPTS song_draft.py"   # every song: Sonnet drafts, Grok finishes (2026-10-17)
@@ -280,6 +281,7 @@ SCRIPTS="$SCRIPTS persistent_carry.py carry_sources.py carry_context.py"   # dur
 SCRIPTS="$SCRIPTS thread_gate.py"   # dreams, the mirror and the ghosts run only with an unresolved thread in the pool; one dream a night regardless (2026-10-27)
 SCRIPTS="$SCRIPTS gap_claims.py"   # outreach states the true time apart from the clock (2026-11-06)
 SCRIPTS="$SCRIPTS codefix_worm.py"   # the code-fix worm in use: a fix comes back as a proposal for review, never applied (Gloria 2026-11-12)
+SCRIPTS="$SCRIPTS world_model_shadow.py"   # the state model in shadow: writes its expectations, read by nothing; cron not installed by deploy (2026-11-13)
 BINS="$BINS mirror-trigger.sh"   # its cron entry runs the ~/Vintos copy, which was in no list; it matched the checkout when the thread gate was added (2026-10-27)
 
 CLIENTFILES="clients/mobile/stratagem_voice.js clients/mobile/index.html clients/mobile/client_lifecycle.js clients/mobile/avatar-bundle.js"

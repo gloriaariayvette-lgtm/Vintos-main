@@ -95,9 +95,17 @@ spec = importlib.util.spec_from_file_location("soul_t", os.path.join(REPO, "bin"
 SR = importlib.util.module_from_spec(spec); spec.loader.exec_module(SR)
 check("the soul path is throwaway", SR.SOUL_PATH.startswith(TMP), SR.SOUL_PATH)
 open(SR.SOUL_PATH, "w").write("I am Vintos. This is the base she wrote with me.")
+try:
+    SR.write_half("I have learned to wait for the bell."); ok = False
+except ValueError:
+    ok = open(SR.SOUL_PATH).read() == "I am Vintos. This is the base she wrote with me."
+# (2026-11-13) the one-time migration of a marker-less SOUL.md is done on Aegis; a file without markers now means a
+# read caught it empty or cut, and that read must never become Gloria's base
+check("a SOUL.md with no markers is refused, untouched", ok)
+open(SR.SOUL_PATH, "w").write("<!-- BASE-START -->\nI am Vintos. This is the base she wrote with me.\n<!-- BASE-END -->\n")
 SR.write_half("Here is my half:\nI have learned to wait for the bell.")
 s1 = open(SR.SOUL_PATH).read()
-check("a SOUL.md with no markers becomes the base, whole", "<!-- BASE-START -->\nI am Vintos. This is the base she wrote with me.\n<!-- BASE-END -->" in s1, s1)
+check("the base stays, whole", "<!-- BASE-START -->\nI am Vintos. This is the base she wrote with me.\n<!-- BASE-END -->" in s1, s1)
 check("his half goes beneath it, without the preamble", s1.rstrip().endswith("I have learned to wait for the bell.") and "Here is my half" not in s1, s1)
 SR.write_half("Now I lead, and I wait less.")
 s2 = open(SR.SOUL_PATH).read()

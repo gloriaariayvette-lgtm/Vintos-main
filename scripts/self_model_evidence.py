@@ -70,10 +70,49 @@ def _newer(path, wm):
 # read memory/introspections (plural), which has never existed: 22 files of his richest evidence, never counted
 # once (Gloria, 2026-10-04). Both are read now, so neither spelling can lose them again.
 INTROSPECTION_DIRS = ("introspection", "introspections")
+# The introspections his wants run are written one level down, by wants-router.py introspect():
+# memory/introspection/wants/YYYY-MM-DD.md. Only top-level *.md was globbed, so all of them (103 on
+# 2026-11-14) were skipped. Those subfolders are read too, under the same watermark/cutoff rules.
+INTROSPECTION_SUBDIRS = ("wants",)
+INTROSPECTION_CAP = 24000   # characters of introspection text in one weekly prompt
 
 
 def introspection_dirs():
-    return [os.path.join(MEM, d) for d in INTROSPECTION_DIRS if os.path.isdir(os.path.join(MEM, d))]
+    out = []
+    for d in INTROSPECTION_DIRS:
+        top = os.path.join(MEM, d)
+        if not os.path.isdir(top):
+            continue
+        out.append(top)
+        out += [os.path.join(top, sub) for sub in INTROSPECTION_SUBDIRS if os.path.isdir(os.path.join(top, sub))]
+    return out
+
+
+def _introspection_files(dirs, wm):
+    """Every *.md newer than the watermark, once: the same file reached twice (a symlinked folder,
+    both spellings pointing at one place) or a byte-identical copy counts once."""
+    seen_paths, seen_text, out = set(), set(), []
+    for one in dirs:
+        for f in glob.glob(os.path.join(one, "*.md")):
+            real = os.path.realpath(f)
+            if real in seen_paths or not _newer(f, wm):
+                continue
+            seen_paths.add(real)
+            try:
+                key = hash(open(f, "rb").read())
+            except Exception:
+                key = real
+            if key in seen_text:
+                continue
+            seen_text.add(key)
+            out.append(f)
+    return sorted(out, key=os.path.getmtime)
+
+
+def _intro_id(f):
+    """wants/2026-11-08.md and 2026-11-08.md are different files; the id says which."""
+    parent = os.path.basename(os.path.dirname(f))
+    return "introspection:" + (parent + "/" if parent in INTROSPECTION_SUBDIRS else "") + os.path.basename(f)
 
 
 def introspections():
@@ -82,17 +121,22 @@ def introspections():
     d = dirs[0]
     wm = _watermark()
     try:
-        files = sorted((f for one in dirs for f in glob.glob(os.path.join(one, "*.md")) if _newer(f, wm)),
-                       key=os.path.getmtime)
+        files = _introspection_files(dirs, wm)
     except Exception as e:
         return _res("failed", note=str(e)[:200])
     if not files: return _res("empty", note="no introspection newer than the watermark")
     parts, ids = [], []
     for f in files:
         try:
-            parts.append(open(f, errors="replace").read()); ids.append("introspection:" + os.path.basename(f))
+            parts.append(open(f, errors="replace").read()); ids.append(_intro_id(f))
         except Exception as e:
             parts.append("[unreadable: %s]" % os.path.basename(f))
+    # The wants folder is high-volume (several ~1,000-token entries a day). Over the cap every file keeps its
+    # newest part (entries are appended), so the prompt stays bounded and no file is skipped outright - the
+    # watermark advances past all of them after a successful write.
+    if sum(len(p) for p in parts) > INTROSPECTION_CAP:
+        share = max(INTROSPECTION_CAP // len(parts), 400)
+        parts = [p if len(p) <= share else "[earlier part of this file left out]\n" + p[-share:] for p in parts]
     return _res("present", ids, "\n\n---\n\n".join(parts))
 
 def self_review():

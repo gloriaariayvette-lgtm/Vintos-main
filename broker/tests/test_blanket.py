@@ -93,8 +93,29 @@ ok, why = VH.coffee_on(sleep=_leave, background=False)
 check("the gap comes from the house config, and she leaving in between stops the second press",
       ok and slept == [45] and SENT[n:] == [("switch/toggle", "switch.fingerbot")], (SENT[n:], slept))
 HOME_NOW[0] = True
+# the start press's result reaches his context (13 November): it used to reach only the server log
+json.dump({"url": "http://ha.test", "token": "t", "rooms": {}, "devices": {"coffee": "switch.fingerbot"}}, open(VH.CONFIG_FILE, "w"))
+HOME_NOW[0] = True
+check("no coffee yet: nothing to tell him", (os.path.exists(VH.COFFEE_STATE) and os.remove(VH.COFFEE_STATE)) or VH.coffee_status() == "")
+VH.coffee_on(sleep=lambda s: None, background=False)
+check("start press ok: he is told the cup started", "so the cup started" in VH.coffee_status(), VH.coffee_status())
+_ha = VH.ha_request
+_calls = [0]
+def _second_fails(endpoint, payload):
+    _calls[0] += 1
+    return (200, "") if _calls[0] == 1 else (500, "")
+VH.ha_request = _second_fails
+VH.coffee_on(sleep=lambda s: None, background=False)
+check("start press failed: he is told it did not start", "failed" in VH.coffee_status() and "did not start" in VH.coffee_status(), VH.coffee_status())
+VH.ha_request = _ha
+VH.coffee_on(sleep=lambda s: HOME_NOW.__setitem__(0, False), background=False)
+check("she left before the start press: he is told", "not started" in VH.coffee_status(), VH.coffee_status())
+HOME_NOW[0] = True
+check("a coffee from yesterday is not news", VH.coffee_status(now=time.time() + 13 * 3600) == "")
+check("the coffee state is throwaway", VH.COFFEE_STATE.startswith(HOME))
 check("his [HOME: coffee] tag runs coffee_on", 'elif _a == "coffee": ok, why = _vintos_home().coffee_on()' in srv)
 check("he is told the coffee is only while she is home", "def _coffee_line" in srv and "_cf = _coffee_line()" in av and "Only while" in srv)
+check("his coffee line carries the last coffee's result", "_last = _m.coffee_status()" in srv)
 
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

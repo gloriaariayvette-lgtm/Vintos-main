@@ -73,14 +73,28 @@ def admission_state(source, candidate_kind="", present_pull=""):
     return "ADMIT_CURRENT_CANDIDATE"
 
 
-def contract_for(want_text):
+def _notes_of(steps):
+    out = []
+    for st in steps or []:
+        if isinstance(st, dict):
+            out.append(str(st.get("note", "")))
+        elif isinstance(st, str):
+            out.append(st)
+    return " ".join(out).lower()
+
+
+def contract_for(want_text, steps=None):
+    """`steps` (proposed steps or their notes) only widen which records are named: a want like
+    "look back at what I wrote" whose plan says "reread my self-model" names SELF-MODEL.md as evidence
+    (want bda15a1d, 2026-11-07). They never change the terminal condition, which the want owns."""
     text = str(want_text or "").strip()
     low = text.lower()
+    notes = _notes_of(steps)
     outward = bool(_OUTWARD.search(text))
     evidence_first = bool(_PAST_REVIEW.search(text) and _HOUSE_RECORD.search(text))
     creative = bool(_CREATIVE.search(text))
     records = []
-    if "self-model" in low or "self model" in low:
+    if any(k in low or k in notes for k in ("self-model", "self model", "selfmodel")):
         records.append("SELF-MODEL.md")
     if "journal" in low or evidence_first:
         records.append("contemporaneous journal and interaction records")
@@ -102,7 +116,7 @@ def _step(capability, note):
 
 def normalize_steps(want_text, proposed):
     """Return (steps, changes). The literal want owns the terminal condition."""
-    contract = contract_for(want_text)
+    contract = contract_for(want_text, proposed)
     clean, changes = [], []
     for raw in proposed or []:
         if not isinstance(raw, dict):

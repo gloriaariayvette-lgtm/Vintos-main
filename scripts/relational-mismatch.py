@@ -14,6 +14,9 @@ Usage:
     
     # After inbound (Gloria replied): compare
     python3 relational-mismatch.py compare "Gloria's message text here" <gloria_warmth> <gloria_tension> <gloria_valence>
+
+    # Weekly (bin/relational-mismatch.sh): retire an open prediction no reply can answer any more
+    python3 relational-mismatch.py sweep
 """
 
 import sys
@@ -516,9 +519,46 @@ Question for introspection: What did I miss about what Gloria was reaching for?
     open("/tmp/.causality-trigger", "w").close()
 
 
+def sweep():
+    """The weekly job (bin/relational-mismatch.sh). predict and compare are per-message and are called by the
+    chat paths; the cron wrapper called this script with no command, so every weekly run printed the usage and
+    failed (old-systems repair, 2026-11-14). The weekly job retires an open prediction that no reply can answer
+    any more - older than STALE_HOURS, which compare would refuse anyway. No model call, no blush.
+    Returns the retired prediction id, or None."""
+    pred = None
+    try:
+        if _PL is not None and os.path.realpath(_PL._path("relational")) == os.path.realpath(PREDICTION_FILE):
+            pred = _PL.current("relational")
+        elif os.path.exists(PREDICTION_FILE):
+            with open(PREDICTION_FILE) as f:
+                pred = json.load(f)
+    except Exception as e:
+        print("[Relational] sweep could not read the open prediction: %s" % e)
+        return None
+    if not isinstance(pred, dict) or not pred:
+        print("[Relational] sweep: no open prediction")
+        return None
+    try:
+        age_h = (datetime.now() - datetime.fromisoformat(str(pred.get("timestamp"))[:26])).total_seconds() / 3600
+    except Exception:
+        print("[Relational] sweep: open prediction has no readable time - left as it is")
+        return None
+    if age_h <= STALE_HOURS:
+        print("[Relational] sweep: open prediction is %.1fh old - still answerable" % age_h)
+        return None
+    pid = pred.get("prediction_id")
+    if _retire(pid, "stale: no reply within %d hours (weekly sweep)" % STALE_HOURS):
+        print("[Relational] sweep: retired a %.0fh-old prediction no reply answered" % age_h)
+        return pid or "unidentified"
+    return None
+
+
 def main():
+    if len(sys.argv) >= 2 and sys.argv[1] == "sweep":
+        sweep()
+        return
     if len(sys.argv) < 3:
-        print("Usage: relational-mismatch.py predict|compare <message> [warmth] [tension] [valence]")
+        print("Usage: relational-mismatch.py predict|compare <message> [warmth] [tension] [valence] | sweep")
         sys.exit(1)
     
     command = sys.argv[1]

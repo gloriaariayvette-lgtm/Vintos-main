@@ -212,6 +212,79 @@ def secondary_structure(path, chain):
     return sorted(set(out), key=lambda x: x[1])
 
 
+def _cif_values(d, key):
+    """One mmCIF item as a list of its real values ('?' and '.' are mmCIF for "not given")."""
+    v = d.get(key)
+    v = v if isinstance(v, list) else ([] if v is None else [v])
+    return [str(x).strip() for x in v if str(x).strip() not in ("", "?", ".")]
+
+
+def reference_identity(path, chain=None):
+    """(title, organism) of the entry, from its own mmCIF; either is None when the file does not give it.
+
+    12 November: a comparison said "TM 0.929 against 7WK1" and nothing else about the entry, and a blind sufficiency
+    check accepted it as an answer about flowering plants; 7WK1 is mouse pendrin. The organism is the compared
+    chain's own entity when the file ties the chain to one, else every source organism the entry names."""
+    from Bio.PDB.MMCIF2Dict import MMCIF2Dict
+    try:
+        d = MMCIF2Dict(str(path))
+    except Exception:
+        return None, None
+    title = (_cif_values(d, "_struct.title") or [None])[0]
+    entity = None
+    if chain:
+        asym = d.get("_atom_site.auth_asym_id"); ent = d.get("_atom_site.label_entity_id")
+        if isinstance(asym, list) and isinstance(ent, list):
+            entity = next((e for a, e in zip(asym, ent) if a == chain), None)
+    organisms = []
+    for id_key, name_key in (("_entity_src_gen.entity_id", "_entity_src_gen.pdbx_gene_src_scientific_name"),
+                             ("_entity_src_nat.entity_id", "_entity_src_nat.pdbx_organism_scientific_name"),
+                             ("_pdbx_entity_src_syn.entity_id", "_pdbx_entity_src_syn.organism_scientific")):
+        names = d.get(name_key)
+        names = names if isinstance(names, list) else ([] if names is None else [names])
+        ids = d.get(id_key)
+        ids = ids if isinstance(ids, list) else ([] if ids is None else [ids])
+        rows = list(zip(ids, names)) if len(ids) == len(names) else [(None, n) for n in names]
+        if entity is not None and any(i == entity for i, _ in rows):
+            rows = [(i, n) for i, n in rows if i == entity]
+        organisms += [str(n).strip() for _, n in rows if str(n).strip() not in ("", "?", ".")]
+        if organisms:
+            break
+    organism = ", ".join(dict.fromkeys(organisms)) or None
+    return title, organism
+
+
+def identity_line(title, organism):
+    """The display line that says what the entry is, so no reader takes a TM-score for a species it is not."""
+    if not title and not organism:
+        return "the entry is: (its file gives no title and no source organism)"
+    return "the entry is: %s (%s)" % (title or "(no title in its file)", organism or "source organism not given in its file")
+
+
+# A next question that asks for a comparison against a deposited structure but names no entry cannot run:
+# reference_compare needs a four-character PDB id and a ref_span (13 November: refused 32+ times in one day).
+NO_REFERENCE_NAMED = "(no reference structure named)"
+_NAMED_ENTRY = re.compile(r"(?<![A-Za-z0-9])[0-9](?=[A-Za-z0-9]{3}(?![A-Za-z0-9]))[A-Za-z0-9]*[A-Za-z][A-Za-z0-9]*")
+_ASKS_COMPARE = re.compile(r"reference_compare|structure\.compare|\b(?:compar\w*|tm-?score|rmsd|deviat\w*|superpos\w*|"
+                           r"align\w*|conserv\w*)\b", re.I)
+_TO_A_STRUCTURE = re.compile(r"reference_compare|structure\.compare|\b(?:reference|experimental|deposited|crystal|"
+                             r"cryo-?em|pdb)\b", re.I)
+
+
+def names_no_reference(text):
+    """True when the text asks for a comparison against a reference structure without naming its PDB entry."""
+    text = str(text or "")
+    return bool(_ASKS_COMPARE.search(text) and _TO_A_STRUCTURE.search(text) and not _NAMED_ENTRY.search(text))
+
+
+def mark_unnamed_reference(text):
+    """The text, with NO_REFERENCE_NAMED after it when it asks for a comparison it names no entry for."""
+    text = str(text or "")
+    if not text.strip() or NO_REFERENCE_NAMED in text or not names_no_reference(text):
+        return text
+    return text.rstrip() + " " + NO_REFERENCE_NAMED
+
+
 def compare(req, get=None):
     import numpy as np
     from Bio.PDB import MMCIFParser, PDBParser
@@ -244,8 +317,11 @@ def compare(req, get=None):
                          "compared": len(d), "mean_deviation_A": round(sum(d) / len(d), 2) if d else None})
     gaps = gaps_in(present, span, offset)
     identity = sum(a == b for a, b in zip(seq_m, seq_r)) / len(pairs)
+    title, organism = reference_identity(ref_path, chain)
+    # second, so it survives the Lab's 1,500-character receipt summary and a checker's shortened excerpt
     lines = ["%s vs %s chain %s, residues %d-%d of the entry (%d-%d of his protein)" % (
                  model_path.name, ref, chain, span[0], span[1], span[0] + offset, span[1] + offset),
+             identity_line(title, organism),
              "compared: %d residues present in both, %.0f%% identical" % (len(pairs), identity * 100),
              "numbering: entry number %+d = his number, from the alignment (%.0f%% of aligned residues agree)%s" % (
                  offset, agreement * 100, "" if agreement >= AGREE else "; NOT one shift, so positions below are approximate"),
@@ -262,7 +338,7 @@ def compare(req, get=None):
         lines.append("the entry names no helices or strands in this span")
     return {"ok": True, "result": {
         "model": str(model_path.relative_to(WS)) if _inside(model_path, WS) else model_path.name,
-        "reference": ref, "chain": chain, "ref_span": span, "offset": offset, "offset_from": "sequence alignment",
+        "reference": ref, "reference_title": title, "reference_organism": organism, "chain": chain, "ref_span": span, "offset": offset, "offset_from": "sequence alignment",
         "offset_agreement": round(agreement, 3), "compared": len(pairs),
         "identity": round(identity, 3), "tm_fixed": [round(fixed.tm_norm_chain1, 4), round(fixed.tm_norm_chain2, 4)],
         "tm_free": [round(free.tm_norm_chain1, 4), round(free.tm_norm_chain2, 4)], "rmsd_A": round(rmsd, 3),

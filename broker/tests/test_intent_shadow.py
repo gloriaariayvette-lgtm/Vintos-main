@@ -181,6 +181,31 @@ class Tests(unittest.TestCase):
             self.assertEqual(self.assess()['axes']['field']['verdicts'],baseline)
         self.assertEqual(self.assess()['axes']['field']['old_vs_shadow']['INVALID']['YES'],1)
 
+    def test_engine_abstention_is_its_own_cell_never_decisive_and_malformed_stays_invalid(self):
+        """13 November review: the engine's NOT_JUDGEABLE on her axis is a legitimate abstention, not malformed data.
+        It keeps its own cell and stays out of decisive agreement even where the shadow is decisive."""
+        self.rows[0]['realized']={'field':'YES','gloria':'NOT_JUDGEABLE','self':'NOT_DECLARED'}
+        report=self.assess()
+        self.assertEqual(sum(report['axes']['gloria']['old_vs_shadow']['NOT_JUDGEABLE'].values()),1)
+        self.assertEqual(sum(report['axes']['gloria']['old_vs_shadow']['INVALID'].values()),0)
+        for axis in S.AXES:   # fixed keys on every axis, with no dynamic ones
+            self.assertEqual(list(report['axes'][axis]['old_vs_shadow']),
+                             ['YES','PARTIAL','NO','HELD','NOT_DECLARED','NOT_JUDGEABLE','MISSING','INVALID'])
+        real=S.grade
+        def decisive(row, axis, *a, **k): return ('YES','observed') if axis=='gloria' else real(row, axis, *a, **k)
+        with patch.object(S,'grade',decisive):
+            gloria=self.assess()['axes']['gloria']
+            self.assertEqual((gloria['old_vs_shadow']['NOT_JUDGEABLE']['YES'],gloria['agreement_denominator']),(1,0))
+            self.assertIsNone(gloria['agreement_rate'])
+            self.rows[0]['realized']['gloria']='YES'                     # the control: a decisive original counts
+            self.assertEqual(self.assess()['axes']['gloria']['agreement_denominator'],1)
+        for axis, bad in (('gloria','not_judgeable'),('gloria',['NOT_JUDGEABLE']),('gloria','MAYBE'),('field','NOT_JUDGEABLE')):
+            with self.subTest(axis=axis, bad=bad):
+                self.setUp(); self.rows[0]['realized']={'field':'YES','gloria':'NOT_DECLARED','self':'NOT_DECLARED'}
+                self.rows[0]['realized'][axis]=bad
+                cells=self.assess()['axes'][axis]['old_vs_shadow']
+                self.assertEqual((sum(cells['INVALID'].values()),sum(cells['NOT_JUDGEABLE'].values())),(1,0))
+
     def test_expired_axis_excludes_even_complete_terminal_evidence(self):
         for old in ('HELD', 'YES', 'NO', None):
             self.setUp()

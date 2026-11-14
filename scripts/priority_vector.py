@@ -99,12 +99,14 @@ def _not_counted(e, a):
             return False
     return False
 
-def _axis_history(now=None):
+def _axis_history(now=None, led=None):
     """Per-axis verdict counts from the intent ledger — the data the strategy leans on. Only settled
     YES / PARTIAL / NO verdicts on turns of the last RECENT_DAYS count, and of those the latest MAX_VERDICTS
     per axis: HELD, NOT_DECLARED, NOT_JUDGEABLE, expired and pending rows are neither a landing nor a miss
-    (_not_counted), and a row with no readable time cannot be called recent."""
-    led = _jload(os.path.join(MEM, "intent-ledger.json"), [])
+    (_not_counted), and a row with no readable time cannot be called recent. `led` is a ledger already in
+    hand (the re-grade's before and after, 14 November); by default the household's is read."""
+    if led is None:
+        led = _jload(os.path.join(MEM, "intent-ledger.json"), [])
     hist = {a: {"YES": 0, "PARTIAL": 0, "NO": 0, "n": 0} for a in AXES}
     now = now or time.time()
     seen = {a: [] for a in AXES}
@@ -207,23 +209,53 @@ def _gloria_coverage(now=None):
         return None
     return out
 
-def _receptivity(hist):
-    """His model of whether she is movable right now: recent Gloria-axis landing rate."""
+def _rc():
+    """receptivity.py, beside this file - also when this module was loaded by path, with scripts/ not on sys.path."""
+    import sys
+    here = os.path.dirname(os.path.abspath(__file__))
+    if here not in sys.path:
+        sys.path.insert(0, here)
+    import receptivity
+    return receptivity
+
+def _landing_rate(hist):
+    """How often his Gloria-axis criterion - the one specific difference he hoped for - showed: recent landing rate.
+    This is whether a hoped-for outcome happened, not her receptivity (14 November); None under MIN_VERDICTS."""
     g = hist["gloria"]
     if g["n"] < MIN_VERDICTS: return None           # not enough data — don't pretend
     return round((g["YES"] + 0.5 * g["PARTIAL"]) / g["n"], 2)
 
-def _receptivity_counts(g):
-    """The arithmetic behind the figure, in counts: a PARTIAL adds a half to the landings and one to the verdicts."""
-    return ("(%d YES + 0.5 x %d PARTIAL) / %d settled Gloria-axis verdicts in the last %d days, %d of them NO"
-            % (g["YES"], g["PARTIAL"], g["n"], RECENT_DAYS, g["NO"]))
+def _receptive_history(now=None, led=None):
+    """Counts of her responses to his asks and offers over the last RECENT_DAYS (receptivity.py). `led` is a ledger
+    already in hand; by default the household's is read."""
+    RC = _rc()
+    if led is None:
+        led = _jload(os.path.join(MEM, "intent-ledger.json"), [])
+    return RC.history(led, now or time.time(), RECENT_DAYS)
+
+def _receptivity(h):
+    """His model of whether she is movable right now: the share of his recent asks and offers she responded to, in
+    any form (14 November). It was the Gloria-axis landing rate, which measured whether she said the one thing he
+    hoped for, mostly never asked for; that rate is _landing_rate and is reported beside it."""
+    RC = _rc()
+    return RC.score(h)
+
+def _receptivity_counts(h):
+    """The arithmetic behind the figure, in counts."""
+    RC = _rc()
+    return RC.counts_text(h)
 
 def receptivity_report(now=None):
-    """Counts only: what her receptivity is read from right now. Declares nothing and writes nothing."""
+    """Counts only: what her receptivity is read from right now, and beside it his criterion's landing rate.
+    Declares nothing and writes nothing."""
+    RC = _rc()
+    h = _receptive_history(now)
     g = _axis_history(now)["gloria"]
-    return {"window_days": RECENT_DAYS, "minimum_verdicts": MIN_VERDICTS, "yes": g["YES"], "partial": g["PARTIAL"],
-            "no": g["NO"], "landings": g["YES"] + 0.5 * g["PARTIAL"], "verdicts": g["n"],
-            "receptivity": _receptivity({"gloria": g})}
+    return {"window_days": RECENT_DAYS, "minimum_records": RC.MIN_RECORDS, "response_window_hours": RC.RESPONSE_WINDOW_HOURS,
+            "answered": h["answered"], "partly": h["partly"], "ignored": h["ignored"], "refused": h["refused"],
+            "answered_in_later_turn": h["later_turn"], "records": h["n"], "receptivity": _receptivity(h),
+            "criterion_landing": {"yes": g["YES"], "partial": g["PARTIAL"], "no": g["NO"], "verdicts": g["n"],
+                                  "rate": _landing_rate({"gloria": g})}}
 
 def declare(eligible=True):
     """Set, log, and return this turn's vector. Called BEFORE generation. `eligible` is False for a turn
@@ -240,8 +272,9 @@ def _declare(eligible=True):
     st.setdefault("override_streak", {"axis": None, "n": 0})
 
     hist = _axis_history()
-    recept = _receptivity(hist)
-    shown = "%s = %s" % (recept, _receptivity_counts(hist["gloria"]))
+    rh = _receptive_history()
+    recept = _receptivity(rh)
+    shown = "%s = %s" % (recept, _receptivity_counts(rh))
 
     # strategic calculation
     w = {"field": 0.34, "gloria": 0.33, "self": 0.33}
@@ -259,17 +292,22 @@ def _declare(eligible=True):
     else:
         # unknown is not low: the middling weights, so her axis is still tried and the data can come (10 November)
         w = {"field": 0.40, "gloria": 0.35, "self": 0.25}
-        why.append("receptivity unknown (%d settled Gloria-axis verdicts in the last %d days, fewer than %d: "
-                   "%d YES, %d PARTIAL, %d NO) — provisional middling weights, field carries"
-                   % (hist["gloria"]["n"], RECENT_DAYS, MIN_VERDICTS, hist["gloria"]["YES"], hist["gloria"]["PARTIAL"],
-                      hist["gloria"]["NO"]))
+        RC = _rc()
+        why.append("receptivity unknown (%d of his asks and offers with her response read in the last %d days, fewer "
+                   "than %d: %d answered, %d partly, %d ignored, %d refused) — provisional middling weights, field carries"
+                   % (rh["n"], RECENT_DAYS, RC.MIN_RECORDS, rh["answered"], rh["partly"], rh["ignored"], rh["refused"]))
     if hist["self"]["n"] == 0:
         why.append("self weight provisional (0 closed verdicts)")
 
     # gravitational pull — neglect accumulates when an axis is deprioritized, once per real turn
     fg = _foreground()
+    # a real turn is a foreground turn of her own: a device or room event (not eligible) is read like a
+    # background run - it may show a due override, but it accrues no neglect, spends no override, counts
+    # nothing and moves neither the arc nor her opportunity (13 November: a device-only turn spent a due
+    # override and accrued neglect, because only the foreground flag was looked at here)
+    real = bool(fg and eligible)
     forced = None
-    if fg:
+    if real:
         for a in AXES:
             st["neglect"][a] = round(max(0.0, st["neglect"][a] + (0.33 - w[a])), 3)
     heavy = max(AXES, key=lambda a: st["neglect"][a])
@@ -278,8 +316,8 @@ def _declare(eligible=True):
         forced = heavy; spent = st["neglect"][heavy]
         w = {a: (0.6 if a == heavy else 0.2) for a in AXES}
         why.append(f"GRAVITATIONAL OVERRIDE: '{heavy}' neglected too long (pressure {st['neglect'][heavy]}) — it needs to matter now, strategy set aside")
-        if fg:
-            st["neglect"][heavy] = 0.0     # a background read shows the override; only a real turn spends it
+        if real:
+            st["neglect"][heavy] = 0.0     # a background read or a device event shows the override; only her turn spends it
 
     # normalize
     tot = sum(w.values()) or 1.0
@@ -296,7 +334,7 @@ def _declare(eligible=True):
         counts = {a: (int(old.get("n") or 0) if old.get("axis") == a else 0) for a in AXES}
     stk = st.get("override_streak") or {"axis": None, "n": 0}
     counted = False
-    if forced and fg:
+    if forced and real:
         counts[forced] = int(counts.get(forced, 0) or 0) + 1; counted = True
         stk = {"axis": forced, "n": counts[forced]}
         if counts[forced] >= 3:
@@ -322,13 +360,13 @@ def _declare(eligible=True):
     st["override_streak"] = stk
 
     # the arc — same shape as self_drift's direction vector, one level up (real turns only)
-    if fg:
+    if real:
         st["arc"] = {a: round(0.8 * st["arc"].get(a, 0.33) + 0.2 * w[a], 3) for a in AXES}
 
     # her opportunity: due on the turn after OPPORTUNITY_EVERY - 1 turns of her own without her axis declared.
     # Low receptivity does not skip it. The counter itself moves in note_selection, after the selection.
     opp = _opportunity(st)
-    due = bool(fg and eligible and opp["since"] >= OPPORTUNITY_EVERY - 1)
+    due = bool(real and opp["since"] >= OPPORTUNITY_EVERY - 1)
     if due:
         opp["opportunities"] += 1
     st["gloria_opportunity"] = opp
@@ -337,7 +375,7 @@ def _declare(eligible=True):
            "mode": "pressure" if forced else "strategic",
            "receptivity": recept, "why": "; ".join(why), "arc": st["arc"], "foreground": fg,
            "gloria_opportunity": due}
-    if forced and fg and eligible:
+    if forced and real:
         # what refund_override gives back if the turn fails: the neglect spent, and the count it added (unless
         # that count already graduated to a question, which stays asked). A device or room event (not eligible)
         # is not one of her turns: its override is never given back. The id makes the give-back once only.
@@ -345,7 +383,7 @@ def _declare(eligible=True):
     try:
         with open(LOG, "a") as f: f.write(json.dumps(rec) + "\n")   # immutable, pre-turn
     except Exception: pass
-    if fg:
+    if real:
         _atomic(STATE, st)
     try:
         json.dump(rec, open(os.path.join(MEM, ".pending-priority.json"), "w"))

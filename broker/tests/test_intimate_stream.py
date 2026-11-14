@@ -17,12 +17,13 @@ def check(n, ok, d=""):
     R.append(bool(ok)); print(("PASS " if ok else "FAIL ") + n + (("  ->  " + str(d)[:300]) if d and not ok else ""))
 def rows():
     out = []
-    if os.path.isdir(S.DIR):
-        for n in sorted(os.listdir(S.DIR)):
-            out += [json.loads(l) for l in open(os.path.join(S.DIR, n))]
+    if os.path.isdir(S.SESS_DIR):
+        for n in sorted(os.listdir(S.SESS_DIR)):
+            if n.endswith(".jsonl"):
+                out += [json.loads(l) for l in open(os.path.join(S.SESS_DIR, n))]
     return out
 
-check("every row is throwaway", S.DIR.startswith(HOME))
+check("every row is throwaway", S.SESS_DIR.startswith(HOME) and S.DIR.startswith(HOME))
 T = time.time()
 
 # ---- the recorder itself --------------------------------------------------------------------------------------------
@@ -43,15 +44,15 @@ for k, src in (("gcs_press", "her_act"), ("choice", "his_choice"), ("felt", "his
 check("what was measured, what she did, what he chose, what he felt and what the system set never mix",
       {x["kind"]: x["source"] for x in rows() if x["kind"] in ("gcs_press", "choice", "felt", "collapse_level")}
       == {"gcs_press": "her_act", "choice": "his_choice", "felt": "his_reading", "collapse_level": "system"})
-mode = oct(os.stat(S.path_for(T)).st_mode & 0o777)
-check("the day's file is private to her account", mode == "0o600", mode)
+mode = oct(os.stat(S.path_for(rows()[-1]["sid"])).st_mode & 0o777)
+check("the session's file is private to her account", mode == "0o600", mode)
 n = len(rows())
 os.makedirs(S.MEM, exist_ok=True); open(os.path.join(S.MEM, ".test-mode"), "w").close()
 check("test mode writes nothing", S.record("gcs_press") is False and len(rows()) == n)
 os.remove(os.path.join(S.MEM, ".test-mode"))
-_d = S.DIR; S.DIR = "/proc/no-such/place"
+_d = S.SESS_DIR; S.SESS_DIR = "/proc/no-such/place"
 check("a failure to write never raises into the caller", S.record("gcs_press") is False)
-S.DIR = _d
+S.SESS_DIR = _d
 
 # ---- the collapse: edge, let go, press, level -----------------------------------------------------------------------
 import types

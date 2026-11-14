@@ -215,6 +215,32 @@ def decline(case_id, her_quote, at=None):
     return False
 
 
+def mark_judged(case_id, through):
+    """The judge read her words up to `through` and heard nothing either way (HELD).
+
+    Not a state change and not evidence: the case stays exactly as open as it was. It only moves the
+    window, so the next scan reads what she said AFTER that. Until 2026-11-14 every scan re-judged the
+    same first six messages after his attempt, so nothing she said later could ever be heard: RC-b7e99c
+    sat 'attempted' for 27 days while 42 newer messages from her went unread by the judge.
+    """
+    through = str(through or "")
+    if not through:
+        return False
+    cases = load()
+    for c in cases:
+        if c["case_id"] != case_id or c["state"] != "attempted":
+            continue
+        if through <= str(c.get("judged_through") or ""):
+            return False
+        c["judged_through"] = through
+        save(cases)
+        return True
+    return False
+
+
+JUDGE_BATCH = 6
+
+
 def record_affect_shift(case_id, dims, source=""):
     """His emotional movement around an open case.
 
@@ -294,11 +320,14 @@ def scan():
     for c in cases:
         if c["state"] != "attempted" or not c.get("attempt"):
             continue
-        her = [m for m in after(c["attempt"]["at"])
+        # only words after his attempt, and after what the judge already read and held (mark_judged)
+        since = max(str(c["attempt"]["at"]), str(c.get("judged_through") or ""))
+        her = [m for m in after(since)
                if m.get("role") == "user" and not _is_scene(str(m.get("content") or ""))]
         if not her:
             continue
-        transcript = "\n".join("HER: " + str(m.get("content"))[:300] for m in her[:6])
+        her = her[:JUDGE_BATCH]
+        transcript = "\n".join("HER: " + str(m.get("content"))[:300] for m in her[:JUDGE_BATCH])
         verdict = ""
         try:
             verdict = _ask(
@@ -326,7 +355,11 @@ def scan():
         elif "DECLINED" in verdict:
             decline(c["case_id"], her[0].get("content", "")[:400], her[0].get("timestamp"))
             changed = True
-        # HELD: nothing happens. The case stays open. That is the point.
+        elif "HELD" in verdict:
+            # HELD: the case stays open. That is the point. The window moves past what was read, so the
+            # next scan hears what she says next instead of the same six messages forever.
+            mark_judged(c["case_id"], str(her[-1].get("timestamp") or her[-1].get("ts") or ""))
+        # anything else is not a verdict: the same words are read again next scan
 
     if not changed:
         log("nothing advanced — %d case(s) still open" % len([c for c in load() if c["state"] in OPEN_STATES]))

@@ -312,16 +312,26 @@ def write_blush(
         pass
 
     entries = load_ledger()
-    # Cooldown: don't write will_strain for same trial_id within 2 hours
-    if blush_type == "will_strain" and related_trial_id:
+    # Cooldown: don't write will_strain for same trial_id within 2 hours. bis_default likewise once per trial per
+    # day: it is written on every graded default since behavioral_intercept's SCRIPTS was defined (2026-11-14), and
+    # the chat path records the same default in autonomous-blush.md as well.
+    if blush_type in ("will_strain", "bis_default") and related_trial_id:
         from datetime import datetime as _cdt
         today = _cdt.now().date().isoformat()
-        recent_strain = [e for e in entries[-20:] if
-                        e.get("type") == "will_strain" and
-                        e.get("related_trial_id") == related_trial_id and
-                        e.get("timestamp","")[:10] == today]
+        # every entry from today, not the last 20: /api/chat now writes will_strain too (2026-11-14), and a busy
+        # day can push the morning's entry for the same trial past a fixed window
+        recent_strain = []
+        import re as _cre
+        for e in reversed(entries):
+            day = str(e.get("timestamp", ""))[:10]
+            if day != today:
+                if _cre.match(r"^\d{4}-\d{2}-\d{2}$", day) and day < today:
+                    break
+                continue
+            if e.get("type") == blush_type and e.get("related_trial_id") == related_trial_id:
+                recent_strain.append(e); break
         if recent_strain:
-            print(f"[Blush] will_strain cooldown active for {related_trial_id} — skipping")
+            print(f"[Blush] {blush_type} cooldown active for {related_trial_id} — skipping")
             return None
     emotional_context = get_emotional_context()
 

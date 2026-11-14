@@ -2,8 +2,10 @@
 """An unreconciled step names itself, a step never sent is told apart, and only a receipt settles the rest.
 
 All stores are scratch copies; every sender is blocked (test_lab_tool_routing's sandbox)."""
+from datetime import datetime, timezone
 import hashlib
 import json
+import time
 from pathlib import Path
 import unittest
 from unittest.mock import Mock, patch
@@ -32,6 +34,7 @@ class Unreconciled(unittest.TestCase):
         model.parent.mkdir(parents=True, exist_ok=True)
         model.write_text('ATOM      1  CA  ALA A   1       0.000   0.000   0.000\n')
         self.ask = Mock()
+        self.began = C.now_iso()            # the notebook is shared by every test: rows from this one only
         self.lines = patch.multiple(lab_lines, pick=Mock(return_value=None),
                                     opened_by=Mock(return_value=None), record_step=Mock())
         self.lines.start()
@@ -135,14 +138,16 @@ class Unreconciled(unittest.TestCase):
 
     # -- finishing ----------------------------------------------------------------------------------------------
     def test_finish_with_missing_receipt_is_refused_and_names_the_step(self):
-        self.open_with(self.relay_step(dispatched_at='2026-10-30T08:41:16+00:00', dispatch_marker=1),
+        request = {'skill': 'nvmolkit', 'operation': 'similarity', 'question': QUESTION}
+        self.open_with(self.relay_step(dispatched_at='2026-10-30T08:41:16+00:00', dispatch_marker=1,
+                                       tool='instrument:nvmolkit', request=request, executed_request=request),
                        {'id': 'S-done', 'at': C.now_iso(), 'state': 'completed', 'route': 'source', 'tool': 'source:pubmed'})
         with self.assertRaises(I.Unreconciled) as caught:
             self.finish()
         text = str(caught.exception)
         self.assertLessEqual(len(text), 240)                  # the fault line keeps 240 characters
         for part in ('cannot finish with an unreconciled execution outcome', 'I-35a4ddf4394f', 'S-889709144f5b',
-                     '1 of 2', 'instrument:structure_viewer structure.measure', 'outcome_unknown since 2026-10-30T08:43:18Z',
+                     '1 of 2', 'instrument:nvmolkit similarity', 'outcome_unknown since 2026-10-30T08:43:18Z',
                      'sent 2026-10-30T08:41:16Z', 'no matching receipt'):
             self.assertIn(part, text)
         self.assertNotIn(QUESTION, text)                      # never a payload
@@ -225,6 +230,149 @@ class Unreconciled(unittest.TestCase):
         self.assertLess(len(text), 200)
         self.assertNotIn(QUESTION, text)
         self.assertIn('(? of 0', I._named({'id': 'I-other', 'steps': []}, held))
+
+
+    # -- a relay step sent and never settled: an incomplete finish after the relay's send timeout (F-2d7df745e8) --
+    def notebook(self, kind):
+        return [r for r in C._jsonl(C.NOTEBOOK) if r.get('kind') == kind and str(r.get('at')) >= self.began]
+
+    def sent(self, seconds_ago):
+        return datetime.fromtimestamp(time.time() - seconds_ago, timezone.utc).isoformat()
+
+    def test_relay_step_past_send_timeout_finishes_incomplete_and_a_late_receipt_settles_it_once(self):
+        # remote completion after local failure: the relay ran, the Lab lost the reply, the receipt lands later
+        self.open_with(self.relay_step(dispatched_at=self.sent(3600), dispatch_marker=1))
+        self.ask.return_value = self.choice('source', {'source': 'pubchem', 'name': 'fixture'})
+        I.turn('', ask=self.ask, execute=lambda *a: {'receipt': {'source': 'pubchem', 'records': [{'smiles': 'CCO'}]}})
+        with patch.object(C, '_reflect', return_value={'answers_question': 'no: the pocket measure is missing'}) as reflect:
+            row = self.finish()
+        reflect.assert_called_once()                          # reviewed with what there is
+        left_out = reflect.call_args.args[2]['outputs_not_reviewed']
+        self.assertEqual([x['step'] for x in left_out], ['S-889709144f5b'])
+        self.assertEqual(left_out[0]['reason'], I.UNSETTLED_REASON)
+        self.assertEqual((row['incomplete'], row['unsettled']), (True, ['S-889709144f5b']))
+        inv = self.stored()[0]
+        self.assertEqual((inv['incomplete'], inv['unsettled']), (True, ['S-889709144f5b']))
+        self.assertEqual(inv['steps'][0]['state'], 'outcome_unknown')   # not settled by finishing
+        review = dict(inv['last_review'])
+        self.write_receipt()
+        for _ in range(3):                                    # reconciled again and again: one entry
+            I.reconcile('I-35a4ddf4394f')
+            ledger = Path(plugin_gateway.MEMORY) / 'plugin-receipts.jsonl'
+            ledger.touch()
+        inv = self.stored()[0]
+        step = inv['steps'][0]
+        self.assertEqual(step['state'], 'completed')
+        self.assertTrue(step['reconciled']['late'])
+        late = self.notebook('late_receipt')
+        self.assertEqual(len(late), 1)
+        self.assertEqual((late[0]['investigation'], late[0]['step']), ('I-35a4ddf4394f', 'S-889709144f5b'))
+        self.assertEqual(inv['last_review'], review)          # the incomplete review is kept, not redone
+        self.assertEqual(inv['unsettled'], ['S-889709144f5b'])
+
+    def test_all_missing_review_claims_no_answer(self):
+        self.open_with(self.relay_step(dispatched_at=self.sent(3600), dispatch_marker=1))
+        with patch.object(C, '_reflect') as reflect:
+            row = self.finish()
+        reflect.assert_not_called()                           # nothing to read, so the model is not asked
+        self.assertTrue(row['answers_question'].startswith('no:'))
+        self.assertFalse(row['reviewed'])
+        inv = self.stored()[0]
+        self.assertEqual(inv['state'], 'unanswered')
+        self.assertNotIn('finding', inv)
+        self.assertIn('finished incomplete', inv['closed_reason'])
+        self.assertEqual(inv['steps'][0]['state'], 'outcome_unknown')
+
+    def test_interrupted_between_reply_and_receipt_finishes_incomplete_without_resending(self):
+        self.open_with(self.relay_step(state='started', dispatched_at=self.sent(3600), dispatch_marker=1))
+        execute = Mock()
+        self.ask.return_value = self.choice('finish', {})
+        with patch.object(C, '_reflect') as reflect:
+            I.turn('', ask=self.ask, execute=execute)
+        execute.assert_not_called()
+        reflect.assert_not_called()
+        inv = self.stored()[0]
+        self.assertEqual(inv['steps'][0]['state'], 'outcome_unknown')
+        self.assertEqual(inv['unsettled'], ['S-889709144f5b'])
+
+    def test_relay_step_within_send_timeout_defers_and_waiting_is_not_a_failure(self):
+        self.open_with(self.relay_step(dispatched_at=self.sent(60), dispatch_marker=1))
+        row = self.finish()
+        self.assertEqual((row['kind'], row['state']), ('investigation_wait', 'finish_deferred'))
+        inv = self.stored()[0]
+        self.assertAlmostEqual(inv['deferred_until'], time.time() - 60 + plugin_gateway.SKILL_TIMEOUT, delta=5)
+        self.assertEqual(int(inv.get('planning_failures') or 0), 0)
+        self.assertEqual(inv['state'], 'open')
+        self.assertEqual(self.ask.call_count, 1)
+        self.assertIsNone(I.turn('', ask=self.ask))           # set aside until then: no re-proposal every turn
+        self.assertEqual(self.ask.call_count, 1)
+
+    def test_the_wait_counts_from_the_send_not_from_a_later_interruption(self):
+        # sent an hour ago, found interrupted just now: the hour counts
+        self.open_with(self.relay_step(dispatched_at=self.sent(3600), dispatch_marker=1, state_at=C.now_iso()))
+        with patch.object(C, '_reflect'):
+            self.assertEqual(self.finish()['kind'], 'investigation_review')
+        # sent a minute ago, its state stamped an hour ago: it waits
+        self.open_with(self.relay_step(dispatched_at=self.sent(60), dispatch_marker=1, state_at=self.sent(3600)))
+        self.assertEqual(self.finish()['state'], 'finish_deferred')
+        # a send time that cannot be read waits for a receipt, as before
+        for bad in ('not a time', '2026-10-30T08:41:16'):
+            with self.subTest(bad):
+                self.open_with(self.relay_step(dispatched_at=bad, dispatch_marker=1))
+                with self.assertRaises(I.Unreconciled):
+                    self.finish()
+
+    def test_a_non_relay_unknown_still_blocks_a_mixed_finish(self):
+        self.open_with(self.relay_step(dispatched_at=self.sent(3600), dispatch_marker=1),
+                       {'id': 'S-exp', 'at': C.now_iso(), 'state': 'outcome_unknown', 'route': 'experiment',
+                        'tool': 'experiment:bell', 'request_sha256': 'exp', 'state_at': C.now_iso(),
+                        'dispatched_at': self.sent(3600), 'dispatch_marker': 1})
+        with patch.object(C, '_reflect') as reflect:
+            with self.assertRaisesRegex(I.Unreconciled, 'S-exp'):
+                self.finish()
+        reflect.assert_not_called()
+        inv = self.stored()[0]
+        self.assertNotIn('incomplete', inv)
+        self.assertEqual([s['state'] for s in inv['steps']], ['outcome_unknown', 'outcome_unknown'])
+
+    def test_unreadable_or_ambiguous_receipt_after_an_incomplete_finish_settles_nothing(self):
+        self.open_with(self.relay_step(dispatched_at=self.sent(3600), dispatch_marker=1))
+        self.finish()
+        self.write_receipt()
+        with patch.object(I, '_relay_receipt', side_effect=ValueError('unreadable')):
+            self.assertEqual(I.reconcile('I-35a4ddf4394f')['reconciled'], [])
+        ledger = Path(plugin_gateway.MEMORY) / 'plugin-receipts.jsonl'
+        with open(ledger, 'a') as stream:                     # the same arguments again under another id
+            row = json.loads(ledger.read_text().splitlines()[0]); row['receipt_id'] = 'f' * 64
+            stream.write(json.dumps(row) + '\n')
+        self.assertEqual(I.reconcile('I-35a4ddf4394f')['reconciled'], [])
+        self.assertEqual(self.stored()[0]['steps'][0]['state'], 'outcome_unknown')
+        self.assertEqual(self.notebook('late_receipt'), [])
+
+    def test_identical_request_in_another_investigation_stays_held_after_an_incomplete_finish(self):
+        request = {'skill': 'structure_viewer', 'operation': 'structure.measure', 'files': MODEL, 'question': QUESTION}
+        self.open_with()
+        self.ask.return_value = self.choice('instrument', request)
+        I.turn('', ask=self.ask, execute=Mock(side_effect=TimeoutError('timed out after send')))
+        data = C._load(I._path('investigations.json'), {})
+        held = data['investigations'][0]['steps'][0]
+        self.assertEqual(held['state'], 'outcome_unknown')
+        held['dispatched_at'] = self.sent(3600)
+        C._atomic(I._path('investigations.json'), data)
+        self.finish()
+        first = self.stored()[0]
+        self.assertEqual((first['state'], first['unsettled']), ('unanswered', [held['id']]))
+        data = C._load(I._path('investigations.json'), {})
+        data['investigations'].append({'id': 'I-second', 'opened_at': C.now_iso(), 'state': 'open',
+                                       'question': 'Which residues coordinate halide?', 'prediction': 'p', 'steps': []})
+        C._atomic(I._path('investigations.json'), data)
+        execute = Mock()
+        self.ask.return_value = self.choice('instrument', request)
+        row = I.turn('', ask=self.ask, execute=execute)
+        execute.assert_not_called()
+        self.assertEqual(row['state'], 'failed')
+        self.assertIn('reconcile it before repeating', row['error'])
+        self.assertIn(held['id'], row['error'])
 
 
 if __name__ == '__main__':
