@@ -172,7 +172,9 @@ def self_model(g, mem, now, stats):
         if not isinstance(r, dict):
             continue
         sid = str(r.get("source_id"))        # one correction of hers can supersede several self-model sentences
-        g.derived("selfmodel:%d" % i, "self_statement", [["selfmodel-basis:%d" % i]])
+        # the sentences share one writer (the weekly self-model pass), whose sources are not captured: they are
+        # not independent witnesses against her, so they rest on one shared basis
+        g.derived("selfmodel:%d" % i, "self_statement", [["selfmodel-writer"]])
         g.source("her:%s" % sid, "gloria", age_days=_age(r.get("at"), now))
         g.conflict("selfmodel-corrected:%d" % i, ["selfmodel:%d" % i, "her:%s" % sid], kind="self_model")
         n += 1
