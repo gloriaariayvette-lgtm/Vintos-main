@@ -35,9 +35,9 @@ HEAR_MIN_CONFIDENCE = .6     # mean per-token probability below which a transcri
 HEAR_SECONDS = 8.            # "what is being said" hears the retained sound (the audio window is eight seconds)
 HEAR_TOKENS = 16             # the transcript budget: about twelve words, so the first answer token stays near a second
 HEAR_PROMPT = " Transcribe the speech in this audio, word for word."
-SPEECH_QUESTION = re.compile(r"\b(said|say|says|saying|speak\w*|spoke|talk\w*|hear\w*|words?|transcri\w*|voices?|"
-                             r"sounds?|audio|conversation|told|tell\w*)\b", re.I)
-NO_WORDS = re.compile(r"^\W*(no words|no speech|nothing|silence|\[?inaudible)|\bno (discernible |spoken |audible |clear )?"
+SPEECH_QUESTION = re.compile(r"\b(said|say|says|saying|speak|speaks|speaking|spoke|talk|talks|talking|hear|heard|"
+                             r"hearing|words?|transcri\w*|voices?|audio|conversation|told)\b", re.I)
+NO_WORDS = re.compile(r"^\W*(no words|no speech|nothing\W*$|silence\W*$|\[?inaudible)|\bno (discernible |spoken |audible |clear )?"
                       r"(words|speech)\b|\b(muffled|difficult to understand|sound effect)\b", re.I)
 HEAR_ECHO = re.compile(r"\b(word for word|transcrib\w*)", re.I)   # the hearing request echoed back, not speech
 LEAD_IN = re.compile(r"^\W*(the )?(words|audio|speech)( spoken)?( in this (clip|audio|passage|video))?( says| are| is)?\s*:\s*",
@@ -597,7 +597,7 @@ class LiveSession:
         question = str(question).strip()
         note = str(note or "").strip()
         sound = self.sound_note() if self.sound_notes else ""
-        self.transcript = None
+        self.transcript = self.transcript_confidence = None
 
         def question_chunk(sound):
             return self._ids((" " + sound if sound else "") + (" " + note if note else "")
@@ -655,10 +655,6 @@ class LiveSession:
                 self.stream.hidden = None
 
         try:
-            for at, embeds in recall_frames:
-                forward(self.stream.text(self._ids(" " + stamp(at) + " ") + self.boi), mask=recall_hidden)
-                forward(embeds, vision=True, mask=recall_hidden)
-                forward(self.stream.text(self.eoi), mask=recall_hidden)
             if heard:
                 # Hearing pass: the retained sound in one piece, without the frames that cut it into pieces, is
                 # transcribed; then rolled back. The answer gets the transcript with where it came from.
@@ -684,6 +680,12 @@ class LiveSession:
                 if self.transcript_confidence < HEAR_MIN_CONFIDENCE or HEAR_ECHO.search(self.transcript):
                     self.transcript = ""   # too unsure, or the request echoed back: the words were not captured
                 question_ids = question_chunk(self.heard_note(self.transcript, hear_start, hear_end))
+                if len(question_ids) + int(max_tokens) > ANSWER_RESERVE:
+                    question_ids = question_chunk(self.heard_note("", hear_start, hear_end))
+            for at, embeds in recall_frames:
+                forward(self.stream.text(self._ids(" " + stamp(at) + " ") + self.boi), mask=recall_hidden)
+                forward(embeds, vision=True, mask=recall_hidden)
+                forward(self.stream.text(self.eoi), mask=recall_hidden)
             self.scores = forward(self.stream.text(question_ids))
             for _ in range(int(max_tokens)):
                 token = self._choose(float(temperature), tokens)

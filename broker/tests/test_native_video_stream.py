@@ -653,6 +653,11 @@ check('a speech question with no sound in the window has no hearing pass and say
 import native_video_runtime as _rt2
 check('the hearing request echoed back is not taken as speech', _rt2.HEAR_ECHO.search('Transcribe that, word for word.')
       and _rt2.HEAR_ECHO.search('In this, word for word.') and not _rt2.HEAR_ECHO.search('He has grave doubts'))
+check('visual questions do not trigger a hearing pass', not any(_rt2.SPEECH_QUESTION.search(q) for q in (
+      'Tell me what you see', 'Can you tell what color the car is?', 'Is there a heart monitor?', 'Which way does it move?'))
+      and all(_rt2.SPEECH_QUESTION.search(q) for q in ('What is being said?', 'What did she say?', 'Who is talking?')))
+check('a transcript that starts with "Nothing" is kept', not _rt2.NO_WORDS.search('Nothing could be further from the truth')
+      and _rt2.NO_WORDS.search('Nothing.'))
 check('a question not about speech has no hearing pass', not any(c[1] for c in hb.calls) and hs.transcript is None)
 check('an answer never opens another thinking channel', ch.blocked == [7, 8] and 7 not in ch.ask('q', max_tokens=3)['tokens'])
 

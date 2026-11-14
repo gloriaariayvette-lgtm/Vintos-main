@@ -91,7 +91,7 @@ def motion_phrase(seg):
     pan = direction(m['pan_dx'], m['pan_dy']) if m.get('pans') else None
     if pan:
         parts.append('the whole view shifted %s' % pan)
-    elif parts:
+    elif parts and not m.get('pans'):
         parts[-1] += ' while the camera held still'   # an object moved, not the camera
     return ' and '.join(parts) or None
 

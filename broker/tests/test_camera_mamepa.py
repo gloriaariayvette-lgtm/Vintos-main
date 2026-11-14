@@ -426,4 +426,7 @@ st = cmo.step(cmo.thumb(square(-.5, 0)), bright)
 check('an exposure jump during motion is neither a cut nor lost motion', st['reliable'] and cmo.direction(st['dx'], st['dy']) == 'left')
 flat = np.full((96, 96, 3), .4, np.float32)
 check('a pure exposure jump is no change at all', cmo.step(flat, flat * 1.3)['changed'] == 0.)
+check('a pan with no clear direction never claims the camera held still',
+      cm.motion_phrase({'motion': {'dx': -.1, 'dy': 0., 'moving': 2, 'pan_dx': .05, 'pan_dy': .05, 'pans': 1, 'steps': 3}})
+      == 'something in view moved left')
 print('all camera mamepa checks passed')
