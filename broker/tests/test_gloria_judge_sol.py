@@ -395,6 +395,36 @@ class EngineOnSol(unittest.TestCase):
         self.assertEqual(PV.WINDOW_EXPIRED, E.WINDOW_EXPIRED); self.assertEqual(PV.HER_REPLY_HOURS, E.DEVICE_WAIT_HOURS)
 
 
+    def test_every_stale_check_outcome_is_counted_failures_and_late_answers_too(self):
+        """14 November acceptance: the fail-open path refused nothing and counted nothing, so its failures were
+        invisible. Each outcome is counted by day under fixed keys; a check still out at the bound counts pending,
+        and its late answer counts again as late_<answer>."""
+        import threading, time
+        with patch.object(GJ, 'stale_check', return_value='met'):
+            STALE_GLORIA(GLORIA, 'yes'); STALE_GLORIA(GLORIA, '')
+        for raised in (RuntimeError('fixture'),):
+            with patch.object(GJ, 'stale_check', side_effect=raised):
+                self.assertEqual(STALE_GLORIA(GLORIA, 'yes'), 'error')
+        with patch.object(GJ, 'stale_check', return_value='timeout'):
+            self.assertEqual(STALE_GLORIA(GLORIA, 'yes'), 'timeout')
+        release = threading.Event(); self.addCleanup(release.set)
+        def slow(ax, words):
+            release.wait(10); return 'timeout'
+        with patch.object(GJ, 'stale_check', slow), patch.object(E, 'GLORIA_STALE_BOUND', 0.2):
+            self.assertEqual(STALE_GLORIA(GLORIA, 'yes', intent_id='i1'), 'pending')
+            self.assertEqual(E.stale_counts()['unresolved'], 1)
+            release.set()
+            for _ in range(100):
+                if E.stale_counts().get('late_timeout'): break
+                time.sleep(0.05)
+        got = E.stale_counts()
+        self.assertEqual({k: got.get(k, 0) for k in ('met', 'skipped', 'error', 'timeout', 'pending', 'late_timeout')},
+                         {'met': 1, 'skipped': 1, 'error': 1, 'timeout': 1, 'pending': 1, 'late_timeout': 1})
+        self.assertEqual((got['failed'], got['unresolved']), (3, 0))
+        stored = json.dumps(E._load(E.GLORIA_STALE_COUNTS))
+        self.assertNotIn('yes', stored); self.assertNotIn('i1', stored)                 # counts only, no words or ids
+
+
 class FakeReply:
     def __init__(self, body): self.body = body
     def json(self):
@@ -625,6 +655,58 @@ class SonnetTransport(unittest.TestCase):
         self.assertEqual(self.usage()[-1]['caller'], 'gloria-judge-stale')
         self.reply = self.answer('', stop='refusal')
         self.assertEqual(GJ.stale_check({'difference_intended': 'x'}, 'words'), 'refused')
+
+
+    def test_a_timed_out_call_stays_counted_and_the_cap_is_hard(self):
+        """14 November acceptance: a call that timed out may have been charged with no usage line, so the cap read
+        from the usage log alone could be overspent. Each call reserves its ceiling first; an answered call settles
+        to its usage line, one never sent is released, and one whose outcome is unknown stays counted."""
+        self.reply = TimeoutError('fixture: no answer in time')
+        got = GJ.judge(self.packet)
+        self.assertEqual((got['reason'], got['detail']), ('error', 'TimeoutError'))
+        self.assertEqual(GJ.stale_check({'difference_intended': 'x'}, 'words'), 'timeout')   # counted apart
+        b = GJ.budget()
+        self.assertEqual((b['logged_usd'], b['open_n'], b['uncertain_n']), (0.0, 0, 2))
+        ceil = GJ.ceiling(GJ.RUBRIC, json.dumps(self.packet, ensure_ascii=False), GJ.JUDGE_MAX_TOKENS)
+        self.assertGreater(b['uncertain_usd'], ceil)                                    # both ceilings counted
+        self.assertEqual(b['counted_usd'], round(b['uncertain_usd'], 4))
+        # an answered call settles: its usage line is the spend, the reservation no longer counts
+        self.reply = self.answer({'verdict': 'YES', 'reason': 'plain_yes', 'his_adherence': 'delivered'})
+        self.assertEqual(GJ.judge(self.packet)['verdict'], 'YES')
+        b2 = GJ.budget()
+        self.assertEqual((b2['open_n'], b2['uncertain_n']), (0, 2))
+        self.assertAlmostEqual(b2['logged_usd'], 0.0155)
+        # paid calls paused: nothing sent, the reservation released
+        (self.home / '.vintos').mkdir(parents=True, exist_ok=True); (self.home / '.vintos/paid-outbound.paused').write_text('')
+        GJ.judge(self.packet); (self.home / '.vintos/paid-outbound.paused').unlink()
+        self.assertEqual(GJ.budget()['uncertain_n'], 2)
+        # the cap: logged + uncertain + this call's ceiling may not pass it; the timed-out spend now decides
+        cap = b2['counted_usd'] + 0.0001                                              # less than either ceiling
+        n = len(self.sent)
+        with patch.dict(os.environ, GLORIA_JUDGE_WEEKLY_USD=str(cap)):
+            self.assertEqual(GJ.judge(self.packet)['reason'], 'budget')
+            self.assertEqual(GJ.stale_check({'difference_intended': 'x'}, 'words'), 'budget')
+        self.assertEqual(len(self.sent), n)
+        rows = (self.home / '.vintos/workspace/memory' / GJ.RESERVE_LOG).read_text()
+        self.assertNotIn('SYNTHETIC-HER-WORDS', rows); self.assertNotIn('fixturekey', rows)
+
+    def test_reservations_in_flight_count_so_two_callers_cannot_both_take_the_last_of_it(self):
+        import threading
+        ceil = GJ.ceiling(GJ.RUBRIC, json.dumps(self.packet, ensure_ascii=False), GJ.JUDGE_MAX_TOKENS)
+        inside = threading.Event(); release = threading.Event(); self.addCleanup(release.set)
+        def hold(url, timeout=None, json=None, headers=None):
+            self.sent.append(1); inside.set(); release.wait(10)
+            return FakeReply(self.answer({'verdict': 'YES', 'reason': 'plain_yes', 'his_adherence': 'delivered'}))
+        self.stack.enter_context(patch.object(GJ, '_post', hold))
+        out = {}
+        with patch.dict(os.environ, GLORIA_JUDGE_WEEKLY_USD=str(ceil * 1.5)):
+            t = threading.Thread(target=lambda: out.setdefault('a', GJ.judge(self.packet))); t.start()
+            self.assertTrue(inside.wait(5))
+            self.assertEqual(GJ.budget()['open_n'], 1)                                  # in flight, counted
+            self.assertEqual(GJ.judge(self.packet)['reason'], 'budget')                 # the second is refused
+            release.set(); t.join(5)
+        self.assertEqual(out['a']['verdict'], 'YES'); self.assertEqual(len(self.sent), 1)
+        self.assertEqual(GJ.budget()['open_n'], 0)
 
 
 if __name__ == '__main__':
