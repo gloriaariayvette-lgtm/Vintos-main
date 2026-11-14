@@ -574,14 +574,13 @@ check('after a failed answer the held arrivals are committed in order and new on
 quiet = LiveSession(mind, Backend(), clock=lambda: 0.)
 quiet.frame(frame(10), at=0.)
 check('with no sound in the window the question says none was captured (record-gap rule)',
-      'no sound was captured' in quiet.sound_note() and 'do not guess words' in quiet.sound_note())
+      quiet.sound_note() == '[SOUND: none captured, so no speech was captured.]')
 heard = LiveSession(mind, Backend(), clock=lambda: 0.)
 heard.frame(frame(10), at=0.)
 heard.audio(np.zeros(16000 * 2, np.float32) + .01, at=0.)
 heard._end_audio_span()
 check('with sound the question says it is heard directly, has no transcript, and words come only from it',
-      'heard directly' in heard.sound_note() and 'no written transcript' in heard.sound_note()
-      and 'Never take words from the picture' in heard.sound_note() and '(00:00-00:02)' in heard.sound_note())
+      heard.sound_note() == '[SOUND: 2 s from the microphone (00:00-00:02), heard directly, no transcript.]')
 heard_ids = []
 _fw = heard.stream.forward
 heard.stream.forward = lambda e, c, v=False: (heard_ids.append(e[0, :, 0].tolist()), _fw(e, c, v))[1]
@@ -632,10 +631,12 @@ check('a speech question first hears the sound alone: frames and the sound piece
 hq = [c for c in hb.calls if c[0][:len(mind.tokenizer.encode(' [HEARD'))] == [float(t) for t in mind.tokenizer.encode(' [HEARD')]]
 check('the answer gets the transcript with its provenance and sees the window as usual', hq and hq[0][1] is None)
 check('the heard note says where the words came from, or that none could be made out',
-      'transcribed just now from the microphone' in hs.heard_note('hello there', 0., 4.)
-      and 'no words could be made out' in hs.heard_note('No words.', 0., 4.)
-      and 'no words could be made out' in hs.heard_note('The audio contains no discernible words.', 0., 4.)
-      and 'no words could be made out' in hs.heard_note('', 0., 4.))
+      hs.heard_note('hello there', 0., 4.) == '[HEARD from the microphone (00:00-00:04): "hello there"]'
+      and 'the words were not captured' in hs.heard_note('No words.', 0., 4.)
+      and 'the words were not captured' in hs.heard_note('The audio contains no discernible words.', 0., 4.)
+      and 'the words were not captured' in hs.heard_note('', 0., 4.))
+check('markup and misreadings are not transcripts', ': "Nor is it so."' in hs.heard_note('**Nor is it so.**', 0., 4.)
+      and runtime.HEAR_ECHO.search('The word for "trans" in English is across') and runtime.HEAR_ECHO.search('In this case, the translation is'))
 check('a transcript keeps only the spoken words, without a lead-in',
       ': "Nor is it so."' in hs.heard_note('The words spoken in this clip are: "Nor is it so."', 0., 4.)
       and 'words spoken' not in hs.heard_note('The words spoken in this clip are: "Nor is it so."', 0., 4.))
@@ -645,7 +646,7 @@ _floor, _rt.HEAR_MIN_CONFIDENCE = _rt.HEAR_MIN_CONFIDENCE, 1.01
 hs.ask('what is being said?', max_tokens=1)
 _rt.HEAR_MIN_CONFIDENCE = _floor
 check('an unsure transcript is not quoted: the words were not captured', hs.transcript == '' and any(
-      c[0][:len(mind.tokenizer.encode(' [HEARD: the'))] == [float(t) for t in mind.tokenizer.encode(' [HEARD: the')] for c in hb.calls))
+      c[0][:len(mind.tokenizer.encode(' [HEARD from'))] == [float(t) for t in mind.tokenizer.encode(' [HEARD from')] for c in hb.calls))
 hb.calls = []
 hs.ask('which way does it move?', max_tokens=1)
 check('a speech question with no sound in the window has no hearing pass and says none was captured',
@@ -658,6 +659,8 @@ check('visual questions do not trigger a hearing pass', not any(_rt2.SPEECH_QUES
       and all(_rt2.SPEECH_QUESTION.search(q) for q in ('What is being said?', 'What did she say?', 'Who is talking?')))
 check('a transcript that starts with "Nothing" is kept', not _rt2.NO_WORDS.search('Nothing could be further from the truth')
       and _rt2.NO_WORDS.search('Nothing.'))
+check('the notes are records, not instructions', not any(w in n.lower() for n in (quiet.sound_note(), heard.sound_note(),
+      hs.heard_note('', 0., 4.)) for w in ('if asked', 'do not', 'never', 'say ')))
 check('a question not about speech has no hearing pass', not any(c[1] for c in hb.calls) and hs.transcript is None)
 check('an answer never opens another thinking channel', ch.blocked == [7, 8] and 7 not in ch.ask('q', max_tokens=3)['tokens'])
 

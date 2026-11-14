@@ -34,12 +34,12 @@ HEAR_MIN_CONFIDENCE = .6     # mean per-token probability below which a transcri
                              # made-up transcripts sat below .6, real speech above .62)
 HEAR_SECONDS = 8.            # "what is being said" hears the retained sound (the audio window is eight seconds)
 HEAR_TOKENS = 16             # the transcript budget: about twelve words, so the first answer token stays near a second
-HEAR_PROMPT = " Transcribe the speech in this audio, word for word."
+HEAR_PROMPT = " Write down exactly what the speaker says in this audio."
 SPEECH_QUESTION = re.compile(r"\b(said|say|says|saying|speak|speaks|speaking|spoke|talk|talks|talking|hear|heard|"
                              r"hearing|words?|transcri\w*|voices?|audio|conversation|told)\b", re.I)
 NO_WORDS = re.compile(r"^\W*(no words|no speech|nothing\W*$|silence\W*$|\[?inaudible)|\bno (discernible |spoken |audible |clear )?"
                       r"(words|speech)\b|\b(muffled|difficult to understand|sound effect)\b", re.I)
-HEAR_ECHO = re.compile(r"\b(word for word|transcrib\w*)", re.I)   # the hearing request echoed back, not speech
+HEAR_ECHO = re.compile(r"\b(word for word|transcrib\w*|write down|what the speaker says|the word (is|for)|translation|in this (case|context)|\(note)", re.I)   # the request echoed or misread (a word lookup, a translation), not speech
 LEAD_IN = re.compile(r"^\W*(the )?(words|audio|speech)( spoken)?( in this (clip|audio|passage|video))?( says| are| is)?\s*:\s*",
                      re.I)
 SOUND_NOTE = True            # every question says what sound this turn holds (the record-gap rule for speech)
@@ -265,7 +265,7 @@ class LiveSession:
         self.sound_notes = SOUND_NOTE if sound_notes is None else bool(sound_notes)
         self.transcribe_speech = TRANSCRIBE_SPEECH
         self.transcript = None                     # the last hearing pass's transcript (None when none ran)
-        self.transcript_confidence = None
+        self.transcript_confidence = self.transcript_raw = None
         self.scene_markers = bool(scene_markers)   # write "[new scene]" before a frame that differs from the last
         self.last_small = None
         self.answering = False                     # while True, frames and audio are encoded/held, then committed
@@ -494,15 +494,15 @@ class LiveSession:
     def heard_note(transcript, start, end):
         """The transcript the hearing pass made, with its provenance; or that no words could be made out."""
         start, end = stamp(start), stamp(end)
-        text = " ".join(LEAD_IN.sub("", transcript or "").split())
+        text = re.sub(r"\$\\text\{|\}\$|\*\*|__", "", transcript or "")   # markup is not speech
+        text = " ".join(LEAD_IN.sub("", text).split())
         quoted = re.findall(r'"([^"]+)"', text)
         text = " ".join(quoted) if quoted else text
         text = text.replace('"', "'").strip()[:400]
         if not text or NO_WORDS.search(text):
-            return ("[HEARD: the microphone's sound (%s-%s) was transcribed just now and no words could be made out. "
-                    "If asked what is being said, say the words were not captured; do not guess.]" % (start, end))
-        return ('[HEARD: transcribed just now from the microphone\'s sound (%s-%s), not from the picture or any note: '
-                '"%s". This transcript is the only source for what is being said.]' % (start, end, text))
+            return ("[HEARD from the microphone (%s-%s): words not made out, so for what is being said: the words were "
+                    "not captured.]" % (start, end))
+        return '[HEARD from the microphone (%s-%s): "%s"]' % (start, end, text)
 
     def sound_note(self):
         """Provenance of what can be said about speech: the sound this turn holds is the microphone's own audio,
@@ -510,14 +510,11 @@ class LiveSession:
         sound, never from the picture or the camera's notes (the record-gap rule)."""
         spans = [s for s in self.segments.values() if s["kind"] == "audio" and s.get("audio_tokens")]
         if not spans:
-            return ("[SOUND: no sound was captured in this window. If asked what is being said, answer that no "
-                    "speech was captured; do not guess words.]")
+            return "[SOUND: none captured, so no speech was captured.]"
         seconds = sum(s["audio_tokens"] for s in spans) * FRAME / SAMPLE_RATE
         end = max(s["at"] + s["audio_tokens"] * FRAME / SAMPLE_RATE for s in spans)
-        return ("[SOUND: %d s of the microphone's own sound (%s-%s) is in this turn, heard directly; there is no "
-                "written transcript. If asked what is being said, repeat only words you clearly hear in that sound; "
-                "if you cannot make them out, say the words were not captured. Never take words from the picture or "
-                "from these notes.]" % (max(1, round(seconds)), stamp(min(s["at"] for s in spans)), stamp(end)))
+        return "[SOUND: %d s from the microphone (%s-%s), heard directly, no transcript.]" % (
+            max(1, round(seconds)), stamp(min(s["at"] for s in spans)), stamp(end))
 
     def _count(self, kind):
         return sum(1 for s in self.segments.values() if s["kind"] == kind)
@@ -597,7 +594,7 @@ class LiveSession:
         question = str(question).strip()
         note = str(note or "").strip()
         sound = self.sound_note() if self.sound_notes else ""
-        self.transcript = self.transcript_confidence = None
+        self.transcript = self.transcript_confidence = self.transcript_raw = None
 
         def question_chunk(sound):
             return self._ids((" " + sound if sound else "") + (" " + note if note else "")
@@ -675,9 +672,10 @@ class LiveSession:
                     self.scores = forward(self.stream.text([t]), mask=heard_hidden)
                     yield 0
                 self.stream.truncate(self.cache, hear_mark)
-                self.transcript = self.tokenizer.decode(said, skip_special_tokens=True).strip()
+                self.transcript = self.transcript_raw = self.tokenizer.decode(said, skip_special_tokens=True).strip()
                 self.transcript_confidence = float(np.exp(np.mean(logps))) if logps else 0.
-                if self.transcript_confidence < HEAR_MIN_CONFIDENCE or HEAR_ECHO.search(self.transcript):
+                if self.transcript_confidence < HEAR_MIN_CONFIDENCE or (
+                        HEAR_ECHO.search(self.transcript) and not re.search(r'"[^"]{8,}"', self.transcript)):
                     self.transcript = ""   # too unsure, or the request echoed back: the words were not captured
                 question_ids = question_chunk(self.heard_note(self.transcript, hear_start, hear_end))
                 if len(question_ids) + int(max_tokens) > ANSWER_RESERVE:
