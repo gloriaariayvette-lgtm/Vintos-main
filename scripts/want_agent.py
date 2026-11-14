@@ -994,11 +994,14 @@ EMAIL_SETTLED = ('Gloria declined', 'the conversation with', 'was already emaile
                  'not a want of the agent room')
 
 
-def _email_step(w, a, result, rid, revision, now, ws, email_step=None):
+def _email_step(w, a, result, rid, revision, now, ws, email_step=None, ask=None):
     """A bound want that asks him to email someone sends it through want_email.run, the same steps (search, dossier,
     person page, draft, review, Gloria's approval for a second email, contact record) as the router's email wants, once
     its agent's work is done and delivered (Gloria, 14 November). The agent never sends it. None when the want may be
-    completed now; otherwise the line to say ('' for a quiet wait) and the want stays result_ready."""
+    completed now; otherwise the line to say ('' for a quiet wait) and the want stays result_ready.
+
+    `ask(want, agent, text)` posts his line to Dot, Grok Bot or Muse in the want's working thread: what they found is
+    material he weighs in the email step, and he may question it there before his opinion settles (agent_research)."""
     try:
         import want_email
         if not want_email.email_want(w.get('want', '')):
@@ -1012,7 +1015,8 @@ def _email_step(w, a, result, rid, revision, now, ws, email_step=None):
         return ''
     if email_step is None:
         email_step = lambda want, res: want_email.run({}, want['want'], want['id'], lane='want-lane',
-                                                      work_found=res.get('summary', '') + '\n' + res.get('acceptance', ''))
+                                                      work_found=res.get('summary', '') + '\n' + res.get('acceptance', ''),
+                                                      ask_agent=(lambda agent, text: ask(want, agent, text)) if ask else None)
     try:
         outcome = email_step(w, result)
     except Exception as exc:
@@ -1027,7 +1031,7 @@ def _email_step(w, a, result, rid, revision, now, ws, email_step=None):
     return 'want %s email step held: %s' % (w['id'], record['held'][:140]) if 'held' in record else None
 
 
-def finish(state, publish, notify, complete, save_state, now, *, ws=None, review=None, email_step=None):
+def finish(state, publish, notify, complete, save_state, now, *, ws=None, review=None, email_step=None, ask=None):
     """Publish verified files, then ntfy through deliver, then the existing ending door.
 
     Every stage is retained on its want; a failed upload/notification is retried
@@ -1089,7 +1093,7 @@ def finish(state, publish, notify, complete, save_state, now, *, ws=None, review
             if item:
                 working.append(w, item, ws, 'delivered:' + revision, 'delivery', result['summary'], at=now,
                                details={'publication': publication, 'delivery': delivery, 'acceptance': result['acceptance']})
-            said = _email_step(w, a, result, rid, revision, now, ws, email_step)
+            said = _email_step(w, a, result, rid, revision, now, ws, email_step, ask)
             if said is not None:
                 if said: lines.append(said)
                 continue

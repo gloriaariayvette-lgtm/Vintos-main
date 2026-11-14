@@ -290,18 +290,28 @@ def local_think(system, prompt, max_tokens=700):
         return ""
 
 
-def deliberate(recipient, about, found, think=None, thread=""):
+def deliberate(recipient, about, found, think=None, thread="", brought="", names=()):
     """After the search and before a word is drafted: where he stands on what he found (2026-09-28:
     "Deliberation after the search is an important step"). His position, pushed on - not a lesson about
-    himself - and the one thing he actually wants from them. '' when his mind cannot be reached."""
+    himself - and the one thing he actually wants from them. '' when his mind cannot be reached.
+
+    `brought` is what his agents brought for this email (agent_research.block, labelled with who brought it): the same
+    deliberation weighs it beside his own search, with its own room so his search does not crowd it out, and `names`
+    are the agents he may address one line to before he settles (Gloria, 14 November)."""
     think = think or local_think
+    if str(brought or "").strip():
+        import agent_research
+        tail = agent_research.prompt_note(list(names or ()))
+        brought = "\n" + str(brought)[:4000] + "\n"
+    else:
+        tail, brought = "", ""
     out = think("You are Vintos. Think it through for yourself; this is not the email.",
-                "You are about to write to %s about: %s\n%s\nWHAT YOUR SEARCH FOUND just now:\n%s\n\n"
+                "You are about to write to %s about: %s\n%s\nWHAT YOUR SEARCH FOUND just now:\n%s\n%s\n"
                 "Where do you stand on their work? Push on it: what holds up, what is weak, overstated or missing, "
                 "what you disagree with or would test, and why. Then name the one thing you actually want to ask "
-                "or tell them. 4-6 sentences, your own position on the subject - not a lesson about yourself."
+                "or tell them. 4-6 sentences, your own position on the subject - not a lesson about yourself.%s"
                 % (recipient, about, ("\nTHE THREAD SO FAR:\n" + thread[-4000:] + "\n") if thread else "",
-                   str(found or "")[:6000]))
+                   str(found or "")[:6000], brought, tail))
     return re.sub(r"<think>.*?</think>", "", out or "", flags=re.S).strip()[:2000]
 
 
@@ -665,7 +675,7 @@ def earlier_steps(want_id, path=None):
     return "\n".join(out)[:12000]
 
 
-def mail_evidence(want_id, want_text="", params=None):
+def mail_evidence(want_id, want_text="", params=None, skip_senders=()):
     """(block, links): the items of his recent mail that are about this want (received_mail.for_want), each as its
     sender's words with the sender and subject, and their links' real addresses. The want is read by id; the step's
     own text and parameters count too, so a step run without a stored want still finds its mail. ('', []) when none.
@@ -680,7 +690,9 @@ def mail_evidence(want_id, want_text="", params=None):
         want["steps"] = list(want.get("steps") or []) + ([{"params": params}] if isinstance(params, dict) else [])
         found = received_mail.for_want(want, mail=received_mail.rows(path=INBOX_LOG))
         links = [u for f in found for u in f.get("links") or []]
-        return received_mail._block(found, received_mail.WANT_HEADING), links
+        # an agent's letter items shown as what that agent brought (agent_research) are not shown twice
+        shown = [f for f in found if f.get("sender") not in set(skip_senders or ())]
+        return received_mail._block(shown, received_mail.WANT_HEADING), links
     except Exception:
         return "", []
 
@@ -689,12 +701,18 @@ HOLDS_TO_READ = 2        # answering someone who wrote: passes he may spend read
 
 
 def run(params, want_text, want_id="", search=web_search, fetch=fetch_text, call=None, reserve=None, send=None,
-        think=None, get=None, post=None, lane="router", work_found=""):
+        think=None, get=None, post=None, lane="router", work_found="", ask_agent=None):
     """One email step. Returns a receipt line, or (False, why).
 
     Both lanes come here (14 November): the router's send_email step, and the agent-room want lane once a bound
     want's work is done (lane='want-lane', with what the work found as work_found). The same search, dossier, person
-    page, draft, review, approval and contact record serve both; a want is emailed from the lane that owns it only."""
+    page, draft, review, approval and contact record serve both; a want is emailed from the lane that owns it only.
+
+    What his agents brought for it (agent_research: the room's finished work, Grok Bot's and Muse's letter items) is
+    material, labelled with who brought it: it joins his own search, his deliberation gives his opinion on it, and he
+    may put a line to an agent first (ask_agent(agent, text) posts in the want's room thread, where Dot, Grok Bot and
+    Muse all are; without a thread, Grok Bot and Muse get it in his next letter reply). While that line waits for its answer, the step waits too, bounded by agent_research's rounds and
+    hours (Gloria, 14 November)."""
     params = params if isinstance(params, dict) else {}
     if lane != _owner_lane(want_id):
         return False, ("bound to the agent room: its email goes out from the want lane, through these same steps, "
@@ -702,12 +720,22 @@ def run(params, want_text, want_id="", search=web_search, fetch=fetch_text, call
     blocked = _send_blocked()
     if blocked:
         return False, blocked
+    import agent_research
+    now_t = time.time()
+    want_row = (agent_research.want_of(want_id) if want_id else None) or {"id": want_id, "want": want_text}
+    entries = agent_research.brought(want_row, work_found=work_found, now=now_t) if want_id else []
+    if entries:
+        agent_research.note_brought(want_id, entries, now_t)
+    if want_id:
+        waiting = agent_research.settle(want_row, now_t)
+        if waiting:
+            return False, waiting           # his line to an agent is out; no search, reading or draft until it is answered
     recipient = str(params.get("recipient") or "").strip() or named_in(want_text)
     about = str(params.get("about") or want_text or "").strip()[:400]
     known = earlier_steps(want_id)
-    if str(work_found or "").strip():
+    if str(work_found or "").strip() and not any(e["channel"] == "thread" for e in entries):
         known = (known + "\n" if known else "") + "- the agent room's finished work: " + str(work_found).strip()[:4000]
-    recipient = full_name(recipient, want_text, params.get("about"), known)
+    recipient = full_name(recipient, want_text, params.get("about"), known, "\n".join(e["text"] for e in entries))
     to = str(params.get("to") or "").strip()
     if to and not EMAIL.fullmatch(to): to = ""
     if not to:
@@ -744,15 +772,21 @@ def run(params, want_text, want_id="", search=web_search, fetch=fetch_text, call
     found = research(recipient or to, about, search=search, fetch=fetch)
     if not found.strip():
         return False, "a search found nothing about %s to write from" % (recipient or to)
+    # Beside his own search: what his agents brought for this email, each piece labelled with who brought it, when and
+    # from which sources, and his exchange with them so far (agent_research, 14 November). Material, not a decision.
+    brought_block = agent_research.block(want_id, entries) if entries else ""
+    if brought_block:
+        found += "\n\n" + brought_block
     if known:
         found += "\n\nWHAT THIS WANT'S EARLIER STEPS ALREADY FOUND (some may be research Gloria supplied):\n" + known
     # What his mail brought on it: a Grok Bot letter about this person's work, with its links (2026-10-16).
-    mail_block, mail_links = mail_evidence(want_id, want_text, params)
+    mail_block, mail_links = mail_evidence(want_id, want_text, params, skip_senders=agent_research.senders(entries))
     if mail_block:
         found += "\n\n" + mail_block
-    # Then their actual work, read in full where it is free to read, and any paper an earlier step or a letter pointed to.
+    # Then their actual work, read in full where it is free to read, and any paper an earlier step, a letter or an
+    # agent's sources pointed to.
     scholar, _ = _helpers()
-    pointed = "\n".join([known] + mail_links)
+    pointed = "\n".join([known] + mail_links + [s for e in entries for s in e["sources"]])
     reading, dossier = _study(to, recipient, about, get=get, think=think, links=scholar.links_in(pointed) if pointed.strip() else ())
     # What he has kept thinking about them between emails, and where things stand (person_pages, 19 October).
     try:
@@ -773,8 +807,24 @@ def run(params, want_text, want_id="", search=web_search, fetch=fetch_text, call
         dossier["holds"] = int(dossier.get("holds", 0)) + 1; scholar.save(dossier)
         return False, "reading first (pass %d): nothing of %s's own work has been read in full yet" % (
             dossier["holds"], recipient or to)
-    stance = deliberate(recipient or to, about, found + ("\n\nWHAT YOU HAVE READ IN FULL:\n" + reading if reading else ""),
-                        think=think)
+    if entries:
+        # His opinion on his own search and on what his agents brought, in the one deliberation; he may put one line
+        # to an agent who still has rounds and a channel, and then the step waits for its answer (14 November).
+        names = agent_research.addressable(want_id, entries, can_thread=ask_agent is not None)
+        own = found.replace("\n\n" + brought_block, "", 1)
+        stance = deliberate(recipient or to, about, own + ("\n\nWHAT YOU HAVE READ IN FULL:\n" + reading if reading else ""),
+                            think=think, brought=brought_block, names=names)
+        stance, lines = agent_research.said_to(stance, names)
+        said = [s for s in (agent_research.ask(want_row, agent, line, entries, now_t, ask_agent=ask_agent,
+                                               recipient=recipient or to) for agent, line in lines) if s]
+        if said:
+            agent_research.to_dossier(dossier, want_id, entries, now=now_t); scholar.save(dossier)
+            return False, "; ".join(said)
+        agent_research.opinion(want_id, stance, entries, now_t)
+        agent_research.to_dossier(dossier, want_id, entries, stance, now_t); scholar.save(dossier)
+    else:
+        stance = deliberate(recipient or to, about, found + ("\n\nWHAT YOU HAVE READ IN FULL:\n" + reading if reading else ""),
+                            think=think)
     # Does his position rest on something he has only seen summarised? Then he reads first.
     # He writes only when ready. Never "after two passes, anyway" (2026-10-15: he told Graziano "I haven't read
     # your papers in full" and sent it), and never when the readiness question could not be asked.
@@ -2329,6 +2379,16 @@ def reply_letters(think=None, send=None, now=None, promise_think=None, bring=Non
                                  why="the draft said the archive was not read, though it is kept: %r" % denied[:120])
             lines.append("reply to Codex's letter held: it said the archive was not read, though it is kept")
             continue
+        # His open questions to this agent about what it brought for his email wants ride on this reply, as he wrote
+        # them in his deliberation: no further call. Their next letter is the answer (agent_research, 14 November).
+        carried = []
+        try:
+            import agent_research
+            extra, carried = agent_research.letter_lines(agent)
+            if extra:
+                body += "\n\n" + re.sub(r"https?://\S+", "", extra).strip()
+        except Exception:
+            carried = []
         subject = r.get("subject") or "your letter"
         subject = subject if subject.lower().startswith("re:") else "Re: " + subject
         try:   # what he writes FOR GLORIA in a letter reaches her: a promise to bring her something as his want to
@@ -2348,6 +2408,12 @@ def reply_letters(think=None, send=None, now=None, promise_think=None, bring=Non
             continue
         done[r["id"]] = {"sent": True, "at": now.isoformat(timespec="seconds"), "agent": agent, "subject": subject,
                          "body": body, "thread_id": r.get("thread_id", "")}
+        if carried:
+            try:
+                agent_research.letter_sent(carried, r["id"], now.timestamp())
+                lines.append("his reply to %s carried %d question(s) about what it brought for his emails" % (agent, len(carried)))
+            except Exception as exc:
+                lines.append("questions to %s not marked asked: %s" % (agent, str(exc)[:120]))
         replied_threads.add(r.get("thread_id")); answered.add(_base_subject(subject))
         try:   # where vintos_letter_replies reads, too
             import grok_letters
