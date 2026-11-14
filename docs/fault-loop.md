@@ -82,17 +82,21 @@ enough that waking it stays cheap.
 
 1. Read this file, `CLAUDE.md` and `docs/open-work.md`.
 2. Read `#fault-fix` for the last 24 hours, threads included.
-3. Count what was **implemented** since 9 pm tonight. **Three is the limit for a night.** At three, only answer Dot
+3. List the code-fix worm's proposals waiting for review:
+   `python3 ~/repos/worm-jobs/wormjobs/loop/fault_proposals.py` (empty `{}` = none). Each one is reviewed as
+   "Code-fix worm proposals" below says.
+4. Count what was **implemented** since 9 pm tonight. **Three is the limit for a night.** At three, only answer Dot
    (deploy results, review replies) and stop.
-4. For each fault thread, do the next step it is waiting on:
+5. For each fault thread, do the next step it is waiting on:
    - **No proposal yet**, and fewer than 3 proposals open tonight → propose (message 1). Worst first: a loop or a
      failed unit before a single 429; something that stops him before something that slows him.
+   - **A worm proposal is waiting for it** (step 3) → review it first; if it is good, it is your message 1.
    - **Dot reviewed, agreed** → implement (message 3).
    - **Dot reviewed, objected** → revise once, or set aside as above.
    - **Deploy failed** → read Dot's output. If the fix caused it, fix that within the same fault's budget; otherwise
      say what failed and stop.
    - **Waiting on Dot** → nothing. Do not nag.
-5. If the work done tonight is finished (or the night's limit is reached), post one summary line in the channel:
+6. If the work done tonight is finished (or the night's limit is reached), post one summary line in the channel:
    *"[Claude Code] Tonight: F-… fixed and deployed, F-… waiting on Dot, F-… needs Gloria (why)."*
 
 ## The thread on Aegis, and keeping it alive
@@ -173,7 +177,8 @@ The wake message:
   the sweep's bot, so it shows as Vintos's bot like the `[fault sweep]` post above it):
   - *"worm's checked patch attached, tests pass"* — the patch is in the reply (the whole file is
     `memory/codefix-worm-patches/CF-….patch` when the reply cuts it). It is **not applied** anywhere. Review it like
-    any proposal, apply it in your clone, run every suite, then it goes through the same three messages.
+    any proposal, apply it in your clone, run every suite, then it goes through the same three messages. From
+    14 November it is also a local branch in your clone — see "Code-fix worm proposals" below.
   - *"worm couldn't fix it"* — fix it by hand as below.
   - *"worm ran and gave no result: …"* — the same, or hand it again on a later wake.
   A refusal before the worm ran (no failing test, the nightly loop's lock held, the Studio training) is returned to
@@ -189,6 +194,54 @@ The wake message:
   stubbed sender let a broken `authority=` pass on 19 October.
 - Write the fault and what was done in `docs/open-work.md`. If it isn't fixed, say it isn't.
 - Commit messages: what was wrong, how it showed, what changed. No model names.
+
+## Code-fix worm proposals
+
+From 14 November the worm's fault-fix switch is on (Gloria: "Fault-fix: yes, absolutely."; `"fault_fix_worm"` in
+`~/repos/worm-jobs/wormjobs/loop/config.json`). A fault the worm's base procedure can't fix goes on to the whole worm,
+and **every checked fix becomes a local branch `codefix-worm/<task id>`** in the clone whose worktree was handed — your
+`~/faultloop/Vintos-main` when you handed it (a worktree of your clone counts as your clone). The branch is two commits
+on the HEAD you handed: the failing tests (`codefix profile: failing tests`), then the worm's fix (author
+`code-fix worm`). It is never pushed, never applied to your checkout, never deployed. Your `git pull` leaves it alone.
+
+**Where to find them.** Every such branch, whoever handed the fault, is listed in `~/faultloop/worm-proposals.json`.
+- `python3 ~/repos/worm-jobs/wormjobs/loop/fault_proposals.py` prints the pending ones (no review yet), by task id:
+  `branch`, `repo` (the clone that holds it), `route`, `at`, `issue`, `test_files`, `source_files`, `base` (the HEAD
+  it was made on), `head`. `--all` prints the reviewed ones too.
+- The fault it belongs to: the entry in `~/.vintos/workspace/memory/codefix-worm-proposals.json` with the same
+  `task_id` (its `ref` is the `F-…` or Forge id). The `[code-fix worm]` reply in the fault's thread names the branch
+  too, at the start of its "In words".
+- A branch in a clone that isn't yours (a Forge item someone else handed): fetch it into your clone,
+  `git fetch <repo> <branch>:<branch>`. Read only there.
+
+**Review each one like any other fix.** The worm's checker passing is not a review.
+1. Read the diff: `git -C <repo> show <branch>` (the fix) and `git -C <repo> show <branch>~1` (the tests it was
+   checked against). Does it fix the root cause the fault's evidence shows, or only make the test pass? Is it the
+   right test? Does it touch anything outside `source_files`?
+2. Apply it in a worktree of your clone cut from the freshly pulled deploy branch:
+   `git diff <base> <branch> | git apply -3`. A conflict you can't resolve cleanly is a "bad".
+3. Rerun the fault's reproducing test (it fails on the tip without the fix and passes with it), regenerate the docs,
+   and run the **whole** suite through `scripts/run_isolated_test.py`, as above.
+
+**Good →** it goes through the three messages like any fix. Message 1 names the branch and what you checked. When Dot
+agrees, commit it under the usual commit-message rules and push to the deploy branch only as a plain fast-forward
+(`git push origin <sha>:refs/heads/claude/device-visuals-2026-10-13`), or a `--force-with-lease` push after review.
+If the tip moved, merge it in (no rebase) and run the whole suite again. Then *"Dot — please deploy."* The deploy
+stays Dot's and Gloria's; never run it yourself. Record it:
+`python3 ~/repos/worm-jobs/wormjobs/loop/fault_proposals.py review <id> accepted "<what you checked; the commit>"`
+
+**Bad →** don't apply it. Record why, concretely (wrong cause, fixes only the test, a regression in which suite,
+doesn't apply on the tip):
+`python3 ~/repos/worm-jobs/wormjobs/loop/fault_proposals.py review <id> rejected "<why>"`
+The reason also goes into the worm's own record (`wormjobs/loop/state/fault-reviews.jsonl` in worm-jobs), so its
+lessons can learn from what a reviewer turned down. Leave the branch where it is (it is the evidence) and fix the
+fault by hand as above. These two `review` commands are the only writes outside your clone this thread makes.
+
+A reviewed proposal leaves the pending list. A worm fix counts toward the night's three only once it is implemented.
+
+**In `#fault-fix`, only when there is something new:** one line in the fault's own thread when you take a proposal up
+or set it aside — *"[Claude Code] Worm's branch codefix-worm/<id> reviewed: taking it / not taking it (why)."* Nothing
+for an empty list. The night's summary line names worm fixes like any other.
 
 ## Never
 
