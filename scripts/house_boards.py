@@ -72,7 +72,8 @@ HOW = {
     "SONGS": "SONGS: <song ID>[, <song ID>...] (choose up to %d from the offered titles; play those tracks after SAY)",
     "LIGHTS": "LIGHTS: <a colour name or #rrggbb> (the bulbs of this room take that colour; brightness is not yours)",
     "TO GLORIA": "TO GLORIA: <what about, one line> (your outreach writes to her, in your words)",
-    "TV": "TV: <YouTube link> | open <url> | on | off | pause | play | volume <0-15> | status (living-room TV)",
+    "TV": "TV: find <what to put on, in your words> | <YouTube link> | on | off | pause | play | volume <0-15> | status "
+          "(living-room TV; find searches YouTube and plays the top match)",
     "ECHO": "ECHO: say <words> | announce <words> | play <a song or artist> | stop (office Echo)",
     "BUZZ": "BUZZ: tap | double | heartbeat (the motor under her chair seat)",
     "DESKTOP": "DESKTOP: <one task on her computer> (asks her phone to lend you the desktop for it)",
@@ -153,6 +154,7 @@ def _away(st, board, now):
 
 def _close(st, board, end, now):
     b = _board(st, board); v = b.pop("visit", None)
+    b["sit_since"] = None; b.pop("off_at", None)   # a sit never outlives its visit
     if not v: return None
     seated = float(v.get("seated_s", 0))
     if b.get("pressed_since") is not None: seated += max(0.0, end - float(b["pressed_since"]))
@@ -282,12 +284,22 @@ def observe(st, board, kind, text, now, cfg):
             return ("shower", board)
     if kind == "near":
         b["near"] = text == "on"; b["near_ts"] = now
-        if b["near"]: _near(st, board, now)
+        if b["near"]:
+            _near(st, board, now)
+            # Her phone's 1 m reading flickers while she sits still. The board sends press_start only on the press
+            # itself, so a sit that began (or continued) through a flicker was lost for the rest of the visit
+            # (14 November: 46 minutes near the chair, 0.0 seated). Back within AWAY_S, she is taken as still seated
+            # until the board says press_end; the boards also re-send their pressure state when she comes near.
+            if b.get("sit_since") is not None and b.get("pressed_since") is None:
+                if now - float(b.get("off_at") or now) < AWAY_S: b["pressed_since"] = now
+                else: b["sit_since"] = None
+            b.pop("off_at", None)
         else:
             _away(st, board, now)
             if b.get("pressed_since") is not None and b.get("visit"):
                 b["visit"]["seated_s"] = float(b["visit"].get("seated_s", 0)) + now - float(b["pressed_since"])
             b["pressed_since"] = None
+            if b.get("sit_since") is not None: b["off_at"] = now
         return None
     if kind in ("event", "loudness", "steam"):
         _near(st, board, now)   # the boards send these only while her phone is within 1 m
@@ -303,11 +315,14 @@ def observe(st, board, kind, text, now, cfg):
     if kind != "event": return None
     # an event is sent only while she is near; it also tells us she is
     b["near"] = True; b["near_ts"] = now
-    if text == "press_start": b["pressed_since"] = now; return None
+    if text == "press_start":
+        b["pressed_since"] = now
+        if b.get("sit_since") is None: b["sit_since"] = now
+        return None
     if text == "press_end":
         if b.get("pressed_since") is not None:
             b["visit"]["seated_s"] = float(b["visit"].get("seated_s", 0)) + now - float(b["pressed_since"])
-        b["pressed_since"] = None; return None
+        b["pressed_since"] = None; b["sit_since"] = None; return None
     if text in ("knock_2", "knock_3") and board == "house-touch":
         b["visit"]["knocks"] = int(b["visit"].get("knocks", 0)) + 1
         if now - float(st["last"].get("knock", 0)) < 60 * cfg["knock_cooldown_minutes"]: return None
@@ -319,7 +334,8 @@ def due(st, now, cfg):
     """A sitting moment that has come due: ("sofa"|"office", board) or None."""
     for board, moment in (("house-press-mic", "sofa"), ("house-touch", "office")):
         b = _board(st, board)
-        since = b.get("pressed_since")
+        since = b.get("sit_since") if b.get("pressed_since") is not None else None
+        since = b.get("pressed_since") if since is None else since
         if not b.get("near") or since is None or now - since < 60 * cfg["sit_minutes"]: continue
         if now - float(st["last"].get(moment, 0)) < 3600 * cfg["cooldown_hours"]: continue
         if moment == "sofa":
