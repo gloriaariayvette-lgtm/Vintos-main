@@ -558,8 +558,8 @@ def corroboration(g, suspect, checked, rivals=()):
     justification (if the suspect is wrong it fails too) and on none of the rival suspects (else it would fail for
     their sake and prove nothing), else a second opinion on the belief it produced."""
     base = suspect[5:] if suspect.startswith("rule:") else suspect
-    if base not in g.nodes:
-        return None
+    if base not in g.nodes or base.startswith("check:"):
+        return None                                      # a check's own answer is not a belief anyone can be asked about
     pool = ({base} if not g.nodes[base]["assumption"] else set()) | descendants(g, base)
     rivals = set(rivals) - {suspect}
     pool = [n for n in pool if n not in checked and g.envs(n) and all(suspect in e for e in g.envs(n))
@@ -571,27 +571,59 @@ def corroboration(g, suspect, checked, rivals=()):
     return None
 
 
+def stand_in(g, nid, cid, checked):
+    """A belief that carries the same answer as an unanswerable question about `nid`, for contradiction `cid`: it
+    rests on `nid` (on one of its environments) in every justification and on no other suspect of the contradiction,
+    so if it holds, `nid`'s line holds, and if it fails, the fault is on that line or in its own last step.
+    The nearest such belief, or None."""
+    conflict = next((c for c in g.conflicts if c["id"] == cid), None)
+    if conflict is None or nid not in g.nodes:
+        return None
+    ng = g.nogoods(conflict)
+    suspects = set().union(*ng) if ng else set()
+    mine = g.envs(nid)
+    rivals = suspects - set().union(*mine) if mine else suspects
+    pool = [d for d in descendants(g, nid) if d not in checked and not g.nodes[d]["assumption"] and g.envs(d)
+            and all(any(e_n <= e for e_n in mine) for e in g.envs(d)) and not any(e & rivals for e in g.envs(d))]
+    return min(pool, key=lambda d: (g.depth.get(d, 0), d)) if pool else None
+
+
 def localize(g, ask, budget=12, per_conflict=3, accuracy=0.9, at=None):
     """Plan, then ask checks where the evidence cannot yet localize (at most `per_conflict` for any one
     contradiction, `budget` in all), adding each answer as evidence: True (it holds) is a passing check, False a
     contradiction from the check, None (cannot tell) adds nothing. Returns the final plan and the checks asked."""
     asked = []
     answers = []
+    unanswered = set()
     spent = {}
     verified = {}
     p = plan(g, at=at)
+    pending = {}                                         # contradiction -> the question that came back unknown
     while len(asked) < budget:
         checked = [n for n, _ in asked]
         qs = {cid: n for cid, n in questions(g, p, checked=checked).items() if spent.get(cid, 0) < per_conflict}
-        if qs:
+        stand = None
+        for cid0, n0 in sorted(pending.items()):
+            # a question his records could not answer: ask a belief that carries the same answer instead (answerer
+            # iteration 3) - one resting on that belief in every justification and on no other suspect
+            stand = stand_in(g, n0, cid0, checked)
+            del pending[cid0]
+            if stand:
+                cid, node, about = cid0, stand, {cid0}
+                break
+        if stand:
+            pass
+        elif qs:
             cid = sorted(qs)[0]
             spent[cid] = spent.get(cid, 0) + 1
             node = qs[cid]
+            about = {cid}
         else:
             # corroborate before revising: one answer is never enough to change a source - ask one more check of
             # something the revision predicts (a conclusion built on the suspect), or a second opinion
             node = None
             for r in p["revisions"]:
+                about = set(r["conflicts"])
                 if r["action"] not in ("retract", "lower") or verified.get(r["node"], 0) >= OPINIONS:
                     continue
                 hinge = fragile(g, r["node"])
@@ -611,6 +643,10 @@ def localize(g, ask, budget=12, per_conflict=3, accuracy=0.9, at=None):
         ans, acc, prov = _answer(ask(node), accuracy)
         asked.append((node, ans))
         answers.append({"node": node, "answer": ans, "accuracy": acc, "provenance": prov})
+        if ans is None:
+            unanswered |= about
+            if len(about) == 1:
+                pending[next(iter(about))] = node
         if ans is True:
             g.confirm(node, accuracy=acc)
             g.confirmations[-1]["check"] = True
@@ -623,11 +659,24 @@ def localize(g, ask, budget=12, per_conflict=3, accuracy=0.9, at=None):
     # answer is held back as a flag, its question still open
     hold = {r["node"] for r in p["revisions"] if r["action"] in ("retract", "lower")
             and not settled(asked, fragile(g, r["node"]))}
+    # a question his records could not answer leaves the suspects it was meant to split where they were: when a
+    # contradiction is still not localized, a check asked about it came back unknown, and another suspect remains, a
+    # suspect that is lowered only because it is in the most probable explanation (blame under LOWER_AT) is flagged,
+    # not revised - the earliest-first tie rule would otherwise lower a valid step next to the real fault (answerer
+    # iterations 1-3). A suspect the evidence itself blames (LOWER_AT and over) is still revised.
+    for c in p["conflicts"]:
+        if c["conflict"] not in unanswered or not ambiguous(c):
+            continue
+        for r in p["revisions"]:
+            if r["action"] in ("retract", "lower") and r["blame"] < LOWER_AT and c["conflict"] in r["conflicts"] \
+                    and any(a != r["node"] for a, _ in c["blame"]):
+                hold.add(r["node"])
     if hold:
         p = plan(g, at=at, hold=hold)
     p["asked"] = [[n, a] for n, a in asked]
     p["answers"] = answers
     p["held"] = sorted(hold)
+    p["unanswered"] = sorted(unanswered)
     return p
 
 

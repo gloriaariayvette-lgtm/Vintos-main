@@ -371,7 +371,11 @@ def run(mem=None, dry=False, checks=CHECKS, transport=None, send=None, at=None):
         if r["action"] not in ("retract", "lower"):
             if r["reason"] == BR.NOT_CAPTURED:
                 flagged["not_captured"] += 1
-            if node in held:
+            if (node[5:] if node.startswith("rule:") else node).startswith(SELF_MODEL_PREFIXES):
+                _flag(flags, node, "self_model", "self-model entry the evidence questions: flagged, never revised",
+                      r["blame"], at)
+                flagged["self_model"] += 1
+            elif node in held:
                 _flag(flags, node, "held", "rests on a single check answer; question left open", r["blame"], at)
                 flagged["held"] += 1
             continue

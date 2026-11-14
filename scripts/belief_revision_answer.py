@@ -32,7 +32,8 @@ ALLOWED_HOSTS = ("127.0.0.1", "localhost", "::1")
 ALLOWED_PATHS = ("/gemma-aegis-local/",)          # the shim's AEON-on-Aegis lane: no pool spill, no hosted fallback
 AEON_PROVIDERS = ("aegis_gemma",)
 RECORD_ACCURACY = 0.95       # a record that states the standing outright: right unless the record itself is wrong
-CHECKER_ACCURACY = 0.90      # measured on the development seeds (bench_answerer.py); frozen before the held-out run
+CHECKER_ACCURACY = 0.97      # measured on the development seeds (bench_answerer.py: 849 of 868 definite answers
+                             # right, 0.978, rounded down); frozen before the held-out run
 CONFIDENT_AT = 70            # a checker verdict below this confidence is "unknown"
 TEMPERATURE = 0.6            # separate opinions are separate draws, with the records in a different order
 MAX_TOKENS = 60

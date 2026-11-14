@@ -165,6 +165,39 @@ p = BR.localize(g, lambda n: {"answer": None, "accuracy": 0.99, "provenance": {"
 check("an unknown answer adds no evidence", not g.confirmations and all(c["kind"] != "check" for c in g.conflicts)
       and p["answers"] and p["answers"][0]["provenance"] == {"by": "none"})
 check("bare True/False answers still work (the earlier benchmarks)", BR._answer(True, 0.9) == (True, 0.9, None))
+def probe_unanswered(M):
+    """A chain p -> a -> b -> c, c contradicted; every check comes back unknown. Nothing localized it, so nothing
+    may be lowered or retracted: the suspects are flagged (held), not revised."""
+    g = M.Graph()
+    g.source("p", "memory"); g.derived("a", "belief", [["p"]]); g.derived("b", "belief", [["a"]])
+    g.derived("c", "belief", [["b"]]); g.source("w", "gloria"); g.conflict("x", ["c", "w"])
+    p = M.localize(g, lambda n: None, budget=6)
+    return not [r for r in p["revisions"] if r["action"] in ("retract", "lower")] and p["held"] and p["unanswered"] == ["x"]
+check("a contradiction whose questions went unanswered revises nothing; its suspects are held", probe_unanswered(BR))
+killed("unanswered suspects revised anyway", probe_unanswered, BR,
+       'if r["action"] in ("retract", "lower") and r["blame"] < LOWER_AT and c["conflict"] in r["conflicts"]',
+       'if False and r["blame"] < LOWER_AT and c["conflict"] in r["conflicts"]')
+def probe_stand_in(M):
+    """p -> a -> b -> c, c contradicted; side branches sa (on a) and sb (on b). The records cannot answer a or b, so
+    the next question is the side branch that carries the same answer."""
+    g = M.Graph()
+    g.source("p", "memory"); g.derived("a", "belief", [["p"]]); g.derived("b", "belief", [["a"]])
+    g.derived("c", "belief", [["b"]]); g.derived("sa", "belief", [["a"]]); g.derived("sb", "belief", [["b"]])
+    g.source("w", "gloria"); g.conflict("x", ["c", "w"])
+    seq = []
+    def ask(n):
+        seq.append(n)
+        return {"sa": True, "sb": False}.get(n)
+    p = M.localize(g, ask, budget=8)
+    follow = {"a": "sa", "b": "sb"}
+    hits = [seq[i + 1] == follow[n] for i, n in enumerate(seq[:-1]) if n in follow]
+    return hits and all(hits) and p["fault"]["rule:b"] > p["fault"]["rule:a"]
+check("an unanswerable question is replaced by a belief that carries the same answer", probe_stand_in(BR))
+killed("no stand-in asked", probe_stand_in, BR, "stand = stand_in(g, n0, cid0, checked)", "stand = None")
+check("a stand-in never rests on another suspect",
+      BR.stand_in(*(lambda g: (g, "a", "x", []))(
+          (lambda g: (g.source("p", "memory"), g.derived("a", "belief", [["p"]]), g.derived("b", "belief", [["a"]]),
+                      g.derived("c", "belief", [["b"]]), g.source("w", "gloria"), g.conflict("x", ["c", "w"]), g)[-1])(BR.Graph()))) is None)
 
 print("--- 5. his stores (synthetic): live mode is off unless switched on ---")
 def ev(i, ch, pol, quote, **k):
