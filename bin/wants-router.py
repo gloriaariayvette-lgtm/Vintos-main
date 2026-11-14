@@ -2291,7 +2291,7 @@ def _ensure_plan(want, force=False):
             want.pop("plan_block", None)
             try:
                 from want_contract import contract_for
-                want["plan_contract"] = contract_for(want.get("want", ""))
+                want["plan_contract"] = contract_for(want.get("want", ""), steps)
             except Exception:
                 pass
             _persist_plan_fields(want)

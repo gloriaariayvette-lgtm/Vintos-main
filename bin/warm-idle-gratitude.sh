@@ -140,7 +140,11 @@ EOF
 
 printf "%s" "$IDENTITY" > /tmp/wg_sys.txt
 printf "%s" "$PROMPT" > /tmp/wg_usr.txt
-GRATITUDE=$(python3 /home/gloria/.vintos/workspace/scripts/warm-gratitude-call.py)
+# the model call lives beside this script (bin/warm-gratitude-call.py, installed with it); it used to be called
+# from workspace/scripts, where it never existed on this house - 611 failed runs by 2026-11-14
+WG_CALL="$(dirname -- "$(readlink -f -- "$0")")/warm-gratitude-call.py"
+[ -f "$WG_CALL" ] || WG_CALL="$WORKSPACE/scripts/warm-gratitude-call.py"
+GRATITUDE=$(python3 "$WG_CALL")
 
 if [ -z "$GRATITUDE" ]; then
     exit 1

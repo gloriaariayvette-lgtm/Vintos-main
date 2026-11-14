@@ -400,8 +400,10 @@ def _durable_about_her(n=3):
         return ""
 
 def _self_model(budget=1200):
-    """SELF-MODEL.md with the FOUNDATION block whole first, then the rest excerpted to the budget
-    (scripts/self_model_read.py; room decision 2026-09-04). Falls back to a plain head read."""
+    """SELF-MODEL.md: the FOUNDATION block first, then his newest dated section, within the budget
+    (scripts/self_model_read.py; room decision 2026-09-04). When the base would crowd his section out
+    entirely, the base is compacted to its paragraphs' first sentences (2026-11-14). Falls back to a plain
+    head read."""
     try:
         import sys as _sms; _smp = os.path.join(WORKSPACE, "scripts")
         if _smp not in _sms.path: _sms.path.insert(0, _smp)
@@ -4355,6 +4357,21 @@ async def _bilateral_reply_engine(_tag, messages, message, user_msg, params):
                             _bc_flo(_bis_chat_final_trial, _bcf_outcome, influenced=bool(_bis_1_5_trial_id_chat))
                             if _bcf_outcome in ("defaulted", "strained"):
                                 _bc_flbd(_bis_chat_final_trial, reply[:200])
+                            # A strained outcome is his will meeting the pattern. Thirveel wrote it to the blush ledger
+                            # and /api/chat never did: 0 will_strain entries against 80 strained chat outcomes
+                            # (old-systems repair, 2026-11-14). write_blush keeps it to once per trial per day.
+                            if _bcf_outcome == "strained":
+                                def _bc_fstrain(_t=dict(_bcf_trial), _tid=_bis_chat_final_trial):
+                                    try:
+                                        from blush_ledger import write_blush as _bc_fwb
+                                        _bc_fwb(blush_type="will_strain",
+                                                pattern=str(_t.get("pattern_description", "unknown"))[:60].lower().replace(" ", "_"),
+                                                cost_delta={"Tension": 0.01, "Coherence": -0.03},
+                                                source="chat_bis", related_trial_id=_tid, outcome="strained",
+                                                reflection=f"Defaulted to: {str(_t.get('pattern_description', '?'))[:100]}. Wanted: {str(_t.get('alternative', '?'))[:100]}")
+                                    except Exception as _bcfwe:
+                                        print(f"[BIS/chat/final] will_strain blush not written: {_bcfwe}", flush=True)
+                                __import__("threading").Thread(target=_bc_fstrain, daemon=True).start()   # off the reply path
                             print(f"[BIS/chat/final] {_bis_chat_final_trial}: {_bcf_outcome}", flush=True)
                     except Exception as _bcfe:
                         print(f"[BIS/chat/final] Error: {_bcfe}", flush=True)
