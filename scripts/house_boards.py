@@ -64,8 +64,8 @@ BOARDS = {"house-steam": {"room": "bathroom", "place": "by the shower"},
 MENUS = {
     "shower": ("SAY", "SONGS", "LIGHTS"),
     "sofa": ("LIGHTS", "TO GLORIA", "TV", "REMIND"),
-    "office": ("ECHO", "LIGHTS", "BUZZ", "DESKTOP", "REMIND"),
-    "knock": ("ECHO", "LIGHTS", "BUZZ", "DESKTOP", "REMIND"),
+    "office": ("ECHO", "LIGHTS", "BUZZ", "DESKTOP", "PRINT", "REMIND"),
+    "knock": ("ECHO", "LIGHTS", "BUZZ", "DESKTOP", "PRINT", "REMIND"),
 }
 HOW = {
     "SAY": "SAY: <a few words, spoken in your own voice on the little speaker by her shower>",
@@ -77,9 +77,11 @@ HOW = {
     "ECHO": "ECHO: say <words> | announce <words> | play <a song or artist> | stop (office Echo)",
     "BUZZ": "BUZZ: tap | double | heartbeat (the motor under her chair seat)",
     "DESKTOP": "DESKTOP: <one task on her computer> (asks her phone to lend you the desktop for it)",
+    "PRINT": "PRINT: <a thing to make on her K2 printer> (you decide it, Astra builds it, her slicing settings; she "
+             "gets a yes/no text with the filament and slot before it prints)",
     "REMIND": "REMIND: <the id of one of your questions waiting on her> (puts it back on her phone)",
 }
-LINE = re.compile(r"^\s*(SAY|SONGS|LIGHTS|TO GLORIA|TV|ECHO|BUZZ|DESKTOP|REMIND)\s*:\s*(.+?)\s*$", re.I | re.M)
+LINE = re.compile(r"^\s*(SAY|SONGS|LIGHTS|TO GLORIA|TV|ECHO|BUZZ|DESKTOP|PRINT|REMIND)\s*:\s*(.+?)\s*$", re.I | re.M)
 PER_MOMENT = 3
 
 
@@ -523,7 +525,7 @@ def act(kind, arg, moment, board, st, now, cfg, catalog=None):
     """One act. (ok, what happened, in plain words)."""
     room = BOARDS[board]["room"]
     try:
-        if kind in ("LIGHTS", "TO GLORIA", "TV", "ECHO"):
+        if kind in ("LIGHTS", "TO GLORIA", "TV", "ECHO", "PRINT"):
             return _house(kind, arg, room if kind == "LIGHTS" else None)
         if kind == "SAY":
             words = " ".join(arg.split())[:300]
@@ -588,6 +590,17 @@ def remind(arg, st, now, cfg):
     ok = gloria_asks.notify(row)
     st["reminded"] = [r for r in st["reminded"] if r.get("day") == day] + [{"id": qid, "day": day}]
     return ok, "put back on her phone: %s" % gloria_asks.title_of(row)
+
+
+_PRINT_TENDED = [0.0]
+
+
+def tend_print(now):
+    """His K2 jobs: her answer, a held send, a finished print. At most once a minute (print_lane.tend)."""
+    if now - _PRINT_TENDED[0] < 60: return
+    _PRINT_TENDED[0] = now
+    import print_lane
+    if any(j.get("state") in ("asked", "held", "printing") for j in print_lane.load()): print_lane.tend()
 
 
 def tend_desktop(st, now):
@@ -681,6 +694,8 @@ def tick(now=None, cfg=None, decide=None):
     tend_shower(st, now)
     try: tend_desktop(st, now)
     except Exception as e: print("desktop: %s" % e, flush=True)
+    try: tend_print(now)
+    except Exception as e: print("print: %s" % e, flush=True)
     close_visits(st, now)
     _atomic(STATE, st)
     return row

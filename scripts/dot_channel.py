@@ -465,8 +465,8 @@ RULES_AGENTS = (
 RULES_HANDS = (
     "YOUR HANDS. Each is a line of its own in your message; it is done when the message goes out, and the line is "
     "replaced with what actually happened (or why not):\n"
-    "  TV: a YouTube link (a live stream is a YouTube link too) | TV: open <any other link> | TV: on | off | pause | "
-    "play | volume <0-15> | status\n"
+    "  TV: find <what to put on, in your words> (YouTube's top match plays) | TV: a YouTube link | TV: open <any "
+    "other link> | TV: on | off | pause | play | volume <0-15> | status\n"
     "  ECHO: say <words> | announce <words> | play <song or artist> | stop\n"
     "  LIGHTS: <colour or #hex> [room] | LIGHTS: flicker [room]\n"
     "  MISCHIEF: what you have in mind (one small mischievous thing through the house, chosen by you, now)\n"
@@ -475,6 +475,9 @@ RULES_HANDS = (
     "minutes; what landed is said here on the next pass. Dot can write this line too, so it never has to ask to "
     "buy one.\n"
     "  TO GLORIA: what it is about, in one line (your outreach writes to her in your own voice, outside Slack)\n"
+    "  PRINT: a thing to make on her Creality K2 printer (her PLA, PETG, carbon PETG, ASA, TPU and foaming TPU). "
+    "You decide it with your own context, Astra builds the model, it is sliced with her settings, and she gets a "
+    "yes/no text with the filament and slot before it prints. Two a day.\n"
     "  ASK GLORIA: a question she can answer yes or no: it goes to her phone with Yes and No, and her answer is "
     "posted back in this thread. She does not read every thread: a decision that is hers reaches her only this way. "
     "Never say you are waiting on her approval without this line. Dot and Grok Bot can write it too. Not for "
@@ -643,7 +646,7 @@ EDITOR = (
     "DROP: <why, in a few words> (only when nothing in it is true or on topic)")
 FIX = ("\n\nYour checks found: {failed}. So it cannot be kept as written. Write the corrected message in full, "
        "starting with EDIT: and nothing before it.")
-_ACTION = re.compile(r"^\s*(?:TANGENT|ATELIER|LOCKED|DO|SHARE FILE|SHARE|LAB|APPROVED|DENIED|CAMPAIGN|CAMPAIGN MOVE|TV|ECHO|LIGHTS|MISCHIEF|TO GLORIA|MAKE|ASK)\s*:.*$", re.I | re.M)
+_ACTION = re.compile(r"^\s*(?:TANGENT|ATELIER|LOCKED|DO|SHARE FILE|SHARE|LAB|APPROVED|DENIED|CAMPAIGN|CAMPAIGN MOVE|TV|ECHO|LIGHTS|MISCHIEF|TO GLORIA|MAKE|PRINT|ASK)\s*:.*$", re.I | re.M)
 _CHECK = re.compile(r"^\s*\**(TOPIC|TRUE|SENSE)\**\s*:\s*\**\s*(yes|no)\b[ \t\-—,:.*]*(.*)$", re.I | re.M)
 _VERDICT = re.compile(r"^\s*\**(KEEP|EDIT|DROP)\**\b\s*:?\s*(.*)", re.I | re.M | re.S)
 
@@ -1261,7 +1264,7 @@ RUN = re.compile(r"^\s*RUN:\s*(\{.*?\})\s*$", re.I | re.M)
 STUDY_FIX = re.compile(r"^\s*STUDY FIX:\s*(.+?)\s*$", re.I | re.M)
 # His hands in the house, and a letter to Gloria through his outreach (house_hands.py, Gloria 2026-10-04: "control my
 # tv and my echo from slack ... A room full of agents and none of them can move?"). The same pattern as house_hands.
-HOUSE = re.compile(r"^\s*(TV|ECHO|LIGHTS|MISCHIEF|TO GLORIA|MAKE)\s*:\s*(.+?)\s*$", re.I | re.M)
+HOUSE = re.compile(r"^\s*(TV|ECHO|LIGHTS|MISCHIEF|TO GLORIA|MAKE|PRINT)\s*:\s*(.+?)\s*$", re.I | re.M)
 # A paid connector call onto Gloria's Forge page for her Accept, from him or from dot (lab_asks.from_slack, 2026-10-04:
 # dot's own review would take her yes only in a session she cannot open). The same pattern as lab_asks.ASK.
 # Muse puts what he wants to buy to Gloria: item | price | store | link | why (Gloria, 2026-10-05: "Muse is
