@@ -99,6 +99,9 @@ def run_step(capability, note, want=None):
         res["proposal"] = _ask_for_the_hand(capability, note, want)
         res["ended"] = time.time(); return res
     text = note or (want or {}).get("want", "") or ""
+    if capability == "moltbook" and (want or {}).get("want"):
+        # what to answer is named in the note; what to say is his want. Earlier steps' findings stay private.
+        text = (note + "\n" if note else "") + str(want["want"])
     try:
         from want_stance import action_context, may_initiate
         dimension = "creation" if capability in MAKERS else None
