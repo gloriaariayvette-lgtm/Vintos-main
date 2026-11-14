@@ -529,7 +529,8 @@ class LiveSession:
             raise ValueError("Invalid generation budget")
         if STREAM_MARKER in str(question) or STREAM_MARKER in str(note or ""):
             raise ValueError("Reserved stream placeholder")
-        if self.answering:
+        self._recover_held()   # a failed earlier answer's held arrivals enter before this question
+        if self.answering or self.committing:
             raise BlockingIOError("An answer is already being decoded")
         started = time.perf_counter()
         self._end_audio_span()
