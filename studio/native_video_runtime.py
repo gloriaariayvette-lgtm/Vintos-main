@@ -33,7 +33,7 @@ TRANSCRIBE_SPEECH = True     # a question about speech first hears the retained 
 HEAR_MIN_CONFIDENCE = .6     # mean per-token probability below which a transcript is not trusted (dev: noise and
                              # made-up transcripts sat below .6, real speech above .62)
 HEAR_SECONDS = 8.            # "what is being said" hears the retained sound (the audio window is eight seconds)
-HEAR_TOKENS = 24             # the transcript budget (keeps the first answer token near a second)
+HEAR_TOKENS = 16             # the transcript budget: about twelve words, so the first answer token stays near a second
 HEAR_PROMPT = " Transcribe the speech in this audio, word for word."
 SPEECH_QUESTION = re.compile(r"\b(said|say|says|saying|speak\w*|spoke|talk\w*|hear\w*|words?|transcri\w*|voices?|"
                              r"sounds?|audio|conversation|told|tell\w*)\b", re.I)
@@ -666,6 +666,7 @@ class LiveSession:
                 forward(self.stream.text(self._ids(" " + stamp(hear_start) + " ") + self.boa), mask=heard_hidden)
                 forward(self._concat([e for _, e in heard]), mask=heard_hidden)
                 self.scores = forward(self.stream.text(self.eoa + self._ids(HEAR_PROMPT + self.closing)), mask=heard_hidden)
+                yield 0   # arrivals are taken in (encoded and held) between hearing steps too
                 said, logps = [], []
                 for _ in range(HEAR_TOKENS):
                     t = self._choose(0., said)
@@ -676,6 +677,7 @@ class LiveSession:
                         break
                     said.append(t)
                     self.scores = forward(self.stream.text([t]), mask=heard_hidden)
+                    yield 0
                 self.stream.truncate(self.cache, hear_mark)
                 self.transcript = self.tokenizer.decode(said, skip_special_tokens=True).strip()
                 self.transcript_confidence = float(np.exp(np.mean(logps))) if logps else 0.
