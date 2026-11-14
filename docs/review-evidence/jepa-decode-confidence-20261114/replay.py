@@ -15,6 +15,9 @@ import jepa_readout as RO
 from jepa_calibration_audit import spear
 
 CUTOFF = datetime(2026, 10, 31, 0, 0).timestamp()
+# Rerun after review (not the scored-once run): REPLAY_CONTEXT_DAY=1 gives the self forecast the date of the
+# last exchange it saw (live forecasts use the day they are made), and every run reports provenance.
+CONTEXT_DAY = os.environ.get("REPLAY_CONTEXT_DAY") == "1"
 MEM = os.path.join(os.environ["SPARK_WORKSPACE"], "memory")
 GLORIA_FROM = RO.BOUNDARIES[-1]                      # the readout's test block onward: never fit
 SELF_TRAINED = datetime.fromisoformat("2026-10-16T12:13:15.785506").timestamp()
@@ -92,7 +95,8 @@ def main():
         past = [e["her"] for e in exs[:j] if e["her"]][-12:]
         y = enc.encode([x["her"][:400]])[0]
         g_rows.append({"day": x["ts"][:10], "dsim": dsim(pred, past, enc), "err": round(1 - cos(pred, y), 4),
-                       "readout_confidence": fc["confidence"], "pred": pred, "y": y})
+                       "readout_confidence": fc["confidence"], "pred": pred, "y": y,
+                       "prov": (fc.get("source"), fc.get("checkpoint_id"))})
     s_rows, seen = [], set()
     for j, x in enumerate(exs):
         if not x["his"] or x["at"] <= SELF_TRAINED or j == 0:
@@ -100,7 +104,7 @@ def main():
         d = hashlib.sha256(x["his"][:400].encode()).hexdigest()
         if d in seen:
             continue
-        fc = SH.forecast(enc, exs=exs[:j], mode="ahead", today=x["ts"][:10], persist=False)
+        fc = SH.forecast(enc, exs=exs[:j], mode="ahead", today=(exs[j - 1]["ts"][:10] if CONTEXT_DAY else x["ts"][:10]), persist=False)
         if fc is None:
             continue
         seen.add(d)
@@ -108,9 +112,9 @@ def main():
         past = [e["his"] for e in exs[:j] if e["his"]][-12:]
         y = enc.encode([x["his"][:400]])[0]
         s_rows.append({"day": x["ts"][:10], "dsim": dsim(pred, past, enc), "err": round(1 - cos(pred, y), 4),
-                       "coherence": fc["coherence"], "self_confidence_placeholder": fc["confidence"] is None,
+                       "coherence": fc["coherence"], "prov": (fc.get("source"), fc.get("checkpoint_id")), "self_confidence_placeholder": fc["confidence"] is None,
                        "pred": pred, "y": y})
-    res = {"prereg": "prereg.json (this directory)", "cutoff": "2026-10-31T00:00 local (exclusive)"}
+    res = {"prereg": "prereg.json (this directory)", "cutoff": "2026-10-31T00:00 local (exclusive)", "context_day": CONTEXT_DAY}
     for name, rows, ctrl in (("gloria", g_rows, "readout_confidence"), ("self", s_rows, "coherence")):
         rows = [r for r in rows if r["dsim"] is not None]
         if len(rows) < 4:
@@ -124,6 +128,7 @@ def main():
             r["served_confidence_placeholder_rows"] = sum(q["self_confidence_placeholder"] for q in rows)
             # forecast-time numbers only (no error, no text): the reference a served percentile is read against
             r["decode_similarity_sorted"] = sorted(q["dsim"] for q in rows)
+        r["provenance"] = sorted({"%s %s" % (q["prov"][0], str(q["prov"][1])[:16]) for q in rows})
         res[name] = r
     print(json.dumps(res, indent=1))
 

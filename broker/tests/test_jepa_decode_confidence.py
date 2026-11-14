@@ -78,8 +78,10 @@ B = 1.79e9
 def grow(i, dsim, conf, err, trig="after_reply", day="2026-11-20", ver=CA.DECODE_VERSION):
     return {"iso": day + "T10:%02d" % (i % 60), "ts": B + i, "trigger": trig, "decode_version": ver,
             "g_conf": conf, "g_err": err, "g_dsim": dsim}
-def srow(i, conf, coh, err, day="2026-11-20"):
-    return {"iso": day + "T11:%02d" % (i % 60), "ts": B + i, "trigger": "cron", "s_conf": conf, "s_coherence": coh, "s_err": err}
+def srow(i, dsim, coh, err, day="2026-11-20"):
+    # s_conf is the clipped percentile (all 1.0 here: ties); the registered statistic is the raw s_dsim
+    return {"iso": day + "T11:%02d" % (i % 60), "ts": B + i, "trigger": "cron", "s_conf": 1.0, "s_dsim": dsim,
+            "s_coherence": coh, "s_err": err}
 rng = np.random.default_rng(11)
 g_good = [grow(i, 1 - i / 40, float(rng.random()), i / 40) for i in range(30)]
 g_bad_later = [grow(100 + i, i / 40, float(rng.random()), i / 40) for i in range(60)]
@@ -95,6 +97,21 @@ def probe_first(C):
     v = C.preregistered_decode(g_good + g_bad_later, s_good + [srow(100 + i, i / 40, .5, i / 40) for i in range(60)])
     return v["gloria"]["state"] == "PASS" and v["gloria"]["n"] == 30 and v["self"]["state"] == "PASS"
 check("decode similarity that tracks error passes; later contrary rows never change the verdict", probe_first(CA))
+killed("self scored on the tied percentile instead of the raw similarity", probe_first, CA,
+       '"s_dsim", "s_coherence", "s_err"))', '"s_conf", "s_coherence", "s_err"))')
+FZ = os.path.join(MEM, "frozen-decode.json")
+def probe_frozen(C):
+    if os.path.exists(FZ): os.remove(FZ)
+    a = C.preregistered_decode(g_good, s_good, frozen_path=FZ)
+    # the first 30 later change (an exchange forgotten, a readout reinstalled): the verdict does not
+    b = C.preregistered_decode(g_bad_later, [srow(100 + i, i / 40, .5, i / 40) for i in range(60)], frozen_path=FZ)
+    return (a["gloria"]["state"] == a["self"]["state"] == "PASS" and b["gloria"]["state"] == b["self"]["state"] == "PASS"
+            and b["gloria"].get("frozen") is True and len(json.load(open(FZ))["gloria"]["scored_rows_ts"]) == 30)
+check("scored once: the first verdict is frozen with its rows and reported as it was", probe_frozen(CA))
+killed("freeze ignored", probe_frozen, CA, 'if isinstance(frozen.get(name), dict) and frozen[name].get("state") in ("PASS", "FAIL"):', "if False:")
+if os.path.exists(FZ): os.remove(FZ)
+check("a collecting arm is not frozen", CA.preregistered_decode(g_good[:5], [], frozen_path=FZ)["gloria"]["state"] == "COLLECTING"
+      and not os.path.exists(FZ))
 killed("scored on the latest rows", probe_first, CA, 'first = elig[:reg["n"]]\n        err = [r[err_k]', 'first = elig[-reg["n"]:]\n        err = [r[err_k]')
 def probe_control(C):
     tied = [dict(r, g_conf=r["g_dsim"]) for r in g_good]
@@ -114,9 +131,17 @@ class Enc:
     def __init__(self, vec=(1.0, 0.0)): self.vec = vec
     def encode(self, texts, **kw): return np.asarray([list(self.vec) for _ in texts], dtype="float32")
 
+class TextEnc:
+    """A different, stable direction per text, so nearest turns and similarities can actually differ."""
+    def encode(self, texts, **kw):
+        import hashlib
+        a = [int(hashlib.md5(str(t).encode()).hexdigest()[:8], 16) / 0xffffffff * 6.283 for t in texts]
+        return np.asarray([[np.cos(x), np.sin(x)] for x in a], dtype="float32")
+
 def hrow(t, ctx_t, conf=.7, src=CA.DECODE_VERSION):
     return {"ts": t, "iso": iso(t), "trigger": "cron", "decode_confidence_version": CA.DECODE_VERSION,
             "self": {"confidence": conf, "confidence_source": src, "coherence": .3, "emb": [1.0, 0.0],
+                     "decode_similarity_admitted": conf,
                      "source": "self-head-v2", "context_last_ts": iso(ctx_t)},
             "legacy_self": {"checkpoint_id": "pt", "confidence": .4, "emb": [0.0, 1.0]}}
 turns = [(B + 50, "her a", "his a"), (B + 150, "her b", "his b"), (B + 250, "her c", "his c")]
@@ -125,7 +150,7 @@ def probe_selfjoin(C):
     # without the decode source is not this population. Context B+150, forecast B+200 -> his c, once.
     rs = C.served_self_rows([hrow(B + 160, B + 50), hrow(B + 190, B + 150, conf=.1, src=None),
                              hrow(B + 200, B + 150), hrow(B + 201, B + 150)], turns, Enc())
-    return len(rs) == 1 and rs[0]["s_err"] == 0.0 and rs[0]["s_conf"] == .7 and rs[0]["s_coherence"] == .3
+    return len(rs) == 1 and rs[0]["s_err"] == 0.0 and rs[0]["s_dsim"] == .7 and rs[0]["s_coherence"] == .3
 check("self join: his first reply after the context, said after the forecast, once per target", probe_selfjoin(CA))
 killed("reply already said is joined", probe_selfjoin, CA, "if not target or target[0] <= fts:", "if not target:")
 killed("decode-source filter dropped", probe_selfjoin, CA,
@@ -139,9 +164,22 @@ def probe_legacy_axis(C):
 check("the shared-checkpoint audit keeps reading legacy_self, and rows carry the decode marker", probe_legacy_axis(CA))
 killed("marker not carried", probe_legacy_axis, CA, '"decode_version": h.get("decode_confidence_version")}', '"decode_version": None}')
 
-asrc = open(CA.__file__).read()
-check("the daily audit writes preregistered_decode (also when the shared checkpoint has too few rows)",
-      asrc.count("preregistered_decode(served_rows, served_self_rows(hist, turns, enc))") == 2)
+print("--- the audit itself, with too few shared-checkpoint rows, still writes the registered evaluations ---")
+import jepa_ranking_audit as RA
+open(CAL.MODEL, "w").write("weights")
+C0 = datetime(2026, 11, 20, 12).timestamp()   # after the registration date
+open(CA.HIST, "w").write(json.dumps(hrow(C0 + 200, C0 + 150)) + "\n")
+_saved = (JP.encoder, RA.realized_ledger, RA.load_arrivals)
+JP.encoder = lambda: Enc(); RA.realized_ledger = lambda: [{"timestamp": iso(C0 + 250), "gloria": "her c", "vintos": "his c"}]
+RA.load_arrivals = lambda *a, **k: {}
+try:
+    CA.main()
+    rep = json.load(open(CA.OUT))
+    check("early-return path: INSUFFICIENT, yet preregistered_decode is computed (one self row collecting)",
+          rep.get("verdict") == "INSUFFICIENT" and rep["preregistered_decode"]["self"] == {"state": "COLLECTING", "n": 1, "needed": 30})
+finally:
+    JP.encoder, RA.realized_ledger, RA.load_arrivals = _saved
+    os.remove(CAL.MODEL); os.remove(CA.HIST)
 
 # ------------------------------------------------------------------ 3. a real forecast, when torch is installed
 try:
@@ -161,30 +199,43 @@ if real_torch:
                                  "qualification": "unqualified_not_predictive", "mode": "ahead", "coherence": 0.42,
                                  "source": "self-head-v2", "schema": "self-ledger-v2", "checkpoint_id": ck,
                                  "context_last_ts": iso(time.time() - 100), "context_last_turn_id": "", "n_recent": 6}
-    REAL_FORECAST = SH.forecast
-    def run(J, ck=SELF_CK):
+    REAL_FORECAST, REAL_EXS = SH.forecast, SH.exchanges
+    ADMITTED = ["admitted reply %d" % i for i in range(15)]   # his admitted replies: not the chat rows' texts
+    def run(J, ck=SELF_CK, admitted=ADMITTED):
         SH.forecast = fake_self(ck)
+        SH.exchanges = lambda *a, **k: [{"her": "h", "his": t, "at": 0, "ts": ""} for t in admitted] + [{"her": "h", "his": "", "at": 0, "ts": ""}]
         hp = os.path.join(MEM, "hist-%s.jsonl" % id(J))
         for p in (J.OUT, hp):
             if os.path.exists(p): os.remove(p)
-        J.predict(history_path=hp, enc=Enc((1.0, 0.0)), trigger="after_reply", side_feeds=False)
-        SH.forecast = REAL_FORECAST
+        try:
+            J.predict(history_path=hp, enc=TextEnc(), trigger="after_reply", side_feeds=False)
+        finally:
+            SH.forecast, SH.exchanges = REAL_FORECAST, REAL_EXS
         return json.load(open(J.OUT)), json.loads(open(hp).read().splitlines()[-1])
     out, row = run(JP)
-    s = out["self"]; dsim = s["decode_similarity"]
+    s = out["self"]
+    E = TextEnc().encode(ADMITTED[-12:]); v = np.asarray([0.9, 0.3]) / np.linalg.norm([0.9, 0.3])
+    expect_adm = round(float(max(E @ v / np.linalg.norm(E, axis=1))), 3)
     def probe_served(J):
         o, r = run(J)
         x = o["self"]
-        return (x["confidence"] == JP.decode_confidence(x["decode_similarity"], JP.SELF_DECODE_CONFIDENCE)
+        return (x["decode_similarity_admitted"] == expect_adm
+                and x["confidence"] == JP.decode_confidence(expect_adm, JP.SELF_DECODE_CONFIDENCE)
                 and x["confidence_placeholder"] is False and x["legacy_confidence"] is None
-                and x["legacy_confidence_placeholder"] is True and x["confidence_source"] == JP.DECODE_CONFIDENCE_VERSION
+                and x["legacy_confidence_placeholder"] is True and x["legacy_qualification"] == "unqualified_not_predictive"
+                and x["confidence_source"] == JP.DECODE_CONFIDENCE_VERSION
                 and o["qualification"]["self"] == "qualified" and o["decode_confidence"]["self"] == "served"
                 and r["self"]["confidence"] == x["confidence"] and r["self"]["legacy_confidence"] is None
+                and r["self"]["decode_similarity_admitted"] == expect_adm
                 and r["self"]["confidence_source"] == JP.DECODE_CONFIDENCE_VERSION and r["self"]["coherence"] == 0.42
                 and r["decode_confidence_version"] == JP.DECODE_CONFIDENCE_VERSION)
-    check("self: the served confidence is the decode percentile, the old one (a placeholder) is kept beside it, on the file and the history row", probe_served(JP))
-    killed("decode confidence not served", probe_served, JP, "    if _s_dc is not None:\n        self_h.update(", "    if False:\n        self_h.update(")
-    off = mutant(JP, "_s_dc = decode_confidence(_s_sim, SELF_DECODE_CONFIDENCE) if _self_decode_applies(_self_fc) else None", "_s_dc = None")
+    check("self: the served confidence is the percentile of the similarity to his last 12 ADMITTED replies; the old one (a placeholder) is kept beside it, on the file and the history row", probe_served(JP))
+    check("the served similarity is the replay's (admitted replies), not the chat-row decode_similarity",
+          s["decode_similarity"] != s["decode_similarity_admitted"])
+    killed("decode confidence not served", probe_served, JP, "    if _s_dc is not None:\n        _self_decode = {", "    if False:\n        _self_decode = {")
+    killed("similarity taken against the chat rows", probe_served, JP,
+           "_s_dc = decode_confidence(_s_adm, SELF_DECODE_CONFIDENCE)", "_s_dc = decode_confidence(_s_sim, SELF_DECODE_CONFIDENCE)")
+    off = mutant(JP, "    if _self_decode_applies(_self_fc):\n        try:", "    if False:\n        try:")
     out0, row0 = run(off)
     check("ranking cannot move: both heads' forecast embeddings, nearest turns and novelty are identical with and without the change",
           row["gloria"]["emb"] == row0["gloria"]["emb"] and row["self"]["emb"] == row0["self"]["emb"]
@@ -197,6 +248,10 @@ if real_torch:
           and out["steering_allowed"] == out0["steering_allowed"])
     check("without the change the self confidence is the 0.5 placeholder it was", out0["self"]["confidence"] == 0.5
           and out0["self"]["confidence_placeholder"] is True and "legacy_confidence" not in out0["self"])
+    none, nrow = run(JP, admitted=[])
+    check("no admitted reply: no similarity, so no decode confidence (never a measured-looking 0.0)",
+          none["self"]["confidence"] == 0.5 and none["self"]["confidence_placeholder"] is True
+          and "confidence_source" not in nrow["self"])
     other, orow = run(JP, ck="0" * 64)
     check("another self checkpoint keeps its own confidence (untested, not served)", other["self"]["confidence"] == 0.5
           and other["self"]["confidence_placeholder"] is True and "confidence_source" not in orow["self"]
@@ -216,6 +271,6 @@ if real_torch:
     except ImportError as e:
         print("SKIP consumer check: emoclaw_utils not importable here (%s)" % e)
 else:
-    print("SKIP 3. real forecast: torch not installed in this interpreter")
+    print("SKIP 3. real forecast: torch not installed in this interpreter (the _predict checks did NOT run)")
 
 print("\n%d/%d" % (sum(R), len(R))); sys.exit(0 if all(R) else 1)

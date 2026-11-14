@@ -808,12 +808,25 @@ def _predict(model_path, out_path, history_path, shadow, enc, trigger, side_feed
                        "mode": _self_fc.get("mode", "ahead")})   # ahead: before her next message exists
     # Decode-similarity confidence for the tested self head (SELF_DECODE_CONFIDENCE). The confidence it
     # would have served stays beside it as legacy_confidence (None = that was a placeholder). The forecast
-    # embedding, nearest turn and novelty are untouched, so ranking cannot move.
-    _s_dc = decode_confidence(_s_sim, SELF_DECODE_CONFIDENCE) if _self_decode_applies(_self_fc) else None
+    # embedding, nearest turn and novelty are untouched, so ranking cannot move. The similarity is taken
+    # against the set the replay measured: his last 12 ADMITTED replies (jepa_self_head.exchanges, the self
+    # head's own reply set), not the raw chat rows decode_similarity above uses (outreach, desktop turns ...).
+    _s_dc = _s_adm = None
+    _self_decode = {}
+    if _self_decode_applies(_self_fc):
+        try:
+            _his = [x["his"] for x in _SH.exchanges() if x.get("his")][-12:]
+            if _his:   # no replies -> no similarity -> no confidence (never a 0.0 that looks measured)
+                _, _s_adm = _decode(s, [{"content": h} for h in _his], enc)
+                _s_dc = decode_confidence(_s_adm, SELF_DECODE_CONFIDENCE)
+        except Exception as _dce:
+            log("self decode confidence unavailable; self head confidence kept: %s" % _dce)
     if _s_dc is not None:
-        self_h.update({"legacy_confidence": _cs, "legacy_confidence_placeholder": _cs is None,
-                       "confidence": _s_dc, "confidence_placeholder": False,
-                       "confidence_source": DECODE_CONFIDENCE_VERSION})
+        _self_decode = {"legacy_confidence": _cs, "legacy_confidence_placeholder": _cs is None,
+                        "legacy_qualification": _self_qual, "decode_similarity_admitted": _s_adm,
+                        "confidence": _s_dc, "confidence_placeholder": False,
+                        "confidence_source": DECODE_CONFIDENCE_VERSION}
+        self_h.update(_self_decode)
         _self_qual = "qualified"
 
     _pid = "JP-" + __import__("uuid").uuid4().hex[:8]
@@ -881,7 +894,9 @@ def _predict(model_path, out_path, history_path, shadow, enc, trigger, side_feed
            "shadow_only": bool(shadow), "trigger": trigger,
            "decode_confidence": {"version": DECODE_CONFIDENCE_VERSION,
                                  "gloria": "held: pre-registered replay failed for the served readout",
-                                 "self": "served" if _s_dc is not None else "not applied (untested self forecast)"},
+                                 "self": "served" if _s_dc is not None else "not applied (untested self forecast or no admitted replies)",
+                                 "calibration_self_is": "the shared checkpoint's self axis (legacy_self), not this decode confidence; "
+                                                        "the decode confidence is judged by preregistered_decode in jepa-calibration.json"},
            "note": "embedding prediction; confidence = trained logvar (Vrika repair 2026-08-10); gloria decode_similarity = nearest-turn cosine, NOT confidence; self confidence = decode-similarity percentile when self.confidence_source says so; shadow checkpoints may never steer"}
     if _gloria_fc is not None:
         # These fields feed the existing prose/readiness path. Confidence retains
@@ -924,8 +939,7 @@ def _predict(model_path, out_path, history_path, shadow, enc, trigger, side_feed
         if _self_fc is not None:   # what the self eval needs to find the reply this forecast is about
             hist_line["self"].update({k: self_h[k] for k in ("source", "checkpoint_id", "context_last_ts", "mode", "coherence")})
         hist_line["decode_confidence_version"] = DECODE_CONFIDENCE_VERSION   # rows written by this code
-        if _s_dc is not None:
-            hist_line["self"].update({k: self_h[k] for k in ("legacy_confidence", "legacy_confidence_placeholder", "confidence_source")})
+        hist_line["self"].update(_self_decode)   # empty unless the decode confidence was served
         # Preserve a separately attributed shared-head forecast even while the
         # independent self head supplies the visible triple. Otherwise replacing
         # self silently stops collection for the shared checkpoint's retrain gate.

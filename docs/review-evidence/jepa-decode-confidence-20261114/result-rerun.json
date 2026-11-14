@@ -1,0 +1,114 @@
+{
+ "prereg": "prereg.json (this directory)",
+ "cutoff": "2026-10-31T00:00 local (exclusive)",
+ "context_day": true,
+ "gloria": {
+  "n": 46,
+  "first": "2026-10-14",
+  "last": "2026-10-26",
+  "map": {
+   "intercept": 0.3848,
+   "slope": 0.0142,
+   "fit_n": 23
+  },
+  "monotonicity_decode_conf_vs_err": null,
+  "CONTROL_vs_err": -0.24,
+  "control": "readout_confidence",
+  "raw_decode_similarity_vs_err": -0.117,
+  "decode_similarity_range": [
+   0.888,
+   0.992,
+   0.998
+  ],
+  "second_half": {
+   "n": 23,
+   "decode_mono": null,
+   "control_mono": -0.347,
+   "map_error_mse": 0.0087,
+   "constant_error_mse": 0.00867
+  },
+  "bins_low_mid_high_decode_conf_err": [
+   0.4003,
+   0.3697,
+   0.3951
+  ],
+  "mean_cosine_error": 0.3886,
+  "pass": false,
+  "mrr_served_forecast": 0.1383,
+  "forecast_embedding_sha": "9e0b4aebbe9531bf",
+  "provenance": [
+   "anchored-readout-v1 1a563a0a97fcf289"
+  ]
+ },
+ "self": {
+  "n": 30,
+  "first": "2026-10-16",
+  "last": "2026-10-26",
+  "map": {
+   "intercept": 1.2006,
+   "slope": -1.1006,
+   "fit_n": 15
+  },
+  "monotonicity_decode_conf_vs_err": -0.476,
+  "CONTROL_vs_err": -0.114,
+  "control": "coherence",
+  "raw_decode_similarity_vs_err": -0.476,
+  "decode_similarity_range": [
+   0.815,
+   0.897,
+   0.967
+  ],
+  "second_half": {
+   "n": 15,
+   "decode_mono": -0.277,
+   "control_mono": 0.025,
+   "map_error_mse": 0.00411,
+   "constant_error_mse": 0.00741
+  },
+  "bins_low_mid_high_decode_conf_err": [
+   0.2653,
+   0.214,
+   0.1657
+  ],
+  "mean_cosine_error": 0.215,
+  "pass": true,
+  "mrr_served_forecast": 0.1392,
+  "forecast_embedding_sha": "65479f1437ca3125",
+  "served_confidence_placeholder_rows": 30,
+  "decode_similarity_sorted": [
+   0.815,
+   0.825,
+   0.845,
+   0.851,
+   0.857,
+   0.868,
+   0.87,
+   0.872,
+   0.874,
+   0.877,
+   0.884,
+   0.89,
+   0.891,
+   0.891,
+   0.896,
+   0.898,
+   0.9,
+   0.903,
+   0.906,
+   0.906,
+   0.906,
+   0.914,
+   0.917,
+   0.924,
+   0.924,
+   0.949,
+   0.958,
+   0.963,
+   0.964,
+   0.967
+  ],
+  "provenance": [
+   "self-head-v2 a0a77ba09f8eea5e"
+  ]
+ }
+}

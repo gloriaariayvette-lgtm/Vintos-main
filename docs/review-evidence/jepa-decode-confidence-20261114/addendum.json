@@ -24,5 +24,12 @@
       "why": "the self confidence is now served; it gets the same prospective test"
     }
   ],
+  "review_fixes": {
+    "written": "2026-11-14, after the independent review, still before any prospective row exists",
+    "served_similarity_set": "the served self confidence is computed from the forecast's similarity to his last 12 ADMITTED replies (jepa_self_head.exchanges, each cut to 300 chars): the set the replay measured. The chat-row decode_similarity field is kept as it was, beside it as decode_similarity_admitted.",
+    "self_statistic": "the prospective self arm scores the raw decode_similarity_admitted (rank-identical to the percentile inside the reference range, with no ties from its clipping); control unchanged",
+    "scored_once": "each arm's first verdict is frozen in memory/jepa-preregistered-decode.json with the forecast times it was scored on, and reported from there afterwards",
+    "provenance_rerun": "result-rerun.json: the same replay rerun with provenance and with the self forecast dated by its last seen exchange (no look-ahead in the one-day window). Forecasts came from anchored-readout-v1 1a563a0a (Gloria) and self-head-v2 a0a77ba0 (self, the bound checkpoint). Every number is identical to result.json; result.json remains the scored-once record."
+  },
   "binding_form": "PREREGISTERED_DECODE in scripts/jepa_calibration_audit.py"
 }
