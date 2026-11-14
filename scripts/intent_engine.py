@@ -1018,6 +1018,11 @@ def _rubric_judge(packet):
 
 GLORIA_STALE_BOUND = 2      # seconds her turn may wait on the check; a later answer is kept for the move (review)
 GLORIA_STALE_LATE = "gloria-stale-late.json"   # {intent_id: {"result", "at"}}: answers that came after the bound
+# Counts of every stale-check outcome by day (14 November: the fail-open path refused nothing and counted nothing).
+# {"YYYY-MM-DD": {"met": n, "not_met": n, "pending": n, "timeout": n, "error": n, ..., "late_met": n, ...}}. A check
+# still out at the bound counts "pending"; its own answer, when it comes, counts again as "late_<answer>".
+GLORIA_STALE_COUNTS = "gloria-stale-counts.json"
+STALE_OUTCOMES = ("met", "not_met", "skipped", "off", "pending", "timeout", "error", "refused", "budget")
 
 
 def _stale_late(intent_id):
@@ -1041,6 +1046,43 @@ def _stale_late_put(intent_id, result):
         pass
 
 
+def _stale_count(outcome, late=False):
+    """One outcome counted under today's date: fixed keys only, never words or ids; 60 days kept."""
+    o = str(outcome) if str(outcome) in STALE_OUTCOMES else "other"
+    key = ("late_" if late else "") + o
+    try:
+        from store_guard import transaction, write_json
+        path = os.path.join(MEM, GLORIA_STALE_COUNTS)
+        with transaction(path):
+            d = _load(GLORIA_STALE_COUNTS); d = d if isinstance(d, dict) else {}
+            day = datetime.now().strftime("%Y-%m-%d")
+            c = d.get(day) if isinstance(d.get(day), dict) else {}
+            c[key] = int(c.get(key, 0) or 0) + 1
+            d[day] = c
+            write_json(path, dict(sorted(d.items())[-60:]))
+    except Exception:
+        pass
+
+
+def stale_counts(days=7):
+    """Totals of each stale-check outcome over the last `days` days, plus failed (timeout, error, refused, budget,
+    and a late answer that was itself a failure) and unresolved (pending whose late answer never came)."""
+    d = _load(GLORIA_STALE_COUNTS); d = d if isinstance(d, dict) else {}
+    from datetime import timedelta
+    since = (datetime.now() - timedelta(days=max(0, int(days) - 1))).strftime("%Y-%m-%d")
+    tot = {}
+    for day, c in d.items():
+        if str(day) >= since and isinstance(c, dict):
+            for k, v in c.items():
+                try: tot[k] = tot.get(k, 0) + int(v)
+                except (TypeError, ValueError): pass
+    bad = ("timeout", "error", "refused", "budget", "other")
+    tot["failed"] = sum(tot.get(k, 0) + tot.get("late_" + k, 0) for k in bad)
+    late = sum(v for k, v in tot.items() if k.startswith("late_"))
+    tot["unresolved"] = max(0, tot.get("pending", 0) - late)
+    return tot
+
+
 def _stale_switch_off():
     """GLORIA_STALE_CHECK=0 in the environment or in vintos.env (read live, no restart needed)."""
     if os.environ.get("GLORIA_STALE_CHECK", "1").strip() == "0":
@@ -1057,6 +1099,12 @@ def _stale_gloria(ax, her_words, intent_id=None):
     Her turn waits on it GLORIA_STALE_BOUND seconds at most (a wall clock: a socket timeout does not cover DNS or a
     slow trickle). A check still out then is "pending" and refuses nothing; its answer, when it comes, is kept
     under the move's id, and a "met" settles that move's her-axis verdict in code as criterion_already_met."""
+    v = _stale_gloria_once(ax, her_words, intent_id)
+    _stale_count(v)
+    return v
+
+
+def _stale_gloria_once(ax, her_words, intent_id=None):
     if _stale_switch_off():
         return "off"
     if not str(her_words or "").strip():
@@ -1070,8 +1118,9 @@ def _stale_gloria(ax, her_words, intent_id=None):
             except Exception: v = "error"
             with guard:
                 box["v"] = v; late = box.get("late")
-            if late and intent_id:
-                _stale_late_put(intent_id, v)
+            if late:
+                _stale_count(v, late=True)
+                if intent_id: _stale_late_put(intent_id, v)
         worker = threading.Thread(target=_run, name="gloria-stale-check", daemon=True)
         worker.start(); worker.join(GLORIA_STALE_BOUND)
         with guard:
