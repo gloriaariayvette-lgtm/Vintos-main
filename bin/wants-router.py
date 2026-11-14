@@ -943,6 +943,37 @@ def be_mischievous(want_text):
     return False
 
 
+_MOLT = None
+
+
+def _moltbook_mod():
+    global _MOLT
+    if _MOLT is None:
+        import importlib.util as _iu
+        here = os.path.dirname(os.path.realpath(__file__))
+        for p in (os.path.join(here, "vintos-moltbook.py"), os.path.expanduser("~/Vintos/vintos-moltbook.py")):
+            if os.path.exists(p):
+                spec = _iu.spec_from_file_location("vintos_moltbook_mod", p)
+                _MOLT = _iu.module_from_spec(spec); spec.loader.exec_module(_MOLT)
+                break
+    if _MOLT is None:
+        raise FileNotFoundError("vintos-moltbook.py is not on this machine")
+    return _MOLT
+
+
+def moltbook(want_text):
+    """A want's Moltbook step: his reply on the post his words name (14 November: such a want went to the Forge as a
+    missing hand, though his Moltbook voice was already his). The post is found by its title among the posts he
+    saved, then in Moltbook's search; the reply is written by his own reply path, with his want as what he set out
+    to say; the cap wall, the grounding and the verification are that path's. True only when it went out."""
+    vm = _moltbook_mod()
+    pid, title, how = vm.find_post(want_text)
+    if not pid:
+        raise FileNotFoundError(how)
+    log("MoltBook step: replying to %s (%s, found in %s)" % (title or pid, pid, how))
+    return bool(vm.cmd_reply(pid, intent=want_text))
+
+
 def read_memory(want_text):
     """He wants to look at his own work."""
     import json as _json
@@ -1640,6 +1671,7 @@ PARAM_SCHEMAS = {
                        "field": {"type": "str", "required": False, "enum": ["goal", "why", "progress", "next_step"]},
                        "text": {"type": "str", "required": False}, "reason": {"type": "str", "required": False}},
     "web_search":    {"topic": {"type": "str", "required": False}, "query": {"type": "str", "required": False}},
+    "moltbook":      {"post": {"type": "str", "required": False}},
     "send_email":    {"recipient": {"type": "str", "required": False}, "about": {"type": "str", "required": False},
                       "to": {"type": "str", "required": False}},
     "local_analysis": {"code": {"type": "str", "required": True},
@@ -1697,6 +1729,7 @@ ACTION_MAP = {
     "correlate": correlate,
     "make_chart": make_chart,
     "write_poem": write_poem,
+    "moltbook": moltbook,
 }
 
 
