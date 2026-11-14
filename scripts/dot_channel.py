@@ -3171,24 +3171,38 @@ def agent_wants_pass(api, channel, dot, state, now, rows=(), put=None, notify=No
                                                              evidence=(w.get("agent_work") or {}).get("result"))
     save = lambda current: _save(STATE, current)
     import want_working_thread as working
-    working.ingest(rows, want_agent.read(want_agent.workspace() / 'memory/current-wants.json', []), state, want_agent.workspace())
+    # One want's broken record holds that want only (14 November: a re-adopted want's working thread was bound to an
+    # earlier transport thread; its ValueError came out of this whole pass, every pass, and no other want moved).
+    # Each want's failure is said with its message and the rest of the lane goes on.
+    skipped, skipped_ids = [], set()
+    def skip(w, exc):
+        said = 'bound want %s skipped this pass: %s: %s' % ((w or {}).get('id'), type(exc).__name__, str(exc)[:160])
+        skipped_ids.add((w or {}).get('id'))
+        if said not in skipped: skipped.append(said)
+    working.ingest(rows, want_agent.read(want_agent.workspace() / 'memory/current-wants.json', []), state,
+                   want_agent.workspace(), on_error=skip)
     try:
         ensure_running(want_agent.workspace())
     except WorkBlocked:
-        return ['bound want lane stopped; incoming context retained']
+        return ['bound want lane stopped; incoming context retained'] + skipped
     for w in want_agent.read(want_agent.workspace() / 'memory/current-wants.json', []):
         work = working.binding(w, state)
         if not work: continue
-        data = working.load(w, work, want_agent.workspace())
-        for event in data['events']:
-            if not event['key'].startswith('agent:') or event['key'] in data.get('owner_requests_seen', []): continue
-            row = dict(event['details'], ts=event['at'], text=event['text'])
-            if not working.trusted(row): continue
-            replies = agent_owner_requests(row, state, now, api, channel)
-            if any(line.startswith('could not') for line in replies):
-                raise RuntimeError('owner request retained for retry')
-            working._mutate(w, work, want_agent.workspace(),
-                            lambda d: d.setdefault('owner_requests_seen', []).append(event['key']))
+        try:
+            data = working.load(w, work, want_agent.workspace())
+            for event in data['events']:
+                if not event['key'].startswith('agent:') or event['key'] in data.get('owner_requests_seen', []): continue
+                row = dict(event['details'], ts=event['at'], text=event['text'])
+                if not working.trusted(row): continue
+                replies = agent_owner_requests(row, state, now, api, channel)
+                if any(line.startswith('could not') for line in replies):
+                    raise RuntimeError('owner request retained for retry')
+                working._mutate(w, work, want_agent.workspace(),
+                                lambda d: d.setdefault('owner_requests_seen', []).append(event['key']))
+        except WorkBlocked:
+            raise
+        except Exception as exc:
+            skip(w, exc)
     want_agent.receive(rows)
     def send_reply(w, work, text, trigger):
         ensure_running(want_agent.workspace())
@@ -3222,16 +3236,18 @@ def agent_wants_pass(api, channel, dot, state, now, rows=(), put=None, notify=No
     for w in want_agent.read(want_agent.workspace() / 'memory/current-wants.json', []):
         a = w.get('agent_work') or {}
         work = working.binding(w, state)
-        if not work or not a.get('thread') or a.get('status') == 'result_ready': continue
-        events = working.unanswered(w, work, want_agent.workspace())
-        if not events: continue
-        trigger = json.dumps([e['key'] for e in events])
+        if not work or not a.get('thread') or a.get('status') == 'result_ready' or w.get('id') in skipped_ids: continue
         try:
+            events = working.unanswered(w, work, want_agent.workspace())
+            if not events: continue
+            trigger = json.dumps([e['key'] for e in events])
             chosen = decision(w, work, 'continue', trigger,
                               {'next':'Answer these agent messages and carry the same want forward.',
                                'event_keys':[e['key'] for e in events], 'result_error':a.get('result_error')})
         except want_agent.WantHeld:
             continue                         # this want waits; the next one may still be answered
+        except RECORD_ERRORS as exc:
+            skip(w, exc); continue           # its record is broken: it waits, said; the next one may still be answered
         send_reply(w, work, chosen['message'], ':reply:' + want_agent.fingerprint(trigger))
         lines.append('bound want answered with its retained working context')
         break
@@ -3240,7 +3256,7 @@ def agent_wants_pass(api, channel, dot, state, now, rows=(), put=None, notify=No
     import room_work
     for w in want_agent.read(want_agent.workspace() / 'memory/current-wants.json', []):
         spell = want_agent.reping_due(w, want_agent.workspace(), now)
-        if spell is None: continue
+        if spell is None or w.get('id') in skipped_ids: continue
         work = working.binding(w, state, respect_pause=False)
         if not work: continue
         try:
@@ -3250,6 +3266,8 @@ def agent_wants_pass(api, channel, dot, state, now, rows=(), put=None, notify=No
                                'quiet_since': spell})
         except want_agent.WantHeld:
             continue
+        except RECORD_ERRORS as exc:
+            skip(w, exc); continue
         # recorded BEFORE it is sent (review, 12 November): a process that dies between the post and its record must
         # not ping again on the next pass - a ping lost to a crash is better than two
         want_agent.mark_repinged(w, spell, now)
@@ -3265,7 +3283,12 @@ def agent_wants_pass(api, channel, dot, state, now, rows=(), put=None, notify=No
                         {'next':'Plan this exact task and write your request to its agent.', 'contract':contract})['message']
     lines += want_agent.release_blocked(state, now, save_state=save)
     handed = want_agent.intake(state, post, save, now, identity=identity, prepare=prepare)
-    return lines + held_lines + handed
+    return lines + held_lines + handed + skipped
+
+
+# A want's own record that cannot be read or does not match (a working thread bound to another transport thread, a
+# corrupt request record): that want is skipped and said, never the whole lane (14 November).
+RECORD_ERRORS = (ValueError, KeyError, TypeError, OSError)
 
 
 def promise_lanes(state, now, paused=False):
@@ -3678,7 +3701,7 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
                     notify=None if live_api else lambda *args: {"state":"failed"},
                     writer=want_writer or (want_working_thread.ask if live_api else no_live_writer))
     except Exception as exc:
-        lines_pre.append("want working thread retained: %s" % type(exc).__name__)
+        lines_pre.append("want working thread retained: %s: %s" % (type(exc).__name__, str(exc)[:200]))
     # Bound messages have their own persisted context and dedicated writer. Do not
     # answer them a second time through the ordinary rotating room composer.
     theirs = [r for r in theirs if r not in want_rows]
