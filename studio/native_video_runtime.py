@@ -265,6 +265,7 @@ class LiveSession:
         self.sound_notes = SOUND_NOTE if sound_notes is None else bool(sound_notes)
         self.transcribe_speech = TRANSCRIBE_SPEECH
         self.transcript = None                     # the last hearing pass's transcript (None when none ran)
+        self._note_runs = None                     # (ids, keys) of the notes in the current question
         self.transcript_confidence = self.transcript_raw = None
         self.scene_markers = bool(scene_markers)   # write "[new scene]" before a frame that differs from the last
         self.last_small = None
@@ -597,6 +598,9 @@ class LiveSession:
         self.transcript = self.transcript_confidence = self.transcript_raw = None
 
         def question_chunk(sound):
+            # the notes' own wording (not the quoted transcript) may not be continued in the answer
+            guard = self._ids(re.sub(r'"[^"]*"', " ", (" " + sound if sound else "") + (" " + note if note else "")))
+            self._note_runs = (guard, [self._key(t) for t in guard]) if guard else None
             return self._ids((" " + sound if sound else "") + (" " + note if note else "")
                              + (" " + question if question else "") + self.closing)
 
@@ -686,7 +690,7 @@ class LiveSession:
                 forward(self.stream.text(self.eoi), mask=recall_hidden)
             self.scores = forward(self.stream.text(question_ids))
             for _ in range(int(max_tokens)):
-                token = self._choose(float(temperature), tokens)
+                token = self._choose(float(temperature), tokens, self._note_runs)
                 if first is None:
                     first = time.perf_counter() - started
                 if token in self.mind.eos:
@@ -700,6 +704,7 @@ class LiveSession:
                     yield len(tokens)
         finally:
             self.stream.truncate(self.cache, mark)
+            self._note_runs = None
             self.owner, self.positions = self.owner[:mark], self.positions[:mark]
             self.answering = False
             self.pending_close = None
@@ -751,12 +756,19 @@ class LiveSession:
             key = self._keys[token] = self.tokenizer.decode([token], skip_special_tokens=False).strip().lower() or token
         return key
 
-    def _choose(self, temperature, history=()):
+    def _choose(self, temperature, history=(), notes=None):
         scores = self.scores.copy()
         scores[self.mind.suppress] = -np.inf
         if self.blocked:
             scores[self.blocked] = -np.inf
-        scores = guard_repeats(scores, history, [self._key(t) for t in history])
+        keys = [self._key(t) for t in history]
+        scores = guard_repeats(scores, history, keys)
+        if notes and len(history) >= NO_REPEAT_NGRAM - 1:
+            ids, note_keys = notes
+            tail = tuple(keys[-(NO_REPEAT_NGRAM - 1):])
+            for i in range(len(ids) - NO_REPEAT_NGRAM + 1):
+                if tuple(note_keys[i:i + NO_REPEAT_NGRAM - 1]) == tail and ids[i + NO_REPEAT_NGRAM - 1] < len(scores):
+                    scores[ids[i + NO_REPEAT_NGRAM - 1]] = -np.inf   # a note is never read out
         if not temperature:
             return int(np.argmax(scores))
         scaled = scores.astype(np.float64) / temperature

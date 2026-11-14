@@ -516,7 +516,7 @@ class Looper(Backend):
         return scores
 
 
-loop = LiveSession(mind, Looper(), clock=lambda: 0.)
+loop = LiveSession(mind, Looper(), clock=lambda: 0., sound_notes=False)   # the loop guard alone
 loop.frame(frame(10), at=0.)
 toks = loop.ask('what is moving?', max_tokens=24)['tokens']
 runs = [tuple(toks[i:i + 4]) for i in range(len(toks) - 3)]
@@ -661,6 +661,30 @@ check('a transcript that starts with "Nothing" is kept', not _rt2.NO_WORDS.searc
       and _rt2.NO_WORDS.search('Nothing.'))
 check('the notes are records, not instructions', not any(w in n.lower() for n in (quiet.sound_note(), heard.sound_note(),
       hs.heard_note('', 0., 4.)) for w in ('if asked', 'do not', 'never', 'say ')))
+class Reader(Backend):
+    """Greedy logits that would copy the question chunk's opening tokens back out, token by token."""
+    def __init__(self): self.q, self.k = [], 0
+    def forward(self, embeds, cache, vision=False):
+        Backend.forward(self, embeds, cache, vision)
+        vals = [int(v) for v in embeds[0, :, 0].tolist()]
+        if len(vals) > 20:
+            self.q, self.k = vals, 0
+        elif len(vals) == 1:
+            self.k += 1
+        scores = np.full(64, -5.)
+        if self.q:
+            scores[self.q[1 + self.k] % 64] = 5.
+        scores[33] = 4.
+        return scores
+
+
+rd = LiveSession(mind, Reader(), clock=lambda: 0.)
+rd.frame(frame(10), at=0.)
+out = rd.ask('which way does it move?', max_tokens=12)['tokens']
+note_ids = mind.tokenizer.encode(' ' + rd.sound_note())
+runs = {tuple(note_ids[i:i + 4]) for i in range(len(note_ids) - 3)}
+check('an answer never reads a note out: no four-token run of a note is continued',
+      not any(tuple(out[i:i + 4]) in runs for i in range(len(out) - 3)) and rd._note_runs is None)
 check('a question not about speech has no hearing pass', not any(c[1] for c in hb.calls) and hs.transcript is None)
 check('an answer never opens another thinking channel', ch.blocked == [7, 8] and 7 not in ch.ask('q', max_tokens=3)['tokens'])
 
