@@ -269,6 +269,10 @@ def check_candidate(candidate_id, response_text, source="chat"):
     if (len(recent_passes) >= cand["threshold"]["required_passes"] and
             v["pressure_state_hit"] and
             v["failures"] <= cand["threshold"]["max_failures"]):
+        if (cand.get("gate") or {}).get("review") == "held":
+            # A hold is not re-rolled until a reviewer says yes: only release_held() (her pass) moves it on.
+            save_candidates(data)
+            return "held"
         # The gate receipt: what verification showed when it was met. form_pearl() seals nothing without it.
         cand["gate"] = {"verification_met_at": datetime.now().isoformat(),
                         "passes_in_window": len(recent_passes), "failures": v["failures"],
@@ -457,6 +461,13 @@ def release_held(candidate_id, by="gloria"):
         if c.get("id") != candidate_id or c.get("dissolved"):
             continue
         g = c.get("gate")
+        v = c.get("verification") or {}
+        th = c.get("threshold") or THRESHOLD
+        if not isinstance(g, dict) and v.get("pressure_state_hit") is True                 and len(v.get("passes", [])) >= th.get("required_passes", 4)                 and int(v.get("failures", 0) or 0) <= th.get("max_failures", 1):
+            # held before gate receipts existed (2026-11-14): its verification record is the receipt
+            g = c["gate"] = {"verification_met_at": str(v.get("last_checked") or datetime.now().isoformat()),
+                             "passes_in_window": len(v.get("passes", [])), "failures": int(v.get("failures", 0) or 0),
+                             "pressure_state_hit": True, "review": "held", "migrated": True}
         if not isinstance(g, dict) or g.get("review") != "held" or not g.get("verification_met_at"):
             return False
         g["review"] = f"released by {by}"
@@ -486,8 +497,15 @@ def curate_candidate(candidate_id, action, by="Gloria", text=None, previous=None
             c["dissolution_reason"] = f"archived by {by}, {at[:10]} (pearl review)"
             c["superseded"] = {"by": by, "at": at, "via": "pearl review", "stage_was": before.get("stage")}
         elif action == "edit" and str(text or "").strip():
-            c.setdefault("edits", []).append({"by": by, "at": at, "previous_declaration": c.get("declaration", "")})
+            c.setdefault("edits", []).append({"by": by, "at": at, "previous_declaration": c.get("declaration", ""),
+                                              "previous_verification": c.get("verification"), "previous_gate": c.get("gate")})
             c["declaration"] = str(text).strip()[:300]
+            if c.get("stage") in (1, 2, 3):
+                # new words were never verified: the trial starts again (a sealed stage-4 pearl stays sealed)
+                c["verification"] = {"interactions_checked": 0, "passes": [], "failures": 0,
+                                     "pressure_state_hit": False, "last_checked": None}
+                c.pop("gate", None)
+                c["stage"] = 1
         elif action == "restore" and isinstance(previous, dict) and previous.get("id") == candidate_id:
             data["candidates"][i] = copy.deepcopy(previous)
         else:

@@ -149,7 +149,7 @@ def collect(memory):
                                      len(v.get("passes", [])), int(v.get("failures", 0) or 0),
                                      "met" if v.get("pressure_state_hit") else "not yet"),
                                  **({"concern": c["concern"]} if c.get("concern") else {})},
-                      "corrected": False, "fp": sha(text)})
+                      "corrected": False, "fp": sha("%s|stage %s" % (text, st))})
     return items
 
 
@@ -252,6 +252,8 @@ def contradiction_pairs(items, dup_groups):
 
 def local_model_confirms(a, b, url, model):
     """Ask a LOCAL model (her own machine) whether two statements contradict. None when unreachable."""
+    if not is_local_url(url):
+        raise SystemExit("--local-model must be loopback or her tailnet (100.64.0.0/10): " + str(url))
     try:
         import requests
         r = requests.post(url, json={"model": model, "temperature": 0, "max_tokens": 4, "messages": [
@@ -261,6 +263,19 @@ def local_model_confirms(a, b, url, model):
         return r.json()["choices"][0]["message"]["content"].strip().upper().startswith("YES")
     except Exception:
         return None
+
+
+def is_local_url(url):
+    import ipaddress
+    from urllib.parse import urlparse
+    host = urlparse(str(url or "")).hostname or ""
+    if host == "localhost":
+        return True
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return ip.is_loopback or ip in ipaddress.ip_network("100.64.0.0/10")
 
 
 def flag_items(items, memory, local_model=None, model="aeon-gemma-4-12b"):
@@ -404,11 +419,9 @@ sync();
 
 def write_private(path, text):
     path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    try:
+    if not path.parent.exists():
+        path.parent.mkdir(parents=True)
         os.chmod(path.parent, 0o700)
-    except OSError:
-        pass
     fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as fh:
         fh.write(text)
@@ -438,6 +451,10 @@ def generate(memory, out, local_model=None, model="aeon-gemma-4-12b"):
 # ------------------------------------------------------------------ apply / revert
 def _current_items(memory):
     return {i["key"]: i for i in collect(memory)}
+
+
+def _cand(pe, cid):
+    return next((c for c in pe.load_candidates().get("candidates", []) if c.get("id") == cid), None)
 
 
 def _engine(memory):
@@ -471,6 +488,8 @@ def apply(decisions_path, memory, by="Gloria", yes=False, backup_root=DEFAULT_OU
             skipped.append((d.get("key"), "changed since the page was generated")); continue
         if d["action"] == "edit" and not str(d.get("text") or "").strip():
             skipped.append((d.get("key"), "edit without text")); continue
+        if d["action"] == "edit" and it["kind"] == "file" and not it["text"].strip():
+            skipped.append((d.get("key"), "empty pearl: archive it instead of editing")); continue
         plan.append((d, it))
     for d, it in plan:
         print("%-8s %s" % (d["action"], it["id"]))
@@ -511,10 +530,15 @@ def apply(decisions_path, memory, by="Gloria", yes=False, backup_root=DEFAULT_OU
                 src.write_text(new_raw)
                 _footer(src, "**Edited:** by %s (pearl review); the original is %s/%s" % (who, ARCHIVE_DIR_NAME, orig.name))
                 ops.append({"op": "edit_file", "path": str(src), "orig": str(orig), "backup": str(backup)})
+            cid = it["detail"].get("candidate")
+            if cid:     # the sealed candidate follows its file, or its declaration stays in his live context
+                before = pe.curate_candidate(cid, act, by=by, text=d.get("text"))
+                if before is not None:
+                    ops.append({"op": "candidate", "id": cid, "previous": before, "after": _cand(pe, cid)})
         elif it["kind"] == "candidate" and act != "keep":
             before = pe.curate_candidate(it["id"], act, by=by, text=d.get("text"))
             if before is not None:
-                ops.append({"op": "candidate", "id": it["id"], "previous": before})
+                ops.append({"op": "candidate", "id": it["id"], "previous": before, "after": _cand(pe, it["id"])})
         elif it["kind"] == "index" and act != "keep":
             skipped.append((it["key"], "index entries are archived by hand (none exist today)"))
             continue
@@ -542,6 +566,9 @@ def revert(manifest_path, memory, yes=False):
         elif op["op"] == "edit_file":
             shutil.copy2(op["backup"], op["path"])
         elif op["op"] == "candidate":
+            if "after" in op and _cand(pe, op["id"]) != op["after"]:
+                print("  SKIP %s: changed since the apply (left as it is now)" % op["id"])
+                continue
             pe.curate_candidate(op["id"], "restore", previous=op["previous"])
     if yes:
         with open(Path(memory) / LEDGER_NAME, "a") as fh:

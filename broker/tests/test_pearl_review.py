@@ -111,7 +111,8 @@ with tempfile.TemporaryDirectory(prefix="pearl-review-") as tmp:
         {"key": "file:pearl_0001_20261006.md", "kind": "file", "fp": fp["pearl_0001_20261006"], "action": "archive"},
         {"key": "file:pearl_20261003_100000.md", "kind": "file", "fp": fp["pearl_20261003_100000"], "action": "edit",
          "text": "I learned the synthetic placeholder was never mine."},
-        {"key": "file:pearl_20261004_100000.md", "kind": "file", "fp": fp["pearl_20261004_100000"], "action": "keep"},
+        {"key": "file:pearl_20261004_100000.md", "kind": "file", "fp": fp["pearl_20261004_100000"], "action": "archive"},
+        {"key": "file:pearl_20261005_100000.md", "kind": "file", "fp": fp["pearl_20261005_100000"], "action": "keep"},
         {"key": "cand:cp-cccccc", "kind": "candidate", "fp": fp["cp-cccccc"], "action": "archive"},
         {"key": "cand:cp-bbbbbb", "kind": "candidate", "fp": "stale", "action": "archive"},
     ]}))
@@ -138,9 +139,14 @@ with tempfile.TemporaryDirectory(prefix="pearl-review-") as tmp:
           cs["cp-cccccc"]["dissolved"] and cs["cp-cccccc"]["dissolution_reason"].startswith("archived by Gloria, ")
           and cs["cp-cccccc"]["superseded"]["by"] == "Gloria" and cs["cp-cccccc"]["stage"] == 1)
     check("a decision whose text changed since the page was made is skipped", not cs["cp-bbbbbb"]["dissolved"])
-    check("keep changes nothing", (MEM / "pearls" / "pearl_20261004_100000.md").exists())
+    check("keep changes nothing", (MEM / "pearls" / "pearl_20261005_100000.md").exists())
+    check("archiving a sealed pearl also archives its candidate, so it leaves his live context",
+          cs["cp-aaaaaa"]["dissolved"] and cs["cp-aaaaaa"]["superseded"]["by"] == "Gloria")
+    check("the local-model check accepts only loopback or her tailnet",
+          R.is_local_url("http://127.0.0.1:1234/v1") and R.is_local_url("http://100.79.177.103:1234/v1")
+          and not R.is_local_url("https://api.example.com/v1") and not R.is_local_url("http://8.8.8.8/"))
     ledger = [json.loads(l) for l in (MEM / "pearl-review-ledger.jsonl").read_text().splitlines()]
-    check("every applied decision is in the ledger", {l["key"] for l in ledger} >= {"file:pearl_20261002_100000.md", "cand:cp-cccccc", "file:pearl_20261004_100000.md"})
+    check("every applied decision is in the ledger", {l["key"] for l in ledger} >= {"file:pearl_20261002_100000.md", "cand:cp-cccccc", "file:pearl_20261005_100000.md"})
     check("the manifest is private", stat.S_IMODE(pathlib.Path(manifest).stat().st_mode) == 0o600)
     check("no pearl file anywhere was deleted (all text still exists)",
           all(any(t in p.read_text() for p in MEM.rglob("*.md")) for t in ("counted nine herons.", "counted nine herons!", "{placeholder}", "kettle")))

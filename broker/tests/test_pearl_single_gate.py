@@ -113,8 +113,25 @@ with tempfile.TemporaryDirectory(prefix="pearl-gate-") as tmp:
         P.check_candidate(cid, "p%d" % i)
     replies[:] = ["PASS", '{"accurate": false, "concern": "synthetic"}']
     check("the reviewer can hold it", P.check_candidate(cid, "p3") == "held" and cands()[cid]["gate"]["review"] == "held")
+    replies[:] = ["PASS", '{"accurate": true, "concern": ""}']
+    check("a held candidate is not re-reviewed until a reviewer releases it",
+          P.check_candidate(cid, "p4") == "held" and cands()[cid]["stage"] == 1 and replies == ['{"accurate": true, "concern": ""}'])
+    replies[:] = []
     check("Gloria's pass releases a held, verified candidate", P.release_held(cid, by="gloria") is True
           and cands()[cid]["stage"] == 3 and P.gate_receipt_ok(cands()[cid]))
+    before_edit = P.curate_candidate(cid, "edit", by="Gloria", text="new synthetic words")
+    c = cands()[cid]
+    check("editing a candidate under the gate restarts its trial (new words were never verified)",
+          before_edit["stage"] == 3 and c["stage"] == 1 and "gate" not in c and c["verification"]["passes"] == []
+          and P.form_pearl(cid) is None)
+    old = P.add_candidate("synthetic friction six", "scar", "mirror:w", "i6", "d6")
+    d = P.load_candidates()
+    for c in d["candidates"]:
+        if c["id"] == old:
+            c["verification"].update(passes=["2026-10-01T00:00:00"] * 4, failures=1, pressure_state_hit=True)
+    P.save_candidates(d)
+    check("a hold from before gate receipts can still be passed by Gloria, from its verification record",
+          P.release_held(old) is True and cands()[old]["stage"] == 3 and cands()[old]["gate"].get("migrated"))
     srv = (ROOT / "bin/server.py").read_text()
     seg = srv[srv.index("async def pass_held_item"):srv.index("async def dismiss_held_item")]
     check("the server's held-pass goes through release_held and sets no stage itself",
