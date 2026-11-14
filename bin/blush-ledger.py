@@ -318,10 +318,16 @@ def write_blush(
     if blush_type in ("will_strain", "bis_default") and related_trial_id:
         from datetime import datetime as _cdt
         today = _cdt.now().date().isoformat()
-        recent_strain = [e for e in entries[-20:] if
-                        e.get("type") == blush_type and
-                        e.get("related_trial_id") == related_trial_id and
-                        e.get("timestamp","")[:10] == today]
+        # every entry from today, not the last 20: /api/chat now writes will_strain too (2026-11-14), and a busy
+        # day can push the morning's entry for the same trial past a fixed window
+        recent_strain = []
+        for e in reversed(entries):
+            if str(e.get("timestamp", ""))[:10] != today:
+                if str(e.get("timestamp", ""))[:10] < today:
+                    break
+                continue
+            if e.get("type") == blush_type and e.get("related_trial_id") == related_trial_id:
+                recent_strain.append(e); break
         if recent_strain:
             print(f"[Blush] {blush_type} cooldown active for {related_trial_id} — skipping")
             return None

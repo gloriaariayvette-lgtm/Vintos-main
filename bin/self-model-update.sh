@@ -1,4 +1,9 @@
 #!/bin/bash
+# Run log (old-systems repair, 2026-11-14): the cron line (Sun 02:25) has no redirect, so no run ever left a
+# record. The script keeps its own, in the house's /tmp pattern; output still reaches whoever ran it.
+SELF_MODEL_LOG="${SELF_MODEL_LOG:-/tmp/cron-selfmodel-update.log}"
+exec > >(tee -a "$SELF_MODEL_LOG" 2>/dev/null) 2> >(tee -a "$SELF_MODEL_LOG" >&2 2>/dev/null)
+echo "== $(date -Iseconds) self-model-update"
 # The subconscious flag (subcon_target.py): the 26B until AEON has passed the whole bar and Gloria flips it.
 _subcon=$(python3 "$HOME/.vintos/workspace/scripts/subcon_target.py" route "" "" 2>/dev/null) || _subcon=""
 SUBCON_URL=$(printf '%s\n' "$_subcon" | sed -n 1p); SUBCON_MODEL=$(printf '%s\n' "$_subcon" | sed -n 2p); export SUBCON_URL SUBCON_MODEL

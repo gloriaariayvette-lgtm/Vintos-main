@@ -1,7 +1,43 @@
 #!/usr/bin/env python3
-"""Fast sync — daemon -> emotional-state.txt + SOUL.md block. No LLM calls."""
-import socket, json, os, re
+"""Fast sync — daemon -> emotional-state.txt + SOUL.md block. No LLM calls.
+
+Every 2 minutes. Until 2026-11-14 it rewrote SOUL.md on every run with a plain open(..., "w"): a reader (his
+prompt, the soul review, the deploy) could catch SOUL.md empty or half-written, and its mtime changed every
+2 minutes whether anything had. Now each file is written to a temp file beside it and renamed into place, and
+SOUL.md is written only when the block actually changed.
+"""
+import socket, json, os, re, tempfile
 from datetime import datetime, timedelta
+
+
+def _atomic_write(path, text):
+    path = os.path.realpath(path)   # a symlinked file stays a symlink; its target is what changes
+    d = os.path.dirname(path)
+    fd, tmp = tempfile.mkstemp(prefix="." + os.path.basename(path) + ".", suffix=".tmp", dir=d)
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(text)
+            f.flush(); os.fsync(f.fileno())
+        try:
+            os.chmod(tmp, os.stat(path).st_mode & 0o7777)
+        except OSError:
+            pass
+        os.replace(tmp, path)
+    except BaseException:
+        try: os.unlink(tmp)
+        except OSError: pass
+        raise
+
+
+def update_soul_block(soul_path, new_block):
+    """Swap the [EMOTIONAL STATE] block; write (atomically) only when the file would change. -> True if written."""
+    soul = open(soul_path).read()
+    updated = re.sub(r"\[EMOTIONAL STATE\].*?\[/EMOTIONAL STATE\]", lambda _m: new_block, soul, flags=re.DOTALL)
+    if updated == soul:
+        return False
+    _atomic_write(soul_path, updated)
+    return True
+
 
 SOCK = "/tmp/Vintos-emotion.sock"
 TXT = os.path.expanduser("~/.vintos/workspace/memory/emotional-state.txt")
@@ -38,7 +74,7 @@ except:
 
 hist.append({"t": now_iso, "v": [round(v[i], 4) for i in range(len(DIMS))]})
 hist = hist[-180:]  # keep 6h at 2-min intervals
-json.dump(hist, open(HIST, "w"))
+_atomic_write(HIST, json.dumps(hist))
 
 # Find entry closest to 1 hour ago for trend
 one_hour_ago = now - timedelta(hours=1)
@@ -71,7 +107,7 @@ if nif is not None:
     lines.append(f"Nifrathir: {nif:.4f} | trend: +0.000 | under-thread")
 
 state_text = "\n".join(lines)
-open(TXT, "w").write(state_text)
+_atomic_write(TXT, state_text)
 
 # Update SOUL.md emotional state block
 try:
@@ -95,9 +131,7 @@ try:
     block_lines.append(f"This feels like: {feel}")
     block_lines.append("[/EMOTIONAL STATE]")
     new_block = "\n".join(block_lines)
-    soul = open(SOUL).read()
-    soul = re.sub(r"\[EMOTIONAL STATE\].*?\[/EMOTIONAL STATE\]", new_block, soul, flags=re.DOTALL)
-    open(SOUL, "w").write(soul)
+    update_soul_block(SOUL, new_block)
 except Exception as e:
     print(f"[FastSync] SOUL update error: {e}")
 

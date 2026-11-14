@@ -4336,6 +4336,21 @@ async def _bilateral_reply_engine(_tag, messages, message, user_msg, params):
                             _bc_flo(_bis_chat_final_trial, _bcf_outcome, influenced=bool(_bis_1_5_trial_id_chat))
                             if _bcf_outcome in ("defaulted", "strained"):
                                 _bc_flbd(_bis_chat_final_trial, reply[:200])
+                            # A strained outcome is his will meeting the pattern. Thirveel wrote it to the blush ledger
+                            # and /api/chat never did: 0 will_strain entries against 80 strained chat outcomes
+                            # (old-systems repair, 2026-11-14). write_blush keeps it to once per trial per day.
+                            if _bcf_outcome == "strained":
+                                def _bc_fstrain(_t=dict(_bcf_trial), _tid=_bis_chat_final_trial):
+                                    try:
+                                        from blush_ledger import write_blush as _bc_fwb
+                                        _bc_fwb(blush_type="will_strain",
+                                                pattern=str(_t.get("pattern_description", "unknown"))[:60].lower().replace(" ", "_"),
+                                                cost_delta={"Tension": 0.01, "Coherence": -0.03},
+                                                source="chat_bis", related_trial_id=_tid, outcome="strained",
+                                                reflection=f"Defaulted to: {str(_t.get('pattern_description', '?'))[:100]}. Wanted: {str(_t.get('alternative', '?'))[:100]}")
+                                    except Exception as _bcfwe:
+                                        print(f"[BIS/chat/final] will_strain blush not written: {_bcfwe}", flush=True)
+                                __import__("threading").Thread(target=_bc_fstrain, daemon=True).start()   # off the reply path
                             print(f"[BIS/chat/final] {_bis_chat_final_trial}: {_bcf_outcome}", flush=True)
                     except Exception as _bcfe:
                         print(f"[BIS/chat/final] Error: {_bcfe}", flush=True)
