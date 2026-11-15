@@ -136,9 +136,12 @@ def repair(P, rounds=2):
     out = []
     for r in range(rounds):
         res = chat(msgs)
-        if res["status"] != "ok":
-            sys.stderr.write("llm call: %s after %ss\n" % (res["status"], res.get("seconds")))
-            res = chat(msgs)                                 # one retry; a failed call is never cached
+        for wait in (5, 15, 30, 60, 120, 240):            # held-out: the lane answered 502 at once while busy
+            if res["status"] == "ok":
+                break
+            sys.stderr.write("llm call: %s after %ss; retry in %ds\n" % (res["status"], res.get("seconds"), wait))
+            time.sleep(wait)
+            res = chat(msgs)                                 # a failed call is never cached
         R, ok = parse(res["text"], valid)
         sec, tok = res.get("seconds", 0.0), res.get("tokens", 0)
         if not ok and res["status"] == "ok":
