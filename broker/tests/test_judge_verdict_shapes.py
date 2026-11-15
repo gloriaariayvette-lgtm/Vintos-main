@@ -139,7 +139,7 @@ class Tests(unittest.TestCase):
         run=self.cli('--humor',p);self.assertNotEqual(run.returncode,0);self.assertEqual(run.stderr.strip(),'judge_verdict_shapes_refused');self.assertEqual(run.stdout,'')
         p.chmod(0o600);link=self.root/'link';link.symlink_to(p)
         self.assertNotEqual(self.cli('--humor',link).returncode,0)
-        nested=self.root/'public';nested.mkdir(mode=0o755);q=nested/'input';q.write_text('[]');q.chmod(0o600)
+        nested=self.root/'public';nested.mkdir();nested.chmod(0o755);q=nested/'input';q.write_text('[]');q.chmod(0o600)
         self.assertNotEqual(self.cli('--presence',q).returncode,0)
     def test_cli_size_bound_and_malformed_input_emit_no_content(self):
         p=self.file('SYNTHETIC_PRIVATE_TEXT')
