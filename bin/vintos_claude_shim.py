@@ -335,7 +335,7 @@ def aegis_gemma_complete(j, call=None, model=AEGIS_GEMMA_MODEL, provider="aegis_
     # The planner worm was trained and gated on one system turn and one plain user turn: send its prompt as the
     # user turn itself, not under a "USER:" label it never saw.
     text_in = users[0] if provider == "aegis_lab_c1" and len(turns) == 1 and len(users) == 1 else "\n\n".join(turns)
-    body = {"model": model, "input": text_in or ".",
+    body = {"model": AEGIS_GEMMA_MODEL if provider == "aegis_gemma" else model, "input": text_in or ".",
             "system_prompt": "\n\n".join(systems), "reasoning": "off", "store": False,
             "max_output_tokens": int(j.get("max_tokens") or 1024)}
     if j.get("temperature") is not None: body["temperature"] = float(j["temperature"])
