@@ -20,17 +20,19 @@ otherwise only the standing contradictions and broken checks are reported.
 import math, time
 
 SOLVER_SECONDS = 20.0
-TIE = 1e-6                 # equal repairs go to the earlier source
+TIE = 1e-4                 # equal repairs go to the earlier source (far below any real weight difference)
 
 
 def _parts(g):
-    g.envs(next(iter(g.nodes))) if g.nodes else None          # fills gaps and depth
+    if g._labels is None:
+        g._compute()                                              # fills gaps and depth
     A = sorted(a for a, n in g.nodes.items() if n["assumption"])
     D = sorted(a for a, n in g.nodes.items() if not n["assumption"])
     w = {a: math.log((1 - g.nodes[a]["prior"]) / g.nodes[a]["prior"]) for a in A}
     J = {v: [list(j) for j in g.nodes[v]["justifications"]] for v in D}
     C = [(c["id"], list(c["nodes"]), -math.log(max(1e-9, 1 - c["reliability"]))) for c in g.conflicts]
-    K = [(c["node"], math.log(c["accuracy"] / (1 - c["accuracy"]))) for c in g.confirmations]
+    acc = lambda a: min(max(float(a), 0.5), 1 - 1e-9)             # a check below even odds is no evidence
+    K = [(c["node"], math.log(acc(c["accuracy"]) / (1 - acc(c["accuracy"])))) for c in g.confirmations]
     return A, D, w, J, C, K
 
 
@@ -69,14 +71,29 @@ def _cyclic(D, J):
     return any(v not in state and visit(v) for v in D)
 
 
-def minimum(g, time_limit=SOLVER_SECONDS):
-    """(repair, energy) of the exact minimum, or (None, None) when scipy is not available or the solver fails."""
+def revisable(g, a):
+    """What belief_revision itself may revise: never her words, never a source that is not captured."""
+    n = g.nodes[a]
+    return n["kind"] != "gloria" and n.get("captured", True)
+
+
+def minimum(g, time_limit=SOLVER_SECONDS, policy=False):
+    """(repair, energy, status) of the exact minimum. policy=True: only what belief_revision may revise (not her
+    words, not uncaptured sources). status is "exact", "time_limit" (the repair is the best found, an upper bound),
+    "unavailable" (no scipy) or "error"."""
     try:
         import numpy as np
         from scipy.optimize import milp, LinearConstraint, Bounds
         from scipy.sparse import lil_matrix
     except ImportError:
-        return None, None
+        return None, None, "unavailable"
+    try:
+        return _minimum(g, time_limit, policy, np, milp, LinearConstraint, Bounds, lil_matrix)
+    except Exception:
+        return None, None, "error"
+
+
+def _minimum(g, time_limit, policy, np, milp, LinearConstraint, Bounds, lil_matrix):
     A, D, w, J, C, K = _parts(g)
     depth = getattr(g, "depth", {}) or {}
     cyc = _cyclic(D, J)
@@ -85,7 +102,7 @@ def minimum(g, time_limit=SOLVER_SECONDS):
     def var(k, c=0.0, u=1.0, integer=True):
         idx[k] = len(cost); cost.append(c); hi.append(u); integ.append(1 if integer else 0)
     for a in A:
-        var(("f", a), w[a] + TIE * (1 + depth.get(a, 0)))
+        var(("f", a), w[a] + TIE * (1 + depth.get(a, 0)), 0.0 if policy and not revisable(g, a) else 1.0)
     for v in D:
         var(("h", v))
         for k in range(len(J[v])):
@@ -140,30 +157,28 @@ def minimum(g, time_limit=SOLVER_SECONDS):
         row([({idx[("viol", i)]: 1.0}, 1.0)] + [(c, -1.0) for c in parts], -consts + len(ns) - 1, lb=0.0)
     for i, (n, _) in enumerate(K):
         c, k0 = hold(n)
-        row([({idx[("fail", i)]: 1.0}, 1.0), (c, 1.0)], k0, lb=1.0)
+        row([({idx[("fail", i)]: 1.0}, 1.0), (c, 1.0)], k0, lb=1.0, ub=1.0)    # fail is exactly 1 - hold
     if not rows:
-        return set(), 0.0
+        return set(), 0.0, "exact"
     mat = lil_matrix((len(rows), len(cost)))
     for r, (d, _, _) in enumerate(rows):
         for k, x in d.items():
             mat[r, k] = x
-    try:
-        res = milp(c=np.array(cost), constraints=[LinearConstraint(mat.tocsr(), np.array([r[1] for r in rows]),
+    res = milp(c=np.array(cost), constraints=[LinearConstraint(mat.tocsr(), np.array([r[1] for r in rows]),
                                                                    np.array([r[2] for r in rows]))],
                    bounds=Bounds(np.zeros(len(cost)), np.array(hi)), integrality=np.array(integ),
-                   options={"time_limit": time_limit, "disp": False})
-    except Exception:
-        return None, None
-    if res.x is None or res.status != 0:
-        return None, None
+                   options={"time_limit": time_limit, "disp": False, "mip_rel_gap": 0.0})
+    if res.x is None:
+        return None, None, "error" if res.status != 1 else "time_limit"
     R = {a for a in A if res.x[idx[("f", a)]] > 0.5}
-    return R, energy(g, R)
+    return R, energy(g, R), "exact" if res.status == 0 else "time_limit"
 
 
 def verify(g, p, exact=True):
-    """What the plan's revisions (retract and lower) would leave: contradictions still standing, passed checks now
-    broken, the plan's energy, and - when the solver is available - the exact minimum and how far the plan is from
-    it. Ids and numbers only."""
+    """What the plan's revisions would leave: contradictions still standing, passed checks now broken (a lowered
+    source is counted as dropped, the way plan() itself recomputes dependents), the plan's energy, and - when the
+    solver is available - the exact minimum and the plan's gap to it, both over everything (`optimum`) and over what
+    belief_revision may revise (`optimum_policy`: never her words, never an uncaptured source). Ids and numbers."""
     t0 = time.perf_counter()
     R = {r["node"] for r in p.get("revisions", []) if r.get("action") in ("retract", "lower")}
     h = holds(g, R)
@@ -172,12 +187,14 @@ def verify(g, p, exact=True):
            "broken_checks": sorted({c["node"] for c in g.confirmations if not h.get(c["node"], True)}),
            "energy": round(energy(g, R), 4), "solver": "not run"}
     if exact:
-        Rm, Em = minimum(g)
-        if Rm is None:
-            out["solver"] = "unavailable"
-        else:
-            out.update(solver="exact", optimum=round(Em, 4), gap=round(max(0.0, out["energy"] - Em), 4),
-                       minimal=out["energy"] <= Em + 1e-6, optimum_size=len(Rm),
-                       optimum_differs=sorted(Rm ^ R))
+        for key, pol in (("", False), ("_policy", True)):
+            Rm, Em, status = minimum(g, policy=pol)
+            out["solver" + key] = status
+            if Rm is None:
+                continue
+            out.update({"optimum" + key: round(Em, 4), "gap" + key: round(max(0.0, out["energy"] - Em), 4),
+                        "minimal" + key: (out["energy"] <= Em + 1e-6) if status == "exact" else None})
+            if not key:
+                out.update(optimum_size=len(Rm), optimum_differs=sorted(Rm ^ R))
     out["seconds"] = round(time.perf_counter() - t0, 3)
     return out

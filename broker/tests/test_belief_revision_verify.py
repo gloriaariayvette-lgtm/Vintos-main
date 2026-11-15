@@ -97,7 +97,7 @@ if HAVE_SCIPY:
     print("--- 5. the exact minimum ---")
     def probe_min(M):
         g = chain()
-        Rm, Em = M.minimum(g)
+        Rm, Em, _ = M.minimum(g)
         # retracting the last step (1.39) beats retracting her words (2.94) and beats rule:a / p0, which break a's check
         return Rm == {"rule:c"} or Rm == {"rule:b"}
     check("the cheapest repair keeps the checked belief and her words", probe_min(V))
@@ -117,7 +117,7 @@ if HAVE_SCIPY:
         g.source("w", "gloria")
         g.conflict("c1", ["p", "w"])
         g.confirm("y", accuracy=0.9)
-        Rm, Em = M.minimum(g)
+        Rm, Em, _ = M.minimum(g)
         return Rm == {"w"} and abs(M.energy(g, Rm) - Em) < 1e-9
     check("the solver knows a loop cannot keep a checked belief once its outside source goes", probe_loop_min(V))
     killed("loop support without ranks", probe_loop_min, V, "    cyc = _cyclic(D, J)", "    cyc = False")
@@ -126,6 +126,52 @@ if HAVE_SCIPY:
         v = M.verify(g, {"revisions": [{"node": "w", "action": "retract"}]})
         return v["solver"] == "exact" and v["minimal"] is False and v["gap"] > 1.0
     check("retracting her words to end the contradiction is reported as far from minimal", probe_gap(V))
+    def probe_policy(M):
+        # the unconstrained minimum gives up her word; belief_revision never may, so the policy minimum must not
+        g = BR.Graph()
+        g.source("p", "memory")
+        g.derived("x", "belief", [["p"], ["y"]], rule=False)
+        g.derived("y", "belief", [["x"]], rule=False)
+        g.source("w", "gloria")
+        g.conflict("c1", ["p", "w"])
+        g.confirm("y", accuracy=0.9)
+        R0, _, _ = M.minimum(g)
+        R1, _, s1 = M.minimum(g, policy=True)
+        return R0 == {"w"} and "w" not in R1 and s1 == "exact"
+    check("the policy minimum never revises her words", probe_policy(V))
+    killed("policy ignored", probe_policy, V, "0.0 if policy and not revisable(g, a) else 1.0", "1.0")
+    import itertools, random
+    def probe_brute(M):
+        """Seeded random small graphs, cyclic and not: the solver's minimum equals exhaustive search."""
+        rng = random.Random(7)
+        for t in range(40):
+            g = BR.Graph()
+            src = ["s%d" % i for i in range(rng.randint(2, 4))]
+            for a in src:
+                g.source(a, rng.choice(["memory", "observation", "lesson"]), evidence_count=rng.randint(0, 4))
+            der = ["d%d" % i for i in range(rng.randint(1, 4))]
+            for i, v in enumerate(der):
+                pool = src + der[:i] + (der[i + 1:] if rng.random() < 0.4 else [])
+                js = [rng.sample(pool, rng.randint(1, 2)) for _ in range(rng.randint(1, 2))]
+                g.derived(v, "belief", js, rule=rng.random() < 0.5)
+            for k in range(rng.randint(1, 2)):
+                g.source("w%d" % k, "observation")
+                g.conflict("c%d" % k, [rng.choice(der), "w%d" % k])
+            if rng.random() < 0.6:
+                g.confirm(rng.choice(der), accuracy=0.9)
+            A = sorted(a for a, n in g.nodes.items() if n["assumption"])
+            best = min(M.energy(g, set(c)) for r in range(len(A) + 1) for c in itertools.combinations(A, r))
+            Rm, Em, st = M.minimum(g)
+            if st != "exact" or abs(Em - best) > 1e-6:
+                return False
+        return True
+    check("the minimum equals exhaustive search on 40 random small graphs", probe_brute(V))
+    killed("a justification need not force its belief", probe_brute, V,
+           "row([(hv, 1.0), (y, -1.0)], 0.0, lb=0.0)", "pass")
+    killed("a justification may hold with a member missing", probe_brute, V,
+           "row([(y, 1.0)] + [(c, -1.0) for c in parts], -consts + len(j) - 1, lb=0.0)", "pass")
+    killed("a broken check costs nothing", probe_brute, V,
+           "row([({idx[(\"fail\", i)]: 1.0}, 1.0), (c, 1.0)], k0, lb=1.0, ub=1.0)", "pass")
 else:
     print("--- 5. scipy not importable: the exact part reports 'unavailable' ---")
     check("no solver: says so", V.verify(chain(), {"revisions": []})["solver"] == "unavailable")
@@ -141,9 +187,38 @@ LOG = os.path.join(HOME, "shadow.jsonl")
 with contextlib.redirect_stdout(io.StringIO()) as out:
     BR.main(["--memory", FIX, "--log", LOG, "--verify"])
 row = json.loads(open(LOG).read().splitlines()[-1])
+SOLVER = {"exact", "time_limit", "unavailable", "error", "not run", None}
 check("the shadow row carries the verify counts, numbers only",
-      set(row.get("verify", {})) == {"standing", "broken_checks", "energy", "optimum", "gap", "minimal", "solver"}
-      and all(not isinstance(x, (list, dict)) for x in row["verify"].values()))
+      {"standing", "broken_checks", "energy", "solver", "solver_policy"} <= set(row.get("verify", {}))
+      and all(x is None or isinstance(x, (int, float, bool)) or (k.startswith("solver") and x in SOLVER)
+              for k, x in row["verify"].items()), row.get("verify"))
+import belief_revision_sources as S
+real_build = S.build
+def fake_build(mem):
+    g = BR.Graph(); g.source("secret-memory-id with words", "memory"); g.derived("d", "belief", [["secret-memory-id with words"]])
+    g.source("w", "observation"); g.conflict("c1", ["d", "w"])
+    return g, {"fixture": 1}
+S.build = fake_build
+try:
+    with contextlib.redirect_stdout(io.StringIO()):
+        BR.main(["--memory", FIX, "--log", LOG, "--verify"])
+finally:
+    S.build = real_build
+row = json.loads(open(LOG).read().splitlines()[-1])
+check("with a real contradiction the verify row is still numbers only, and no id reaches it",
+      row["verify"]["solver"] in SOLVER and "secret-memory-id" not in json.dumps(row["verify"])
+      and all(x is None or isinstance(x, (int, float, bool)) or k.startswith("solver") for k, x in row["verify"].items()),
+      row["verify"])
+def boom(*a, **k): raise ZeroDivisionError("x")
+import belief_revision_verify as V2
+real_verify = V2.verify; V2.verify = boom
+try:
+    with contextlib.redirect_stdout(io.StringIO()):
+        BR.main(["--memory", FIX, "--log", LOG, "--verify"])
+finally:
+    V2.verify = real_verify
+row = json.loads(open(LOG).read().splitlines()[-1])
+check("a check that fails still leaves the dry run its row", row["verify"] == {"solver": "error", "error": "ZeroDivisionError"})
 with contextlib.redirect_stdout(io.StringIO()):
     BR.main(["--memory", FIX, "--log", LOG])
 check("a plain dry run has no verify field", "verify" not in json.loads(open(LOG).read().splitlines()[-1]))
