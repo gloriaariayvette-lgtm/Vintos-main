@@ -74,6 +74,9 @@ r2 = W.read_more(p2, [{"link": 6}], fetch=fetch)
 check("one that cannot be read, once asked for, says so with why", r2[0]["status"] == "not_read" and "NOT READ" in r2[0]["why"]
       and p2[5]["kind"] != W.NOT_OPENED, r2)
 check("a link past the limit is never opened unasked", W.read_more(pages, []) == [])
+many = chr(10).join("https://papers.example.org/many%d" % k for k in range(40))
+for k in range(40): SITE["https://papers.example.org/many%d" % k] = (200, "text/html", "<p>made up %d</p>" % k)
+check("a letter with very many links lists at most LINKS_LISTED of them", len(W.links_read(many, fetch=fetch)) == W.LINKS_LISTED)
 check("nothing reached a socket", not NET)
 
 print("\n%d/%d" % (sum(R), len(R)))

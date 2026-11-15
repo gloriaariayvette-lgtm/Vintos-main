@@ -1482,7 +1482,7 @@ def links_read(body, fetch=None, limit=LINKS_READ, chars=LINK_CHARS):
     out, seen = [], set()
     links = [l for l in link_fetch.links_in(body) if not ((l["url"] or l["original"]) in seen
                                                         or seen.add(l["url"] or l["original"]))]
-    for i, l in enumerate(links):
+    for i, l in enumerate(links[:LINKS_LISTED]):
         if i >= limit:
             out.append({"url": (l["url"] or l["original"])[:500], "original": l["original"][:500], "kind": NOT_OPENED,
                         "why": "LINK %d of the letter's %d: only the first %d links are opened when a letter is read. "
@@ -1497,6 +1497,7 @@ def links_read(body, fetch=None, limit=LINKS_READ, chars=LINK_CHARS):
 
 
 NOT_OPENED = "not_opened"
+LINKS_LISTED = 20       # links of one letter listed at all (opened or not), as links_kept keeps
 
 
 def _page_of(r, l, chars=LINK_CHARS):

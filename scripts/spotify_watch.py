@@ -174,7 +174,7 @@ def _nudge(query, at):
     return (receipt or {}).get("state") or "unknown"
 
 
-def play(query, now=None, nudge=False, sleep=time.sleep, clock=time.time):
+def play(query, now=None, nudge=False, sleep=time.sleep, clock=time.time, source=""):
     """Play his pick on her Watch, or write down why not. With nudge, a closed Watch gets one notification and a few
     minutes' wait. Returns the logged row; never raises."""
     row = {"at": _now_iso(now), "asked": str(query)[:120], "played": False}
@@ -231,7 +231,8 @@ def play(query, now=None, nudge=False, sleep=time.sleep, clock=time.time):
                 import action_provenance
                 action_provenance.record(
                     "watch_music", row.get("track") or row.get("asked"), "spotify_watch (avatar chat)",
-                    trigger="you wrote [SPOTIFY: %s] in an avatar reply" % row.get("asked"),
+                    trigger=("you wrote [SPOTIFY: %s] in an avatar reply" % row.get("asked")) if source == "avatar"
+                    else None,
                     rule="a [SPOTIFY: ...] tag plays on her Watch only, never her phone or the Echo, and not while she sleeps",
                     refs={"device": row.get("device")}, mem=os.path.dirname(LOG))
             except Exception:
@@ -245,7 +246,7 @@ def take(reply, act=True):
     if not reply or "[SPOTIFY" not in reply.upper(): return reply
     asks = re.findall(_TAG, reply, re.I)
     if act and asks and ready():
-        threading.Thread(target=play, args=(asks[0].strip(),), kwargs={"nudge": True}, daemon=True).start()   # one song per reply
+        threading.Thread(target=play, args=(asks[0].strip(),), kwargs={"nudge": True} | {"source": "avatar"}, daemon=True).start()   # one song per reply
     return re.sub(r"\s*" + _TAG + r"\s*", " ", reply, flags=re.I).strip()
 
 

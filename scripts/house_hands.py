@@ -366,9 +366,10 @@ def do(kind, arg, home=None, run=None, present=False, why=None):
             import action_provenance
             given = why if isinstance(why, dict) else {}
             action_provenance.record(
-                "house", "%s: %s" % (kind, str(arg)[:80]), given.get("organ") or "house_hands",
+                "house" if bucket == "house" else "house_" + bucket, "%s: %s" % (kind, str(arg)[:80]), given.get("organ") or "house_hands",
                 trigger=given.get("trigger") or ("she is at one of your boards" if present else None),
-                want_id=given.get("want_id"), rule=given.get("rule") or "within today's %s budget" % bucket,
+                want_id=given.get("want_id"),
+                rule=given.get("rule") or ("within today's %d house acts" % PER_DAY["house"] if bucket == "house" else None),
                 mem=os.path.dirname(LOG))
         except Exception:
             pass
