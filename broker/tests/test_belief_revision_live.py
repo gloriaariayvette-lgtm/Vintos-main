@@ -113,7 +113,7 @@ r = A.ask_checker(ctx, transport=aeon(provider="xai", model="grok-4"))
 check("a reply from another model is discarded", r["status"] == "wrong_model" and r["verdict"] is None, r)
 def probe_wrong_model(M):
     return M.ask_checker(ctx, transport=aeon(provider="anthropic", model="claude"))["verdict"] is None
-killed("any provider accepted", probe_wrong_model, A, 'return str(provider) in AEON_PROVIDERS and "aeon" in str(model).lower()',
+killed("any provider accepted", probe_wrong_model, A, 'return str(provider) in AEON_PROVIDERS and ("aeon" in str(model).lower() or str(model) == "lab-c1")',
        "return True")
 class Rec:
     def __init__(self, settle=None): self.s = settle

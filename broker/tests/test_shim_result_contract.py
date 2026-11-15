@@ -149,6 +149,36 @@ s, h, b = run(dict(BASE), path="/gemma-aegis-local/v1/chat/completions", gemma=A
 check("AEON's local lane is unchanged: model aeon, labelled turns",
       s == 200 and CALLS[0][1].get("model") == S.AEGIS_GEMMA_MODEL and CALLS[0][1].get("input") == "USER:\nhi", CALLS)
 
+class _Models:
+    def __init__(self, ids): self.b = json.dumps({"data": [{"id": i} for i in ids]}).encode()
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+    def read(self): return self.b
+def house_with(ids, handler):
+    """LM Studio's loaded list is ids; chat requests go to handler (the fake Aegis)."""
+    chat = fake_urlopen({"gemma": handler})
+    def _open(req, timeout=None):
+        if isinstance(req, str):
+            assert req == S.AEGIS_MODELS_URL, req
+            return _Models(ids)
+        return chat(req, timeout)
+    _open.__name__ = "_open"
+    S.urllib.request.urlopen = _open
+    S._HOUSE.update(at=0.0)
+CALLS.clear(); house_with(["text-embedding-nomic-embed-text-v1.5", "lab-c1"], C1_OK)
+s_, h_, b_ = S.handle_chat(dict(BASE), "/gemma-aegis-local/v1/chat/completions"); b_ = json.loads(b_)
+check("the worm as house model: an aeon/gemma-4-12b request is sent to lab-c1 and the reply names lab-c1",
+      s_ == 200 and CALLS[0][1].get("model") == "lab-c1" and b_["model"] == "lab-c1"
+      and h_["x-vintos-provider"] == "aegis_gemma", (s_, h_, CALLS))
+CALLS.clear(); house_with(["aeon/gemma-4-12b"], AEGIS_OK)
+s_, h_, b_ = S.handle_chat(dict(BASE), "/gemma-aegis-local/v1/chat/completions"); b_ = json.loads(b_)
+check("in the causality window (AEON resident) the same request is AEON's", s_ == 200
+      and CALLS[0][1].get("model") == S.AEGIS_GEMMA_MODEL and b_["model"] == "aeon/gemma-4-12b", (s_, CALLS))
+CALLS.clear(); house_with(["lab-c1"], C1_OK)
+s_, h_, b_ = S.handle_chat(dict(PLAN), S.LAB_C1_PATH)
+check("the worm lane still sends lab-c1 itself", s_ == 200 and CALLS[0][1].get("model") == "lab-c1", CALLS)
+S._HOUSE.update(at=0.0, id=S.AEGIS_GEMMA_MODEL)
+
 print("--- 41: real model / usage / provider ---")
 s, h, b = run(dict(BASE), anthropic=ANTH_OK, xai=XAI_OK)
 check("200 with text", s == 200 and b["choices"][0]["message"]["content"] == "hello from claude", b)

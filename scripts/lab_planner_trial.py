@@ -31,26 +31,15 @@ Rollback: remove the line from vintos.env. The switch is read at every planner c
 model's alone; no restart and no code change. While the trial model is unreachable the Lab plans as it does today
 (fail-open), and tries it again after DOWN_SECONDS.
 
-LAB_PLANNER_TRIAL_LOAD=swap (Gloria, 14 November): Aegis's 16 GB card holds one 12B model, and c1 is not AEON's
-replacement for the house (on a check of AEON's other callers it answered "no" where the causality evaluator's rule is
-"absence is unsure, never no"). So the worm is loaded in AEON's place for a planning call: holding the Gemma watchdog
-lock (the one Evo 2 and the watchdog share), aegis-lab-c1-load.sh unloads every LLM and loads lab-c1; the trial asks it
-through the shim's Aegis-only lane (/gemma-lab-c1-local); then aegis-gemma-load.sh puts AEON back, before the current
-model is ever asked. AEON is off the card for that window (about 40 s), so a window opens at most once per
-LAB_PLANNER_TRIAL_SWAP_GAP seconds (default 900); between windows the current model plans alone (reason swap_wait).
-
 planner-trial.jsonl, beside the notebook, holds per call who proposed, accepted or fell back and the rule's name,
 and seconds spent; per turn, the outcome. Counts and names only: no question, request or reply text. The trial
 model's call is also written to model-calls.jsonl, as every Lab model call is (Gloria, 3 November), tagged
 "trial" so it is never mistaken for the current model's.
 """
-import contextlib
-import fcntl
 import hashlib
 import json
 import os
 import re
-import subprocess
 import time
 import urllib.error
 import urllib.parse
@@ -60,21 +49,14 @@ import uuid
 import chemistry_lab as lab
 
 KNOWN = {'c1': 'lab-c1', 'c1-worm': 'lab-c1'}   # switch value -> the alias the trial server answers to
-DEFAULT_URL = 'http://127.0.0.1:8866/v1/chat/completions'
-SWAP_URL = 'http://127.0.0.1:8599/gemma-lab-c1-local/v1/chat/completions'   # the shim's Aegis-only worm lane
+DEFAULT_URL = 'http://127.0.0.1:8599/gemma-lab-c1-local/v1/chat/completions'   # the shim's worm-only lane on Aegis
+WORM_PROVIDER, WORM_MODEL = 'aegis_lab_c1', 'lab-c1'                            # what that lane reports
 DEFAULT_TIMEOUT = 120.0
 DOWN_SECONDS = 600                      # after the trial model fails to answer, the current model plans alone this long
 MAX_TOKENS = 800                        # the investigation planner's own budget
 LOG = os.path.join(lab.ROOT, 'planner-trial.jsonl')
 _LOOPBACK = ('127.0.0.1', 'localhost', '::1')
-_STATE = {'down_until': 0.0, 'turn': None, 'calls': [], 'swap_next': 0.0}
-# LAB_PLANNER_TRIAL_LOAD=swap: the lock Evo 2 and the watchdog already share (not /tmp: the Lab has PrivateTmp)
-WATCHDOG_LOCK = os.path.join(lab.MEM, '.gemma-watchdog.lock')
-SWAP_GAP = 900.0
-SWAP_TIMEOUT = 240
-SWAP_PROVIDER, SWAP_MODEL = 'aegis_lab_c1', 'lab-c1'   # what the shim's /gemma-lab-c1-local lane reports
-REFUSED_UNTOUCHED = 3     # aegis-lab-c1-load.sh refused before it changed LM Studio: AEON is still on the card
-SWAP_STATE = os.path.join(lab.ROOT, 'planner-worm', 'swap-next.json')   # the gap survives a Lab restart
+_STATE = {'down_until': 0.0, 'turn': None, 'calls': []}
 
 
 def _env_path():
@@ -92,13 +74,16 @@ def setting(name, default=''):
 
 
 def proposer():
-    """The trial model's name when the switch is on and names a known model; '' otherwise."""
+    """The trial model's name when the switch is on and names a known model, and the worm is Aegis's house model
+    (AEGIS_HOUSE_MODEL=worm, Gloria 14 November: the one switch back to plain AEON everywhere); '' otherwise."""
     name = str(setting('LAB_PLANNER_TRIAL') or '').strip().lower()
+    if str(setting('AEGIS_HOUSE_MODEL') or '').strip().lower() != 'worm':
+        return ''
     return name if name in KNOWN else ''
 
 
 def _url():
-    url = str(setting('LAB_PLANNER_TRIAL_URL', SWAP_URL if _swap_mode() else DEFAULT_URL)).strip()
+    url = str(setting('LAB_PLANNER_TRIAL_URL', DEFAULT_URL)).strip()
     host = urllib.parse.urlsplit(url).hostname or ''
     if host not in _LOOPBACK:
         raise ValueError('trial url must be loopback')   # the Lab's prompts never leave the machine by a config typo
@@ -112,106 +97,16 @@ def _timeout():
         return DEFAULT_TIMEOUT
 
 
-def _swap_mode():
-    return str(setting('LAB_PLANNER_TRIAL_LOAD') or '').strip().lower() == 'swap'
-
-
-def _swap_gap():
-    try:
-        return max(60.0, float(setting('LAB_PLANNER_TRIAL_SWAP_GAP', str(SWAP_GAP))))
-    except (TypeError, ValueError):
-        return SWAP_GAP
-
-
-def _loader(name):
-    return os.path.join(os.path.dirname(os.path.abspath(__file__)), name)
-
-
-def _run_loader(name):
-    """(exit code, the tail of what it said)."""
-    done = subprocess.run(['bash', _loader(name)], text=True, capture_output=True, timeout=SWAP_TIMEOUT, check=False)
-    return done.returncode, ((done.stderr or '') + (done.stdout or '')).strip()[-300:]
-
-
-def _swap_next():
-    try:
-        with open(SWAP_STATE, encoding='utf-8') as f:
-            saved = float(json.load(f).get('next') or 0)
-    except (OSError, ValueError, TypeError, AttributeError):
-        saved = 0.0
-    return max(_STATE['swap_next'], saved)
-
-
-def _set_swap_next(at):
-    _STATE['swap_next'] = at
-    try:
-        os.makedirs(os.path.dirname(SWAP_STATE), exist_ok=True)
-        lab._atomic(SWAP_STATE, {'next': at, 'at': lab.now_iso()})
-    except Exception:
-        pass
-
-
-@contextlib.contextmanager
-def worm_on_card(call):
-    """Yields True with lab-c1 loaded in AEON's place, False (call['reason'] says why) when no window opens now. On
-    exit AEON is back on the card (aegis-gemma-load.sh, which also takes lab-c1 off) before the lock is let go."""
-    if time.time() < _swap_next():
-        call['reason'] = 'swap_wait'
-        yield False
-        return
-    with open(WATCHDOG_LOCK, 'a+') as stream:
-        try:
-            fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except OSError:                       # Evo 2 or the watchdog is changing LM Studio: not now
-            call['reason'] = 'swap_busy'
-            yield False
-            return
-        started, code, said = time.time(), None, ''
-        try:
-            try:
-                code, said = _run_loader('aegis-lab-c1-load.sh')
-            except Exception as exc:
-                said = type(exc).__name__
-            call['swap_s'] = round(time.time() - started, 2)
-            if code != 0:
-                call['reason'] = 'swap_failed'
-                call['error'] = said[-200:]
-                try:
-                    lab._fault('lab_c1_load', RuntimeError('planner worm load failed: ' + said[-200:]))
-                except Exception:
-                    pass
-            yield code == 0
-        finally:
-            gap = _swap_gap() if code == 0 else 4 * _swap_gap()   # a failing load is not retried every gap
-            if code == REFUSED_UNTOUCHED:     # refused before it changed LM Studio: AEON never left; no reload
-                call['restored'] = None
-            else:
-                back = time.time()
-                try:
-                    rc, words = _run_loader('aegis-gemma-load.sh')
-                except Exception as exc:
-                    rc, words = None, type(exc).__name__
-                call['restored'] = rc == 0
-                call['restore_s'] = round(time.time() - back, 2)
-                if not call['restored']:      # the five-minute watchdog reloads AEON; the Lab's faults say so now
-                    try:
-                        lab._fault('lab_c1_restore_aeon', RuntimeError('AEON reload after the planner worm failed: '
-                                                                       + str(words)[-200:]))
-                    except Exception:
-                        pass
-            _set_swap_next(time.time() + gap)
-
-
 def _ask(name, system, prompt, timeout=None):
     """The trial model's reply, asked as it was evaluated offline: greedy, the planner's token budget, no thinking."""
     body = {'model': KNOWN[name], 'temperature': 0, 'seed': 0, 'max_tokens': MAX_TOKENS,
             'chat_template_kwargs': {'enable_thinking': False},
             'messages': [{'role': 'system', 'content': system}, {'role': 'user', 'content': prompt}]}
     req = urllib.request.Request(_url(), data=json.dumps(body).encode(), headers={'Content-Type': 'application/json'})
-    with urllib.request.urlopen(req, timeout=timeout or _timeout()) as response:
+    with lab.model_window_hold(), urllib.request.urlopen(req, timeout=timeout or _timeout()) as response:
         data = json.loads(response.read())
-    if _swap_mode() and (data.get('provider') != SWAP_PROVIDER or data.get('model') != SWAP_MODEL):
-        # a lane typo or a shim without the worm's lane: whatever answered is not the worm, so nothing is credited
+    if data.get('provider') != WORM_PROVIDER or data.get('model') != WORM_MODEL:
+        # whatever answered is not the worm (a lane typo, a shim without the worm's lane): nothing is credited to it
         raise ValueError('not the worm: %s/%s' % (str(data.get('provider'))[:40], str(data.get('model'))[:40]))
     return str(((data.get('choices') or [{}])[0].get('message') or {}).get('content') or '')
 
@@ -258,49 +153,46 @@ def propose(system, prompt, investigation, note=None, planned=None):
             system = system + lessons()
         except Exception:
             pass
-    with contextlib.ExitStack() as stack:
-        if _swap_mode() and not stack.enter_context(worm_on_card(call)):
-            return call                       # no window now: the current model plans (fell_back logs the reason)
-        started = time.time()
-        budget = _timeout()      # one budget for both attempts: the current model is never kept waiting past it
-        for attempt in ((1, 2) if worm else (1,)):
-            left = budget - (time.time() - started)
-            if attempt > 1 and left < 5.0:             # no time for Compass's retry: the current model answers
-                call['reason'] = 'retry_no_time'
-                return call
+    started = time.time()
+    budget = _timeout()      # one budget for both attempts: the current model is never kept waiting past it
+    for attempt in ((1, 2) if worm else (1,)):
+        left = budget - (time.time() - started)
+        if attempt > 1 and left < 5.0:             # no time for Compass's retry: the current model answers
+            call['reason'] = 'retry_no_time'
+            return call
+        try:
+            reply = _ask(name, system, prompt, timeout=max(1.0, left))
+        except urllib.error.HTTPError as exc:      # it answered, with an error (a prompt over its context): not down
+            call.update(reason='trial_error', error='HTTP%d' % int(getattr(exc, 'code', 0) or 0),
+                        trial_s=round(time.time() - started, 2))
+            return call
+        except Exception as exc:                   # refused, reset, timed out, no tunnel: the current model plans alone
+            _STATE['down_until'] = time.time() + DOWN_SECONDS
+            call.update(reason='trial_down', error=type(exc).__name__, trial_s=round(time.time() - started, 2))
+            return call
+        call['trial_s'] = round(time.time() - started, 2)
+        _record(name, system, prompt, reply)
+        if worm:     # the worm's Witness: the Lab's rules + its wrapper rules (an unreadable retry -> current model)
             try:
-                reply = _ask(name, system, prompt, timeout=max(1.0, left))
-            except urllib.error.HTTPError as exc:      # it answered, with an error (a prompt over its context): not down
-                call.update(reason='trial_error', error='HTTP%d' % int(getattr(exc, 'code', 0) or 0),
-                            trial_s=round(time.time() - started, 2))
-                return call
-            except Exception as exc:                   # refused, reset, timed out, no tunnel: the current model plans alone
-                _STATE['down_until'] = time.time() + DOWN_SECONDS
-                call.update(reason='trial_down', error=type(exc).__name__, trial_s=round(time.time() - started, 2))
-                return call
-            call['trial_s'] = round(time.time() - started, 2)
-            _record(name, system, prompt, reply)
-            if worm:     # the worm's Witness: the Lab's rules + its wrapper rules (an unreadable retry -> current model)
-                try:
-                    value, why, detail = witness(reply, prompt, investigation, note, planned)
-                except Exception as exc:               # an odd reply the wrapper rules cannot read: the current model
-                    value, why, detail = None, 'witness_error', type(exc).__name__
+                value, why, detail = witness(reply, prompt, investigation, note, planned)
+            except Exception as exc:               # an odd reply the wrapper rules cannot read: the current model
+                value, why, detail = None, 'witness_error', type(exc).__name__
+        else:
+            try:
+                value = lab._json_object(reply)
+            except lab.ModelJSONError:
+                value, why, detail = None, 'unreadable', 'the reply was not one JSON object'
             else:
-                try:
-                    value = lab._json_object(reply)
-                except lab.ModelJSONError:
-                    value, why, detail = None, 'unreadable', 'the reply was not one JSON object'
-                else:
-                    why, detail = verdict(value, investigation, note, planned)
-            call['reason'] = why or 'ok'
-            if not why:
-                call.update(accepted=True, value=value, stage=attempt)
-                _write(call)
-                return call
-            if worm and attempt == 1:                  # Compass: once more, told why, in the Lab's own re-plan words
-                call['first_reason'] = why
-                prompt = prompt + retry_tail(value, why, detail)
-        return call
+                why, detail = verdict(value, investigation, note, planned)
+        call['reason'] = why or 'ok'
+        if not why:
+            call.update(accepted=True, value=value, stage=attempt)
+            _write(call)
+            return call
+        if worm and attempt == 1:                  # Compass: once more, told why, in the Lab's own re-plan words
+            call['first_reason'] = why
+            prompt = prompt + retry_tail(value, why, detail)
+    return call
 
 
 def fell_back(call, live_seconds):

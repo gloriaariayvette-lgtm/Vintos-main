@@ -71,7 +71,8 @@ def check_url(url):
 
 
 def is_aeon(provider, model):
-    return str(provider) in AEON_PROVIDERS and "aeon" in str(model).lower()
+    # the house model on Aegis is the Lab planner worm (lab-c1, AEON + a LoRA) since 14 November; it counts as local AEON
+    return str(provider) in AEON_PROVIDERS and ("aeon" in str(model).lower() or str(model) == "lab-c1")
 
 
 def _urllib_transport(url, body, timeout):

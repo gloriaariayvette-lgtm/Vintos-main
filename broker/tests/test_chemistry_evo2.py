@@ -26,18 +26,19 @@ assert evo.WATCHDOG_LOCK.startswith(WS), "watchdog lock must cross the service P
 watchdog = open(os.path.join(REPO, "bin", "gemma-watchdog.sh")).read()
 loader = open(os.path.join(REPO, "scripts", "aegis-gemma-load.sh")).read()
 assert 'LOCK="/home/gloria/.vintos/workspace/memory/.gemma-watchdog.lock"' in watchdog
-assert 'VINTOS_LM_STUDIO_BASE:-http://172.18.16.1:1234' in watchdog and 'MODEL="aeon/gemma-4-12b"' in watchdog
+assert 'VINTOS_LM_STUDIO_BASE:-http://172.18.16.1:1234' in watchdog and 'MODEL="$(bash "$LOADER" --which' in watchdog
 assert watchdog.index('flock -n 9') < watchdog.index('ntfy.sh/'), "Lab-held reload lock exits before notification"
 assert 'unload "$MODEL"' in watchdog and "unload --all" not in watchdog
 assert 'LOADER="/home/gloria/.vintos/workspace/scripts/aegis-gemma-load.sh"' in watchdog
-assert 'MODEL_KEY="gemma-4-12b-it-aeon-abliterated-k4"' in loader and 'IDENTIFIER="aeon/gemma-4-12b"' in loader
+assert 'AEON_KEY="gemma-4-12b-it-aeon-abliterated-k4"' in loader and 'AEON_ID="aeon/gemma-4-12b"' in loader
+assert 'WORM_KEY="lab-c1-gemma-4-12b-aeon"' in loader and 'WORM_ID="lab-c1"' in loader
 assert 'Gemma-4-12B-it-AEON-Abliterated-K4-BF16.Q4_K_M.gguf"' in loader and '"architecture") == "gemma4"' in loader
-assert '"$LMS" load "$MODEL_KEY"' in loader and 'quantization") or {}).get("name") == "Q4_K_M"' in loader
+assert '"$LMS" load "$key"' in loader and 'quantization") or {}).get("name") == "Q4_K_M"' in loader
 assert '"$LMS" server start --bind "$SERVER_BIND" --port "$SERVER_PORT"' in loader
 assert '"$LMS" server stop' in loader and '"$BASE/api/v1/models"' in loader
-assert '"$LMS" unload "$resident"' in loader and 'unload --all' not in loader
-assert 'for resident in "$IDENTIFIER" "google/gemma-4-12b-qat"' in loader, "the replaced model must not stay loaded beside AEON"
-assert '--identifier "$IDENTIFIER"' in loader and '--no-speculative-draft-mtp' in loader
+assert 'unload_all\n"$LMS" load' in loader and 'unload --all' not in loader, "every LLM leaves before one loads"
+assert 'r.get("type") != "embedding"' in loader, "an odd row counts as resident (fails closed)"
+assert '--identifier "$target"' in loader and '--no-speculative-draft-mtp' in loader
 
 sequence = "ACGT" * 128
 source = {"source_key": "arabidopsis_chr1", "accession": "NC_003070.9", "taxon_id": 3702,
@@ -74,14 +75,18 @@ model_result = {"ok": True, "model": evo.MODEL, "source_key": "arabidopsis_chr1"
 calls = []
 evo._lms = lambda *args: calls.append(args) or types.SimpleNamespace(returncode=0, stdout="", stderr="")
 real_run = subprocess.run
-evo.subprocess.run = lambda *a, **k: types.SimpleNamespace(returncode=0, stdout=json.dumps(model_result) + "\n", stderr="")
+def _fake_run(argv, *a, **k):
+    if argv[:1] == ["bash"]:      # the house-model loader: --unload, or the reload of the current house model
+        calls.append(tuple(argv[2:]) or ("reload",))
+    return types.SimpleNamespace(returncode=0, stdout=json.dumps(model_result) + "\n", stderr="")
+evo.subprocess.run = _fake_run
 evo.time.sleep = lambda seconds: None
 row = evo.analyze()
 repeated = evo.analyze()
 evo.subprocess.run = real_run
 assert row["ok"] and row["gemma_restored"] is True and "sequence" not in row
 assert row["run_id"] != repeated["run_id"] and row["result_sha256"] == repeated["result_sha256"]
-assert calls and all(call[:2] == ("unload", lab.LLM_MODEL) for call in calls), calls
+assert calls and calls[:2] == [("--unload",), ("reload",)] and set(calls) == {("--unload",), ("reload",)}, calls
 assert lab._jsonl(evo.RUNS)[-1]["truth_status"] == "evo2_model_likelihood_delta_not_functional_effect"
 
 receipt = probe.record_evo2_run(row)

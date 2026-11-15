@@ -28,10 +28,29 @@ GEMMA_URL = "http://100.79.177.103:1234/v1/chat/completions"
 GEMMA_MODEL = "aeon-gemma-4-12b"
 AEGIS_GEMMA_URL = "http://172.18.16.1:1234/api/v1/chat"
 AEGIS_GEMMA_MODEL = "aeon/gemma-4-12b"
-# The Lab planner worm (c1, LoRA fused on AEON) has its own Aegis-only lane. The Lab loads it in AEON's place for a
-# planning call and puts AEON back (lab_planner_trial, LAB_PLANNER_TRIAL_LOAD=swap): the 16 GB card holds one 12B.
+# Aegis's house model (Gloria, 14 November 2026) is the Lab planner worm c1 (LoRA fused on AEON), loaded as "lab-c1";
+# plain AEON is loaded in its place only for the causality window (aegis-model-window.sh). Callers keep asking for
+# aeon/gemma-4-12b and the AEON lane sends whichever of the two is resident; replies name the model that answered.
+# The Lab's planner trial has its own worm-only lane, so a plan is credited to the worm only when the worm wrote it.
 LAB_C1_MODEL = "lab-c1"
 LAB_C1_PATH = "/gemma-lab-c1-local/v1/chat/completions"
+AEGIS_MODELS_URL = "http://172.18.16.1:1234/v1/models"
+_HOUSE = {"at": 0.0, "id": AEGIS_GEMMA_MODEL}
+
+def house_model():
+    """The identifier that answers for aeon/gemma-4-12b on Aegis now: AEON when it is resident, else the worm when it
+    is, else AEON (LM Studio then refuses, as before). LM Studio's loaded list, read at most every 3 seconds."""
+    now = time.time()
+    if now - _HOUSE["at"] < 3: return _HOUSE["id"]
+    ident = AEGIS_GEMMA_MODEL
+    try:
+        with urllib.request.urlopen(AEGIS_MODELS_URL, timeout=3) as r:
+            ids = {str(m.get("id")) for m in (json.loads(r.read()).get("data") or []) if isinstance(m, dict)}
+        if AEGIS_GEMMA_MODEL not in ids and LAB_C1_MODEL in ids: ident = LAB_C1_MODEL
+    except Exception:
+        pass
+    _HOUSE.update(at=now, id=ident)
+    return ident
 CLAUDE_MODEL = "claude-opus-4-8"
 FLEET_DEFAULT = "claude-haiku-5-5"
 LOG = "/tmp/vintos-claude-shim.log"
@@ -335,7 +354,8 @@ def aegis_gemma_complete(j, call=None, model=AEGIS_GEMMA_MODEL, provider="aegis_
     # The planner worm was trained and gated on one system turn and one plain user turn: send its prompt as the
     # user turn itself, not under a "USER:" label it never saw.
     text_in = users[0] if provider == "aegis_lab_c1" and len(turns) == 1 and len(users) == 1 else "\n\n".join(turns)
-    body = {"model": AEGIS_GEMMA_MODEL if provider == "aegis_gemma" else model, "input": text_in or ".",
+    if provider == "aegis_gemma": model = house_model()   # AEON, or the worm as the house model
+    body = {"model": model, "input": text_in or ".",
             "system_prompt": "\n\n".join(systems), "reasoning": "off", "store": False,
             "max_output_tokens": int(j.get("max_tokens") or 1024)}
     if j.get("temperature") is not None: body["temperature"] = float(j["temperature"])

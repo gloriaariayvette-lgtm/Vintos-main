@@ -3,7 +3,9 @@
 LMS="/mnt/c/Users/glori/.lmstudio/bin/lms.exe"
 LOADER="/home/gloria/.vintos/workspace/scripts/aegis-gemma-load.sh"
 LOG="/home/gloria/.vintos/logs/gemma-watchdog.log"
-MODEL="aeon/gemma-4-12b"
+# The house model (Gloria, 14 November): the Lab planner worm "lab-c1", or AEON inside a causality window or when
+# AEGIS_HOUSE_MODEL is not "worm". The loader says which; it unloads every LLM before it loads one.
+MODEL="$(bash "$LOADER" --which 2>/dev/null || echo aeon/gemma-4-12b)"
 # Shared with chemistry_evo2.py.  The Chemistry Lab has PrivateTmp=true, so a
 # /tmp lock would be two unrelated locks carrying the same name.
 LOCK="/home/gloria/.vintos/workspace/memory/.gemma-watchdog.lock"

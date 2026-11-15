@@ -162,9 +162,24 @@ def _lms(*args):
     return subprocess.run([LMS, *args], text=True, capture_output=True, timeout=180, check=False)
 
 
+def _unload_house():
+    """Every resident LLM off the card: the house model (the Lab planner worm), or AEON inside a causality window."""
+    done = subprocess.run(["bash", GEMMA_LOADER, "--unload"], text=True, capture_output=True, timeout=240, check=False,
+                          env={**os.environ, "AEGIS_CALLER": "Lab instrument"})
+    return done.returncode == 0
+
+
 def _restore_gemma():
-    done = subprocess.run([GEMMA_LOADER], text=True, capture_output=True, timeout=240, check=False)
-    if done.returncode != 0: raise RuntimeError("Gemma reload failed")
+    """The CURRENT house model back (the loader decides: the worm, or AEON in a causality window); a second try before
+    giving up, so the card is not left empty (the five-minute watchdog is the last resort)."""
+    for attempt in (1, 2):
+        done = subprocess.run(["bash", GEMMA_LOADER], text=True, capture_output=True, timeout=240, check=False,
+                              env={**os.environ, "AEGIS_CALLER": "Lab instrument"})
+        if done.returncode == 0:
+            return
+        if attempt == 1:
+            time.sleep(10)
+    raise RuntimeError("house model reload failed")
 
 
 def analyze(source_key="arabidopsis_chr1", *, manage_gemma=True, source_payload=None, source_spec=None):
@@ -180,10 +195,12 @@ def analyze(source_key="arabidopsis_chr1", *, manage_gemma=True, source_payload=
         _validate_payload(source)
     started = time.time(); restored = None
     try:
-        with _watchdog_exclusion():
+        with lab.model_window_hold(), _watchdog_exclusion():   # not inside a causality window
             if manage_gemma:
-                unloaded = _lms("unload", GEMMA_MODEL)
-                if unloaded.returncode != 0: raise RuntimeError("Gemma unload failed")
+                if not _unload_house():
+                    try: _restore_gemma()                  # a half-done unload must not leave the card empty
+                    except Exception as exc: lab._fault("evo2_restore_gemma", exc)
+                    raise RuntimeError("Gemma unload failed")
                 time.sleep(2)
             try:
                 done = subprocess.run([EVO_PYTHON, os.path.abspath(__file__), "--worker"],
