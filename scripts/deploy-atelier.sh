@@ -439,7 +439,10 @@ locate() {
                 # looking like it worked.
                 *backup*|*backups/*|*/.graduation-review-backups/*) ;;
                 "$HOME"/repos/*|*/.openclaw/*) ;;
-                *) printf '%s\n' "$h" ;;
+                # Any other repo checkout (an experiment's clones, a scratch
+                # worktree) is never an install, wherever it sits; his named
+                # trees are kept even though ~/Vintos is itself a git repo.
+                *) if live_tree "$h" || ! repo_clone "$h"; then printf '%s\n' "$h"; fi ;;
             esac
         done | sort -u
 }
@@ -463,27 +466,51 @@ live_tree() {   # $1 = a path; succeeds when it is inside one of his install loc
     return 1
 }
 
+# A repo checkout is code, not an install (2026-11-14). Two deploys in a day refused because experiment
+# clones of the repo (~/scratch-wants-20261114, then the dream experiment's ~/dream-scratch/*) each carry a
+# scripts/turn_coordinator.py, even with VINTOS_SCRIPTS naming the live tree. A directory between the file and
+# $HOME holding a .git (dir, or the file a worktree has), a broker/tests suite or the deployer itself marks a
+# checkout; his installs carry none of them except ~/Vintos's .git, and live_tree() is asked first.
+repo_clone() {  # $1 = a path under $HOME; succeeds when it sits inside a repo checkout
+    local d="${1%/*}"
+    while [ -n "$d" ]; do
+        case "$d" in "$HOME"/*) ;; *) return 1 ;; esac   # strictly below $HOME: a dotfiles .git there marks nothing
+        if [ -e "$d/.git" ] || [ -d "$d/broker/tests" ] || [ -e "$d/scripts/deploy-atelier.sh" ]; then
+            return 0
+        fi
+        d="${d%/*}"
+    done
+    return 1
+}
+
 # turn_coordinator.py is part of the running system, so it anchors the tree.
 # New files with no copy yet are placed beside it.
-if [ -n "${VINTOS_SCRIPTS:-}" ]; then
-    ANCHOR_DIR="$(abspath "$VINTOS_SCRIPTS")"
-    [ -d "$ANCHOR_DIR" ] || die "VINTOS_SCRIPTS=$VINTOS_SCRIPTS is not a directory"
-else
+find_anchor() {   # prints his scripts dir, or refuses (exit 1) rather than guess
+    local ANCHOR_DIR="" a hits n
+    if [ -n "${VINTOS_SCRIPTS:-}" ]; then
+        a="$(abspath "$VINTOS_SCRIPTS")"
+        [ -n "$a" ] && [ -d "$a" ] || die "VINTOS_SCRIPTS=$VINTOS_SCRIPTS is not a directory"
+        if ! live_tree "$a/turn_coordinator.py" && repo_clone "$a/turn_coordinator.py"; then
+            die "VINTOS_SCRIPTS=$VINTOS_SCRIPTS is inside a repo checkout, not his install; name his live scripts dir"
+        fi
+        printf '%s' "$a"; return 0
+    fi
     hits="$(locate turn_coordinator.py)"; n="$(count "$hits")"
     if [ "$n" -eq 0 ]; then
-        printf '\nSTOP: turn_coordinator.py is nowhere under %s (depth %s).\n' "$HOME" "$DEPTH" >&2
+        printf '\nSTOP: turn_coordinator.py is nowhere under %s (depth %s), outside repo checkouts.\n' "$HOME" "$DEPTH" >&2
         printf 'Name the directory his scripts are in:\n' >&2
         printf '    VINTOS_SCRIPTS=/that/dir bash %s\n' "${BASH_SOURCE[0]}" >&2
         exit 1
     elif [ "$n" -gt 1 ]; then
-        printf '\nSTOP: turn_coordinator.py exists in more than one place:\n' >&2
+        printf '\nSTOP: turn_coordinator.py exists in more than one live-looking place (repo checkouts already left out):\n' >&2
         printf '%s\n' "$hits" | sed 's/^/    /' >&2
         printf '\nI am not going to pick. Rerun naming the live one:\n' >&2
         printf '    VINTOS_SCRIPTS=%s bash %s\n' "$(dirname -- "$(printf '%s\n' "$hits" | head -1)")" "${BASH_SOURCE[0]}" >&2
         exit 1
     fi
-    ANCHOR_DIR="$(dirname -- "$hits")"
-fi
+    printf '%s' "$(dirname -- "$hits")"
+}
+ANCHOR_DIR="$(find_anchor)" || exit 1
 say "his scripts: $ANCHOR_DIR"
 say
 
