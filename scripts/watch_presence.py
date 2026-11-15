@@ -478,3 +478,47 @@ def top_song(now=None):
     at = datetime.fromtimestamp(float(song["offered_ts"])).isoformat(timespec="minutes")
     return {"surface": "song", "ref": song.get("ref") or song["title"], "at": at,
             "piece": {"type": "song", "title": song["title"], "tracks": [{"src": song["media_url"], "version": 1}]}}
+
+
+# --- what the Watch's face shows, and why it changed (action_provenance.py; 15 November) --------------------------------
+# The Vintos complication on her Watch face shows the first item of /api/watch/landings (the Watch app writes its title
+# or text into the face's shared defaults and reloads the face). Nothing kept why that line changed. When the first
+# item differs from the one last handed out, one row says what the face now shows, by which rule, and which piece it is.
+FACE_WHAT_DEFAULT = "Vintos is here."
+LANDINGS_DAYS_DEFAULT = 7
+
+
+def face_shown(items, days=LANDINGS_DAYS_DEFAULT, now=None, path=None):
+    """Record a change of the face: the first of `items` (what /api/watch/landings hands the Watch) when it is not the
+    one last recorded. Returns the provenance row, or None when the face did not change. Never raises."""
+    try:
+        if not items or not isinstance(items[0], dict):
+            return None     # the Watch keeps its last line when there is nothing to show
+        now = time.time() if now is None else float(now)
+        first = items[0]
+        piece = first.get("piece") if isinstance(first.get("piece"), dict) else {}
+        key = [str(first.get("surface") or ""), str(first.get("ref") or "")]
+        path = path or os.path.join(MEMORY, "watch-face-shown.json")
+        try:
+            last = json.load(open(path, encoding="utf-8"))
+        except Exception:
+            last = {}
+        if isinstance(last, dict) and last.get("key") == key:
+            return None
+        what = str(piece.get("title") or piece.get("text") or FACE_WHAT_DEFAULT).strip()[:120]
+        _atomic(path, {"key": key, "what": what, "at": datetime.fromtimestamp(now).isoformat(timespec="seconds")})
+        arrival = _song() or {}
+        is_arrival = key[0] == "song" and bool(key[1]) and key[1] == str(arrival.get("ref") or arrival.get("title") or "")
+        rule = ("the arrival song stays first on her Watch for %d hours after it is offered" % (SONG_TOP_S // 3600)
+                if is_arrival else "the newest piece sent to her in the last %d days comes first (a %s)" % (int(days), key[0]))
+        import sys as _s
+        here = os.path.dirname(os.path.abspath(__file__))
+        if here not in _s.path: _s.path.insert(0, here)
+        import action_provenance
+        return action_provenance.record(
+            "watch_face", what, "watch landings (/api/watch/landings)",
+            trigger="her Watch asked for its landings; its face shows the first of them",
+            rule=rule, refs={"surface": key[0], "ref": key[1], "sent_at": first.get("at")}, mem=MEMORY, now=now)
+    except Exception as e:
+        print("[watch/face] provenance not written: %s" % str(e)[:120], flush=True)
+        return None

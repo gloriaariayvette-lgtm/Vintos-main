@@ -178,10 +178,16 @@ def capture_findings(capability, want_text):
             if os.path.exists(search_log):
                 with open(search_log) as f:
                     searches = json.load(f)
-                if searches:
-                    synthesis = searches[-1].get("synthesis", "")[:500]
-                    if synthesis:
-                        return synthesis
+                # the log is {"searches": [...]} (vintos-websearch.py); read as a list it raised KeyError, and every
+                # web_search step was left "Web search completed", without what it found or where (15 November)
+                if isinstance(searches, dict):
+                    searches = searches.get("searches") or []
+                if searches and isinstance(searches[-1], dict):
+                    synthesis = str(searches[-1].get("synthesis") or "")[:500]
+                    found = [str(u)[:300] for u in (searches[-1].get("evidence") or []) if str(u).startswith("http")][:5]
+                    if synthesis or found:
+                        # the addresses, so a read_url step after it can open the paper the search found
+                        return synthesis + (("\nAddresses found: " + " ".join(found)) if found else "")
         except:
             pass
         return "Web search completed"
@@ -306,7 +312,10 @@ def _want_end_verdict(want):
     if bool(want.get("gloria_routed")) or any((s.get("capability") or "").lower() == "gloria" for s in steps[-1:]):
         return "gloria", ""
     import requests as _hv_r, re as _hv_re, json as _hv_j
-    hist = "\n".join("- %s: %s" % (h.get("capability", ""), str(h.get("note", ""))[:120])
+    # a read_url step is shown by its own receipt line (READ IN FULL / READ IN PART), not the model's note about it
+    hist = "\n".join("- %s: %s" % (h.get("capability", ""), (str(h.get("findings") or "").split("\n", 1)[0][:240]
+                                                              if h.get("capability") == "read_url"
+                                                              else str(h.get("note", ""))[:120]))
                       for h in want.get("step_history", [])[-4:])
     try:
         r = _hv_r.post(_subcon_url("http://100.79.177.103:1234/v1/chat/completions"), json={
@@ -314,6 +323,8 @@ def _want_end_verdict(want):
             "messages": [{"role": "user", "content":
                 "A want has run all its steps. WANT: " + str(want.get("want", ""))[:250] +
                 "\nSTEPS DONE:\n" + (hist or "(no step history)") +
+                "\nA step line that begins READ IN FULL means the whole text at that address was read and kept: for a "
+                "want to read that paper or page in full, that is the thing itself done. READ IN PART is not the whole text."
                 "\nJudge honestly: was the want ACTUALLY completed - the thing itself done, not just steps ticked? "
                 'Answer ONLY JSON: {"completed": true/false, "haiku": "three short lines capturing what happened, or what was left undone"}'}]},
             timeout=45)
@@ -379,6 +390,13 @@ CAPABILITIES = [
         "keywords": ["check my email", "read email", "search email", "grocery list", "groceries", "github repository", "github issue", "github pull request"],
         "action": "plugin_query",
         "desc": "Use one explicitly named, policy-approved connected tool and preserve its receipt. Gmail and DoorDash are private read/search lanes; GitHub is read-only.",
+    },
+    {   # 15 November (Gloria): his wants to read a paper in full could only be planned as searches. Before email:
+        # "read the paper" is not a letter, and before read_memory: an address is not his own files.
+        "keywords": ["read the full", "full text", "full paper", "read the paper", "read the article", "read the pdf",
+                     "open the link", "open this link", "open the pdf", "read the preprint", "the paper itself", "the pdf itself"],
+        "action": "read_url",
+        "desc": "Open one link (a page, an article or a PDF) and read its whole text, through the same safe door his letters use",
     },
     {
         "keywords": ["email", "e-mail", "write to", "reach out to", "contact the author", "contact the researcher"],
@@ -743,6 +761,15 @@ def write_journal(want_text):
             f.write(f"\n## {hour} — Want journal"
                     f"{(' [' + want_id + ']') if want_id else ''}\n\n{entry}\n")
         log(f"Want journal entry written to {journal_path}")
+        try:
+            if SCRIPTS not in sys.path: sys.path.insert(0, SCRIPTS)
+            import action_provenance as _wj_ap
+            _wj_ap.record("journal_post", "Want journal %s %s" % (today, hour), "wants-router step write_journal",
+                          trigger="a step of his want: %s" % str(want_text)[:200], want_id=want_id or None,
+                          rule="a write_journal step writes one entry into want-journals/ for the want it serves",
+                          refs={"file": "want-journals/%s.md" % today, "entry": "## %s" % hour}, mem=MEMORY_WJ)
+        except Exception as _wj_ape:
+            log(f"want journal provenance not written: {_wj_ape}")
         # Return the act's own evidence.  The caller records this exact receipt;
         # it does not go hunting in another journal directory afterward.
         return f"Want journal receipt: {journal_path}\n{entry[:700]}"
@@ -1671,6 +1698,7 @@ PARAM_SCHEMAS = {
                        "field": {"type": "str", "required": False, "enum": ["goal", "why", "progress", "next_step"]},
                        "text": {"type": "str", "required": False}, "reason": {"type": "str", "required": False}},
     "web_search":    {"topic": {"type": "str", "required": False}, "query": {"type": "str", "required": False}},
+    "read_url":      {"url": {"type": "str", "required": False}},
     "moltbook":      {"post": {"type": "str", "required": False}},
     "send_email":    {"recipient": {"type": "str", "required": False}, "about": {"type": "str", "required": False},
                       "to": {"type": "str", "required": False}},
@@ -1793,6 +1821,31 @@ def local_analysis(want_text):
 
 
 ACTION_MAP["local_analysis"] = local_analysis
+
+
+def read_url(want_text):
+    """Open one link and read its whole text (want_read_url.py, 15 November): the step's {"url"}, else the first link
+    in its goal, the want, or what its earlier steps found. Through link_fetch (http(s), public hosts, size and
+    redirect caps); a PDF through the Scholar's reader. The findings name the kept text ("receipt: <file>"); NOT
+    READABLE is False, with the reason logged and kept."""
+    try:
+        params = json.loads(os.environ.get("STEP_PARAMS", "{}") or "{}")
+    except Exception:
+        params = {}
+    try:
+        if SCRIPTS not in sys.path: sys.path.insert(0, SCRIPTS)
+        import want_read_url
+        wid = os.environ.get("STEP_WANT_ID", "")
+        out = want_read_url.run(params, want_text, wid, original=os.environ.get("STEP_ORIGINAL_WANT", ""),
+                                want=want_read_url.want_row(wid, MEMORY), mem=MEMORY)
+    except Exception as e:      # never a spine block: one unreadable link is not a dead tool
+        log(f"read_url failed: {type(e).__name__}: {str(e)[:160]}")
+        return False
+    log("read_url: %s" % (str(out).split("\n", 1)[0][:160] if out else "NOT READABLE (see the line above)"))
+    return out
+
+
+ACTION_MAP["read_url"] = read_url
 
 
 def creative_write(want_text):
@@ -2637,6 +2690,11 @@ def main():
                 "tv": "play_on_tv",
                 "silence": "be_silent",
                 "mischief": "be_mischievous",
+                "read_link": "read_url",
+                "open_link": "read_url",
+                "fetch_url": "read_url",
+                "read_paper": "read_url",
+                "read_pdf": "read_url",
             }
             if step_capability and step_capability not in ACTION_MAP:
                 _normalized = _cap_aliases.get(step_capability.lower().replace("-","_").replace(" ","_"))

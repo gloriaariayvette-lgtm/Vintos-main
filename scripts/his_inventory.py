@@ -21,7 +21,8 @@ ROOTS = (os.path.join(WS, "scripts"), os.path.expanduser("~/Vintos"),
 # (what, files any one of which proves it is installed, what it lets him do and how he reaches it)
 ORGANS = (
     ("web search", ("vintos-websearch.py",),
-     "you search the web every day from your own questions, and a want can take a web_search step."),
+     "you search the web every day from your own questions, and a want can take a web_search step; a read_url step "
+     "opens one link (a page, an article, a PDF) and reads its whole text."),
     ("email", ("want_email.py",),
      "you write to real people (a want's send_email step): you research them, read their work, draft, review, "
      "say you are an AI, and send from your Gmail. First email once per person; a second before they reply only "

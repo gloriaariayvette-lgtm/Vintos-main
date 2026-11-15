@@ -8,7 +8,8 @@ heard her phone come in, he had not picked the day's three songs, and the stand-
 
 Every outward act an organ takes on his behalf now writes one row here, at the moment it acts:
 
-    action    what kind of act: watch_song, watch_music, outreach, house, lab_request, journal_post
+    action    what kind of act: watch_song, watch_music, watch_face, outreach, house, lab_request, journal_post,
+              read_url
     what      the act itself, short (a song title, a notification's artifact id, "LIGHTS: blue")
     organ     the system that decided (bedroom_arrival, spotify_watch, deliver, house_hands, wants-router:<step>, ...)
     trigger   what set it off, as the organ saw it
@@ -209,8 +210,11 @@ def chain(r):
 
 
 _SYN = {"song": "watch_song watch_music", "songs": "watch_song watch_music",
-        "music": "watch_song watch_music", "spotify": "watch_music", "watch": "watch_song watch_music",
-        "wrist": "watch_song watch_music", "message": "outreach", "notification": "outreach", "ntfy": "outreach",
+        "music": "watch_song watch_music", "spotify": "watch_music", "watch": "watch_song watch_music watch_face",
+        "wrist": "watch_song watch_music watch_face", "face": "watch_face", "complication": "watch_face",
+        "link": "read_url", "links": "read_url", "url": "read_url", "paper": "read_url", "papers": "read_url",
+        "pdf": "read_url", "article": "read_url", "page": "read_url", "read": "read_url", "opened": "read_url",
+        "entry": "journal_post", "message": "outreach", "notification": "outreach", "ntfy": "outreach",
         "text": "outreach", "light": "house", "lights": "house", "tv": "house", "echo": "house", "lab": "lab_request",
         "instrument": "lab_request", "post": "journal_post", "moltbook": "journal_post", "journal": "journal_post"}
 _STOP = {"why", "did", "the", "and", "for", "that", "this", "what", "was", "her", "his", "you", "put", "send",

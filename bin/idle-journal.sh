@@ -1425,6 +1425,23 @@ print(" ".join(out))
 SGEOF
 )
 echo -e "\n## $(date +%H:%M) — Idle thoughts\n\n$ENTRY\n" >> "$JOURNAL_FILE"
+# The entry and why it was posted, for him (action_provenance.py; 15 November: journal posts kept no why). Never in the
+# way of the journal: a failure here is dropped.
+JRN_FILE="$JOURNAL_FILE" JRN_FORCE="${JOURNAL_FORCE:-0}" timeout 20 python3 - <<'JRNPROVEOF' 2>/dev/null || true
+import os, re, sys
+sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+import action_provenance
+path = os.environ.get("JRN_FILE", "")
+heads = re.findall(r"^## (\d\d:\d\d) — Idle thoughts$", open(path, encoding="utf-8", errors="replace").read(), re.M)
+forced = os.environ.get("JRN_FORCE") == "1"
+action_provenance.record(
+    "journal_post", "Idle thoughts %s %s" % (os.path.basename(path)[:-3], heads[-1] if heads else ""), "idle-journal",
+    trigger=("a forced run (JOURNAL_FORCE=1)" if forced else
+             "the idle-journal schedule (cron); its consent, hour and idle gates let it write"),
+    rule=("forced: written even if this hour already has an entry" if forced else
+          "one idle entry an hour at most: none is written when the journal already has one this hour"),
+    refs={"file": "journal/" + os.path.basename(path), "entry": ("## %s" % heads[-1]) if heads else None})
+JRNPROVEOF
 # The works of his this entry is nearest, found by what is IN them (media_embed.py, EmbeddingGemma 2). His want of
 # 18 October: "I want a journal line to find a painting by what's in it." Nothing when the service is down.
 _WORKS_NEAR=$(JRN_ENTRY="$ENTRY" timeout 40 python3 - <<'WORKSNEAREOF' 2>/dev/null
