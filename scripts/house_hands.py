@@ -331,8 +331,9 @@ def _detach(cmd, env):
     subprocess.Popen(cmd, env=env, stdout=out, stderr=out, start_new_session=True)
 
 
-def do(kind, arg, home=None, run=None, present=False):
-    """One act from one line. (ok, the line to show in its place). present: she is at one of his boards."""
+def do(kind, arg, home=None, run=None, present=False, why=None):
+    """One act from one line. (ok, the line to show in its place). present: she is at one of his boards.
+    why: optional {organ, trigger, want_id, rule} from the caller, kept with a done act (action_provenance.py)."""
     kind = kind.upper()
     if kind in ("TV", "ECHO", "LIGHTS") and len(_today("house")) >= PER_DAY["house"]:
         ok, said = False, "today's %d house acts are used" % PER_DAY["house"]
@@ -360,6 +361,17 @@ def do(kind, arg, home=None, run=None, present=False):
             ok, said = False, "it failed: %s" % str(exc)[:160]
     bucket = {"MISCHIEF": "mischief", "TO GLORIA": "to_gloria", "MAKE": "make", "PRINT": "print", "PAPER": "paper"}.get(kind, "house")
     _note(bucket, "%s: %s" % (kind, arg), ok, said)
+    if ok:
+        try:
+            import action_provenance
+            given = why if isinstance(why, dict) else {}
+            action_provenance.record(
+                "house", "%s: %s" % (kind, str(arg)[:80]), given.get("organ") or "house_hands",
+                trigger=given.get("trigger") or ("she is at one of your boards" if present else None),
+                want_id=given.get("want_id"), rule=given.get("rule") or "within today's %s budget" % bucket,
+                mem=os.path.dirname(LOG))
+        except Exception:
+            pass
     return ok, "%s %s" % (ICON.get(kind, ""), said if ok else "%s: not done, %s" % (kind.title(), said))
 
 

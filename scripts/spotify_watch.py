@@ -226,6 +226,16 @@ def play(query, now=None, nudge=False, sleep=time.sleep, clock=time.time):
     finally:
         if held: _WAITING.release()
         _log(row)
+        if row.get("played"):
+            try:
+                import action_provenance
+                action_provenance.record(
+                    "watch_music", row.get("track") or row.get("asked"), "spotify_watch (avatar chat)",
+                    trigger="you wrote [SPOTIFY: %s] in an avatar reply" % row.get("asked"),
+                    rule="a [SPOTIFY: ...] tag plays on her Watch only, never her phone or the Echo, and not while she sleeps",
+                    refs={"device": row.get("device")}, mem=os.path.dirname(LOG))
+            except Exception:
+                pass
 
 
 def take(reply, act=True):

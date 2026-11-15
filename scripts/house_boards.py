@@ -520,7 +520,7 @@ def _house(kind, arg, room=None):
     if kind == "LIGHTS":
         colour = (arg.split() or [""])[0]
         arg = "%s %s" % (colour, room) if room else colour
-    return house_hands.do(kind, arg, present=True)
+    return house_hands.do(kind, arg, present=True, why={"organ": "house_boards (her phone at one of your boards)"})
 
 
 def act(kind, arg, moment, board, st, now, cfg, catalog=None):

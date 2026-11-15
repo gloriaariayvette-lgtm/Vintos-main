@@ -1475,27 +1475,70 @@ def links_read(body, fetch=None, limit=LINKS_READ, chars=LINK_CHARS):
         # one in. The same reader now opens a linked paper here.
         reader = _pdf_reader()
         fetch = lambda url: link_fetch.fetch(url, pdf=reader)
-    out = []
-    for l in link_fetch.links_in(body)[:limit]:
+    # 15 November: Muse's letter carried seven links and only the first five were opened; the sixth (a PDF) and the
+    # seventh (a PhilArchive paper) were dropped without a word, and his reply said of each "It wasn't shown to me".
+    # A link past the limit is now listed NOT OPENED YET, and READ MORE [LINK n] opens it; a link written twice is
+    # opened once.
+    out, seen = [], set()
+    links = [l for l in link_fetch.links_in(body) if not ((l["url"] or l["original"]) in seen
+                                                        or seen.add(l["url"] or l["original"]))]
+    for i, l in enumerate(links):
+        if i >= limit:
+            out.append({"url": (l["url"] or l["original"])[:500], "original": l["original"][:500], "kind": NOT_OPENED,
+                        "why": "LINK %d of the letter's %d: only the first %d links are opened when a letter is read. "
+                               "READ MORE [LINK %d] opens this one." % (i + 1, len(links), limit, i + 1), "text": ""})
+            continue
         try:
             r = fetch(l["original"])
         except Exception as exc:
             r = {"original_url": l["original"], "url": l["url"], "fetched": False, "kind": "error", "why": str(exc)[:160]}
-        page = {"url": (r.get("final_url") or r.get("url") or l["url"] or l["original"])[:500],
-                "kind": r.get("kind") or ("fetched" if r.get("fetched") else "not read"),
-                "why": str(r.get("why") or "")[:200], "text": ""}
-        if r.get("fetched") and r.get("structure"):
-            # a PDB/mmCIF file (26 October): its preview is made to fit the cap, so the counts, the "not an analysis"
-            # line and what was shown of the whole survive it; the file itself is not kept with the letter
-            page.update(text=link_fetch.structure_view(r["structure"], chars), structure=True)
-        elif r.get("fetched"):
-            full = str(r.get("text") or "")
-            kept = full[:LINK_RETAIN]
-            page.update(text=full[:chars], chars=len(full), retained=len(kept), shown=[0, min(chars, len(full))],
-                        bytes=int(r.get("bytes") or 0), sha256=_keep_page(kept),
-                        download_truncated=bool(r.get("truncated") or r.get("kind") == "truncated"))
-        out.append(page)
+        out.append(_page_of(r, l, chars))
     return out
+
+
+NOT_OPENED = "not_opened"
+
+
+def _page_of(r, l, chars=LINK_CHARS):
+    """One link's page as kept with the letter, from link_fetch's receipt `r` for link `l`."""
+    link_fetch = _link_fetch()
+    page = {"url": (r.get("final_url") or r.get("url") or l["url"] or l["original"])[:500],
+            "kind": r.get("kind") or ("fetched" if r.get("fetched") else "not read"),
+            "why": str(r.get("why") or "")[:200], "text": ""}
+    if r.get("fetched") and r.get("structure"):
+        # a PDB/mmCIF file (26 October): its preview is made to fit the cap, so the counts, the "not an analysis"
+        # line and what was shown of the whole survive it; the file itself is not kept with the letter
+        page.update(text=link_fetch.structure_view(r["structure"], chars), structure=True)
+    elif r.get("fetched"):
+        full = str(r.get("text") or "")
+        kept = full[:LINK_RETAIN]
+        page.update(text=full[:chars], chars=len(full), retained=len(kept), shown=[0, min(chars, len(full))],
+                    bytes=int(r.get("bytes") or 0), sha256=_keep_page(kept),
+                    download_truncated=bool(r.get("truncated") or r.get("kind") == "truncated"))
+    return page
+
+
+def _open_later(page, fetch=None):
+    """A NOT OPENED YET link opened now, when he asks for it: the page updated in place, as links_read would have
+    kept it. Only ever a link of his own agent's letter (pages exist for nothing else)."""
+    if fetch is None:
+        link_fetch, reader = _link_fetch(), _pdf_reader()
+        fetch = lambda url: link_fetch.fetch(url, pdf=reader)
+    original = page.get("original") or page.get("url") or ""
+    try:
+        r = fetch(original)
+    except Exception as exc:
+        r = {"url": page.get("url"), "fetched": False, "kind": "error", "why": str(exc)[:160]}
+    fresh = _page_of(r, {"url": page.get("url") or original, "original": original})
+    page.clear()
+    page.update(fresh, opened_on_ask=True)
+    return page
+
+
+def more_to_read(pages):
+    """Whether READ MORE can reach anything: a page shown only in part, or a link not opened yet."""
+    return any((p.get("sha256") and (p.get("shown") or [0, 0])[1] < int(p.get("retained") or 0))
+               or p.get("kind") == NOT_OPENED for p in pages or [])
 
 
 def _span(a, b, n):
@@ -1542,6 +1585,8 @@ def pages_view(pages):
                                                  "[SHOWN: the excerpt kept when the letter was read, %d characters; "
                                                  "the page's length was not recorded and nothing more was kept]\n"
                                                  % len(p["text"]), p["text"]))
+        elif p.get("kind") == NOT_OPENED:
+            lines.append("[LINK %d] %s\nNOT OPENED YET: %s" % (i, p["url"], p.get("why")))
         else:
             lines.append("[LINK %d] %s\nNOT READ (%s): %s" % (i, p["url"], p.get("kind"), p.get("why")))
     if more:
@@ -1594,12 +1639,13 @@ def _not_further(p, n, kept, at, what):
     return "end_of_page", "%s: the page ends at character %d" % (what, n)
 
 
-def read_more(pages, asks, prior=(), budget=PASSAGES_PER_READ):
+def read_more(pages, asks, prior=(), budget=PASSAGES_PER_READ, fetch=None):
     """The passages asked for, from each page's kept text: [{link, url, ask, status, from, to, of, text, why}].
     An ask is {"link": n, "find": "<heading, section number or word>"}, {"link": n, "from": <character, from 1>} or
     {"link": n} (go on from where the last reading of it stopped). The same find asked again goes to its next match.
     Status is "shown", or why not: not_read, not_kept, absent, beyond_retained, beyond_download_cap, end_of_page,
-    over_budget. Read only: nothing is fetched again."""
+    over_budget. Nothing is fetched again, except a link listed NOT OPENED YET, which is opened once when asked for
+    (its page is updated in place) and read from its start."""
     out, done = [], list(prior)
     cache = {}
     for ask in asks:
@@ -1621,6 +1667,12 @@ def read_more(pages, asks, prior=(), budget=PASSAGES_PER_READ):
         if len(out) >= budget:
             out.append(dict(rec, status="over_budget", why="the READ MORE limit is spent (%d passages a reading, %d a letter)"
                                                                % (PASSAGES_PER_READ, PASSAGES_PER_LETTER))); continue
+        fresh = False
+        if p.get("kind") == NOT_OPENED:
+            _open_later(p, fetch)
+            rec["url"] = p.get("url", "")
+            fresh = True
+            cache.pop(k, None)
         if not p.get("text") and not p.get("chars"):
             out.append(dict(rec, status="not_read", why="LINK %d was NOT READ (%s): %s" % (k, p.get("kind"), p.get("why")))); continue
         if p.get("structure"):
@@ -1647,6 +1699,8 @@ def read_more(pages, asks, prior=(), budget=PASSAGES_PER_READ):
             ls = full.rfind("\n", 0, at) + 1
             start = ls if at - ls <= 200 else max(0, at - 200)
             rec["match"] = "match %d of %d from character %d" % (nth, of, begin + 1)
+        elif start is None and fresh:
+            start = 0           # opened just now: nothing of it has been shown yet
         elif start is None:
             start = max([int(d["to"]) for d in mine] + [int((p.get("shown") or [0, 0])[1])])
         start = max(0, start)
@@ -1663,7 +1717,8 @@ def passages_view(passages):
     """The passages read further into the links, each labelled with where it is; '' when none."""
     if not passages:
         return ""
-    lines = ["READ FURTHER INTO THE LINKS (READ MORE, from the same kept text of each link; nothing fetched again):"]
+    lines = ["READ FURTHER INTO THE LINKS (READ MORE, from the same kept text of each link; nothing fetched again, "
+             "except a link not opened before, opened now):"]
     for d in passages:
         head = "[LINK %d, READ MORE %s] %s" % (d.get("link"), d.get("ask"), d.get("url"))
         if d.get("status") == "shown":
@@ -1722,7 +1777,8 @@ def _json_asks(got):
     return [a for a in asks if isinstance(a, dict)][:PASSAGES_PER_READ] if isinstance(asks, list) else []
 
 
-READER_MORE = ("\n\nA page above shown only in part can be read further. If you need a passage past what is shown (a "
+READER_MORE = ("\n\nA page above shown only in part can be read further, and a link marked NOT OPENED YET can be opened "
+               "the same way ({\"link\": <n>}). If you need a passage past what is shown (a "
                "section, a heading, an annotation the letter cites), add to your JSON \"read_more\": [{\"link\": <n>, "
                "\"find\": \"<heading, section number or word>\"} or {\"link\": <n>, \"from\": <character>}] (at most "
                "%d); you will be shown those passages and asked again." % PASSAGES_PER_READ)
@@ -2076,7 +2132,7 @@ def read_mail(msgs, think=None, want=None, now=None):
         passages = read_more(pages, letter_cues(m["body"], pages)) if pages else []
         if pages:
             ask += "\n\n" + pages_view(pages) + ("\n\n" + passages_view(passages) if passages else "")
-        partial = any(p.get("sha256") and (p.get("shown") or [0, 0])[1] < int(p.get("retained") or 0) for p in pages)
+        partial = more_to_read(pages)
         codex = agent == "Codex"
         if codex:
             arch = _codex_archive_view(m["id"])
@@ -2163,7 +2219,8 @@ LETTER_REPLY = ("\n\n---\nYou have read this letter from your agent %s, sent to 
                 "its own line that begins \"For Gloria:\", one line each, so it reaches her.\n"
                 "Plain words, your own voice, short. No metaphors, no talk of silence, weight, pulse or tension. No "
                 "links, nothing private about Gloria. Write only the reply.")
-LETTER_MORE = ("\nA linked page shown only in part is not unread, and you never ask %s to paste it. If you need a passage "
+LETTER_MORE = ("\nA linked page shown only in part is not unread, and you never ask %s to paste it. A link marked NOT "
+               "OPENED YET is opened by READ MORE [LINK n]; never say it was not shown to you. If you need a passage "
                "past what is shown (a section, a heading, an annotation the letter cites), write only lines of the form "
                "READ MORE [LINK n]: \"<heading, section number or word>\" or READ MORE [LINK n] FROM <character>, at "
                "most %d, and nothing else: you will be shown those passages and write the reply then.")
@@ -2342,7 +2399,7 @@ def reply_letters(think=None, send=None, now=None, promise_think=None, bring=Non
             system += "\n\n" + completed_work(ws=WS)
         except Exception:
             pass
-        partial = any(p.get("sha256") and (p.get("shown") or [0, 0])[1] < int(p.get("retained") or 0) for p in kept_pages)
+        partial = more_to_read(kept_pages)
         if partial:
             system += LETTER_MORE % (agent, PASSAGES_PER_READ)
         if archive:             # the same archive view his reading had

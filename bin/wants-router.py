@@ -2998,6 +2998,11 @@ def _spine_wrap(_name, _fn):
             log(f"  → BLOCKED ({_name}): {b.get('block_type')} — standing, not re-run "
                 f"(resume: {b.get('resume_event')})")
             return False
+        # The want this step serves, for any act it takes (action_provenance.py): set around the step, removed after,
+        # so nothing done later in this process is put down to it.
+        _ap_prev = {_k: os.environ.get(_k) for _k in ("VINTOS_ACTION_WANT_ID", "VINTOS_ACTION_ORGAN")}
+        os.environ["VINTOS_ACTION_WANT_ID"] = os.environ.get("STEP_WANT_ID", "")
+        os.environ["VINTOS_ACTION_ORGAN"] = "wants-router step %s" % _name
         try:
             out = _fn(want_text, *a, **k)
             if b:
@@ -3012,6 +3017,10 @@ def _spine_wrap(_name, _fn):
         except Exception as e:
             log(f"  → {_name} FAILED (not blocked): {str(e)[:120]}")
             return False
+        finally:
+            for _k, _v in _ap_prev.items():
+                if _v is None: os.environ.pop(_k, None)
+                else: os.environ[_k] = _v
         # `e` is unbound once its except clause ends; the block record below raised NameError instead of
         # being written, so no block was ever recorded (review, 2026-09-05)
         blocks[_name] = {"block_type": bt, "evidence": str(err)[:250],
