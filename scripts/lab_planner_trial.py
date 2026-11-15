@@ -31,15 +31,26 @@ Rollback: remove the line from vintos.env. The switch is read at every planner c
 model's alone; no restart and no code change. While the trial model is unreachable the Lab plans as it does today
 (fail-open), and tries it again after DOWN_SECONDS.
 
+LAB_PLANNER_TRIAL_LOAD=swap (Gloria, 14 November): Aegis's 16 GB card holds one 12B model, and c1 is not AEON's
+replacement for the house (on a check of AEON's other callers it answered "no" where the causality evaluator's rule is
+"absence is unsure, never no"). So the worm is loaded in AEON's place for a planning call: holding the Gemma watchdog
+lock (the one Evo 2 and the watchdog share), aegis-lab-c1-load.sh unloads every LLM and loads lab-c1; the trial asks it
+through the shim's Aegis-only lane (/gemma-lab-c1-local); then aegis-gemma-load.sh puts AEON back, before the current
+model is ever asked. AEON is off the card for that window (about 40 s), so a window opens at most once per
+LAB_PLANNER_TRIAL_SWAP_GAP seconds (default 900); between windows the current model plans alone (reason swap_wait).
+
 planner-trial.jsonl, beside the notebook, holds per call who proposed, accepted or fell back and the rule's name,
 and seconds spent; per turn, the outcome. Counts and names only: no question, request or reply text. The trial
 model's call is also written to model-calls.jsonl, as every Lab model call is (Gloria, 3 November), tagged
 "trial" so it is never mistaken for the current model's.
 """
+import contextlib
+import fcntl
 import hashlib
 import json
 import os
 import re
+import subprocess
 import time
 import urllib.error
 import urllib.parse
@@ -55,7 +66,11 @@ DOWN_SECONDS = 600                      # after the trial model fails to answer,
 MAX_TOKENS = 800                        # the investigation planner's own budget
 LOG = os.path.join(lab.ROOT, 'planner-trial.jsonl')
 _LOOPBACK = ('127.0.0.1', 'localhost', '::1')
-_STATE = {'down_until': 0.0, 'turn': None, 'calls': []}
+_STATE = {'down_until': 0.0, 'turn': None, 'calls': [], 'swap_next': 0.0}
+# LAB_PLANNER_TRIAL_LOAD=swap: the lock Evo 2 and the watchdog already share (not /tmp: the Lab has PrivateTmp)
+WATCHDOG_LOCK = os.path.join(lab.MEM, '.gemma-watchdog.lock')
+SWAP_GAP = 900.0
+SWAP_TIMEOUT = 240
 
 
 def _env_path():
@@ -91,6 +106,66 @@ def _timeout():
         return max(5.0, float(setting('LAB_PLANNER_TRIAL_TIMEOUT', str(DEFAULT_TIMEOUT))))
     except (TypeError, ValueError):
         return DEFAULT_TIMEOUT
+
+
+def _swap_mode():
+    return str(setting('LAB_PLANNER_TRIAL_LOAD') or '').strip().lower() == 'swap'
+
+
+def _swap_gap():
+    try:
+        return max(60.0, float(setting('LAB_PLANNER_TRIAL_SWAP_GAP', str(SWAP_GAP))))
+    except (TypeError, ValueError):
+        return SWAP_GAP
+
+
+def _loader(name):
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), name)
+
+
+def _run_loader(name):
+    done = subprocess.run([_loader(name)], text=True, capture_output=True, timeout=SWAP_TIMEOUT, check=False)
+    return done.returncode == 0
+
+
+@contextlib.contextmanager
+def worm_on_card(call):
+    """Yields True with lab-c1 loaded in AEON's place, False (call['reason'] says why) when no window opens now. On
+    exit AEON is back on the card (aegis-gemma-load.sh, which also takes lab-c1 off) before the lock is let go."""
+    if time.time() < _STATE['swap_next']:
+        call['reason'] = 'swap_wait'
+        yield False
+        return
+    with open(WATCHDOG_LOCK, 'a+') as stream:
+        try:
+            fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:                       # Evo 2 or the watchdog is changing LM Studio: not now
+            call['reason'] = 'swap_busy'
+            yield False
+            return
+        started = time.time()
+        try:
+            try:
+                loaded = _run_loader('aegis-lab-c1-load.sh')
+            except Exception:
+                loaded = False
+            call['swap_s'] = round(time.time() - started, 2)
+            if not loaded:
+                call['reason'] = 'swap_failed'
+            yield loaded
+        finally:
+            back = time.time()
+            try:
+                call['restored'] = _run_loader('aegis-gemma-load.sh')
+            except Exception:
+                call['restored'] = False
+            call['restore_s'] = round(time.time() - back, 2)
+            _STATE['swap_next'] = time.time() + _swap_gap()
+            if not call['restored']:          # the five-minute watchdog reloads AEON; the Lab's faults say so now
+                try:
+                    lab._fault('lab_c1_restore_aeon', RuntimeError('AEON reload after the planner worm failed'))
+                except Exception:
+                    pass
 
 
 def _ask(name, system, prompt, timeout=None):
@@ -146,46 +221,49 @@ def propose(system, prompt, investigation, note=None, planned=None):
             system = system + lessons()
         except Exception:
             pass
-    started = time.time()
-    budget = _timeout()      # one budget for both attempts: the current model is never kept waiting past it
-    for attempt in ((1, 2) if worm else (1,)):
-        left = budget - (time.time() - started)
-        if attempt > 1 and left < 5.0:             # no time for Compass's retry: the current model answers
-            call['reason'] = 'retry_no_time'
-            return call
-        try:
-            reply = _ask(name, system, prompt, timeout=max(1.0, left))
-        except urllib.error.HTTPError as exc:      # it answered, with an error (a prompt over its context): not down
-            call.update(reason='trial_error', error='HTTP%d' % int(getattr(exc, 'code', 0) or 0),
-                        trial_s=round(time.time() - started, 2))
-            return call
-        except Exception as exc:                   # refused, reset, timed out, no tunnel: the current model plans alone
-            _STATE['down_until'] = time.time() + DOWN_SECONDS
-            call.update(reason='trial_down', error=type(exc).__name__, trial_s=round(time.time() - started, 2))
-            return call
-        call['trial_s'] = round(time.time() - started, 2)
-        _record(name, system, prompt, reply)
-        if worm:     # the worm's Witness: the Lab's rules + its wrapper rules (an unreadable retry -> current model)
+    with contextlib.ExitStack() as stack:
+        if _swap_mode() and not stack.enter_context(worm_on_card(call)):
+            return call                       # no window now: the current model plans (fell_back logs the reason)
+        started = time.time()
+        budget = _timeout()      # one budget for both attempts: the current model is never kept waiting past it
+        for attempt in ((1, 2) if worm else (1,)):
+            left = budget - (time.time() - started)
+            if attempt > 1 and left < 5.0:             # no time for Compass's retry: the current model answers
+                call['reason'] = 'retry_no_time'
+                return call
             try:
-                value, why, detail = witness(reply, prompt, investigation, note, planned)
-            except Exception as exc:               # an odd reply the wrapper rules cannot read: the current model
-                value, why, detail = None, 'witness_error', type(exc).__name__
-        else:
-            try:
-                value = lab._json_object(reply)
-            except lab.ModelJSONError:
-                value, why, detail = None, 'unreadable', 'the reply was not one JSON object'
+                reply = _ask(name, system, prompt, timeout=max(1.0, left))
+            except urllib.error.HTTPError as exc:      # it answered, with an error (a prompt over its context): not down
+                call.update(reason='trial_error', error='HTTP%d' % int(getattr(exc, 'code', 0) or 0),
+                            trial_s=round(time.time() - started, 2))
+                return call
+            except Exception as exc:                   # refused, reset, timed out, no tunnel: the current model plans alone
+                _STATE['down_until'] = time.time() + DOWN_SECONDS
+                call.update(reason='trial_down', error=type(exc).__name__, trial_s=round(time.time() - started, 2))
+                return call
+            call['trial_s'] = round(time.time() - started, 2)
+            _record(name, system, prompt, reply)
+            if worm:     # the worm's Witness: the Lab's rules + its wrapper rules (an unreadable retry -> current model)
+                try:
+                    value, why, detail = witness(reply, prompt, investigation, note, planned)
+                except Exception as exc:               # an odd reply the wrapper rules cannot read: the current model
+                    value, why, detail = None, 'witness_error', type(exc).__name__
             else:
-                why, detail = verdict(value, investigation, note, planned)
-        call['reason'] = why or 'ok'
-        if not why:
-            call.update(accepted=True, value=value, stage=attempt)
-            _write(call)
-            return call
-        if worm and attempt == 1:                  # Compass: once more, told why, in the Lab's own re-plan words
-            call['first_reason'] = why
-            prompt = prompt + retry_tail(value, why, detail)
-    return call
+                try:
+                    value = lab._json_object(reply)
+                except lab.ModelJSONError:
+                    value, why, detail = None, 'unreadable', 'the reply was not one JSON object'
+                else:
+                    why, detail = verdict(value, investigation, note, planned)
+            call['reason'] = why or 'ok'
+            if not why:
+                call.update(accepted=True, value=value, stage=attempt)
+                _write(call)
+                return call
+            if worm and attempt == 1:                  # Compass: once more, told why, in the Lab's own re-plan words
+                call['first_reason'] = why
+                prompt = prompt + retry_tail(value, why, detail)
+        return call
 
 
 def fell_back(call, live_seconds):

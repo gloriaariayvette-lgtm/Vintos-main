@@ -28,6 +28,10 @@ GEMMA_URL = "http://100.79.177.103:1234/v1/chat/completions"
 GEMMA_MODEL = "aeon-gemma-4-12b"
 AEGIS_GEMMA_URL = "http://172.18.16.1:1234/api/v1/chat"
 AEGIS_GEMMA_MODEL = "aeon/gemma-4-12b"
+# The Lab planner worm (c1, LoRA fused on AEON) has its own Aegis-only lane. The Lab loads it in AEON's place for a
+# planning call and puts AEON back (lab_planner_trial, LAB_PLANNER_TRIAL_LOAD=swap): the 16 GB card holds one 12B.
+LAB_C1_MODEL = "lab-c1"
+LAB_C1_PATH = "/gemma-lab-c1-local/v1/chat/completions"
 CLAUDE_MODEL = "claude-opus-4-8"
 FLEET_DEFAULT = "claude-haiku-5-5"
 LOG = "/tmp/vintos-claude-shim.log"
@@ -40,6 +44,7 @@ PROVIDER_CAPS = {
     "xai":       {"temperature", "top_p", "max_tokens", "stop", "response_format", "tools", "tool_choice", "images"},
     "gemma":     {"temperature", "top_p", "max_tokens", "stop", "response_format"},
     "aegis_gemma":{"temperature", "top_p", "max_tokens"},
+    "aegis_lab_c1":{"temperature", "top_p", "max_tokens"},
     "pool":      {"temperature", "top_p", "max_tokens", "stop", "response_format"},
 }
 SAMPLING_KEYS = ("temperature", "top_p", "max_tokens", "stop", "response_format", "tools", "tool_choice")
@@ -314,25 +319,30 @@ def gemma_complete(j, call=None):
     if not res["model"]: res["model"] = GEMMA_MODEL
     return res
 
-def aegis_gemma_complete(j, call=None):
+def aegis_gemma_complete(j, call=None, model=AEGIS_GEMMA_MODEL, provider="aegis_gemma"):
     """Aegis-local utility Gemma. Native LM Studio makes thinking-off inspectable."""
     call = call or _Call(j)
-    unsup = unsupported_features(j, "aegis_gemma")
-    if unsup: return GR.make_result("aegis_gemma", status="unavailable", reason="unsupported on aegis_gemma: " + ",".join(unsup))
-    systems, turns = [], []
+    unsup = unsupported_features(j, provider)
+    if unsup: return GR.make_result(provider, status="unavailable", reason="unsupported on %s: " % provider + ",".join(unsup))
+    systems, turns, users = [], [], []
     for message in j.get("messages", []):
         content = message.get("content", "")
         if not isinstance(content, str): content = json.dumps(content, ensure_ascii=False)
         if message.get("role") == "system": systems.append(content)
-        else: turns.append("%s:\n%s" % (str(message.get("role") or "user").upper(), content))
-    body = {"model": AEGIS_GEMMA_MODEL, "input": "\n\n".join(turns) or ".",
+        else:
+            turns.append("%s:\n%s" % (str(message.get("role") or "user").upper(), content))
+            if message.get("role") == "user": users.append(content)
+    # The planner worm was trained and gated on one system turn and one plain user turn: send its prompt as the
+    # user turn itself, not under a "USER:" label it never saw.
+    text_in = users[0] if provider == "aegis_lab_c1" and len(turns) == 1 and len(users) == 1 else "\n\n".join(turns)
+    body = {"model": model, "input": text_in or ".",
             "system_prompt": "\n\n".join(systems), "reasoning": "off", "store": False,
             "max_output_tokens": int(j.get("max_tokens") or 1024)}
     if j.get("temperature") is not None: body["temperature"] = float(j["temperature"])
     if j.get("top_p") is not None: body["top_p"] = float(j["top_p"])
-    _, d, err = _post_json("aegis_gemma", AEGIS_GEMMA_URL, body, {"Content-Type": "application/json"}, 180, call)
-    if err is not None and d is None: _log(f"aegis gemma error: {err['reason']}"); return err
-    if not isinstance(d, dict): return GR.make_result("aegis_gemma", status="error", reason="non-json body")
+    _, d, err = _post_json(provider, AEGIS_GEMMA_URL, body, {"Content-Type": "application/json"}, 180, call)
+    if err is not None and d is None: _log(f"{provider} error: {err['reason']}"); return err
+    if not isinstance(d, dict): return GR.make_result(provider, status="error", reason="non-json body")
     output = d.get("output") if isinstance(d.get("output"), list) else []
     reasoning = [x for x in output if isinstance(x, dict) and x.get("type") == "reasoning" and x.get("content")]
     stats = d.get("stats") if isinstance(d.get("stats"), dict) else {}
@@ -345,7 +355,7 @@ def aegis_gemma_complete(j, call=None):
             break
     if reasoning or int(stats.get("reasoning_output_tokens") or 0) != 0:
         # The refusal keeps the stop the provider reported: a refused reply that was also cut is two facts, not one.
-        result = GR.make_result("aegis_gemma", model=d.get("model_instance_id") or AEGIS_GEMMA_MODEL,
+        result = GR.make_result(provider, model=d.get("model_instance_id") or model,
                                 status="error", reason="thinking-off contract violated", finish_reason=finish)
         result["finish_reason_source"] = finish_source
         return result
@@ -354,11 +364,15 @@ def aegis_gemma_complete(j, call=None):
     usage = {"input_tokens": stats.get("input_tokens"),
              "output_tokens": stats.get("total_output_tokens")}
     state = "valid" if text else "error"
-    result = GR.make_result("aegis_gemma", model=d.get("model_instance_id") or AEGIS_GEMMA_MODEL,
+    result = GR.make_result(provider, model=d.get("model_instance_id") or model,
                           request_id=d.get("response_id", ""), status=state, usage=usage,
                           text=text, finish_reason=finish, reason="" if text else "empty completion")
     result["finish_reason_source"] = finish_source
     return result
+
+def aegis_lab_c1_complete(j, call=None):
+    """The Lab planner worm on Aegis, through the same native thinking-off contract as AEON."""
+    return aegis_gemma_complete(j, call, model=LAB_C1_MODEL, provider="aegis_lab_c1")
 
 # ---------------------------------------------------------------- local pool (Gloria 2026-11-05)
 # A /pool/<task>/... call goes to the best model for that task on whichever machine has room (local_pool.py).
@@ -416,7 +430,7 @@ def pool_complete(j, call, task):
     return GR.make_result("pool", status="unavailable", reason="pool: " + ("; ".join(tried) or "no lane for its choices")[:300])
 
 PROVIDERS = {"anthropic": claude_complete, "xai": xai_complete, "gemma": gemma_complete,
-             "aegis_gemma": aegis_gemma_complete}
+             "aegis_gemma": aegis_gemma_complete, "aegis_lab_c1": aegis_lab_c1_complete}
 
 def forward_xai(path, raw):
     """Forward raw bytes to real x.ai on the SAME path (images / anything non-chat). Returns (status, body_bytes)."""
@@ -469,11 +483,13 @@ def _without_26b(chain):
 
 def provider_chain(j, path):
     if path == "/gemma-aegis-local/v1/chat/completions": return ["aegis_gemma"]   # Aegis AEON only, before and after the flip
+    if path == LAB_C1_PATH: return ["aegis_lab_c1"]   # the Lab's planner worm on Aegis only: no other model answers for it
     chain = _provider_chain(j, path)
     return _without_26b(chain) if aeon_everywhere() else chain
 
 def _provider_chain(j, path):
     if path == "/gemma-aegis-local/v1/chat/completions": return ["aegis_gemma"]
+    if path == LAB_C1_PATH: return ["aegis_lab_c1"]
     task = pool_task(path)
     if task == "subconscious": return subconscious_chain()
     if task: return ["pool:" + task] + POOL_FALLBACK.get(task, POOL_FALLBACK_DEFAULT)
@@ -506,7 +522,7 @@ def openai_wrap(res, requested_model=None):
            "choices": [{"index": 0, "message": msg, "finish_reason": res["finish_reason"] or "stop"}]}
     if res.get("usage"): out["usage"] = res["usage"]
     else: out["usage_estimated"] = True
-    if res["provider"] == "aegis_gemma":
+    if res["provider"] in ("aegis_gemma", "aegis_lab_c1"):
         out["choices"][0]["finish_reason"] = res["finish_reason"] or None
         out["finish_reason_source"] = res.get("finish_reason_source")
     return json.dumps(out).encode()

@@ -120,6 +120,34 @@ CALLS.clear(); S.urllib.request.urlopen = fake_urlopen({"gemma": lambda body, h:
 bad = S.aegis_gemma_complete(dict(BASE))
 check("Aegis utility lane refuses a response that violates thinking-off",
       bad["status"] == "error" and bad["reason"] == "thinking-off contract violated", bad)
+C1_OK = lambda body, h: {"model_instance_id": "lab-c1", "response_id": "c1_1",
+                          "output": [{"type": "message", "content": "{\"route\": \"finish\"}"}],
+                          "stats": {"input_tokens": 9, "total_output_tokens": 4, "reasoning_output_tokens": 0}}
+PLAN = {"model": "lab-c1", "temperature": 0, "seed": 0, "max_tokens": 800,
+        "chat_template_kwargs": {"enable_thinking": False},
+        "messages": [{"role": "system", "content": "plan"}, {"role": "user", "content": "{\"task\": 1}"}]}
+check("the Lab planner worm's lane is Aegis-only: nothing else answers for it",
+      S.provider_chain(PLAN, S.LAB_C1_PATH) == ["aegis_lab_c1"] and S._provider_chain(PLAN, S.LAB_C1_PATH) == ["aegis_lab_c1"])
+s, h, b = run(dict(PLAN), path=S.LAB_C1_PATH, gemma=C1_OK, xai=XAI_OK, anthropic=ANTH_OK)
+sent = CALLS[0][1] if CALLS else {}
+check("lab-c1 lane: native thinking off, model lab-c1, the plain user turn, one send to Aegis only",
+      s == 200 and h["x-vintos-provider"] == "aegis_lab_c1" and b["model"] == "lab-c1"
+      and sent.get("model") == "lab-c1" and sent.get("reasoning") == "off" and sent.get("store") is False
+      and sent.get("input") == '{"task": 1}' and sent.get("system_prompt") == "plan"
+      and sent.get("temperature") == 0.0 and sent.get("max_output_tokens") == 800
+      and [c[0] for c in CALLS] == ["gemma"], (s, h, sent, CALLS))
+s, h, b = run(dict(PLAN), path=S.LAB_C1_PATH, gemma=XAI_DOWN, xai=XAI_OK, anthropic=ANTH_OK)
+check("lab-c1 lane down -> 502, never another model's plan",
+      s == 502 and [c[0] for c in CALLS] == ["gemma"] and b["error"]["providers"][0]["provider"] == "aegis_lab_c1", (s, b))
+CALLS.clear(); S.urllib.request.urlopen = fake_urlopen({"gemma": lambda body, h: {
+    "model_instance_id": "lab-c1", "output": [{"type": "reasoning", "content": "x"}, {"type": "message", "content": "{}"}],
+    "stats": {"reasoning_output_tokens": 2}}})
+bad = S.aegis_lab_c1_complete(dict(PLAN))
+check("lab-c1 lane refuses a reply that thought", bad["status"] == "error" and bad["reason"] == "thinking-off contract violated"
+      and bad["provider"] == "aegis_lab_c1", bad)
+s, h, b = run(dict(BASE), path="/gemma-aegis-local/v1/chat/completions", gemma=AEGIS_OK)
+check("AEON's local lane is unchanged: model aeon, labelled turns",
+      s == 200 and CALLS[0][1].get("model") == S.AEGIS_GEMMA_MODEL and CALLS[0][1].get("input") == "USER:\nhi", CALLS)
 
 print("--- 41: real model / usage / provider ---")
 s, h, b = run(dict(BASE), anthropic=ANTH_OK, xai=XAI_OK)

@@ -48,7 +48,9 @@ curl -fsS --max-time 5 "$BASE/api/v1/models" >/dev/null || {
 # resident. Unload only this model; the Nomic embedding model stays untouched.
 # The model it replaced (Google's QAT, until 4 November) is unloaded too: LM Studio stacks models rather than
 # swapping them, and the two together (about 21 GB) do not fit Aegis's 16 GB card.
-for resident in "$IDENTIFIER" "google/gemma-4-12b-qat"; do
+# The Lab planner worm (lab-c1) is loaded only in AEON's place, for a planning call; any reload of AEON takes it off
+# first, so a Lab that died mid-call never leaves two 12B models on the card (aegis-lab-c1-load.sh).
+for resident in "$IDENTIFIER" "google/gemma-4-12b-qat" "lab-c1"; do
   if "$LMS" ps --json | python3 -c '
 import json, sys
 identifier = sys.argv[1]
