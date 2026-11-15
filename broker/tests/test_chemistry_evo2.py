@@ -33,12 +33,12 @@ assert 'LOADER="/home/gloria/.vintos/workspace/scripts/aegis-gemma-load.sh"' in 
 assert 'AEON_KEY="gemma-4-12b-it-aeon-abliterated-k4"' in loader and 'AEON_ID="aeon/gemma-4-12b"' in loader
 assert 'WORM_KEY="lab-c1-gemma-4-12b-aeon"' in loader and 'WORM_ID="lab-c1"' in loader
 assert 'Gemma-4-12B-it-AEON-Abliterated-K4-BF16.Q4_K_M.gguf"' in loader and '"architecture") == "gemma4"' in loader
-assert '"$LMS" load "$key"' in loader and 'quantization") or {}).get("name") == "Q4_K_M"' in loader
+assert '"$LMS" load "$key" --identifier "$id"' in loader and 'quantization") or {}).get("name") == "Q4_K_M"' in loader
 assert '"$LMS" server start --bind "$SERVER_BIND" --port "$SERVER_PORT"' in loader
 assert '"$LMS" server stop' in loader and '"$BASE/api/v1/models"' in loader
-assert 'unload_all\n"$LMS" load' in loader and 'unload --all' not in loader, "every LLM leaves before one loads"
+assert 'unload_all\nif load_one "$target"' in loader and 'unload --all' not in loader, "every LLM leaves before one loads"
 assert 'r.get("type") != "embedding"' in loader, "an odd row counts as resident (fails closed)"
-assert '--identifier "$target"' in loader and '--no-speculative-draft-mtp' in loader
+assert '--identifier "$id"' in loader and '--no-speculative-draft-mtp' in loader
 
 sequence = "ACGT" * 128
 source = {"source_key": "arabidopsis_chr1", "accession": "NC_003070.9", "taxon_id": 3702,
