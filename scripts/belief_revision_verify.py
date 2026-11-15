@@ -16,6 +16,13 @@ fixpoint of their justifications (a loop cannot hold itself up).
 
 The minimum is found exactly by integer programming (scipy.optimize.milp / HiGHS) when scipy is importable;
 otherwise only the standing contradictions and broken checks are reported.
+
+choose() is the one exception to "reports only": Gloria approved the exact solver as the repair chooser for the live
+nightly run, on trial (14 November 2026: "keep my words unchanged, preserve a reversible history while in testing
+(1 week...), and the normal regression gate"). It returns a plan in belief_revision.plan()'s own shape, built from
+the minimum over what belief_revision may revise - her words are a hard constraint (never in the repair; only ever
+flagged) - and it still writes nothing: belief_revision_live applies it under every live limit, behind
+BELIEF_REVISION_SOLVER=exact.
 """
 import math, time
 
@@ -198,3 +205,74 @@ def verify(g, p, exact=True):
                 out.update(optimum_size=len(Rm), optimum_differs=sorted(Rm ^ R))
     out["seconds"] = round(time.perf_counter() - t0, 3)
     return out
+
+
+def choose(g, p, time_limit=SOLVER_SECONDS):
+    """The exact solver as the repair chooser. g: the graph AFTER the check questions were asked (localize adds the
+    answers to it); p: belief_revision's own final plan on that graph (its posterior, its check answers and its
+    flags are reused). Returns (plan, status): a plan in plan()'s shape whose retract/lower set is the policy-
+    constrained minimum, or (None, status) when no proved minimum is available ("time_limit", "unavailable",
+    "error", "policy") - the caller then keeps belief_revision's own plan.
+
+      * revisions: each source in the minimum, retracted when its posterior blame is RETRACT_AT or more, otherwise
+        lowered in proportion to it - as plan() does; her words are never among them (bound to 0 in the program,
+        and refused here again if a solver ever returned one);
+      * her words are flagged, never revised: those plan() flagged, and those the unconstrained minimum would give
+        up (the evidence goes against her; she decides);
+      * plan()'s other flags (not captured, self-model, held) are kept for sources the minimum does not revise;
+      * rederive: exactly the beliefs that held before and no longer hold once the minimum is given up - the
+        recomputation is the solver's own, so nothing it does not rest on is touched;
+      * conflicts: plan()'s, with the minimum's members of each contradiction first (earliest first)."""
+    import belief_revision as BR
+    Rm, Em, status = minimum(g, time_limit, policy=True)
+    if status != "exact" or Rm is None:
+        return None, status
+    if any(not revisable(g, a) for a in Rm):
+        return None, "policy"                                  # never: her words are bound to 0 in the program
+    q = p.get("fault") or {}
+    nog = {c["id"]: g.nogoods(c) for c in g.conflicts}
+    blamed_in = {}
+    for c in g.conflicts:
+        for a in sorted(set().union(*nog[c["id"]]) if nog[c["id"]] else []):
+            blamed_in.setdefault(a, []).append(c["id"])
+    depth = getattr(g, "depth", {}) or {}
+    revisions = []
+    for a in sorted(Rm):
+        n = g.nodes[a]
+        qa = float(q.get(a, n["prior"]))
+        action = "retract" if qa >= BR.RETRACT_AT else "lower"
+        was = n["confidence"]
+        would = was if was is None else (0.0 if action == "retract" else round(float(was) * (1.0 - qa), 4))
+        revisions.append({"node": a, "kind": n["kind"], "action": action, "reason": "exact minimum",
+                          "blame": round(qa, 4), "prior": round(n["prior"], 4), "method": "exact", "explains": True,
+                          "confidence_was": was, "confidence_would_be": would, "conflicts": blamed_in.get(a, []),
+                          "superseded": {"confidence": was, "standing": "held",
+                                         "replaced_by": {"by": "belief_revision_verify.choose", "mode": "exact",
+                                                         "at": p.get("at"), "conflicts": blamed_in.get(a, [])}}})
+    hers = {r["node"] for r in p.get("revisions", []) if r["action"] == "flag_for_gloria"}
+    Ru, _Eu, ustatus = minimum(g, time_limit, policy=False)
+    if Ru:
+        hers |= {a for a in Ru if g.nodes[a]["kind"] == "gloria"}
+    for a in sorted(hers):
+        n = g.nodes[a]
+        revisions.append({"node": a, "kind": n["kind"], "action": "flag_for_gloria",
+                          "reason": "her word is never revised; she decides", "blame": round(float(q.get(a, n["prior"])), 4),
+                          "prior": round(n["prior"], 4), "method": "exact", "explains": a in (Ru or ()),
+                          "confidence_was": n["confidence"], "confidence_would_be": n["confidence"],
+                          "conflicts": blamed_in.get(a, [])})
+    for r in p.get("revisions", []):
+        if r["node"] not in Rm and r["node"] not in hers and r["action"] not in ("retract", "lower", "flag_for_gloria"):
+            revisions.append(dict(r))
+    h0, h1 = holds(g, set()), holds(g, Rm)
+    rederive = [{"node": v, "kind": g.nodes[v]["kind"], "action": "withdraw", "standing_before": 1.0,
+                 "standing_after": 0.0, "rests_on_revised": sorted(set().union(*g.envs(v)) & Rm) if g.envs(v) else []}
+                for v in sorted(h0) if not g.nodes[v]["assumption"] and h0[v] and not h1[v]]
+    conflicts = []
+    for c in p.get("conflicts", []):
+        mine = sorted((a for a in Rm if c["conflict"] in blamed_in.get(a, ())), key=lambda a: (depth.get(a, 0), a))
+        rest = [x for x in c["blame"] if x[0] not in mine]
+        conflicts.append(dict(c, blame=[[a, round(float(q.get(a, 0.0)), 4)] for a in mine] + rest))
+    out = dict(p, conflicts=conflicts, revisions=revisions, rederive=rederive, chooser="exact",
+               held=sorted(set(p.get("held") or ()) - Rm), energy=round(Em, 4), energy_old=round(energy(g, {
+                   r["node"] for r in p.get("revisions", []) if r["action"] in ("retract", "lower")}), 4))
+    return out, status
