@@ -27,11 +27,12 @@ s.setdefault("log", []).append(" ".join(a)); save()
 if a[:2] == ["ls", "--json"]:
     print(json.dumps(s["installed"]))
 elif a[:2] == ["ps", "--json"]:
+    if s.get("ps_fail"): sys.exit(1)
     print(json.dumps([{"identifier": i, "type": "embedding" if "embed" in i else "llm"} for i in s["resident"]]))
 elif a[:1] == ["unload"]:
     s["resident"] = [i for i in s["resident"] if i != a[1]]; save()
 elif a[:1] == ["load"]:
-    if s.get("fail_load"): sys.exit(1)
+    if s.get("fail_load") or a[1] == s.get("fail_key"): sys.exit(1)
     ident = a[a.index("--identifier") + 1]
     s["resident"].append(ident)
     if s.get("late"): s["resident"].append(s.pop("late"))       # a cut-off load that lands anyway
@@ -76,7 +77,7 @@ class House(unittest.TestCase):
                  VINTOS_LMS_CLI=os.path.join(self.bin, 'lms'), VINTOS_ENV_FILE=self.envfile, HOME=self.tmp,
                  AEGIS_WINDOW_STATE=os.path.join(self.mem, 'aegis-model-window.json'), AEGIS_WINDOW_MEM=self.mem,
                  AEGIS_WINDOW_LOG=os.path.join(self.tmp, 'window.log'), AEGIS_MODEL_LOG=os.path.join(self.tmp, 'model.log'),
-                 AEGIS_MODEL_LOADER=LOADER)
+                 AEGIS_MODEL_LOADER=LOADER, AEGIS_WORM_FAILED=os.path.join(self.mem, 'worm-failed'))
         e.update(kw)
         return e
 
@@ -190,12 +191,53 @@ class House(unittest.TestCase):
         self.assertFalse(any(l.startswith('load') or l.startswith('unload') for l in self.lms().get('log', [])))
 
     def test_aeon_failing_to_load_skips_the_command_and_restores_the_worm(self):
-        self.set_state(resident=[EMBED, WORM], fail_load=True)
+        self.set_state(resident=[EMBED, WORM], fail_key='gemma-4-12b-it-aeon-abliterated-k4')
         marker = os.path.join(self.tmp, 'ran')
         r = self.window('touch', marker)
         self.assertNotEqual(r.returncode, 0)
         self.assertFalse(os.path.exists(marker))
-        self.assertIn('SWAP-BACK FAILED', open(os.path.join(self.tmp, 'window.log')).read())
+        self.assertEqual(sorted(self.lms()['resident']), sorted([EMBED, WORM]))   # never an empty card
+
+    def test_a_worm_that_will_not_load_means_aeon_for_an_hour(self):
+        self.set_state(resident=[EMBED, AEON], fail_key='lab-c1-gemma-4-12b-aeon')
+        r = self.run_(['bash', LOADER])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(sorted(self.lms()['resident']), sorted([EMBED, AEON]))
+        self.assertEqual(self.which(), AEON)        # so the watchdog does not churn the card every five minutes
+        os.utime(os.path.join(self.mem, 'worm-failed'), (time.time() - 4000, time.time() - 4000))
+        self.assertEqual(self.which(), WORM)
+
+    def test_when_resident_models_cannot_be_listed_nothing_is_loaded(self):
+        self.set_state(resident=[EMBED, AEON], ps_fail=True)
+        r = self.run_(['bash', LOADER])
+        self.assertNotEqual(r.returncode, 0)
+        s = self.lms()
+        self.assertEqual(sorted(s['resident']), sorted([EMBED, AEON]))
+        self.assertFalse(any(l.startswith('load ') for l in s['log']))
+
+    def test_which_follows_the_installed_artifact_check(self):
+        self.set_state(installed=[dict(INSTALLED[0]), dict(INSTALLED[1], sizeBytes=1)])
+        self.assertEqual(self.which(), AEON)
+
+    def test_the_env_file_is_read_as_env_file_reads_it(self):
+        open(self.envfile, 'w').write('export AEGIS_HOUSE_MODEL=worm   # the worm, 14 November\n')
+        self.assertEqual(self.which(), WORM)
+        open(self.envfile, 'w').write('AEGIS_HOUSE_MODEL="worm"\n')
+        self.assertEqual(self.which(), WORM)
+
+    def test_a_lab_that_does_not_pause_in_time_means_no_run_and_no_swap(self):
+        self.set_state(resident=[EMBED, WORM])
+        lock = os.path.join(self.mem, '.aegis-model-window.lock')
+        holder = subprocess.Popen(['flock', '-s', lock, 'sleep', '20'])
+        try:
+            time.sleep(0.5)
+            marker = os.path.join(self.tmp, 'ran')
+            r = self.window('touch', marker, AEGIS_WINDOW_PAUSE_WAIT='1')
+        finally:
+            holder.kill(); holder.wait()
+        self.assertEqual(r.returncode, 75)
+        self.assertFalse(os.path.exists(marker))
+        self.assertFalse(any(l.startswith('load ') or l.startswith('unload ') for l in self.lms().get('log', [])))
 
     # --- the callers of the window -----------------------------------------------------------------------------------
     def test_causality_local_runs_go_through_the_window_and_count_only_plain_aeon(self):
@@ -203,7 +245,9 @@ class House(unittest.TestCase):
             src = open(os.path.join(REPO, path)).read()
             self.assertIn('if not _args.compact:\n        _in_window()', src)
             self.assertIn('"aegis-model-window.sh"', src)
-            self.assertIn('if _BACKEND != "self" and not plain_aeon(d):', src)
+            self.assertIn('if STRICT_AEON and not plain_aeon(d):', src)
+            self.assertIn('STRICT_AEON = False', src)                       # imported (realtime formation): house model
+            self.assertIn('_in_window()\n        STRICT_AEON = _BACKEND != "self"', src)   # its own runs: AEON only
         import importlib.util
         spec = importlib.util.spec_from_file_location('ce', os.path.join(REPO, 'scripts', 'causality-engine.py'))
         src = open(os.path.join(REPO, 'scripts', 'causality-engine.py')).read()
@@ -217,7 +261,8 @@ class House(unittest.TestCase):
     def test_the_watchdog_watches_the_house_model_the_loader_names(self):
         src = open(os.path.join(REPO, 'bin', 'gemma-watchdog.sh')).read()
         self.assertIn('MODEL="$(bash "$LOADER" --which', src)
-        self.assertLess(src.index('MODEL="$(bash'), src.index('flock -n 9'))
+        self.assertGreater(src.index('MODEL="$(bash'), src.index('flock -n 9'))   # read under the lock
+        self.assertGreater(src.index("PING='"), src.index('MODEL="$(bash'))
 
 
 if __name__ == '__main__':

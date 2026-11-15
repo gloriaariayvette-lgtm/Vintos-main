@@ -22,7 +22,7 @@ HOLD="$MEM/.aegis-model-window.lock"
 WATCHDOG_LOCK="$MEM/.gemma-watchdog.lock"
 STATE="${AEGIS_WINDOW_STATE:-$MEM/aegis-model-window.json}"
 TIMEOUT="${AEGIS_WINDOW_TIMEOUT:-4500}"
-PAUSE_WAIT="${AEGIS_WINDOW_PAUSE_WAIT:-900}"
+PAUSE_WAIT="${AEGIS_WINDOW_PAUSE_WAIT:-2400}"   # above a Lab instrument's longest hold (Evo 2: about 1630 s)
 AEON_ID="aeon/gemma-4-12b"
 
 log() { mkdir -p "$(dirname "$LOG")" 2>/dev/null || true; echo "[$(date '+%F %T')] window $$: $*" >> "$LOG"; }
@@ -31,16 +31,17 @@ log() { mkdir -p "$(dirname "$LOG")" 2>/dev/null || true; echo "[$(date '+%F %T'
 if [ "${AEGIS_MODEL_WINDOW:-}" = "held" ]; then exec "$@"; fi      # already inside a window
 export AEGIS_MODEL_WINDOW=held
 
-house="$(bash "$LOADER" --which 2>/dev/null || echo "$AEON_ID")"
-if [ "$house" = "$AEON_ID" ]; then
-  log "house model is already AEON; running without a window: $*"
+if [ "$(bash "$LOADER" --setting 2>/dev/null || echo aeon)" != "worm" ]; then
+  log "house model is AEON (AEGIS_HOUSE_MODEL is not worm); running without a window: $*"
   exec "$@"
 fi
 
-swap() {   # under the watchdog lock, so the watchdog and Evo 2 never change LM Studio at the same moment
-  local why="$1" attempt
+swap() {   # why [model]: under the watchdog lock, so the watchdog and Evo 2 never change LM Studio at the same moment
+  local why="$1" force="${2:-}" attempt
   for attempt in 1 2; do
-    if ( flock -w 300 9 || exit 1; AEGIS_CALLER="causality window: $why" bash "$LOADER" ) 9>"$WATCHDOG_LOCK" \
+    if ( flock -w 300 9 || exit 1
+         if [ -n "$force" ]; then export AEGIS_HOUSE_MODEL="$force"; fi
+         AEGIS_CALLER="causality window: $why" bash "$LOADER" ) 9>"$WATCHDOG_LOCK" \
          >>"$LOG" 2>&1; then
       return 0
     fi
@@ -51,12 +52,16 @@ swap() {   # under the watchdog lock, so the watchdog and Evo 2 never change LM 
 }
 
 closed=0
+swapped=0
 close_window() {
+  trap '' INT TERM HUP                 # a second signal must not cut the swap back short
   [ "$closed" = 1 ] && return
   closed=1
   rm -f "$STATE"
-  if swap "back to the house model"; then log "house model back: $(bash "$LOADER" --which 2>/dev/null)"
-  else log "SWAP-BACK FAILED; the five-minute watchdog will load the house model"; fi
+  if [ "$swapped" = 1 ]; then
+    if swap "back to the house model"; then log "house model back: $(bash "$LOADER" --which 2>/dev/null)"
+    else log "SWAP-BACK FAILED; the five-minute watchdog will load the house model"; fi
+  fi
   exec 8>&- 2>/dev/null || true
   log "Lab resumed; window closed"
 }
@@ -66,9 +71,9 @@ trap 'log "signal received"; exit 143' INT TERM HUP
 mkdir -p "$MEM"
 exec 8>"$HOLD"
 if flock -w "$PAUSE_WAIT" 8; then log "Lab paused (its model calls wait)"
-else log "Lab did not reach a pause within ${PAUSE_WAIT}s; going on without it"; fi
+else log "Lab did not reach a pause within ${PAUSE_WAIT}s; not running (no swap): $*"; exit 75; fi
 
-python3 - "$STATE" "$$" "$TIMEOUT" <<'PY'
+python3 - "$STATE" "$$" "$TIMEOUT" <<'PY' || { log "could not mark the window; not running: $*"; exit 1; }
 import json, os, sys, time
 path, pid, timeout = sys.argv[1], int(sys.argv[2]), float(sys.argv[3])
 tmp = path + ".tmp"
@@ -77,7 +82,8 @@ json.dump({"pid": pid, "until": time.time() + timeout + 300, "model": "aeon/gemm
 os.replace(tmp, path)
 PY
 log "window open for: $*"
-if ! swap "AEON for the window"; then
+swapped=1
+if ! swap "AEON for the window" aeon; then
   log "AEON did not load; not running: $*"
   exit 1
 fi

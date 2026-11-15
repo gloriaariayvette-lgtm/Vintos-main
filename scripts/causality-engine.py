@@ -196,12 +196,17 @@ def ask_llm(prompt, system=None, max_tokens=2000, temp=0.7):
             capture_output=True, text=True, timeout=120
         )
         d = json.loads(r.stdout)
-        if _BACKEND != "self" and not plain_aeon(d):
+        if STRICT_AEON and not plain_aeon(d):
             log("not plain AEON (%s/%s); answer not used" % (str(d.get("provider"))[:30], str(d.get("model"))[:40]))
             return ""
         msg = d["choices"][0]["message"]; text = msg.get("content", "") or ""; return text.strip()
     except:
         return ""
+
+
+# The engine's own runs (cron, in the causality window) count only plain AEON. realtime_causality imports the engine for
+# formation alone, all day, on the house model: formation is not the task the worm lost, and no window runs every 20 min.
+STRICT_AEON = False
 
 
 def plain_aeon(d):
@@ -2339,6 +2344,7 @@ if __name__ == "__main__":
     _args, _ = _p.parse_known_args()
     if not _args.compact:
         _in_window()
+        STRICT_AEON = _BACKEND != "self"
     if _args.compact:
         print(json.dumps(compact_store(), sort_keys=True))
     elif _args.nightly:
