@@ -44,11 +44,14 @@ STATE_NAME = "hdc-episodic-shadow.json"
 LOCK_SUFFIX = ".lock"
 TZ = ZoneInfo("America/Chicago")
 D = 10000
-SEGMENT_CAP = int(os.environ.get("HDC_SEGMENT_CAP") or 200)      # facts per superposed vector (clean recall < ~400)
+MAX_CAP = 30000          # sums are saved as int16: a segment may never hold more facts than that can count
+SEGMENT_CAP = max(1, min(MAX_CAP, int(os.environ.get("HDC_SEGMENT_CAP") or 200)))   # facts per superposed vector (clean recall < ~400)
+MAX_SEGMENTS = 40        # per date (8,000 facts at the default cap): a runaway source cannot grow the file without end
 RETAIN_DAYS = int(os.environ.get("HDC_RETAIN_DAYS") or 90)
 ROLES = ("who", "what", "where", "part")
 PARTS = (("night", 0), ("morning", 6), ("afternoon", 12), ("evening", 17), ("late", 21))   # local start hours
-DOOR_THRESH = float(os.environ.get("FACE_THRESHOLD", "0.36"))   # the face matcher's own threshold
+# the face matcher's own threshold (SFace cosine, faces.py); an override may only make naming stricter, never looser
+DOOR_THRESH = max(0.36, float(os.environ.get("FACE_THRESHOLD") or 0.36))
 BOARD_ROOM = {"house-steam": "bathroom", "house-press-mic": "living_room", "house-touch": "office"}
 MIN_SCORE = 0.35          # a recalled pair must clear this fraction of a clean match, and half of the best one
 
@@ -123,7 +126,9 @@ def cleanup_set(known, vocab, d=D):
 def recall(ranked, min_score=MIN_SCORE):
     """The answers that stand clear of the noise: at least min_score of a clean match and half of the best."""
     if not ranked or ranked[0][0] < min_score: return []
-    floor = max(min_score, ranked[0][0] / 2)
+    # half of the best, but never above half a clean match: a fact stored five times scores ~5 and must not hide the
+    # facts stored once beside it
+    floor = max(min_score, min(ranked[0][0], 1.0) / 2)
     return [(s, a) for s, a in ranked if s >= floor]
 
 
@@ -143,13 +148,13 @@ def date_of(t):
 def slots(t0, t1):
     """Every (date, day-part) a span touches, in order (a visit across the evening and late counts in both)."""
     out, t = [], t0
-    t1 = max(t0, t1)
-    while True:
+    t1 = min(max(t0, t1), t0 + 2 * 86400)        # a broken to-stamp must not walk years in half-hour steps
+    while len(out) < 8:
         s = (date_of(t), day_part(t))
         if s not in out: out.append(s)
         if t >= t1: break
         t = min(t1, t + 1800)
-    return out[:8]
+    return out
 
 
 def resolve_when(text, now=None):
@@ -170,15 +175,16 @@ def resolve_when(text, now=None):
 # ---- the memory -----------------------------------------------------------------------------------------------------
 class Episodic:
     def __init__(self, d=D, cap=SEGMENT_CAP, retain_days=RETAIN_DAYS):
-        self.d, self.cap, self.retain = d, cap, retain_days
+        self.d, self.cap, self.retain = d, max(1, min(MAX_CAP, int(cap))), retain_days
         self.days = {}                          # date -> [Store, ...]
         self.vocab = {r: [] for r in ROLES}
+        self.last = {r: {} for r in ROLES}      # role -> {label: last date it was stored}; labels age out with the days
         self.seen = {}                          # date -> [fact ids]
 
     # state ------------------------------------------------------------------------------------------------------
     def to_json(self):
         return {"kind": "hdc-episodic-shadow", "d": self.d, "segment_cap": self.cap, "retain_days": self.retain,
-                "vocab": self.vocab, "seen": self.seen,
+                "vocab": self.vocab, "last_seen": self.last, "seen": self.seen,
                 "days": {k: [{"n": s.n, "acc": base64.b64encode(s.acc.astype("<i2").tobytes()).decode()} for s in v]
                          for k, v in sorted(self.days.items())}}
 
@@ -190,16 +196,22 @@ class Episodic:
         m.seen = {k: list(v) for k, v in (obj.get("seen") or {}).items()}
         for k, segs in (obj.get("days") or {}).items():
             m.days[k] = [Store(m.d, np.frombuffer(base64.b64decode(s["acc"]), "<i2"), int(s["n"])) for s in segs]
+        newest = max(m.days, default="")        # a file from before last_seen: every label counts as seen on its newest day
+        ls = obj.get("last_seen") or {}
+        m.last = {r: {f: str((ls.get(r) or {}).get(f) or newest) for f in m.vocab[r]} for r in ROLES}
         return m
 
     # writing ----------------------------------------------------------------------------------------------------
     def add_fact(self, date, fact, fid=None):
+        segs = self.days.get(date) or []
+        if len(segs) >= MAX_SEGMENTS and segs[-1].n >= self.cap: return False      # the date is full
         if fid is not None:
             seen = self.seen.setdefault(date, [])
             if fid in seen: return False
             seen.append(fid)
         for r, f in fact.items():
             if f not in self.vocab[r]: self.vocab[r].append(f)
+            if date > self.last[r].get(f, ""): self.last[r][f] = date
         segs = self.days.setdefault(date, [])
         if not segs or segs[-1].n >= self.cap: segs.append(Store(self.d))
         segs[-1].add(fact)
@@ -228,6 +240,11 @@ class Episodic:
             self.days.pop(k, None); self.seen.pop(k, None)
         for k in [k for k in self.seen if k < oldest]:
             self.seen.pop(k, None)
+        for r in ROLES:                         # a name (or place) not stored inside the window leaves the file too
+            gone = {f for f, d in self.last[r].items() if d < oldest} | {f for f in self.vocab[r] if f not in self.last[r]}
+            if gone:
+                self.vocab[r] = [f for f in self.vocab[r] if f not in gone]
+                for f in gone: self.last[r].pop(f, None)
 
     # reading ----------------------------------------------------------------------------------------------------
     def ask(self, date, known, mask=None, min_score=MIN_SCORE):
@@ -253,15 +270,18 @@ class Episodic:
 
 
 def _num(v):
-    if v is None or v == "": return None
-    if isinstance(v, (int, float)): return float(v)
-    try:
-        d = datetime.fromisoformat(str(v).replace("Z", "+00:00"))
-    except ValueError:
-        try: return float(v)
-        except ValueError: return None
-    if d.tzinfo is None: d = d.replace(tzinfo=TZ)        # naive stamps in these stores are her local time
-    return d.timestamp()
+    """A number or a time stamp -> float; None for anything else, NaN/inf, or far outside 1970..2200."""
+    if v is None or v == "" or isinstance(v, bool): return None
+    if isinstance(v, (int, float)): x = float(v)
+    else:
+        try:
+            d = datetime.fromisoformat(str(v).replace("Z", "+00:00"))
+            if d.tzinfo is None: d = d.replace(tzinfo=TZ)        # naive stamps in these stores are her local time
+            x = d.timestamp()
+        except ValueError:
+            try: x = float(v)
+            except ValueError: return None
+    return x if 0 <= x < 7258118400 else None             # NaN fails both comparisons
 
 
 # ---- reading the stores (read-only) -------------------------------------------------------------------------------
@@ -354,8 +374,10 @@ def update(events, mem=MEM, now=None):
         fcntl.flock(lockf, fcntl.LOCK_EX)
         m = load(mem)
         added = sum(m.ingest(e, now) for e in events)
+        before = (sorted(m.days), {r: list(v) for r, v in m.vocab.items()})
         m.prune(now)
-        if added or not os.path.exists(path): _atomic(path, m.to_json())
+        pruned = before != (sorted(m.days), m.vocab)     # the window moves even on a day with nothing new
+        if added or pruned or not os.path.exists(path): _atomic(path, m.to_json())
     return added, m
 
 
@@ -373,7 +395,10 @@ def main(argv=None):
         n, m = update(read_stores())
         print("[hdc] +%d facts; %s" % (n, json.dumps(m.stats())))
     elif a.cmd == "replay":
-        rows = _jl(a.file) if a.source != "door" else [json.load(open(a.file))]
+        if a.source == "door":
+            with open(a.file, "r") as f: rows = [json.load(f)]
+        else:
+            rows = _jl(a.file)
         n, m = update(events_from(a.source, rows))
         print("[hdc] replayed %s: +%d facts; %s" % (a.file, n, json.dumps(m.stats())))
     elif a.cmd == "ask":

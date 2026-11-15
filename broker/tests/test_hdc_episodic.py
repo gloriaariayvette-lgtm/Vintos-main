@@ -243,5 +243,69 @@ class Shadow(unittest.TestCase):
             self.assertNotIn(word, src.replace('no prompt', '').replace('No network', ''), word)
 
 
+class ReviewFixes(unittest.TestCase):
+    """(5) review 2026-11-15: repeats, the window for labels, broken stamps, growth bounds, the face threshold."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix='hdc-review-', dir=scratch.name)
+
+    def test_a_repeated_fact_does_not_hide_the_ones_beside_it(self):
+        m = H.Episodic()
+        for i in range(5):
+            m.add_fact(YESTERDAY, {'who': 'gloria', 'what': 'visit', 'where': 'kitchen', 'part': 'evening'}, 'k%d' % i)
+        m.add_fact(YESTERDAY, {'who': 'gloria', 'what': 'visit', 'where': 'bedroom', 'part': 'evening'}, 'b')
+        got = m.ask(YESTERDAY, {'who': 'gloria', 'part': 'evening'})
+        self.assertEqual(pairs(got, 'what', 'where'), {('visit', 'kitchen'), ('visit', 'bedroom')})
+
+    def test_names_leave_the_file_with_their_days(self):
+        mem = os.path.join(self.tmp, 'memory')
+        door = {'who': 'visitor_c', 'what': 'at_door', 'where': 'front_door', 'ts': at(14, 18, 0)}
+        H.update([door], mem=mem, now=NOW)
+        path = os.path.join(mem, H.STATE_NAME)
+        self.assertIn('visitor_c', Path(path).read_text())
+        n, m = H.update([], mem=mem, now=NOW + 100 * 86400)          # nothing new: the window still moves
+        self.assertEqual(n, 0)
+        self.assertNotIn('visitor_c', Path(path).read_text(), 'a name outlived its 90 days in the vocabulary')
+        self.assertEqual(m.stats()['facts'], 0)
+        # a file written before last_seen existed loads, and its labels age out with its newest day
+        legacy = H.Episodic(); legacy.ingest(door, NOW)
+        obj = legacy.to_json(); obj.pop('last_seen')
+        old = H.Episodic.from_json(json.loads(json.dumps(obj)))
+        self.assertEqual(old.last['who'], {'visitor_c': YESTERDAY})
+        old.prune(NOW + 100 * 86400)
+        self.assertNotIn('visitor_c', json.dumps(old.to_json()))
+
+    def test_broken_stamps_are_skipped_not_walked(self):
+        self.assertLessEqual(len(H.slots(NOW, NOW + 10 ** 9)), 8)
+        m = H.Episodic()
+        base = {'who': 'gloria', 'what': 'visit', 'where': 'kitchen'}
+        self.assertEqual(m.ingest(dict(base, from_ts=at(15, 7, 0), to_ts=1e15), NOW), 1)   # bad end: a moment
+        for bad in ('nan', float('inf'), -5, 1e15, True, 'soon'):
+            self.assertEqual(m.ingest(dict(base, ts=bad), NOW), 0, repr(bad))
+
+    def test_growth_is_bounded(self):
+        self.assertEqual(H.Episodic(cap=10 ** 9).cap, H.MAX_CAP)                # int16 sums cannot overflow
+        m = H.Episodic(cap=1)
+        added = [m.add_fact(TODAY, {'who': 'p', 'what': 'a', 'where': 'w%d' % i, 'part': 'night'}, i)
+                 for i in range(H.MAX_SEGMENTS + 5)]
+        self.assertEqual(sum(added), H.MAX_SEGMENTS)
+        self.assertEqual(len(m.days[TODAY]), H.MAX_SEGMENTS)
+        self.assertEqual(len(m.seen[TODAY]), H.MAX_SEGMENTS)
+
+    def test_the_face_threshold_cannot_be_loosened(self):
+        import importlib.util
+        os.environ['FACE_THRESHOLD'] = '0.05'
+        try:
+            spec = importlib.util.spec_from_file_location('hdc_loose', H.__file__)
+            loose = importlib.util.module_from_spec(spec); spec.loader.exec_module(loose)
+        finally:
+            os.environ.pop('FACE_THRESHOLD', None)
+        self.assertEqual(loose.DOOR_THRESH, 0.36)
+        row = {'event': {'ts': '2030-01-14T18:00:00', 'identity': {'name': 'visitor_d', 'confidence': 0.3}}}
+        self.assertEqual(loose.events_from('door', [row])[0]['who'], 'someone')
+        row['event']['identity']['confidence'] = 'garbage'
+        self.assertEqual(H.events_from('door', [row])[0]['who'], 'someone')
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)
