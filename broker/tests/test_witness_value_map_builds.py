@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Actual map builder against scratch stores and stubbed HTTP; no external actions."""
 from contextvars import Context
-from datetime import datetime
+from datetime import datetime, timezone
 import importlib.util
 import json
 import os
@@ -9,6 +9,7 @@ from pathlib import Path
 import socket
 import sys
 import tempfile
+import time
 import types
 import unittest
 from unittest.mock import Mock, patch
@@ -25,8 +26,26 @@ class FixedDate(datetime):
         return cls(2026, 1, 2, 12, 0)
 
 
+class FixedClock:
+    """Injected wall clock for witness_capture: starts at FixedDate (UTC) and only moves forward.
+
+    The real wall clock on Aegis (WSL2) is stepped by host time sync every ~30 s, sometimes
+    backwards; finish_value_map_build then rightly refuses ("invalid build clock") and the
+    fixture build silently publishes no packet. Tests that want a backward clock patch it.
+    """
+    def __init__(self, start=datetime(2026, 1, 2, 12, 0, tzinfo=timezone.utc).timestamp(), step=0.001):
+        self.now, self.step = start, step
+
+    def time(self):
+        self.now += self.step
+        return self.now
+
+
 class Tests(unittest.TestCase):
     def setUp(self):
+        self.clock = FixedClock()
+        patcher = patch.object(W, 'time', types.SimpleNamespace(time=self.clock.time, monotonic=time.monotonic))
+        patcher.start(); self.addCleanup(patcher.stop)
         self.tmp = tempfile.TemporaryDirectory(prefix='value-map-build-')
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name).resolve()
