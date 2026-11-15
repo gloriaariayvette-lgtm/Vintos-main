@@ -126,6 +126,9 @@ def deploy(log=None, script=None, follow=True, out=sys.stdout):
         proc = subprocess.Popen(["bash", script], cwd=os.path.dirname(os.path.dirname(script)), env=env,
                                 stdout=f, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True)
     print("deploy running (also written to %s):" % log, file=out, flush=True)
+    # Her named scripts dir rides along in env; say so on her screen, so she can see it reached the deploy (2026-11-14).
+    if env.get("VINTOS_SCRIPTS"):
+        print("his scripts, as named: VINTOS_SCRIPTS=%s" % env["VINTOS_SCRIPTS"], file=out, flush=True)
     if not follow:
         return 0
     pos, last = 0, ""

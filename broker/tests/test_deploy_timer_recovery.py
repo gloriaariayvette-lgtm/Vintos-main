@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Execute timer confirmation and generated rollback with fake systemctl only."""
-import os,sys,tempfile,subprocess
+import os,re,sys,tempfile,subprocess
 from pathlib import Path
 R=[]
 def check(name,ok):R.append(bool(ok));print(('PASS ' if ok else 'FAIL ')+name)
@@ -60,8 +60,7 @@ check('promotion preserves the import alias and updates its target',p.returncode
 anchor=home/'workspace/scripts';anchor.mkdir(parents=True)
 live_target=home/'legacy/causality-engine.py';live_target.parent.mkdir();live_target.write_text('old')
 live_alias=anchor/'causality-engine.py';live_alias.symlink_to(live_target)
-a=src.index('locate()');b=src.index('\n}',a)+2
-locate=src[a:b]
+locate='\n'.join(re.search(r'^%s\(\) \{.*?^\}'%n,src,re.M|re.S).group(0) for n in ('locate','live_tree','repo_clone'))
 command=locate+'\nlocate causality-engine.py'
 p=subprocess.run(['bash','-c',command],env=dict(env,DEPTH='6',_SELF=str(home/'deploy/source')),capture_output=True,text=True)
 check('discovery keeps the live lexical symlink',str(live_alias) in p.stdout.splitlines())
