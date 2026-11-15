@@ -64,6 +64,7 @@ FLAGS_NAME = "belief-revision-flags.json"
 RUNS_NAME = "belief-revision-runs.jsonl"
 TRIAL_NAME = "belief-revision-solver-trial.json"
 TRIAL_DAYS = 7                # the exact-solver trial lasts a week from its first live run (Gloria, 14 November 2026)
+COMPARE_IDS = 50              # ids listed per run in the solver-vs-old comparison (counts are always whole)
 MAX_PER_DAY = 5
 CHECKS = 24                   # check questions per run (localize budget)
 FLOOR = 0.06                  # a lowered numeric confidence never drops to where a decay pass deletes the record
@@ -109,21 +110,26 @@ def _day(s):
 
 def solver_trial(mem, at, dry=False):
     """Which chooser this run uses, and the trial's state (ids and dates only). The exact solver only while
-    BELIEF_REVISION_SOLVER=exact and the trial has not expired: the first live run that sees the switch writes the
-    start and the expiry (start + TRIAL_DAYS); BELIEF_REVISION_SOLVER_UNTIL=YYYY-MM-DD, when set, is the expiry
-    instead (her extension). A dry run never starts the clock."""
+    BELIEF_REVISION_SOLVER=exact and the trial has not expired: the first live run that really uses the solver writes
+    the start and the expiry (start + TRIAL_DAYS; start_trial(), called by run() after its apply phase - never by a
+    dry run, a stopped run or a run where the solver fell back); BELIEF_REVISION_SOLVER_UNTIL=YYYY-MM-DD, when set, is
+    the expiry instead (her extension). If the trial file is lost, the start is read back from the earliest solver
+    row in the revision log, so the clock never restarts."""
     if _setting("BELIEF_REVISION_SOLVER").lower() != "exact":
         return False, {"state": "off", "chooser": "old"}
     path = os.path.join(mem, TRIAL_NAME)
     today = _day(at) or datetime.now(timezone.utc).date()
     trial = store_guard.load_json(path, {}) or {}
     started = _day(trial.get("started"))
+    unwritten = started is None
     if started is None:
-        started = today
+        used = sorted(str(r.get("at", ""))[:10] for r in _read_jsonl(os.path.join(mem, LOG_NAME))
+                      if r.get("rev") and r.get("chooser") == "exact" and _day(r.get("at")))
+        started = _day(used[0]) if used else today
         trial = {"started": started.isoformat(), "expires": (started + timedelta(days=TRIAL_DAYS)).isoformat(),
                  "days": TRIAL_DAYS}
-        if not dry:
-            store_guard.write_json(path, trial, reader="belief_revision_live")
+        if used:
+            trial["recovered_from_log"] = True
     expires = _day(trial.get("expires")) or started + timedelta(days=TRIAL_DAYS)
     info = {"started": started.isoformat(), "expires": expires.isoformat()}
     until = _setting("BELIEF_REVISION_SOLVER_UNTIL")
@@ -141,7 +147,16 @@ def solver_trial(mem, at, dry=False):
             store_guard.write_json(path, trial, reader="belief_revision_live")
         return False, info
     info.update(state="active", chooser="exact")
+    if unwritten:
+        info["_start"] = trial                                  # written by start_trial once the solver was used
     return True, info
+
+
+def start_trial(mem, info):
+    """Write the trial's start, once: only after a live run has really applied the solver's repair."""
+    trial = info.pop("_start", None)
+    if trial and not os.path.exists(os.path.join(mem, TRIAL_NAME)):
+        store_guard.write_json(os.path.join(mem, TRIAL_NAME), trial, reader="belief_revision_live")
 
 
 def max_per_day():
@@ -450,7 +465,7 @@ def run(mem=None, dry=False, checks=CHECKS, transport=None, send=None, at=None):
     if use_exact:
         try:
             import belief_revision_verify as V
-            sp, status = V.choose(g, p)
+            sp, status = V.choose(g, p, may_revise=lambda a: _may_revise(g, a, mem))
         except Exception as e:                       # the solver failing never costs the night its old repair
             sp, status = None, "error:" + type(e).__name__
         trial["status"] = status
@@ -490,6 +505,8 @@ def run(mem=None, dry=False, checks=CHECKS, transport=None, send=None, at=None):
     with store_guard.transaction(os.path.join(mem, LOG_NAME)):
         if not dry and mode() != "live":
             stopped, wants = True, {}
+        elif not dry and p.get("chooser") == "exact" and _setting("BELIEF_REVISION_SOLVER").lower() != "exact":
+            stopped, wants = True, {}                            # the solver switched off while the checks ran
         room = max(0, max_per_day() - applied_today(mem, at[:10]))
         rows = _read_jsonl(os.path.join(mem, LOG_NAME))
         revised_nodes = {r["node"] for r in rows if r.get("node")}   # in force, or reverted (her no stands, review 5)
@@ -522,7 +539,10 @@ def run(mem=None, dry=False, checks=CHECKS, transport=None, send=None, at=None):
             if row:
                 (plan_rows if dry else applied).append({k: row[k] for k in ("rev", "node", "store", "field", "was", "now")})
     if stopped:
-        return {"ran": False, "reason": "BELIEF_REVISION was turned off during the run; nothing applied"}
+        return {"ran": False, "reason": "BELIEF_REVISION (or its solver) was turned off during the run; nothing applied"}
+    if not dry and p.get("chooser") == "exact":
+        start_trial(mem, trial)
+    trial.pop("_start", None)
     if not dry:
         store_guard.write_json(os.path.join(mem, FLAGS_NAME), flags, reader="belief_revision_live")
         told = tell_her(flags, mem, send=send, today=at[:10])
@@ -569,9 +589,25 @@ def _compare(chosen, old):
     """The chosen plan beside the old chooser's, as counts and ids (an id that is not id-shaped is hashed)."""
     a = {BR._safe(n): w["action"] for n, w in chosen.items()}
     b = {BR._safe(n): w["action"] for n, w in old.items()}
-    return {"chosen": dict(sorted(a.items())), "old_would": dict(sorted(b.items())),
+    cap = lambda d: dict(sorted(d.items())[:COMPARE_IDS])      # the counts below are always whole
+    return {"chosen": cap(a), "old_would": cap(b), "chosen_n": len(a), "old_n": len(b),
             "same": sum(1 for n in a if n in b), "same_action": sum(1 for n in a if b.get(n) == a[n]),
             "only_chosen": len(set(a) - set(b)), "only_old": len(set(b) - set(a))}
+
+
+def _may_revise(g, a, mem):
+    """Whether live could really apply a revision of source `a` (an inference step through the belief it produced):
+    the solver keeps everything else out of its repair, so its minimum is over what will actually be done. Never her
+    words, never a self-model entry or a record; an evidence item only when it is his private reading (E3)."""
+    base = a[5:] if a.startswith("rule:") else a
+    gn = g.nodes.get(base) or {}
+    if gn.get("kind") == "gloria" or (g.nodes.get(a) or {}).get("kind") == "gloria":
+        return False
+    if base.startswith("t:ev:") and gn.get("kind") != "private_record":
+        return False
+    plan = dict(gn.get("meta") or {}, **({"confidence": gn["confidence"]} if gn.get("confidence") is not None else {}))
+    t, _why = target(base, "lower", 0.5, mem, plan=plan)
+    return t is not None
 
 
 def trial_state(mem):

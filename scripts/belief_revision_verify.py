@@ -84,10 +84,10 @@ def revisable(g, a):
     return n["kind"] != "gloria" and n.get("captured", True)
 
 
-def minimum(g, time_limit=SOLVER_SECONDS, policy=False):
+def minimum(g, time_limit=SOLVER_SECONDS, policy=False, keep=()):
     """(repair, energy, status) of the exact minimum. policy=True: only what belief_revision may revise (not her
-    words, not uncaptured sources). status is "exact", "time_limit" (the repair is the best found, an upper bound),
-    "unavailable" (no scipy) or "error"."""
+    words, not uncaptured sources). keep: further sources the repair may not contain. status is "exact",
+    "time_limit" (the repair is the best found, an upper bound), "unavailable" (no scipy) or "error"."""
     try:
         import numpy as np
         from scipy.optimize import milp, LinearConstraint, Bounds
@@ -95,12 +95,12 @@ def minimum(g, time_limit=SOLVER_SECONDS, policy=False):
     except ImportError:
         return None, None, "unavailable"
     try:
-        return _minimum(g, time_limit, policy, np, milp, LinearConstraint, Bounds, lil_matrix)
+        return _minimum(g, time_limit, policy, np, milp, LinearConstraint, Bounds, lil_matrix, set(keep))
     except Exception:
         return None, None, "error"
 
 
-def _minimum(g, time_limit, policy, np, milp, LinearConstraint, Bounds, lil_matrix):
+def _minimum(g, time_limit, policy, np, milp, LinearConstraint, Bounds, lil_matrix, keep=frozenset()):
     A, D, w, J, C, K = _parts(g)
     depth = getattr(g, "depth", {}) or {}
     cyc = _cyclic(D, J)
@@ -109,7 +109,7 @@ def _minimum(g, time_limit, policy, np, milp, LinearConstraint, Bounds, lil_matr
     def var(k, c=0.0, u=1.0, integer=True):
         idx[k] = len(cost); cost.append(c); hi.append(u); integ.append(1 if integer else 0)
     for a in A:
-        var(("f", a), w[a] + TIE * (1 + depth.get(a, 0)), 0.0 if policy and not revisable(g, a) else 1.0)
+        var(("f", a), w[a] + TIE * (1 + depth.get(a, 0)), 0.0 if policy and not revisable(g, a) else 0.0 if a in keep else 1.0)
     for v in D:
         var(("h", v))
         for k in range(len(J[v])):
@@ -207,28 +207,39 @@ def verify(g, p, exact=True):
     return out
 
 
-def choose(g, p, time_limit=SOLVER_SECONDS):
+def choose(g, p, time_limit=SOLVER_SECONDS, may_revise=None, held_mode="flag"):
     """The exact solver as the repair chooser. g: the graph AFTER the check questions were asked (localize adds the
     answers to it); p: belief_revision's own final plan on that graph (its posterior, its check answers and its
-    flags are reused). Returns (plan, status): a plan in plan()'s shape whose retract/lower set is the policy-
-    constrained minimum, or (None, status) when no proved minimum is available ("time_limit", "unavailable",
-    "error", "policy") - the caller then keeps belief_revision's own plan.
+    flags are reused). may_revise: a test of whether the caller can actually apply a revision of a source (live:
+    target() accepts it); a source it refuses is kept out of the repair, so the minimum is over what will really be
+    done. Returns (plan, status): a plan in plan()'s shape whose retract/lower set is the policy-constrained minimum,
+    or (None, status) when no proved minimum is available ("time_limit", "unavailable", "error", "policy") - the
+    caller then keeps belief_revision's own plan.
 
+      * her words are never in the repair: bound to 0 in the program, and refused here again if a solver ever
+        returned one. They are flagged for her: those plan() flagged, and those the unconstrained minimum gives up
+        with blame FLAG_AT or more;
+      * what plan() held back (a revision resting on a single check answer, or a weak suspect of a contradiction
+        whose question went unanswered) is kept out of the repair and stays held - the live limit stands;
       * revisions: each source in the minimum, retracted when its posterior blame is RETRACT_AT or more, otherwise
-        lowered in proportion to it - as plan() does; her words are never among them (bound to 0 in the program,
-        and refused here again if a solver ever returned one);
-      * her words are flagged, never revised: those plan() flagged, and those the unconstrained minimum would give
-        up (the evidence goes against her; she decides);
+        lowered in proportion to it - as plan() does;
       * plan()'s other flags (not captured, self-model, held) are kept for sources the minimum does not revise;
-      * rederive: exactly the beliefs that held before and no longer hold once the minimum is given up - the
-        recomputation is the solver's own, so nothing it does not rest on is touched;
+      * rederive: as plan() does it - only beliefs every justification of which passes through a revised source,
+        lowered in proportion to their standing, withdrawn when it halves;
       * conflicts: plan()'s, with the minimum's members of each contradiction first (earliest first)."""
     import belief_revision as BR
-    Rm, Em, status = minimum(g, time_limit, policy=True)
+    held = set(p.get("held") or ())
+    A = [a for a, n in g.nodes.items() if n["assumption"]]
+    keep = {a for a in A if may_revise is not None and revisable(g, a) and not may_revise(a)}
+    if held_mode == "bound":
+        keep |= held
+    Rm, Em, status = minimum(g, time_limit, policy=True, keep=keep)
     if status != "exact" or Rm is None:
         return None, status
-    if any(not revisable(g, a) for a in Rm):
+    if any(not revisable(g, a) or a in keep for a in Rm):
         return None, "policy"                                  # never: her words are bound to 0 in the program
+    if held_mode == "flag":
+        Rm = Rm - held
     q = p.get("fault") or {}
     nog = {c["id"]: g.nogoods(c) for c in g.conflicts}
     blamed_in = {}
@@ -251,8 +262,8 @@ def choose(g, p, time_limit=SOLVER_SECONDS):
                                                          "at": p.get("at"), "conflicts": blamed_in.get(a, [])}}})
     hers = {r["node"] for r in p.get("revisions", []) if r["action"] == "flag_for_gloria"}
     Ru, _Eu, ustatus = minimum(g, time_limit, policy=False)
-    if Ru:
-        hers |= {a for a in Ru if g.nodes[a]["kind"] == "gloria"}
+    if Ru and ustatus == "exact":
+        hers |= {a for a in Ru if g.nodes[a]["kind"] == "gloria" and float(q.get(a, 0.0)) >= BR.FLAG_AT}
     for a in sorted(hers):
         n = g.nodes[a]
         revisions.append({"node": a, "kind": n["kind"], "action": "flag_for_gloria",
@@ -263,16 +274,26 @@ def choose(g, p, time_limit=SOLVER_SECONDS):
     for r in p.get("revisions", []):
         if r["node"] not in Rm and r["node"] not in hers and r["action"] not in ("retract", "lower", "flag_for_gloria"):
             revisions.append(dict(r))
-    h0, h1 = holds(g, set()), holds(g, Rm)
-    rederive = [{"node": v, "kind": g.nodes[v]["kind"], "action": "withdraw", "standing_before": 1.0,
-                 "standing_after": 0.0, "rests_on_revised": sorted(set().union(*g.envs(v)) & Rm) if g.envs(v) else []}
-                for v in sorted(h0) if not g.nodes[v]["assumption"] and h0[v] and not h1[v]]
+        elif r["node"] in held and r["node"] not in Rm and r["node"] not in hers and r["action"] in ("retract", "lower"):
+            revisions.append(dict(r, action="flag", reason="rests on a single answer"))
+    dependent = sorted(v for v, n in g.nodes.items() if not n["assumption"] and g.envs(v)
+                       and all(e & Rm for e in g.envs(v)))
+    rederive = []
+    if dependent:
+        samplers = BR.posterior(g)[4]
+        before = BR.standings(g, dependent, None, seed="before")
+        after = BR.standings(g, dependent, samplers, seed="after")
+        for v in dependent:
+            act = "withdraw" if after[v] < 0.5 * before[v] or after[v] < 0.05 else "lower"
+            rederive.append({"node": v, "kind": g.nodes[v]["kind"], "action": act,
+                             "standing_before": round(before[v], 4), "standing_after": round(after[v], 4),
+                             "rests_on_revised": sorted(set().union(*g.envs(v)) & Rm)})
     conflicts = []
     for c in p.get("conflicts", []):
         mine = sorted((a for a in Rm if c["conflict"] in blamed_in.get(a, ())), key=lambda a: (depth.get(a, 0), a))
         rest = [x for x in c["blame"] if x[0] not in mine]
         conflicts.append(dict(c, blame=[[a, round(float(q.get(a, 0.0)), 4)] for a in mine] + rest))
     out = dict(p, conflicts=conflicts, revisions=revisions, rederive=rederive, chooser="exact",
-               held=sorted(set(p.get("held") or ()) - Rm), energy=round(Em, 4), energy_old=round(energy(g, {
+               held=sorted(held - Rm), energy=round(energy(g, Rm), 4), energy_old=round(energy(g, {
                    r["node"] for r in p.get("revisions", []) if r["action"] in ("retract", "lower")}), 4))
     return out, status

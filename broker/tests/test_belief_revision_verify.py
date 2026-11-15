@@ -139,7 +139,7 @@ if HAVE_SCIPY:
         R1, _, s1 = M.minimum(g, policy=True)
         return R0 == {"w"} and "w" not in R1 and s1 == "exact"
     check("the policy minimum never revises her words", probe_policy(V))
-    killed("policy ignored", probe_policy, V, "0.0 if policy and not revisable(g, a) else 1.0", "1.0")
+    killed("policy ignored", probe_policy, V, "0.0 if policy and not revisable(g, a) else 0.0 if a in keep else 1.0", "0.0 if a in keep else 1.0")
     import itertools, random
     def probe_brute(M):
         """Seeded random small graphs, cyclic and not: the solver's minimum equals exhaustive search."""

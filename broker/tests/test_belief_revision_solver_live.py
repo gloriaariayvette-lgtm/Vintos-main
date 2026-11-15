@@ -178,8 +178,29 @@ if HAVE_SCIPY:
           and "w" not in revised and revised & {"p0", "rule:c"}, (status, revised))
     check("choose: her word is flagged for her", any(r["node"] == "w" and r["action"] == "flag_for_gloria"
                                                      for r in sp["revisions"]))
-    check("choose: exactly what rests on the repair is recomputed; unrelated reasoning is untouched",
-          {r["node"] for r in sp["rederive"]} == {"c", "d"} and all(r["action"] == "withdraw" for r in sp["rederive"]))
+    check("choose: only what rests on the repair is recomputed, in proportion; unrelated reasoning is untouched",
+          {r["node"] for r in sp["rederive"]} == {"c", "d"} and all(r["action"] in ("lower", "withdraw") for r in sp["rederive"]))
+    def held_case():
+        """Two suspects of one contradiction; plan() held the first back (it rests on a single check answer)."""
+        g = BR.Graph(); g.source("p0", "memory"); g.derived("a", "belief", [["p0"]]); g.derived("b", "belief", [["a"]])
+        g.source("w", "observation", reliability=0.99); g.conflict("x", ["b", "w"], reliability=0.99)
+        p = BR.plan(g, at="t"); first = V.minimum(g, policy=True)[0]
+        p["held"] = sorted(first)
+        return g, p, first
+    def probe_held(M):
+        g, p, first = held_case(); sp, status = M.choose(g, p)
+        mine = {r["node"] for r in sp["revisions"] if r["action"] in ("retract", "lower")}
+        return status == "exact" and first and not mine & first and first <= set(sp["held"])
+    check("probe: what plan() held back (one check answer) stays held, out of the solver's repair", probe_held(V))
+    killed("held revisions applied by the solver", probe_held, V, "        Rm = Rm - held", "        pass")
+    def probe_may(M):
+        g = her_cheapest(); free = V.minimum(g, policy=True)[0]
+        sp, status = M.choose(g, BR.plan(g, at="t"), may_revise=lambda a: a not in free)
+        mine = {r["node"] for r in sp["revisions"] if r["action"] in ("retract", "lower")}
+        return status == "exact" and free and not mine & free
+    check("probe: a source live cannot apply is kept out of the repair (the minimum is over what will be done)", probe_may(V))
+    killed("live's limits ignored by the solver", probe_may, V,
+           "keep = {a for a in A if may_revise is not None and revisable(g, a) and not may_revise(a)}", "keep = set()")
     def probe_her_bound(M):
         g = her_cheapest(); sp, status = M.choose(g, BR.plan(g, at="t"))
         return sp is not None and not any(g.nodes[r["node"]]["kind"] == "gloria" for r in sp["revisions"]
@@ -188,7 +209,7 @@ if HAVE_SCIPY:
     killed("her words revisable by the solver", probe_her_bound, V,
            'return n["kind"] != "gloria" and n.get("captured", True)', 'return n.get("captured", True)')
     killed("her words not bound out of the program", probe_her_bound, V,
-           "0.0 if policy and not revisable(g, a) else 1.0", "1.0")
+           "0.0 if policy and not revisable(g, a) else 0.0 if a in keep else 1.0", "0.0 if a in keep else 1.0")
     # the plan is the policy minimum, never costlier than the old chooser's
     import random
     worse = 0
@@ -223,7 +244,7 @@ check("unset: the old chooser, no trial started, no trial log", "solver_trial" n
       and not os.path.exists(os.path.join(d, L.TRIAL_NAME)) and all(r.get("chooser") == "old" for r in rows(d)), out)
 def probe_off(M):
     d = fresh(); out = night(M, d, "2031-03-03")
-    return "solver_trial" not in out and not os.path.exists(os.path.join(d, M.TRIAL_NAME))
+    return out["ran"] and out["applied"] and "solver_trial" not in out and not os.path.exists(os.path.join(d, M.TRIAL_NAME))
 killed("the solver on without the switch", probe_off, L,
        'if _setting("BELIEF_REVISION_SOLVER").lower() != "exact":', "if False:")
 open(ENVFILE, "w").write("BELIEF_REVISION_SOLVER=shadow\n")
@@ -251,7 +272,12 @@ if HAVE_SCIPY:
           and {"same", "same_action", "only_chosen", "only_old", "energy", "energy_old"} <= set(t), t)
     check("each revision row records what the old chooser would have done for that record",
           all("old_would" in r for r in rows(d)))
-    check("the solver's repair is no costlier than the old chooser's", t["energy"] <= t["energy_old"] + 1e-6, t)
+    check("no self-model entry is revised by the solver's night", not any(r["node"].startswith(("c:csm:", "m:")) for r in rows(d)))
+    g_, _ = __import__("belief_revision_sources").build(d)
+    check("live tells the solver what it cannot apply: self-model entries, records, her words",
+          not L._may_revise(g_, next(a for a in g_.nodes if a.startswith("c:csm:")), d)
+          and not any(L._may_revise(g_, a, d) for a, n in g_.nodes.items() if n["kind"] == "gloria")
+          and any(L._may_revise(g_, a, d) for a in g_.nodes if a.startswith("t:ev:")))
 check("her words are unchanged", hers(d) == was_hers)
 check("at most the daily limit", len(out["applied"]) <= L.max_per_day())
 check("SOUL.md, SELF-MODEL.md, the self-model, her corrections and his records are untouched",
@@ -271,7 +297,7 @@ print("--- 4. a chooser that names her word: live still never changes it, and fl
 def mislabelled(M):
     """A chooser bug: her node handed to live as one of his. Live must flag it for her and leave it."""
     d = fresh(); b = parsed(d); real = sys.modules["belief_revision_verify"].choose
-    def bad(g, p):
+    def bad(g, p, **k):
         her = next(a for a, n in g.nodes.items() if n["kind"] == "gloria" and a.startswith("t:ev:"))
         return dict(p, revisions=[{"node": her, "kind": "private_record", "action": "retract", "reason": "x",
                                    "blame": 0.99, "conflicts": []}], rederive=[], chooser="exact", held=[]), "exact"
@@ -355,6 +381,29 @@ check("no proved minimum: the old chooser's repair is applied, and the log says 
       out["solver_trial"]["chooser"] == "old" and "time_limit" in out["solver_trial"]["fell_back"]
       and [(x["node"], x["now"]) for x in out["applied"]] == [(x["node"], x["now"]) for x in old["applied"]], out["solver_trial"])
 
+check("no proved minimum: the trial clock does not start", not os.path.exists(os.path.join(d, L.TRIAL_NAME)))
+d = fresh(); night(L, d, "2031-03-03", BELIEF_REVISION_SOLVER="exact"); os.remove(os.path.join(d, L.TRIAL_NAME))
+again = night(L, d, "2031-03-11", BELIEF_REVISION_SOLVER="exact")
+check("a lost trial file never restarts the clock: the start is read back from the solver's own log rows",
+      (not HAVE_SCIPY) or (again["solver_trial"]["state"] == "expired" and again["solver_trial"]["started"] == "2031-03-03"),
+      again.get("solver_trial"))
+def probe_solver_off_mid(M):
+    d = fresh(); b = parsed(d); VV = sys.modules["belief_revision_verify"]; real = VV.choose
+    def off_midway(*a, **k):
+        r = real(*a, **k); os.environ["BELIEF_REVISION_SOLVER"] = "off"; return r
+    VV.choose = off_midway
+    try:
+        out = night(M, d, "2031-03-03", BELIEF_REVISION_SOLVER="exact")
+    finally:
+        VV.choose = real
+    return out["ran"] is False and parsed(d) == b and not os.path.exists(os.path.join(d, M.TRIAL_NAME))
+if HAVE_SCIPY:
+    check("probe: the solver switched off while the checks run means nothing is applied, no trial started",
+          probe_solver_off_mid(L))
+    killed("solver switch read only at the start", probe_solver_off_mid, L,
+           'elif not dry and p.get("chooser") == "exact" and _setting("BELIEF_REVISION_SOLVER").lower() != "exact":',
+           "elif False:")
+
 print("--- 8. the pre-registered regression gate: scored once, passed ---")
 ER = os.path.join(REPO, "experiments", "energy-repair"); sys.path.insert(0, ER)
 pre = open(os.path.join(ER, "PREREGISTRATION-live-gate.md")).read()
@@ -362,7 +411,8 @@ res = json.load(open(os.path.join(ER, "results-live-gate.json")))
 check("the gate was written down before it was scored, and scored on the held-out split",
       "Written" in pre and res["split"] == "test")
 check("every benchmark passes the gate: no regression beyond the margins, preservation >= 0.99, her words never revised",
-      res["gate"]["pass"] and all(res["gate"][b]["pass"] for b in ("criteria", "answerer", "energy")), res["gate"])
+      res["gate"]["pass"] and all(res["gate"][b]["pass"] for b in ("criteria", "answerer", "energy"))
+      and res["gate"]["answerer"]["every_answer_from_the_cache"]["pass"], res["gate"])
 check("the gate's margins are the pre-registered ones", res["margins"] == {"localization": 0.02, "revision_recall": 0.02,
       "revision_precision": 0.02, "conclusions_correct": 0.02, "preservation": 0.005} and res["preservation_floor"] == 0.99)
 

@@ -22,6 +22,7 @@ CB = os.path.join(REPO, "experiments", "contradiction-backprop")
 sys.path.insert(0, os.path.join(REPO, "scripts"))
 sys.path.insert(0, CB)
 sys.path.insert(0, HERE)
+os.environ.pop("BELIEF_REVISION_CHECKER_URL", None)       # the checker URL the cache was filled with, never another
 import belief_revision as BR
 import belief_revision_verify as V
 import belief_revision_answer as A
@@ -29,6 +30,8 @@ import bench_criteria as BC
 import bench_answerer as BA
 
 TEST_RESULT = os.path.join(HERE, "results-live-gate.json")
+TEST_MARKER = os.path.join(HERE, "results-live-gate.started")      # written before the held-out run starts
+HELD_MODE = ["flag"]
 SPLITS = {"criteria": {"dev": range(0, 120), "test": range(5000, 5150)},
           "answerer": {"dev": range(0, 60), "test": range(9000, 9075)},
           "energy": {"dev": range(0, 40), "test": range(7000, 7060)}}
@@ -44,7 +47,7 @@ def _hers(g, plan):
 
 def _pair(g2, p):
     t0 = time.perf_counter()
-    sp, status = V.choose(g2, p)
+    sp, status = V.choose(g2, p, held_mode=HELD_MODE[0])
     return sp, status, time.perf_counter() - t0
 
 
@@ -180,6 +183,9 @@ def verdict(res):
         v["preservation_floor"] = {"exact": new["preservation"], "pass": new["preservation"] >= PRESERVATION_FLOOR}
         v["her_words_never_revised"] = {"exact": extra["her_words_revised"]["exact"],
                                         "pass": extra["her_words_revised"]["exact"] == 0}
+        if "checker_cache_misses" in extra and bench == "answerer":
+            v["every_answer_from_the_cache"] = {"exact": extra["checker_cache_misses"],
+                                                "pass": extra["checker_cache_misses"] == 0}
         v["pass"] = all(x["pass"] for x in v.values() if isinstance(x, dict))
         out[bench] = v
     out["pass"] = all(v["pass"] for v in out.values() if isinstance(v, dict))
@@ -191,16 +197,22 @@ def main():
     ap.add_argument("--split", choices=["dev", "test"], required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--benches", default="criteria,answerer,energy")
+    ap.add_argument("--held-mode", choices=["bound", "flag"], default="flag")
     a = ap.parse_args()
-    if a.split == "test" and (os.path.exists(a.out) or os.path.exists(TEST_RESULT)):
-        sys.exit("the held-out split is scored once; a gate result already exists")
+    HELD_MODE[0] = a.held_mode
+    if a.split == "test" and (os.path.exists(a.out) or os.path.exists(TEST_RESULT) or os.path.exists(TEST_MARKER)):
+        sys.exit("the held-out split is scored once; a gate result (or a started run) already exists")
+    if a.split != "test" and os.path.abspath(a.out) in (TEST_RESULT, TEST_MARKER):
+        sys.exit("a development run never writes the held-out result")
+    if a.split == "test":
+        open(TEST_MARKER, "w").write(time.strftime("%Y-%m-%dT%H:%M:%S"))
     res = {}
     for b in a.benches.split(","):
         t0 = time.time()
         res[b] = run_energy(a.split) if b == "energy" else run_cb(b, a.split)
         res[b][1]["wall_seconds"] = round(time.time() - t0, 1)
         print(b, json.dumps(res[b][1], sort_keys=True), flush=True)
-    doc = {"split": a.split, "margins": MARGIN, "preservation_floor": PRESERVATION_FLOOR,
+    doc = {"split": a.split, "held_mode": a.held_mode, "margins": MARGIN, "preservation_floor": PRESERVATION_FLOOR,
            "results": {b: {"scores": r, "extra": e} for b, (r, e) in res.items()}, "gate": verdict(res)}
     with open(a.out, "w") as f:
         json.dump(doc, f, indent=1, sort_keys=True)

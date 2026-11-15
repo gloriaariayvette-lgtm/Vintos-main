@@ -63,4 +63,42 @@ checker-cache miss, her words revised 0 times by either chooser.
 | answerer (240) | 0.853 / 0.847 | 0.920 / 0.982 | 0.973 / 0.959 | 0.972 / 0.986 | 0.9945 / 0.9907 |
 | energy (440) | 0.752 / 0.823 | 0.810 / 0.976 | 0.989 / 0.974 | 0.948 / 0.987 | 0.9967 / 0.9931 |
 
-Nothing was iterated; the held-out seeds are scored next, once.
+A held-out run was then started and stopped before it wrote or printed anything (no held-out number was seen),
+because an independent review found real problems in the chooser as built:
+
+1. it ignored what plan() HOLDS back - a revision resting on a single check answer, or a weak suspect of a
+   contradiction whose question went unanswered - which is a live limit;
+2. it withdrew everything resting on any revised source, even one only lowered a little (plan() lowers dependents in
+   proportion and withdraws only when their standing halves);
+3. it could choose sources live can never change (self-model entries, records), so the repair applied was not the
+   minimum;
+4. it flagged her words to her whenever the unconstrained minimum named them, even at low blame;
+5. the gate did not fail on checker-cache misses.
+
+Fixes: held sources stay held (see below); rederive is plan()'s own rule over the solver's revised set; live passes
+choose() a test of what it can actually apply (target()), and everything else is bound out of the program; her words
+are flagged from the unconstrained minimum only at blame >= FLAG_AT (plus everything plan() flagged); the gate now
+also requires zero checker-cache misses on the answerer benchmark (`every_answer_from_the_cache`), the checker URL is
+pinned to the one the cache was filled with, and a held-out run leaves a marker before it starts so it cannot be
+re-run. The bars and margins are unchanged.
+
+**Dev run 2 - held sources bound out of the program ("bound").** criteria and answerer pass; energy-repair FAILS:
+precision 0.967 vs 0.989 (margin 0.02) and preservation 0.9916 vs 0.9967 (margin 0.005). Root cause: forbidding the
+held source makes the program pick a costlier alternative that is often a valid neighbour - the same failure the
+experiment saw when the solver was made to ignore single-answer repairs.
+
+**Dev run 3 - held sources removed from the solver's repair after it is found, and left held ("flag", the final
+rule).** Gate PASS on every benchmark; no fallback, no cache miss, her words revised 0 times.
+
+| benchmark | localization old / exact | recall | precision | conclusions | preservation |
+|---|---|---|---|---|---|
+| criteria (480) | 0.902 / 0.895 | 0.949 / 0.954 | 0.971 / 0.967 | 0.978 / 0.978 | 0.9939 / 0.9932 |
+| answerer (240) | 0.853 / 0.839 | 0.920 / 0.916 | 0.973 / 0.973 | 0.972 / 0.971 | 0.9945 / 0.9945 |
+| energy (440) | 0.752 / 0.753 | 0.810 / 0.829 | 0.989 / 0.982 | 0.948 / 0.951 | 0.9967 / 0.9956 |
+
+Keeping the hold costs most of the solver's gain seen in the experiment (energy-repair recall +0.02 instead of +0.17
+in run 1): the single-answer hold, not the chooser, is what limits recall there. It is kept because it is a live limit;
+lifting it is Gloria's decision. What the gate does not simulate, for either chooser alike: the five-a-day cap, and
+target()'s refusals (synthetic ids do not name his stores).
+
+The chooser is frozen here and the held-out seeds are scored once.
