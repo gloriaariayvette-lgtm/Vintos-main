@@ -50,11 +50,18 @@ EXPERIMENTS = {
                           "every point is one fold" % MAX_HP_LATTICE_RESIDUES,
                 "returns": "per point, measured versus exact energy, and where the chain changes shape"},
     "molecule": {"runs_on": _QPANDA + ", VQE on PySCF/OpenFermion STO-3G integrals",
+                 # 14 November: the example was [0.6, 0.735, 0.9, 1.2], the textbook H2/HeH+ minima, and every molecule
+                 # step on record copied it; "search" lets the Lab's bond-length search choose (lab_bond_search)
                  "request": {"experiment": "molecule", "parameters": {"molecule": "H2",
-                             "bond_lengths": [0.6, 0.735, 0.9, 1.2], "layers": 2, "search_steps": 200}, "shots": 4096},
+                             "bond_lengths": "search", "layers": 2, "search_steps": 200}, "shots": 4096},
                  "limits": "molecule one of H2 | HeH+ | LiH; at most 9 bond lengths in angstrom (the bench keeps the "
                            "first 9); LiH freezes the lithium core; the bench stops a run after %d s, so LiH takes "
-                           "few lengths" % BENCH_SECONDS,
+                           "few lengths. bond_lengths \"search\" lets the Lab's bond-length search choose them for "
+                           "where the curve's minimum is: a wide bracket (0.45-2.2 A) first, then lengths where the "
+                           "minimum can still be; each step says how sure it is, and it stops when 95%% sure, or says "
+                           "\"not sure\" when its budget is spent. With exact false, readings past about 1.6 A are "
+                           "noisy (the quantum search often stalls near Hartree-Fock there) and are weighed as such. "
+                           "A list of lengths still runs exactly as written" % BENCH_SECONDS,
                  "returns": "per bond length, the VQE energy against Hartree-Fock and the exact ground energy of the same "
                             "frozen-core active space it searches (full all-electron FCI is shown beside it), "
                             "in Hartree: a bond's dissociation curve, and how far the quantum search is from exact"},

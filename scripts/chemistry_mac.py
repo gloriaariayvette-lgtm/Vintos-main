@@ -499,6 +499,11 @@ def run(experiment, parameters=None, shots=4096, resolver=None, transport=None, 
         parameters, contract = prepared["parameters"], prepared["sequence_request"]
         if parameters.get("protein_backend") == "esmfold":
             return _run_esmfold(parameters, contract, worker=esmfold_worker)
+    if str(experiment).strip().lower() == "molecule" and isinstance(parameters.get("bond_lengths"), str):
+        # "search" with no investigation behind it (the daily session) is the bond-length search's first request,
+        # its wide bracket; the bench is never sent the word (lab_bond_search, 14 November)
+        import lab_bond_search
+        parameters = lab_bond_search.at_door(parameters)
     reply = (transport or request)({"action": "run", "experiment": experiment,
                                     "parameters": parameters, "shots": int(shots)})
     return _protein_result(reply, contract)
