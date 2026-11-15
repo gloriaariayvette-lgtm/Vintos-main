@@ -186,7 +186,8 @@ block = router[router.index("ACTION_MAP = {"):]
 acts |= set(re.findall(r'^\s+"([a-z_]+)":', block[:block.index("\n}")], re.M))
 desc_caps = {"read_memory", "web_search", "introspect", "write_poem", "make_art", "make_music", "make_video",
              "creative_write", "analyze_memory", "write_journal", "echo_announce", "play_on_tv", "be_mischievous",
-             "change_lights", "gloria", "send_email", "plugin_query", "plugin_skill", "local_analysis"}
+             "change_lights", "gloria", "send_email", "plugin_query", "plugin_skill", "local_analysis",
+             "read_url"}
 missing = acts - set(E.ROUTER_STEP_ACTIONS) - desc_caps
 check("every action the router runs is a known hand to the planner", not missing, missing)
 

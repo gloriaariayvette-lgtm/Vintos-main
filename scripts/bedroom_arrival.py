@@ -138,8 +138,9 @@ def _last_played():
 def _norm(t): return " ".join("".join(c for c in str(t).lower() if c.isalnum() or c.isspace()).split())
 
 
-def choose(titles, now=None):
-    """His choice of today's arrival songs, by title, matched against his library. Returns what was kept."""
+def choose(titles, now=None, turn_id=""):
+    """His choice of today's arrival songs, by title, matched against his library. Returns what was kept. The turn he
+    chose them in is kept with them, so a song sent later can say which reply chose it (action_provenance)."""
     now = time.time() if now is None else now
     lib = library(); by = {}
     for title, url in lib: by.setdefault(_norm(title), (title, url))
@@ -153,7 +154,7 @@ def choose(titles, now=None):
     old = _load(PICKS, {})
     played = old.get("played", []) if isinstance(old, dict) and old.get("date") == _today(now) else []
     _atomic(PICKS, {"date": _today(now), "by": "him", "at": _now_iso(now), "songs": songs, "played": played,
-                    "missed": missed})
+                    "missed": missed, **({"turn_id": str(turn_id)[:80]} if turn_id else {})})
     return {"kept": [s["title"] for s in songs], "missed": missed}
 
 
@@ -175,7 +176,7 @@ def take_picks(reply, now=None, act=True, turn_id=""):
     if act:
         for body in re.findall(_TAG, reply, re.I):
             try:
-                got = choose([t for t in re.split(r"\s*[|;\n]\s*", body) if t.strip()], now)
+                got = choose([t for t in re.split(r"\s*[|;\n]\s*", body) if t.strip()], now, turn_id=turn_id)
                 print("[bedroom] his arrival songs today: %s%s" % (", ".join(got["kept"]) or "none matched",
                       (" (not in his library: %s)" % ", ".join(got["missed"])) if got["missed"] else ""), flush=True)
             except Exception as e:
@@ -333,6 +334,7 @@ def _arrived(state, now, device, distance, why):
             except Exception as e:
                 # Keep the transport result true even if its local dedup state could not be saved.
                 row["state_error"] = "%s: %s" % (type(e).__name__, str(e)[:160])
+            _provenance(row, now)
         return row
     except Exception as e:
         row.update(delivery="failed", why="%s: %s" % (type(e).__name__, str(e)[:160]))
@@ -345,6 +347,39 @@ def _arrived(state, now, device, distance, why):
         return row
     finally:
         _log(row)
+
+
+def why_rule(row, picks=None):
+    """The decision rule that chose an arrival's song, from what the arrival row and today's picks say. '' when the
+    row does not say who chose."""
+    by = row.get("picked_by")
+    if by == "his encounter":
+        return "your prepared arrival encounter %s greeted this arrival" % (row.get("encounter") or "(id not recorded)")
+    if by == "him":
+        p = picks if isinstance(picks, dict) else {}
+        return ("the next of today's three arrival songs you chose yourself ([ARRIVAL SONGS], %s%s)" % (
+            str(p.get("at") or "time not recorded")[:16], ", turn %s" % p["turn_id"] if p.get("turn_id") else ""))
+    if by == "stand-in":
+        return ("you had not chosen today's three arrival songs, so the stand-in rule chose: the newest song in your "
+                "library and the two longest unplayed, sent in turn")
+    return ""
+
+
+def _provenance(row, now):
+    """The arrival's song and why it went, for him (action_provenance.py). Never in the way of the arrival."""
+    try:
+        import action_provenance
+        picks = _load(PICKS, {}) if row.get("picked_by") == "him" else None
+        action_provenance.record(
+            "watch_song", row.get("song"), "bedroom_arrival (the bedroom sensor)",
+            trigger="her phone (%s) came within %s m of the bedroom board after being away - a new arrival" % (
+                row.get("device"), row.get("distance")),
+            rule=why_rule(row, picks) or None,
+            refs={"episode": row.get("episode"), "song_id": row.get("song_id"), "encounter": row.get("encounter"),
+                  "turn_id": (picks or {}).get("turn_id") if isinstance(picks, dict) else None},
+            mem=os.path.dirname(ARRIVALS), now=now)
+    except Exception as e:
+        print("[bedroom/provenance]", e, flush=True)
 
 
 def _send(title, url, ref="", now=None, line=""):
@@ -445,7 +480,9 @@ def context_line(now=None):
     if last:
         try: when = datetime.fromisoformat(last["at"]).astimezone().strftime("%b %d, %H:%M")
         except Exception: when = str(last.get("at", ""))[:16]
-        line += " Last time: %s, \u201c%s\u201d." % (when, str(last.get("song", ""))[:60])
+        line += " Last time: %s, \u201c%s\u201d%s." % (when, str(last.get("song", ""))[:60], {
+            "stand-in": " (a stand-in: you had not chosen that day's songs)", "him": " (your own pick)",
+            "his encounter": " (your prepared encounter)"}.get(last.get("picked_by"), ""))
         try:   # what the Watch reported doing with it, not only that it was sent (22 October)
             import watch_presence
             heard = watch_presence.songs_line()
