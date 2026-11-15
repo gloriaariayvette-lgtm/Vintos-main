@@ -197,6 +197,9 @@ class ExactStillWins(unittest.TestCase):
         self.assertIsInstance(store.lookup('tag36h11:777'), list)
         k = sorted(self.exact)[0]
         self.assertEqual(store.lookup(k)[0], cm.DictTagStore(self.exact).lookup(k)[0])
+        rest = store.lookup(k)[len(cm.DictTagStore(self.exact).lookup(k)):]
+        self.assertTrue(rest and all(r['kind'] == cm.RECALLED_KIND for r in rest),
+                        'the summary knows these as recalled, never as linked records')
 
     def test_off_by_default(self):
         import native_video_server as srv
