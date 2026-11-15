@@ -491,6 +491,20 @@ check("probe: switching it off while the checks run means nothing is applied", p
 killed("switch read only at the start", probe_switch_mid_run, L,
        'if not dry and mode() != "live":\n            stopped, wants = True, {}', 'if False:\n            stopped, wants = True, {}')
 
+def probe_row_date(M):
+    """A revision's log row carries the run's own time, not the wall clock: the daily limit (and the two-night probes
+    above) must mean the same thing on any day the suite runs. They failed after midnight UTC on 15 November."""
+    d = os.path.join(HOME, "probe-date-%d" % len(CALLS)); fixture(d)
+    os.environ["BELIEF_REVISION"] = "live"
+    try:
+        out = M.run(d, transport=aeon(), send=send, at="2030-01-01T10:00:00Z")
+    finally:
+        os.environ.pop("BELIEF_REVISION")
+    rows = [r for r in M._read_jsonl(os.path.join(d, M.LOG_NAME)) if r.get("rev")]
+    return bool(out["applied"]) and bool(rows) and all(r["at"] == "2030-01-01T10:00:00Z" for r in rows)
+check("probe: a revision is dated by its run, so the daily limit counts the run's day", probe_row_date(L))
+killed("rows dated by the wall clock", probe_row_date, L, 'at=meta.get("at") or _now(), node=t.node', "at=_now(), node=t.node")
+
 print("--- 10. deploy: the modules ship ---")
 dep = open(os.path.join(REPO, "scripts", "deploy-atelier.sh")).read()
 check("the deploy installs all four modules", all(m in dep for m in ("belief_revision.py", "belief_revision_sources.py",
