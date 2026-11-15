@@ -280,7 +280,7 @@ print("--- 7. live: only his beliefs, inferences and readings change ---")
 TOLD = []
 def send(req, timeout=20):
     TOLD.append(json.loads(req.data.decode()))
-out = L.run(MEM, transport=aeon(), send=send, at="2026-11-14T22:00:00Z")
+out = L.run(MEM, transport=aeon(), send=send, at="2031-03-03T22:00:00Z")
 after = digest(MEM)
 applied = out["applied"]
 check("live revises something", applied, out)
@@ -339,7 +339,7 @@ killed("its own revision taken as a record", probe_self_witness, A,
 
 print("--- 8. once only, rate-limited, one note a day ---")
 snap = digest(MEM)
-out2 = L.run(MEM, transport=aeon(), send=send, at="2026-11-14T23:00:00Z")
+out2 = L.run(MEM, transport=aeon(), send=send, at="2031-03-03T23:00:00Z")
 check("a record already revised is not revised again", not out2["applied"] and
       all(digest(MEM)[n] == snap[n] for n in STORES), out2)
 check("no second note the same day", len(TOLD) == 1)
@@ -347,7 +347,7 @@ def probe_once_only(M):
     d = os.path.join(HOME, "probe-once-%d" % len(CALLS)); fixture(d)
     os.environ["BELIEF_REVISION"] = "live"
     try:
-        n1 = [x["node"] for x in M.run(d, transport=aeon(), send=send, at="2026-11-14T10:00:00Z")["applied"]]
+        n1 = [x["node"] for x in M.run(d, transport=aeon(), send=send, at="2031-03-03T10:00:00Z")["applied"]]
         for n in STORES:                         # another organ rewrites its store and drops the marks
             p = os.path.join(d, n)
             text = open(p).read()
@@ -355,7 +355,7 @@ def probe_once_only(M):
         tried, orig = [], M.apply
         M.apply = lambda t, *a, **k: (tried.append(t.node), orig(t, *a, **k))[1]
         try:
-            M.run(d, transport=aeon(), send=send, at="2026-11-15T10:00:00Z")
+            M.run(d, transport=aeon(), send=send, at="2031-03-04T10:00:00Z")
         finally:
             M.apply = orig
     finally:
@@ -376,7 +376,7 @@ def probe_rate(M):
     d = os.path.join(HOME, "probe-rate-%d" % len(CALLS)); fixture(d)
     os.environ["BELIEF_REVISION"] = "live"; os.environ["BELIEF_REVISION_MAX_PER_DAY"] = "1"
     try:
-        n = len(M.run(d, transport=aeon(), send=send, at="2026-11-14T10:00:00Z")["applied"])
+        n = len(M.run(d, transport=aeon(), send=send, at="2031-03-03T10:00:00Z")["applied"])
     finally:
         os.environ.pop("BELIEF_REVISION"); os.environ.pop("BELIEF_REVISION_MAX_PER_DAY")
     return n == 1
@@ -387,7 +387,7 @@ def probe_her(M):
     b = [e for t in json.load(open(os.path.join(d, "tension-ledger.json")))["tensions"] for e in t["evidence"] if e["channel"] == "E1"]
     os.environ["BELIEF_REVISION"] = "live"
     try:
-        M.run(d, transport=aeon(), send=send, at="2026-11-14T10:00:00Z")
+        M.run(d, transport=aeon(), send=send, at="2031-03-03T10:00:00Z")
     finally:
         os.environ.pop("BELIEF_REVISION")
     a = [e for t in json.load(open(os.path.join(d, "tension-ledger.json")))["tensions"] for e in t["evidence"] if e["channel"] == "E1"]
@@ -425,7 +425,7 @@ def probe_revert(M):
     d = os.path.join(HOME, "probe-revert-%d" % len(CALLS)); fixture(d)
     b = parsed(d, STORES); os.environ["BELIEF_REVISION"] = "live"
     try:
-        M.run(d, transport=aeon(), send=send, at="2026-11-14T10:00:00Z")
+        M.run(d, transport=aeon(), send=send, at="2031-03-03T10:00:00Z")
     finally:
         os.environ.pop("BELIEF_REVISION")
     M.revert(d)
@@ -456,9 +456,9 @@ def probe_revert_stays(M):
     d = os.path.join(HOME, "probe-stays-%d" % len(CALLS)); fixture(d)
     os.environ["BELIEF_REVISION"] = "live"
     try:
-        n1 = {x["node"] for x in M.run(d, transport=aeon(), send=send, at="2026-11-14T10:00:00Z")["applied"]}
+        n1 = {x["node"] for x in M.run(d, transport=aeon(), send=send, at="2031-03-03T10:00:00Z")["applied"]}
         M.revert(d)
-        n2 = {x["node"] for x in M.run(d, transport=aeon(), send=send, at="2026-11-15T10:00:00Z")["applied"]}
+        n2 = {x["node"] for x in M.run(d, transport=aeon(), send=send, at="2031-03-04T10:00:00Z")["applied"]}
     finally:
         os.environ.pop("BELIEF_REVISION")
     return n1 and not n1 & n2
@@ -483,7 +483,7 @@ def probe_switch_mid_run(M):
         p = real(*a, **k); os.environ["BELIEF_REVISION"] = "off"; return p
     M.BR.localize = off_midway
     try:
-        out = M.run(d, transport=aeon(), send=send, at="2026-11-14T10:00:00Z")
+        out = M.run(d, transport=aeon(), send=send, at="2031-03-03T10:00:00Z")
     finally:
         M.BR.localize = real; os.environ.pop("BELIEF_REVISION", None)
     return out["ran"] is False and parsed(d, STORES) == b
