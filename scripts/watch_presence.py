@@ -506,7 +506,6 @@ def face_shown(items, days=LANDINGS_DAYS_DEFAULT, now=None, path=None):
         if isinstance(last, dict) and last.get("key") == key:
             return None
         what = str(piece.get("title") or piece.get("text") or FACE_WHAT_DEFAULT).strip()[:120]
-        _atomic(path, {"key": key, "what": what, "at": datetime.fromtimestamp(now).isoformat(timespec="seconds")})
         arrival = _song() or {}
         is_arrival = key[0] == "song" and bool(key[1]) and key[1] == str(arrival.get("ref") or arrival.get("title") or "")
         rule = ("the arrival song stays first on her Watch for %d hours after it is offered" % (SONG_TOP_S // 3600)
@@ -515,10 +514,13 @@ def face_shown(items, days=LANDINGS_DAYS_DEFAULT, now=None, path=None):
         here = os.path.dirname(os.path.abspath(__file__))
         if here not in _s.path: _s.path.insert(0, here)
         import action_provenance
-        return action_provenance.record(
+        row = action_provenance.record(
             "watch_face", what, "watch landings (/api/watch/landings)",
-            trigger="her Watch asked for its landings; its face shows the first of them",
+            trigger="the landings were asked for (her Watch asks when it refreshes; its face shows the first of them)",
             rule=rule, refs={"surface": key[0], "ref": key[1], "sent_at": first.get("at")}, mem=MEMORY, now=now)
+        if row:     # kept as shown only once its row is written, so a failed write is tried again next time
+            _atomic(path, {"key": key, "what": what, "at": datetime.fromtimestamp(now).isoformat(timespec="seconds")})
+        return row
     except Exception as e:
         print("[watch/face] provenance not written: %s" % str(e)[:120], flush=True)
         return None

@@ -133,6 +133,13 @@ check("the default reader is the Scholar's (the one his letters use)", "import s
 check("no address: False, kept in the ledger, no fetch and no act recorded",
       (lambda n: U.run({}, "Current step goal: read it", "w-fix05", mem=MEM, fetch=no_network) is False
        and ledger()[-1]["kind"] == "no_address" and len(provenance()) == n)(len(provenance())))
+check("a link written cut short is passed over for the whole one after it",
+      U.pick_url({}, "Current step goal: read https://cut.example.org/pap\u2026 or https://whole.example.org/p", "", None)[0]
+      == "https://whole.example.org/p")
+struct = lambda url: {"fetched": True, "kind": "fetched", "text": "HEADER made-up", "structure": {"made": "up"}}
+real_view = LF.structure_view; LF.structure_view = lambda s, *a: "HEADER made-up preview"
+got = U.run({"url": PAPER}, "", "w-fix05", mem=MEM, fetch=struct); LF.structure_view = real_view
+check("a structure file's preview is READ IN PART, never the full text", isinstance(got, str) and got.startswith(U.PART), got)
 check("a fetch stand-in that raises is NOT READABLE, never raised to the spine",
       U.run({"url": PAPER}, "", "w-fix05", mem=MEM, fetch=lambda u: (_ for _ in ()).throw(OSError("made-up"))) is False)
 
@@ -147,6 +154,8 @@ check("read_url is a router action, wrapped by the spine", "read_url" in W.ACTIO
 check("it takes an optional url", W.validate_step_params("read_url", {"url": PAPER, "x": 1})[0] == {"url": PAPER})
 check("it is in the one capability list", any(c.get("action") == "read_url" for c in W.CAPABILITIES))
 W.llm_extract = lambda *a, **k: None
+for w in ("I want to read the full poem I wrote last night", "I want to read the full journal entry again"):
+    check("his own writing is not a link: %s" % w, W.route_want({"want": w}) != "read_url", W.route_want({"want": w}))
 check("a want to read the full paper routes to it, not to email or read_memory",
       W.route_want({"want": "I want to read the full paper at %s" % PAPER}) == "read_url")
 check("writing to an author is still email", W.route_want({"want": "I want to email the author about her paper"}) == "send_email")
@@ -186,6 +195,16 @@ sys.modules["requests"] = types.SimpleNamespace(get=no_network, post=no_network)
 print("\n--- a web_search step keeps what it found and where ---")
 json.dump({"searches": [{"synthesis": "A made-up synthesis of the search.", "evidence": [PAPER, "ftp://no.example.org/x"]}]},
           open(os.path.join(MEM, "web-search-log.json"), "w"))
+os.environ.pop("VINTOS_WEB_SEARCH_STARTED", None)
+check("no search started by this step: an older row is never credited",
+      W.capture_findings("web_search", "a made-up search") == "Web search completed")
+os.environ["VINTOS_WEB_SEARCH_STARTED"] = "2031-01-02T10:00:00"
+json.dump({"searches": [{"timestamp": "2031-01-02T09:59:00", "synthesis": "An older search.", "evidence": [PDF]}]},
+          open(os.path.join(MEM, "web-search-log.json"), "w"))
+check("a row from before this step's search is not this step's",
+      W.capture_findings("web_search", "a made-up search") == "Web search completed")
+json.dump({"searches": [{"timestamp": "2031-01-02T10:00:05", "synthesis": "A made-up synthesis of the search.",
+                         "evidence": [PAPER, "ftp://no.example.org/x"]}]}, open(os.path.join(MEM, "web-search-log.json"), "w"))
 found = W.capture_findings("web_search", "a made-up search")
 check("the log's dict form is read: its synthesis and its addresses", "A made-up synthesis" in found
       and ("Addresses found: " + PAPER) in found and "ftp://" not in found, found)
@@ -194,11 +213,13 @@ print("\n--- a want to read the whole text needs the step that reads it ---")
 for w in ("I want to read the full text of the made-up Piezo paper", "I want to read Graziano's attention schema paper",
           "I want the PDF itself, not the landing page", "I want to open the link Muse sent and read it",
           "I want to pull the full text behind the made-up eLife paper",
-          "To get the actual made-up Chalmers PDF as a direct file", "To stop looking at summaries and feel the papers themselves"):
+          "To get the actual made-up Fixture PDF as a direct file", "To feel the made-up fixture papers themselves"):
     check("full read: %s" % w, C.contract_for(w)["full_read"], C.contract_for(w))
 for w in ("I want to email the author about her paper", "I want to be able to take a PDF apart: pull its text and tables",
           "I want to write a poem about paper cranes", "I want to read my journal from last week",
-          "I want to hear the actual text Gloria meant, not my guess"):
+          "I want to hear the actual text Gloria meant, not my guess", "I want to read more and link my thoughts together",
+          "I want to read through my journals and find the link between them", "I want to read the room and post an article",
+          "I want to read Gloria's message and send her the link to the song", "I want to read the papers on my desk"):
     check("not a full read: %s" % w, not C.contract_for(w)["full_read"], C.contract_for(w))
 steps, ch = C.normalize_steps("I want to read the full text of the made-up Piezo paper",
                               [{"capability": "introspect", "note": "what it means to me"}])
@@ -216,6 +237,14 @@ steps, ch = C.normalize_steps("I want to read the full paper and tell Gloria", [
     {"capability": "correlate", "note": "c"}, {"capability": "make_chart", "note": "d"}])
 check("trimming to four never drops the read", "read_url" in [s["capability"] for s in steps] and len(steps) <= 4
       and steps[-1]["capability"] == "gloria", steps)
+steps, ch = C.normalize_steps("I want to read the full paper on made-up grid cells and tell Gloria", [
+    {"capability": "introspect", "note": "a"}, {"capability": "local_analysis", "note": "b"},
+    {"capability": "read_memory", "note": "c"}, {"capability": "gloria", "note": "d"}])
+caps = [s["capability"] for s in steps]
+check("trimming keeps the search that finds the address with the read", len(steps) <= 4
+      and caps.index("web_search") + 1 == caps.index("read_url") and caps[-1] == "gloria", caps)
+check("the inserted search asks for the full text plainly", steps[caps.index("web_search")]["note"].startswith(
+      "Search for the open full text of: read the full paper"), steps[caps.index("web_search")]["note"])
 check("a plan without it does not satisfy the want", not C.satisfies_contract("I want to read the full paper", [{"capability": "web_search"}])
       and C.satisfies_contract("I want to read the full paper", [{"capability": "web_search"}, {"capability": "read_url"}]))
 for rel in ("scripts/emoclaw_utils.py", "bin/emoclaw_utils.py"):

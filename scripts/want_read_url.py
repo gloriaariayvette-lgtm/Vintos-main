@@ -25,8 +25,8 @@ that opens a link safely - link_fetch, which his letters use - and this step goe
         Every fetch writes one action-provenance row (action read_url): what was opened, for which want, by which
         rule, and what came of it. Nothing is ever fetched without an address; that is said too.
 
-    full_text_read(want)  the addresses a want's read_url steps READ IN FULL, with their kept files: the completion
-                          check counts these as the full text read.
+    full_text_read(want)  the addresses a want's read_url steps READ IN FULL, with their kept files (the completion
+                          judge is shown each read_url step's own READ IN FULL / READ IN PART line).
 
 Store: memory/want-reads/<want>-<url hash>.txt (the text read), memory/want-reads.jsonl (one row per attempt).
 """
@@ -96,6 +96,8 @@ def _goal(step_text):
 
 def _first_link(text):
     for l in _link_fetch().links_in(str(text or "")):
+        if l.get("cut"):        # written cut short: link_fetch refuses it; a whole link later in the text is used
+            continue
         u = l.get("url") or l.get("original")
         if u:
             return l.get("original") or u
@@ -117,7 +119,8 @@ def pick_url(params, step_text, original="", want=None):
         if isinstance(h, dict):
             u = _first_link(h.get("findings"))
             if u:
-                return u, "the first link step %s (%s) found" % (int(h.get("step", -1)) + 1, h.get("capability"))
+                return u, "the first link step %s (%s) found" % (h.get("step") + 1 if isinstance(h.get("step"), int)
+                                                                 else "?", h.get("capability"))
     u = _first_link(step_text)
     if u:
         return u, "the first link in the step's text"
@@ -183,23 +186,32 @@ def run(params, step_text, want_id="", original="", want=None, mem=None, fetch=N
     except Exception as e:      # link_fetch never raises; a stand-in might
         r = {"fetched": False, "kind": "error", "why": "%s: %s" % (type(e).__name__, str(e)[:160])}
     text = str(r.get("text") or "")
-    if r.get("structure"):
-        text = str(_link_fetch().structure_view(r["structure"]))
+    structure = bool(r.get("structure"))
+    if structure:   # a PDB/mmCIF file: what is kept is link_fetch's bounded preview of it, not the whole file
+        try:
+            text = str(_link_fetch().structure_view(r["structure"]))
+        except Exception:
+            pass
+        r = dict(r, why="a structure file: only link_fetch's preview of it is kept, not the whole file")
     read = bool(r.get("fetched")) and bool(text.strip())
-    full = read and not (r.get("truncated") or r.get("kind") == "truncated")
+    full = read and not structure and not (r.get("truncated") or r.get("kind") == "truncated")
     label = FULL if full else (PART if read else NOT)
     kept = ""
     if read:
-        d = os.path.join(mem, READS_DIR)
-        os.makedirs(d, exist_ok=True)
-        kept = os.path.join(d, "%s-%s.txt" % (_safe(want_id), hashlib.sha256(url.encode()).hexdigest()[:12]))
-        head = ("URL: %s\nFINAL URL: %s\nREAD: %s\nRESULT: %s\nVIA: %s\nCHARACTERS READ: %d\nKEPT: %d\n\n"
-                % (url, r.get("final_url") or url, base["at"], label, r.get("via") or "the page itself",
-                   len(text), min(len(text), KEEP_CHARS)))
-        tmp = kept + ".tmp.%d" % os.getpid()
-        with open(tmp, "w", encoding="utf-8") as f:
-            f.write(head + text[:KEEP_CHARS])
-        os.replace(tmp, kept)
+        try:
+            d = os.path.join(mem, READS_DIR)
+            os.makedirs(d, exist_ok=True)
+            kept = os.path.join(d, "%s-%s.txt" % (_safe(want_id), hashlib.sha256(url.encode()).hexdigest()[:12]))
+            head = ("URL: %s\nFINAL URL: %s\nREAD: %s\nRESULT: %s\nVIA: %s\nCHARACTERS READ: %d\nKEPT: %d\n\n"
+                    % (url, r.get("final_url") or url, base["at"], label, r.get("via") or "the page itself",
+                       len(text), min(len(text), KEEP_CHARS)))
+            tmp = kept + ".tmp.%d" % os.getpid()
+            with open(tmp, "w", encoding="utf-8") as f:
+                f.write(head + text[:KEEP_CHARS])
+            os.replace(tmp, kept)
+        except Exception as e:  # read, but not kept: no evidence to name, so the step is not done; said so
+            kept, read, full, label = "", False, False, NOT
+            r = dict(r, kind="not_kept", why="read but could not be kept: %s: %s" % (type(e).__name__, str(e)[:120]))
     _ledger(dict(base, url=url[:500], final_url=str(r.get("final_url") or "")[:500], result=label,
                  kind=r.get("kind"), why=str(r.get("why") or "")[:240], chars=len(text), file=kept or None,
                  where=where), mem)
@@ -215,7 +227,8 @@ def run(params, step_text, want_id="", original="", want=None, mem=None, fetch=N
 
 
 def full_text_read(want):
-    """[{url, file}] for each read_url step of this want that READ IN FULL and whose kept file is there."""
+    """[{url, file}] for each read_url step of this want that READ IN FULL and whose kept file is there. A check for
+    tools and tests; the completion judge itself is shown each read_url step's own READ IN FULL / READ IN PART line."""
     out = []
     for h in (want or {}).get("step_history") or []:
         if not isinstance(h, dict) or h.get("capability") != "read_url":

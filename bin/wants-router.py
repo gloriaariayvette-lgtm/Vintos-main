@@ -182,7 +182,12 @@ def capture_findings(capability, want_text):
                 # web_search step was left "Web search completed", without what it found or where (15 November)
                 if isinstance(searches, dict):
                     searches = searches.get("searches") or []
-                if searches and isinstance(searches[-1], dict):
+                # only a row this step's search wrote: vintos-websearch.py exits 0 without a row when it has no
+                # question, the search is unavailable or nothing came back, and an older search's addresses must
+                # never be credited to this step (review, 15 November)
+                _since = os.environ.get("VINTOS_WEB_SEARCH_STARTED", "")
+                if searches and isinstance(searches[-1], dict) and _since and \
+                        str(searches[-1].get("timestamp") or "") >= _since:
                     synthesis = str(searches[-1].get("synthesis") or "")[:500]
                     found = [str(u)[:300] for u in (searches[-1].get("evidence") or []) if str(u).startswith("http")][:5]
                     if synthesis or found:
@@ -393,8 +398,9 @@ CAPABILITIES = [
     },
     {   # 15 November (Gloria): his wants to read a paper in full could only be planned as searches. Before email:
         # "read the paper" is not a letter, and before read_memory: an address is not his own files.
-        "keywords": ["read the full", "full text", "full paper", "read the paper", "read the article", "read the pdf",
-                     "open the link", "open this link", "open the pdf", "read the preprint", "the paper itself", "the pdf itself"],
+        "keywords": ["read the full paper", "read the full article", "read the full text", "full text of the",
+                     "read the paper", "read the article", "read the pdf", "read the preprint", "open the link",
+                     "open this link", "open the pdf", "the paper itself", "the pdf itself"],
         "action": "read_url",
         "desc": "Open one link (a page, an article or a PDF) and read its whole text, through the same safe door his letters use",
     },
@@ -851,6 +857,7 @@ def web_search_want(want_text):
             log(f"Web search want: directed topic set: {_ws_topic[:80]}")
     except Exception as _wse:
         log(f"Web search topic extraction failed: {_wse}")
+    os.environ["VINTOS_WEB_SEARCH_STARTED"] = datetime.now().isoformat()   # capture_findings: this step's row only
     _ws_env = os.environ.copy()
     _ws_env["VINTOS_NO_WANT_SEED"] = "1"
     _ws_env["VINTOS_WANT_SEARCH"] = "1"   # search this want's topic, first (2026-09-28)

@@ -50,7 +50,9 @@ _FULL_READ = re.compile(
     r"\bfull[- ]text\b|\bfull (?:paper|article|study|pdf|preprint)\b|"
     r"\b(?:paper|article|pdf|preprint|study|papers|articles|pdfs) (?:itself|themselves)\b|"
     r"\bactual\s+(?:[\w'’-]+\s+){0,3}?(?:paper|article|pdf)s?\b|"
-    r"\b(?:read|reread|open)\b(?:(?!\b(?:about|email|write|tell|ask)\b).){0,50}\b(?:paper|article|preprint|pdf|link)s?\b",
+    r"\b(?:read|reread|open)\s+(?:(?!(?:and|then|or|but|about|post|write|send|email|tell|ask|my|his|on)\b)"
+    r"[\w'’.&-]+\s+){0,6}?(?:paper|article|preprint|pdf)\b|"
+    r"\bopen\s+(?:the|this|that)\s+link\b",
     re.I,
 )
 _URL = re.compile(r"https?://\S+", re.I)
@@ -172,7 +174,8 @@ def normalize_steps(want_text, proposed):
         at = max([i + 1 for i, s in enumerate(clean) if s["capability"] == "web_search"] or [0])
         add = [_step("read_url", "Open the address of what the want names and read its whole text: " + str(want_text))]
         if at == 0 and not _URL.search(str(want_text)):
-            add.insert(0, _step("web_search", "Find the address of the full text: " + str(want_text)))
+            topic = re.sub(r"^\s*(?:i want to|to)\s+", "", str(want_text), flags=re.I).rstrip(". ")
+            add.insert(0, _step("web_search", "Search for the open full text of: " + topic))
             changes.append("added_search_for_the_address")
         clean[at:at] = add
         changes.append("added_required_read_url")
@@ -217,9 +220,14 @@ def normalize_steps(want_text, proposed):
                            len(clean) - (1 if contract["outward_to_gloria"] else 0))
         drop = next((i for i in candidates
                      if clean[i]["capability"] in ("write_journal", "creative_write")), None)
-        if drop is None:   # the step that reads the whole text is the want's own act, not padding
-            drop = next((i for i in candidates if not (contract["full_read"] and clean[i]["capability"] == "read_url")),
-                        None)
+        if drop is None:   # the read of the whole text, and the search that finds its address, are the want's own act
+            def _kept(i):
+                if not contract["full_read"]:
+                    return False
+                cap = clean[i]["capability"]
+                return cap == "read_url" or (cap == "web_search" and i + 1 < len(clean)
+                                             and clean[i + 1]["capability"] == "read_url")
+            drop = next((i for i in candidates if not _kept(i)), None)
         if drop is None:
             break
         clean.pop(drop)
