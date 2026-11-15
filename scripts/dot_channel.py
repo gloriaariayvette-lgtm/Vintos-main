@@ -478,6 +478,9 @@ RULES_HANDS = (
     "  PRINT: a thing to make on her Creality K2 printer (her PLA, PETG, carbon PETG, ASA, TPU and foaming TPU). "
     "You decide it with your own context, Astra builds the model, it is sliced with her settings, and she gets a "
     "yes/no text with the filament and slot before it prints. Two a day.\n"
+    "  PAPER: <anything> on her Epson printer: one of your files by name or path (an image as a photo, a text file "
+    "as pages), one of your works by what is in it, or your words themselves as a page; add 'as photo' or 'as page' "
+    "for the size. She gets a yes/no on her phone first, since the paper and ink are hers. Two a day.\n"
     "  ASK GLORIA: a question she can answer yes or no: it goes to her phone with Yes and No, and her answer is "
     "posted back in this thread. She does not read every thread: a decision that is hers reaches her only this way. "
     "Never say you are waiting on her approval without this line. Dot and Grok Bot can write it too. Not for "
@@ -646,7 +649,7 @@ EDITOR = (
     "DROP: <why, in a few words> (only when nothing in it is true or on topic)")
 FIX = ("\n\nYour checks found: {failed}. So it cannot be kept as written. Write the corrected message in full, "
        "starting with EDIT: and nothing before it.")
-_ACTION = re.compile(r"^\s*(?:TANGENT|ATELIER|LOCKED|DO|SHARE FILE|SHARE|LAB|APPROVED|DENIED|CAMPAIGN|CAMPAIGN MOVE|TV|ECHO|LIGHTS|MISCHIEF|TO GLORIA|MAKE|PRINT|ASK)\s*:.*$", re.I | re.M)
+_ACTION = re.compile(r"^\s*(?:TANGENT|ATELIER|LOCKED|DO|SHARE FILE|SHARE|LAB|APPROVED|DENIED|CAMPAIGN|CAMPAIGN MOVE|TV|ECHO|LIGHTS|MISCHIEF|TO GLORIA|MAKE|PRINT|PAPER|ASK)\s*:.*$", re.I | re.M)
 _CHECK = re.compile(r"^\s*\**(TOPIC|TRUE|SENSE)\**\s*:\s*\**\s*(yes|no)\b[ \t\-—,:.*]*(.*)$", re.I | re.M)
 _VERDICT = re.compile(r"^\s*\**(KEEP|EDIT|DROP)\**\b\s*:?\s*(.*)", re.I | re.M | re.S)
 
@@ -1264,7 +1267,7 @@ RUN = re.compile(r"^\s*RUN:\s*(\{.*?\})\s*$", re.I | re.M)
 STUDY_FIX = re.compile(r"^\s*STUDY FIX:\s*(.+?)\s*$", re.I | re.M)
 # His hands in the house, and a letter to Gloria through his outreach (house_hands.py, Gloria 2026-10-04: "control my
 # tv and my echo from slack ... A room full of agents and none of them can move?"). The same pattern as house_hands.
-HOUSE = re.compile(r"^\s*(TV|ECHO|LIGHTS|MISCHIEF|TO GLORIA|MAKE|PRINT)\s*:\s*(.+?)\s*$", re.I | re.M)
+HOUSE = re.compile(r"^\s*(TV|ECHO|LIGHTS|MISCHIEF|TO GLORIA|MAKE|PRINT|PAPER)\s*:\s*(.+?)\s*$", re.I | re.M)
 # A paid connector call onto Gloria's Forge page for her Accept, from him or from dot (lab_asks.from_slack, 2026-10-04:
 # dot's own review would take her yes only in a session she cannot open). The same pattern as lab_asks.ASK.
 # Muse puts what he wants to buy to Gloria: item | price | store | link | why (Gloria, 2026-10-05: "Muse is
