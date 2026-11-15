@@ -286,6 +286,7 @@ SCRIPTS="$SCRIPTS codefix_worm.py"   # the code-fix worm in use: a fix comes bac
 SCRIPTS="$SCRIPTS native_audio.py"   # explicit local waveform route; disabled until configured
 SCRIPTS="$SCRIPTS native_video.py native_video_sources.py"   # explicit local live-frame route and frame sources; disabled until configured
 SCRIPTS="$SCRIPTS world_model_shadow.py"   # the state model in shadow: writes its expectations, read by nothing; cron not installed by deploy (2026-11-13)
+SCRIPTS="$SCRIPTS hdc_episodic.py"   # who/what/where/when episodic memory in shadow (hyperdimensional): writes its own state file, read by nothing; no cron installed by deploy (2026-11-15)
 BINS="$BINS mirror-trigger.sh"   # its cron entry runs the ~/Vintos copy, which was in no list; it matched the checkout when the thread gate was added (2026-10-27)
 
 CLIENTFILES="clients/mobile/stratagem_voice.js clients/mobile/index.html clients/mobile/client_lifecycle.js clients/mobile/avatar-bundle.js"
