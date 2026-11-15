@@ -22,6 +22,7 @@ os.environ["VINTOS_PAID_PER_DAY"] = "10"
 os.environ["VINTOS_PAID_CALLER_SHARE"] = "0.5"
 os.environ["VINTOS_UNTAGGED_PAID_PER_DAY"] = "2"
 os.environ["VINTOS_EXPERIMENT_PAID_PER_DAY"] = "3"
+os.environ["VINTOS_PAID_ROUTER_FLOOR"] = "2"
 os.environ["ANTHROPIC_API_KEY"] = "test-anthropic"
 os.environ["XAI_API_KEY"] = "test-xai"
 sys.path.insert(0, os.path.join(ROOTD, "scripts"))
@@ -86,11 +87,22 @@ check("a process outside his trees is not his", OUT == {"name": "outside:reader.
 SENT.clear()
 for i in range(2):
     s, h, b = S.handle_chat(req("out %d" % i), "/v1/chat/completions", OUT)
-check("an outside caller gets its small allowance", s == 200 and len(rows(caller="outside:reader.py")) == 2)
+check("an outside caller gets its small allowance", s == 200 and len(rows(caller=S.OUTSIDE_BUCKET)) == 2)
 SENT.clear()
 s, h, b = S.handle_chat(req("out bulk"), "/v1/chat/completions", OUT)
 check("past it: 429, not his budget and not Grok", s == 429 and SENT == [], (s, [p for p, _ in SENT]))
-check("... the refusal is recorded against that caller", rows("refused", caller="outside:reader.py"))
+check("... the refusal is recorded against the outside allowance", rows("refused", caller=S.OUTSIDE_BUCKET))
+OUT2 = {"name": "outside:other_reader.py", "his": False, "experiment": None}
+SENT.clear()
+s, h, b = S.handle_chat(req("renamed script"), "/v1/chat/completions", OUT2)
+check("another outside script shares that one allowance: renaming does not buy more", s == 429 and SENT == [], s)
+SENT.clear()
+j = req("claims a router receipt"); j["paid_reserved"] = True
+s, h, b = S.handle_chat(j, "/v1/chat/completions", OUT)
+check("an outside caller cannot skip the caps by claiming model_router already reserved", s == 429 and SENT == [], (s, [p for p, _ in SENT]))
+SENT.clear()
+s, h, b = S.handle_chat(req("exp local"), "/gemma/v1/chat/completions", EXP)
+check("an experiment on a local lane never reaches Claude or Grok", not any(p in ("anthropic", "xai") for p, _ in SENT), [p for p, _ in SENT])
 
 # ---- his own callers: a share each
 HIS = S.classify_caller({}, ("127.0.0.1", 6001), pid_of=lambda a: 99, identity_of=lambda pid: ("wonder-detector.py", True))
@@ -106,6 +118,11 @@ check("past its share his caller still gets an answer: the chain moves on, as fo
 OTHER = {"name": "server.py", "his": True, "experiment": None}
 s, h, b = S.handle_chat(req("another organ"), "/v1/chat/completions", OTHER)
 check("... while his other callers still reach Claude", s == 200 and h.get("x-vintos-provider") == "anthropic", h.get("x-vintos-provider"))
+check("the shim's callers have now used all but the router's floor (8 of 10)", CA.paid_today("anthropic") == 8, CA.paid_today("anthropic"))
+SENT.clear()
+s, h, b = S.handle_chat(req("third organ"), "/v1/chat/completions", {"name": "third.py", "his": True, "experiment": None})
+check("past that, shim callers move on to the next provider", s == 200 and h.get("x-vintos-provider") == "xai", h.get("x-vintos-provider"))
+check("... and the floor is still there for model_router", CA.reserve_paid("model_router", "anthropic", "claude-opus-4-8")[0] and CA.paid_today("anthropic") == 9)
 
 # ---- a lookup that fails never silences him
 UNK = S.classify_caller({}, ("127.0.0.1", 6002), pid_of=lambda a: None)
@@ -156,6 +173,10 @@ fake_proc(5101, ["bash", "-l"], exp_dir, 1)
 fake_proc(5102, ["python3", "reader.py", "a", "b"], exp_dir, 5101)
 check("an experiment script started from a shell outside his trees is not his",
       S._process_identity(5102, proc=P) == ("reader.py", False), S._process_identity(5102, proc=P))
+fake_proc(5401, ["bash", "-l"], his_dir, 1)
+fake_proc(5402, ["python3", "reader.py"], exp_dir, 5401)
+check("a shell that merely stands in his trees does not make an experiment his",
+      S._process_identity(5402, proc=P) == ("reader.py", False), S._process_identity(5402, proc=P))
 fake_proc(5201, ["/usr/bin/python3", os.path.join(home, "projector_offer.py")], home, 1)
 check("the projector scripts loose in her home are his household",
       S._process_identity(5201, proc=P) == ("projector_offer.py", True), S._process_identity(5201, proc=P))

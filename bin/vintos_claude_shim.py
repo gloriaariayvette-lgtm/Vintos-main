@@ -160,6 +160,10 @@ def caller_share():
 
 def untagged_cap():   return _env_int("VINTOS_UNTAGGED_PAID_PER_DAY", 20)
 def experiment_cap(): return _env_int("VINTOS_EXPERIMENT_PAID_PER_DAY", 300)
+# Reservations the shim leaves for model_router (his chat with her, in the server's own process): the shim's
+# callers together stop this many short of the day's cap, so her messages always find room (15 November 2026).
+def router_floor():   return _env_int("VINTOS_PAID_ROUTER_FLOOR", 50)
+OUTSIDE_BUCKET = "outside"   # every caller outside his trees shares one allowance, whatever its script is called
 
 def _day_cap():
     try:
@@ -228,7 +232,7 @@ def _process_identity(pid, proc="/proc", depth=8):
     def inside(p):
         rp = os.path.realpath(p)
         return any(rp == r or rp.startswith(r + os.sep) for r in roots)
-    name, program = None, None   # name: the nearest script; program: the socket holder's own program
+    name, program, first = None, None, pid   # name: the nearest script; program: the socket holder's own program
     for _ in range(depth):
         got = _one_process(pid, proc)
         if not got or not got[0]:
@@ -239,7 +243,8 @@ def _process_identity(pid, proc="/proc", depth=8):
         if not scripts and "-m" in argv[1:-1]: scripts = [argv[argv.index("-m") + 1]]
         mine = [s for s in scripts if s.endswith((".py", ".sh")) and inside(os.path.join(cwd, s))]
         if name is None and (mine or scripts): name = os.path.basename((mine or scripts)[0])
-        if mine or inside(cwd):
+        # an ancestor counts only by a script of his that it runs, never by where its shell happens to stand
+        if mine or (pid == first and inside(cwd)):
             return name or program, True
         if ppid <= 1: break
         pid = ppid
@@ -266,9 +271,10 @@ def _admit_paid(call, provider, model):
     budget for this provider is spent, so the chain moves on as it does for any refused provider.
     The ledger failing to record is not a reason to go silent: that proceeds, as outbound accounting does.
     An experiment reserves under its own provider and cap; a caller holds at most its share (see above)."""
-    if call.prereserved or (provider, call.key) in call.sent:
-        return None
     c = getattr(call, "caller", None) or {}
+    # only his own callers (model_router) may say a stage was reserved already; anyone else could skip every cap
+    if (call.prereserved and (not c or c.get("his"))) or (provider, call.key) in call.sent:
+        return None
     kw = {}
     if c.get("experiment"):
         provider_key, organ = EXPERIMENT_PROVIDER, "vintos_claude_shim:experiment"
@@ -276,9 +282,10 @@ def _admit_paid(call, provider, model):
     else:
         provider_key, organ = provider, "vintos_claude_shim"
         if c and not c.get("his"):
-            kw = {"caller": c["name"], "caller_cap": untagged_cap(), "caller_all_providers": True}
+            kw = {"caller": OUTSIDE_BUCKET, "caller_cap": untagged_cap(), "caller_all_providers": True}
         elif c:
-            kw = {"caller": c["name"], "caller_cap": int(_day_cap() * caller_share())}
+            kw = {"caller": c["name"], "caller_cap": int(_day_cap() * caller_share()),
+                  "cap": max(0, _day_cap() - router_floor())}
     try:
         from compute_admission import reserve_paid
         ok, why = reserve_paid(organ, provider_key, model=str(model or ""), **kw)
@@ -665,10 +672,15 @@ def _provider_chain(j, path):
 
 def run_chain(j, path, chain=None, caller=None):
     """Try providers in order; return (final_result_or_None, all_stage_results, call).
-    An experiment is answered by Claude alone: no local model, no Grok (15 November 2026)."""
+    An experiment never reaches Grok (15 November 2026): on the chat path it is answered by Claude alone; on a
+    local lane (/gemma..., /pool/...) by that lane's local models only."""
     call = _Call(j, caller)
-    if (caller or {}).get("experiment"): chain = ["anthropic"]
-    for name in (chain or provider_chain(j, path)):
+    if (caller or {}).get("experiment"):
+        if path == "/v1/chat/completions": chain = ["anthropic"]
+        else: chain = [n for n in (chain or provider_chain(j, path)) if n not in ("anthropic", "xai")]
+    elif not chain:
+        chain = provider_chain(j, path)
+    for name in chain:
         res = pool_complete(j, call, name[5:]) if name.startswith("pool:") else PROVIDERS[name](j, call)
         call.results.append(res)
         if GR.usable(res):
