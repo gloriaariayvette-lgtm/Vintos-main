@@ -175,7 +175,7 @@ class Tests(unittest.TestCase):
 
     def test_default_context_limit_leaves_room_above_identity_cap(self):
         # his identity may fill the dot channel's cap by itself; a default no larger than that blocks the first call
-        cap=int(re.search(r'text = "\\n\\n"\.join\(parts\)\[:(\d+)\]',(ROOT/'scripts/dot_channel.py').read_text()).group(1))
+        cap=int(re.search(r'^HIS_CONTEXT_CAP = (\d+)',(ROOT/'scripts/dot_channel.py').read_text(),re.M).group(1))   # his_context(limit=HIS_CONTEXT_CAP)
         self.assertLess(cap+len(W.RULES),B.DEFAULTS['context_chars']);self.assertLessEqual(B.DEFAULTS['context_chars'],250000)
         want=dict(self.want,id='fixture-full-want')
         want['agent_work']=dict(self.want['agent_work'],request_id='WA-'+'b'*24,thread='fixture-full-thread',work_id='RW-full')
