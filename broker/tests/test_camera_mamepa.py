@@ -164,6 +164,22 @@ check('a failing store reads as no record, and is asked once per key per stream'
       flaky.tag(0, {'family': 'tag36h11', 'tag_id': 1})['records'] == [] and flaky.tag(1, {'family': 'tag36h11', 'tag_id': 1}) is not None
       and calls == ['tag36h11:1'])
 check('records are never written back to the store', store.lookup('tag36h11:7') == [{'id': 'syn-1', 'text': 'synthetic record: the blue test card'}])
+rec_line = 'recalled sighting (fuzzy recall, salience 4.0; not a memory Gloria linked): p1, a1, r1, 2030-01-02 morning'
+mixed = DictTagStore({'tag36h11:7': [{'id': 'syn-1', 'text': 'synthetic record: the blue test card'},
+                                     {'kind': cm.RECALLED_KIND, 'text': rec_line}],
+                      'tag36h11:9': [{'kind': cm.RECALLED_KIND, 'text': rec_line}]})
+plain = DictTagStore({'tag36h11:7': [{'id': 'syn-1', 'text': 'synthetic record: the blue test card'}]})
+def tag_lines(st):
+    mp = Mamepa(model, st); mp.new_stream('h', 0.); mp.frame(clip, at=0.)
+    mp.tag(0., {'family': 'tag36h11', 'tag_id': 7}); mp.tag(.1, {'family': 'tag36h11', 'tag_id': 9})
+    return [l for l in mp.summary()['lines'] if l.startswith('[TAG ')]
+got, base = tag_lines(mixed), tag_lines(plain)
+check('recalled sightings never read as linked and never make a tag known; the linked lines are unchanged',
+      [l for l in got if 'recalled sighting' not in l] == base
+      and '[TAG tag36h11:9 in view - no record is linked to it. Do not guess what it stands for.]' in got
+      and all('linked record' not in l for l in got if 'recalled sighting' in l)
+      and sum('not a memory Gloria linked' in l for l in got) == 2
+      and got.index('[TAG tag36h11:7 - %s]' % rec_line) == got.index(base[0]) + 1)
 
 # ---- sensory tap events: frames in the vision space, audio never mixed in
 tap = SensoryTap(clock=lambda: 100.)
