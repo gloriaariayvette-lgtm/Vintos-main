@@ -685,6 +685,17 @@ note_ids = mind.tokenizer.encode(' ' + rd.sound_note())
 runs = {tuple(note_ids[i:i + 4]) for i in range(len(note_ids) - 3)}
 check('an answer never reads a note out: no four-token run of a note is continued',
       not any(tuple(out[i:i + 4]) in runs for i in range(len(out) - 3)) and rd._note_runs is None)
+rd2 = LiveSession(mind, Reader(), clock=lambda: 0., sound_notes=False)
+rd2.frame(frame(10), at=0.)
+_g, _orig = [], rd2._choose
+rd2._choose = lambda t, h=(), n=None: (_g.append(n), _orig(t, h, n))[1]
+rd2.ask('what is this tag?', max_tokens=1, note='[CAMERA MEMORY: the current scene began at 00:00.] [TAG tag36h11:7 in '
+        'view - linked record(s): the blue mug from the Lisbon trip] [TAG tag36h11:7 - recalled sighting: Gloria, kitchen]')
+_within = lambda part, ids: any(ids[i:i + len(part)] == part for i in range(len(ids) - len(part) + 1))
+_guard = list(_g[0][0]) if _g and _g[0] else []
+check("a seen tag's linked and recalled records stay sayable; the note's own wording is still guarded",
+      _within(mind.tokenizer.encode('current scene began'), _guard)
+      and not any(_within(mind.tokenizer.encode(w), _guard) for w in ('Lisbon', 'kitchen', 'linked record')))
 check('a question not about speech has no hearing pass', not any(c[1] for c in hb.calls) and hs.transcript is None)
 check('an answer never opens another thinking channel', ch.blocked == [7, 8] and 7 not in ch.ask('q', max_tokens=3)['tokens'])
 

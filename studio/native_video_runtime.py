@@ -598,8 +598,10 @@ class LiveSession:
         self.transcript = self.transcript_confidence = self.transcript_raw = None
 
         def question_chunk(sound):
-            # the notes' own wording (not the quoted transcript) may not be continued in the answer
-            guard = self._ids(re.sub(r'"[^"]*"', " ", (" " + sound if sound else "") + (" " + note if note else "")))
+            # the notes' own wording may not be continued in the answer; what they carry for the answer to use (the
+            # quoted transcript, a seen tag's linked or recalled records) stays sayable
+            guard = self._ids(re.sub(r'"[^"]*"|\[TAG [^\]]*\]?', " ",
+                                     (" " + sound if sound else "") + (" " + note if note else "")))
             self._note_runs = (guard, [self._key(t) for t in guard]) if guard else None
             return self._ids((" " + sound if sound else "") + (" " + note if note else "")
                              + (" " + question if question else "") + self.closing)
