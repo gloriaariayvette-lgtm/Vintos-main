@@ -333,13 +333,21 @@ def _with_gemma_unloaded(run):
     lock): then the first failure stands."""
     try:
         import chemistry_evo2 as evo
-        guard = evo._watchdog_exclusion()
-        guard.__enter__()
+        hold = evo.lab.model_window_hold()
+        hold.__enter__()
     except Exception:
         return None
     try:
+        guard = evo._watchdog_exclusion()
+        guard.__enter__()
+    except Exception:
+        hold.__exit__(None, None, None)
+        return None
+    try:
         try:
-            if evo._lms("unload", evo.GEMMA_MODEL).returncode != 0:
+            if not evo._unload_house():
+                try: evo._restore_gemma()
+                except Exception: pass
                 return None
         except Exception:
             return None
@@ -351,6 +359,7 @@ def _with_gemma_unloaded(run):
             except Exception as exc: print("esmfold: Gemma was not reloaded: %s" % exc, file=sys.stderr)
     finally:
         guard.__exit__(None, None, None)
+        hold.__exit__(None, None, None)
 
 
 def _fault(done, body):

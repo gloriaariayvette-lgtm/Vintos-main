@@ -68,6 +68,11 @@ def headroom(m, r):
     return None if avail is None else avail - m["reserve_bytes"]
 
 
+# Aegis's house model (Gloria, 14 November 2026): the Lab planner worm stands in for AEON there, and the shim's AEON lane
+# sends whichever is resident, so the pool must not spill AEON calls to another machine because the worm is loaded.
+HOUSE_STANDINS = {("aegis", "aeon/gemma-4-12b"): ("lab-c1",)}
+
+
 class Pool:
     def __init__(self, config_dir=None, room_reader=read_room, models_reader=llama_models):
         self.config_dir = config_dir
@@ -90,7 +95,9 @@ class Pool:
             r = rooms.get(b["machine"])
             if r is None: served[id(b)] = False
             elif b.get("kind") == "lmstudio":   # LM Studio lists downloaded models too; only trust what is loaded
-                served[id(b)] = b["model"] in (r.get("lmstudio_loaded") or [])
+                loaded = r.get("lmstudio_loaded") or []
+                served[id(b)] = b["model"] in loaded or any(s in loaded for s in HOUSE_STANDINS.get(
+                    (b["machine"], b["model"]), ()))
             else:
                 served[id(b)] = b["model"] in (self.models_reader(b["url"]) or [])
         view = {"machines": machines, "backends": backends, "tasks": tasks, "rooms": rooms,

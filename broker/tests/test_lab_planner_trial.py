@@ -42,7 +42,7 @@ def switch(value):
         if path.exists():
             path.unlink()
         return
-    path.write_text('SOME_OTHER_KEY=1\nLAB_PLANNER_TRIAL=%s\n' % value)
+    path.write_text('SOME_OTHER_KEY=1\nAEGIS_HOUSE_MODEL=worm\nLAB_PLANNER_TRIAL=%s\n' % value)
 
 
 class Base(unittest.TestCase):
@@ -109,12 +109,14 @@ class Switch(Base):
 
     def test_the_environment_switch_works_too_and_removing_the_line_is_the_rollback(self):
         os.environ['LAB_PLANNER_TRIAL'] = 'c1'
+        os.environ['AEGIS_HOUSE_MODEL'] = 'worm'
         try:
             with patch.object(T, '_ask', Mock(return_value=FIRST)) as trial:
                 I.turn('', ask=Mock(return_value=FIRST), execute=Mock(return_value=OUT))
             self.assertEqual(trial.call_count, 1)
         finally:
             os.environ.pop('LAB_PLANNER_TRIAL', None)
+            os.environ.pop('AEGIS_HOUSE_MODEL', None)
         switch('c1')
         switch(None)                       # the line removed: the next planner call is the current model's alone
         C._atomic(I._path('investigations.json'), {'investigations': []})
@@ -429,6 +431,56 @@ class Report(unittest.TestCase):
         self.assertEqual((trial['latency']['trial_s_median'], trial['latency']['added_s_per_call']), (10.0, 0.0))
         self.assertEqual(trial['outcomes_by_proposer']['c1']['new_outputs'], 1)
         self.assertEqual(R.main(['--root', str(root), '--until', '2026-11-13T03:00:00+00:00', '--json']), 0)
+
+
+
+class HouseModel(Base):
+    """14 November: the worm is Aegis's house model (AEGIS_HOUSE_MODEL=worm); the trial asks it on its own lane, credits
+    only an answer that lane reports as the worm's, and waits out a causality window instead of falling back."""
+    def reply(self, provider, model):
+        body = json.dumps({'provider': provider, 'model': model, 'choices': [{'message': {'content': FIRST}}]}).encode()
+        class R:
+            def __enter__(s): return s
+            def __exit__(s, *a): return False
+            def read(s): return body
+        return R()
+
+    def test_the_one_house_switch_back_to_aeon_turns_the_trial_off(self):
+        Path(T._env_path()).write_text('AEGIS_HOUSE_MODEL=aeon\nLAB_PLANNER_TRIAL=c1-worm\n')
+        self.assertEqual(T.proposer(), '')
+        Path(T._env_path()).write_text('LAB_PLANNER_TRIAL=c1-worm\n')
+        self.assertEqual(T.proposer(), '')
+        switch('c1-worm')
+        self.assertEqual(T.proposer(), 'c1-worm')
+
+    def test_default_url_is_the_worm_lane_on_loopback(self):
+        self.assertEqual(T._url(), 'http://127.0.0.1:8599/gemma-lab-c1-local/v1/chat/completions')
+
+    def test_only_the_worm_lane_answer_is_credited(self):
+        switch('c1-worm')
+        with patch.object(T.urllib.request, 'urlopen', return_value=self.reply('aegis_lab_c1', 'lab-c1')):
+            self.assertEqual(T._ask('c1-worm', 's', 'p'), FIRST)
+        for provider, model in (('aegis_gemma', 'aeon/gemma-4-12b'), ('xai', 'grok-4'), ('aegis_gemma', 'lab-c1'), (None, None)):
+            with patch.object(T.urllib.request, 'urlopen', return_value=self.reply(provider, model)):
+                with self.assertRaises(ValueError):
+                    T._ask('c1-worm', 's', 'p')
+
+    def test_a_model_call_waits_while_a_causality_window_holds_the_lock(self):
+        import fcntl, threading, time as _t
+        holder = open(C.MODEL_WINDOW_LOCK, 'a+')
+        fcntl.flock(holder.fileno(), fcntl.LOCK_EX)
+        entered = []
+        def call():
+            with C.model_window_hold():
+                entered.append(_t.time())
+        th = threading.Thread(target=call, daemon=True); th.start()
+        _t.sleep(0.5)
+        self.assertEqual(entered, [])            # waiting, not falling back
+        released = _t.time()
+        fcntl.flock(holder.fileno(), fcntl.LOCK_UN); holder.close()
+        th.join(12)                              # it looks again every 5 seconds
+        self.assertEqual(len(entered), 1)
+        self.assertGreaterEqual(entered[0], released)
 
 
 if __name__ == '__main__':

@@ -141,7 +141,7 @@ SCRIPTS="$SCRIPTS chemistry_probe.py chemistry_instrument_probe.py chemistry_mcp
 SCRIPTS="$SCRIPTS residual_shadow.py"   # prospective exact-input EmoClaw receipts; residual inference remains offline
 SCRIPTS="$SCRIPTS subcon_target.py aeon-bar-record.json"   # his subconscious stays on the 26B until AEON passes the whole bar (pinned record), 2026-11-07
 SCRIPTS="$SCRIPTS emotion_read.py reading.py introspective_planning.py tension_identity_audit.py dd_scene_quarantine.py want_learning.py conflict_surface.py velqan-coiner.py image_sight.py"   # 26B -> AEON (Gloria 2026-11-08): these follow the flag in the checkout since 7 November, but were in no list, so Aegis kept running copies that call the MacBook 26B directly. conflict_surface and velqan-coiner too: "I didn't hold those back. Aeon."
-SCRIPTS="$SCRIPTS belief_revision.py belief_revision_sources.py belief_revision_answer.py belief_revision_live.py"   # contradiction back-propagation, option (b) (Gloria 2026-11-14): records + local AEON checker; live only with BELIEF_REVISION=live in vintos.env
+SCRIPTS="$SCRIPTS belief_revision.py belief_revision_sources.py belief_revision_answer.py belief_revision_live.py belief_revision_verify.py"   # contradiction back-propagation, option (b) (Gloria 2026-11-14): records + local AEON checker; live only with BELIEF_REVISION=live in vintos.env; verify: optional exact check of a plan (--verify, energy-repair experiment)
 SCRIPTS="$SCRIPTS dream_shadow.py"   # the dream shadow trial: AEON writes and judges beside the live dream, into memory/shadow/dream only (2026-11-07)
 SCRIPTS="$SCRIPTS dream_wholeday.py"   # the whole-day dream shadow (option 2): AEON reads his whole day, dreams and judges, into memory/shadow/dream only (2026-11-08)
 SCRIPTS="$SCRIPTS chemistry_reading.py"   # the reading an experiment is still owed, 2026-09-13
@@ -163,6 +163,7 @@ SCRIPTS="$SCRIPTS chemistry_alignment.py"   # four frontier alignments of the La
 SCRIPTS="$SCRIPTS chemistry_frontier_bridge.py"   # event-sourced local-to-frontier Lab handoff receipts, 2026-09-13
 SCRIPTS="$SCRIPTS chemistry_evo2.py"   # read-only Evo 2 comparative likelihood lane, 2026-09-13
 SCRIPTS="$SCRIPTS aegis-gemma-load.sh"   # exact Q4_0 Aegis Gemma reload contract
+SCRIPTS="$SCRIPTS aegis-model-window.sh"   # causality's window: Lab paused, plain AEON on the card, the worm back after (2026-11-14)
 SCRIPTS="$SCRIPTS lab-day.sh"   # his morning at the bench; reads the Mac's run-dict reply, never writes an empty bench (2026-10-29)
 SCRIPTS="$SCRIPTS schedule-graph.py"   # schedule graph, review 20, 2026-09-10
 SCRIPTS="$SCRIPTS recall_explain.py"   # explainable recall, reviews 126/144, 2026-09-10
@@ -224,7 +225,7 @@ BINS="$BINS chemistry_mac_probe.py"   # versioned Mac Chemistry Lab commissionin
 BINS="$BINS vintos_claude_shim.py local_pool.py pool_room.py hallucination_check.py reality_anchor.py reality-anchor.py specificity_check.py wonder-detector.py wonder_detector.py relational_geometry.py relational-geometry.py"
 BINS="$BINS ledger-scrub.py causal-self-model.py causal_self_model.py setup_memory.sh voice_kokoro.py voice_orpheus.py tension-field.sh pearl-engine.sh soul-review.sh weekly-summary.sh yearning-detector.sh resonance-pulse.sh emotional-reflection.sh humor-detector.sh frame-engine.sh relational-mismatch.sh value-map-update.sh behavioral-intercept.py weekly-summary.py temporal-memory.py subconscious-drift.py absence-map-cold.py absence_map_cold.py vintos-send-video.py thread_store.py thread-triage.py thread_weaver.py thread-resolution.py latent_threads.py ghost-branches.py confession_writer.py unprecedented-detector.sh silence-audit.sh substrate-anxiety.sh second-order-dreamer.py preoccupation-dream.sh temporal-context.sh"   # thread lifecycle, 2026-09-10
 BINS="$BINS stratagem-charter.sh gemma-watchdog.sh"   # Aegis Gemma health and Evo 2 share one non-PrivateTmp lock
-EXECUTABLE="atelier-open.py atelier-visit.py atelier-threshold.py atelier-gate.py vintos-home.py mischief-detector.sh robot_bridge.py robot_subconscious.py robot-pi-repoint.sh desktop_agent.py aegis-gemma-load.sh
+EXECUTABLE="atelier-open.py atelier-visit.py atelier-threshold.py atelier-gate.py vintos-home.py mischief-detector.sh robot_bridge.py robot_subconscious.py robot-pi-repoint.sh desktop_agent.py aegis-gemma-load.sh aegis-model-window.sh
 atelier-door.sh atelier-canary.sh atelier-broker-watch.sh gloria-model-update.sh atelier-status.sh wants-check.sh"
 
 # Every file this deploy touches, relative to the checkout (the manifest above

@@ -49,7 +49,8 @@ import uuid
 import chemistry_lab as lab
 
 KNOWN = {'c1': 'lab-c1', 'c1-worm': 'lab-c1'}   # switch value -> the alias the trial server answers to
-DEFAULT_URL = 'http://127.0.0.1:8866/v1/chat/completions'
+DEFAULT_URL = 'http://127.0.0.1:8599/gemma-lab-c1-local/v1/chat/completions'   # the shim's worm-only lane on Aegis
+WORM_PROVIDER, WORM_MODEL = 'aegis_lab_c1', 'lab-c1'                            # what that lane reports
 DEFAULT_TIMEOUT = 120.0
 DOWN_SECONDS = 600                      # after the trial model fails to answer, the current model plans alone this long
 MAX_TOKENS = 800                        # the investigation planner's own budget
@@ -73,8 +74,11 @@ def setting(name, default=''):
 
 
 def proposer():
-    """The trial model's name when the switch is on and names a known model; '' otherwise."""
+    """The trial model's name when the switch is on and names a known model, and the worm is Aegis's house model
+    (AEGIS_HOUSE_MODEL=worm, Gloria 14 November: the one switch back to plain AEON everywhere); '' otherwise."""
     name = str(setting('LAB_PLANNER_TRIAL') or '').strip().lower()
+    if str(setting('AEGIS_HOUSE_MODEL') or '').strip().lower() != 'worm':
+        return ''
     return name if name in KNOWN else ''
 
 
@@ -99,8 +103,11 @@ def _ask(name, system, prompt, timeout=None):
             'chat_template_kwargs': {'enable_thinking': False},
             'messages': [{'role': 'system', 'content': system}, {'role': 'user', 'content': prompt}]}
     req = urllib.request.Request(_url(), data=json.dumps(body).encode(), headers={'Content-Type': 'application/json'})
-    with urllib.request.urlopen(req, timeout=timeout or _timeout()) as response:
+    with lab.model_window_hold(), urllib.request.urlopen(req, timeout=timeout or _timeout()) as response:
         data = json.loads(response.read())
+    if data.get('provider') != WORM_PROVIDER or data.get('model') != WORM_MODEL:
+        # whatever answered is not the worm (a lane typo, a shim without the worm's lane): nothing is credited to it
+        raise ValueError('not the worm: %s/%s' % (str(data.get('provider'))[:40], str(data.get('model'))[:40]))
     return str(((data.get('choices') or [{}])[0].get('message') or {}).get('content') or '')
 
 

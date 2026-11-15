@@ -1176,13 +1176,40 @@ def _completion_metadata(data, choice, max_tokens):
     return result
 
 
+# The causality window (aegis-model-window.sh, Gloria 14 November 2026) holds this lock exclusively while plain AEON is
+# on Aegis's card in the house model's (the Lab planner worm's) place. Every Lab model call holds it shared: the window
+# waits for the call in flight, and the Lab's next call waits for the window, never past MODEL_WINDOW_MAX_WAIT.
+MODEL_WINDOW_LOCK = os.path.join(MEM, ".aegis-model-window.lock")
+MODEL_WINDOW_MAX_WAIT = 7200
+
+
+@contextlib.contextmanager
+def model_window_hold():
+    try:
+        stream = open(MODEL_WINDOW_LOCK, "a+")
+    except OSError:
+        yield
+        return
+    with stream:
+        deadline = time.time() + MODEL_WINDOW_MAX_WAIT
+        while True:
+            try:
+                fcntl.flock(stream.fileno(), fcntl.LOCK_SH | fcntl.LOCK_NB)
+                break
+            except OSError:
+                if time.time() > deadline:
+                    break
+                time.sleep(5)
+        yield
+
+
 def _ask(system, prompt, max_tokens=500, temperature=0.75):
     body = json.dumps({"model": LLM_MODEL, "temperature": temperature, "max_tokens": max_tokens,
                        "messages": [{"role": "system", "content": system},
                                     {"role": "user", "content": prompt}]}).encode()
     req = urllib.request.Request(LLM_URL, data=body, headers={"Content-Type": "application/json"})
     try:
-        with urllib.request.urlopen(req, timeout=150) as response:
+        with model_window_hold(), urllib.request.urlopen(req, timeout=150) as response:
             data = json.loads(response.read())
     except urllib.error.HTTPError as exc:
         # The shim's error body names every provider it tried with the stop reason each saw. Written to the
@@ -1207,7 +1234,8 @@ def _record_model_call(system, prompt, reply, max_tokens, temperature):
         if os.path.exists(MODEL_CALLS) and os.path.getsize(MODEL_CALLS) >= MODEL_CALLS_CAP:
             os.replace(MODEL_CALLS, MODEL_CALLS + ".1")
         caller = sys._getframe(2).f_code.co_name
-        _append(MODEL_CALLS, {"at": now_iso(), "model": LLM_MODEL, "url": LLM_URL, "caller": caller,
+        answered = (getattr(reply, "completion", None) or {}).get("model")   # the house model that answered
+        _append(MODEL_CALLS, {"at": now_iso(), "model": answered or LLM_MODEL, "url": LLM_URL, "caller": caller,
                               "temperature": temperature, "max_tokens": max_tokens,
                               "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
                               "system": system, "prompt": prompt, "reply": str(reply),

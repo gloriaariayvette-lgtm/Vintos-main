@@ -3,17 +3,21 @@
 LMS="/mnt/c/Users/glori/.lmstudio/bin/lms.exe"
 LOADER="/home/gloria/.vintos/workspace/scripts/aegis-gemma-load.sh"
 LOG="/home/gloria/.vintos/logs/gemma-watchdog.log"
-MODEL="aeon/gemma-4-12b"
 # Shared with chemistry_evo2.py.  The Chemistry Lab has PrivateTmp=true, so a
 # /tmp lock would be two unrelated locks carrying the same name.
 LOCK="/home/gloria/.vintos/workspace/memory/.gemma-watchdog.lock"
 # LM Studio is a Windows process. Its WSL-reachable listener is the same address
 # used by aegis-gemma-load.sh; WSL loopback can be empty while the model is healthy.
 BASE="${VINTOS_LM_STUDIO_BASE:-http://172.18.16.1:1234}"
-PING='{"model":"'"$MODEL"'","messages":[{"role":"user","content":"ok"}],"max_tokens":3}'
 
 exec 9>"$LOCK"
 flock -n 9 || { echo "[$(date '+%F %T')] another watchdog holds the lock — skip" >> "$LOG"; exit 0; }
+
+# The house model (Gloria, 14 November): the Lab planner worm "lab-c1", or AEON inside a causality window, when
+# AEGIS_HOUSE_MODEL is not "worm", or for an hour after the worm failed to load. Read under the lock, so a window that
+# closes meanwhile cannot make this watch the wrong model. The loader unloads every LLM before it loads one.
+MODEL="$(bash "$LOADER" --which 2>/dev/null || echo aeon/gemma-4-12b)"
+PING='{"model":"'"$MODEL"'","messages":[{"role":"user","content":"ok"}],"max_tokens":3}'
 
 MODELS=$(curl -s --max-time 10 "$BASE/v1/models" 2>/dev/null)
 if echo "$MODELS" | grep -q "$MODEL"; then

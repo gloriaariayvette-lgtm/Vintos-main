@@ -777,15 +777,29 @@ def main(argv=None):
     ap.add_argument("--memory", required=True, help="directory holding his stores (use a copy)")
     ap.add_argument("--log", default=None, help="shadow log path (default: belief-revision-shadow.jsonl in --memory)")
     ap.add_argument("--no-log", action="store_true")
+    ap.add_argument("--verify", action="store_true",
+                    help="also check the plan exactly: contradictions left standing, passed checks broken, and the "
+                         "gap to the minimal repair (belief_revision_verify; reports only)")
     a = ap.parse_args(argv)
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import belief_revision_sources as S
     g, stats = S.build(a.memory)
     p = plan(g)
     out = {"sources": stats, "plan": counts(p), "resolved": len(resolved(g, p))}
+    extra = {"sources": stats}
+    if a.verify:
+        try:
+            import belief_revision_verify as V
+            v = V.verify(g, p)
+            # numbers only in the log, like the rest of the shadow row
+            out["verify"] = extra["verify"] = dict(
+                {"standing": len(v["standing"]), "broken_checks": len(v["broken_checks"]), "energy": v["energy"]},
+                **{k: v.get(k) for k in ("optimum", "gap", "minimal", "solver", "optimum_policy", "gap_policy",
+                                         "minimal_policy", "solver_policy")})
+        except Exception as e:                       # a failed check never costs the dry run its row
+            out["verify"] = extra["verify"] = {"solver": "error", "error": type(e).__name__}
     if not a.no_log:
-        out["log"] = shadow(p, a.log or os.path.join(a.memory, "belief-revision-shadow.jsonl"),
-                            extra={"sources": stats})
+        out["log"] = shadow(p, a.log or os.path.join(a.memory, "belief-revision-shadow.jsonl"), extra=extra)
     print(json.dumps(out, indent=1, sort_keys=True))
     return 0
 
