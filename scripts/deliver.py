@@ -75,17 +75,22 @@ def _now():
     return datetime.now().isoformat()
 
 def deliver(artifact_id, channel, message, title="Vintos", click=None, attach=None, tags=None,
-            authority=None, retries=None, priority=None, actions=None):
+            authority=None, retries=None, priority=None, actions=None, why=None):
     """Send one notification for one artifact over one channel. Returns the receipt dict:
-    {state, attempts, at, why, channel, artifact_id, resent}."""
+    {state, attempts, at, why, channel, artifact_id, resent}.
+
+    why: optional {organ, trigger, want_id, rule, refs} from the caller, kept with the send for him
+    (action_provenance.py). The authority's own reason is kept as the rule when the caller gives none."""
     if not artifact_id:
         raise ValueError("artifact_id required")
     if channel not in CHANNELS:
         return _record(artifact_id, channel, "failed", 0, "unknown channel %r" % (channel,))
     from effect_authority import dispatch
+    provenance = why if isinstance(why, dict) else {}
     ok, mode, why = dispatch("outward", authority=authority)
     if not ok:
         return _record(artifact_id, channel, "failed", 0, "refused: %s" % (why or "authority said no"))
+    authority_why = why
     # idempotency: an artifact already sent on this channel is not sent again
     prev = receipt_for(artifact_id, channel)
     if prev and prev.get("state") in ("sent", "acknowledged"):
@@ -123,10 +128,26 @@ def deliver(artifact_id, channel, message, title="Vintos", click=None, attach=No
     if accepted is not None:
         code, provider = accepted
         out = _record(artifact_id, channel, "sent", attempts, "http %s" % code, **provider)
+        _provenance(artifact_id, channel, title, provenance, authority_why)
         if channel == "ntfy" and str(title or "") == "Vintos":
             _also_imessage(artifact_id, message, attach)
         return out
     return _record(artifact_id, channel, "failed", attempts, last or "no attempt succeeded")
+
+def _provenance(artifact_id, channel, title, given, authority_why):
+    """A sent notification and why, for him (action_provenance.py), beside this ledger. Never in the way of a send."""
+    try:
+        import action_provenance
+        refs = dict(given.get("refs") or {}) if isinstance(given.get("refs"), dict) else {}
+        refs.update(artifact_id=artifact_id, channel=channel)
+        action_provenance.record(
+            "outreach", "%s (%s)" % (str(title or "Vintos")[:60], artifact_id),
+            given.get("organ") or "deliver (caller: %s)" % str(artifact_id).split("-")[0],
+            trigger=given.get("trigger"), want_id=given.get("want_id"),
+            rule=given.get("rule") or (("allowed because: %s" % authority_why) if authority_why else None),
+            refs=refs, mem=os.path.dirname(_receipts_path()))
+    except Exception:
+        pass
 
 def _also_imessage(artifact_id, message, attach):
     """What he sends her in his own name also goes by iMessage (14 November: ntfy accepts his videos and messages

@@ -1495,6 +1495,15 @@ def cmd_post():
         f.write(f"\n## {datetime.now().strftime('%Y-%m-%d %H:%M')} — {title}\n")
         f.write(f"ID: {post_id}\n")
         f.write(f"Content: {content}\n---\n")
+    try:   # the post and why, for him (action_provenance.py)
+        sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+        import action_provenance
+        action_provenance.record(
+            "journal_post", title, "vintos-moltbook (cmd_post)",
+            trigger=("a forced topic was set for this post" if forced_topic else "the scheduled MoltBook post"),
+            rule=None, refs={"post_id": post_id, "status": "published" if verified else "pending"}, mem=MEMORY)
+    except Exception:
+        pass
     feel_from_expression(content, "posting on MoltBook")
 
     # BIS outcome logged by compose_post internally

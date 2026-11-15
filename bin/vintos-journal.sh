@@ -89,6 +89,17 @@ with open(journal_path, 'a') as f:
 
 print(f'[journal] {result.strip()[:80]}', flush=True)
 
+# the entry and why it was posted, for him (action_provenance.py; 15 November: journal posts kept no why)
+try:
+    sys.path.insert(0, os.path.join(os.path.dirname(MEMORY), 'scripts'))
+    import action_provenance
+    action_provenance.record('journal_post', 'Daily journal ' + today, 'vintos-journal',
+                             trigger='the daily journal run (cron, about 3am)',
+                             rule='one private entry a day, appended to that day of his journal',
+                             refs={'file': 'journal/' + today + '.md'}, mem=MEMORY)
+except Exception:
+    pass
+
 # Update specificity check
 try:
     from specificity_check import process

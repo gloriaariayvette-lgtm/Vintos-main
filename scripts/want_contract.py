@@ -42,7 +42,26 @@ _AMBITION_EDIT = re.compile(
     re.I,
 )
 
+# Reading a paper, article or PDF in full (15 November, Gloria: he must be able to open links from his wants). Before
+# read_url existed such a want could only be planned as searches; it found abstracts, was judged not done, reworded and
+# dismissed. The want's own words now require the step that reads the whole text. Only reading or opening the thing
+# itself: writing to an author "about his paper", or a PDF toolkit, is not a read.
+_FULL_READ = re.compile(
+    r"\bfull[- ]text\b|\bfull (?:paper|article|study|pdf|preprint)\b|"
+    r"\b(?:paper|article|pdf|preprint|study|papers|articles|pdfs) (?:itself|themselves)\b|"
+    r"\bactual\s+(?:[\w'’-]+\s+){0,3}?(?:paper|article|pdf)s?\b|"
+    r"\b(?:read|reread|open)\s+(?:(?!(?:and|then|or|but|about|post|write|send|email|tell|ask|my|his|on)\b)"
+    r"[\w'’.&-]+\s+){0,6}?(?:paper|article|preprint|pdf)\b|"
+    r"\bopen\s+(?:the|this|that)\s+link\b",
+    re.I,
+)
+_URL = re.compile(r"https?://\S+", re.I)
+
 _ALIASES = {
+    "read_link": "read_url",
+    "open_link": "read_url",
+    "fetch_url": "read_url",
+    "read_paper": "read_url",
     "tell_gloria": "gloria",
     "route_to_gloria": "gloria",
     "journal": "write_journal",
@@ -107,6 +126,7 @@ def contract_for(want_text, steps=None):
         "records": records,
         "terminal": "gloria" if outward else None,
         "ambition_revision": bool(_AMBITION_EDIT.search(text)),
+        "full_read": bool(_FULL_READ.search(text)),
     }
 
 
@@ -149,6 +169,17 @@ def normalize_steps(want_text, proposed):
                  if i == keep or i not in reflective]
         changes.append("collapsed_duplicate_reflection")
 
+    if contract["full_read"] and not any(s["capability"] == "read_url" for s in clean):
+        # after the last search (it finds the address), before anything that works with what was read
+        at = max([i + 1 for i, s in enumerate(clean) if s["capability"] == "web_search"] or [0])
+        add = [_step("read_url", "Open the address of what the want names and read its whole text: " + str(want_text))]
+        if at == 0 and not _URL.search(str(want_text)):
+            topic = re.sub(r"^\s*(?:i want to|to)\s+", "", str(want_text), flags=re.I).rstrip(". ")
+            add.insert(0, _step("web_search", "Search for the open full text of: " + topic))
+            changes.append("added_search_for_the_address")
+        clean[at:at] = add
+        changes.append("added_required_read_url")
+
     if contract["evidence_first"]:
         existing = next((s for s in clean if s["capability"] == "read_memory"), None)
         clean = [s for s in clean if s["capability"] != "read_memory"]
@@ -189,8 +220,14 @@ def normalize_steps(want_text, proposed):
                            len(clean) - (1 if contract["outward_to_gloria"] else 0))
         drop = next((i for i in candidates
                      if clean[i]["capability"] in ("write_journal", "creative_write")), None)
-        if drop is None:
-            drop = next(iter(candidates), None)
+        if drop is None:   # the read of the whole text, and the search that finds its address, are the want's own act
+            def _kept(i):
+                if not contract["full_read"]:
+                    return False
+                cap = clean[i]["capability"]
+                return cap == "read_url" or (cap == "web_search" and i + 1 < len(clean)
+                                             and clean[i + 1]["capability"] == "read_url")
+            drop = next((i for i in candidates if not _kept(i)), None)
         if drop is None:
             break
         clean.pop(drop)
@@ -208,5 +245,7 @@ def satisfies_contract(want_text, steps):
     if not contract["creative_requested"] and "creative_write" in caps:
         return False
     if contract["ambition_revision"] and ("revise_ambition" not in caps or "creative_write" in caps):
+        return False
+    if contract["full_read"] and "read_url" not in caps:
         return False
     return True
