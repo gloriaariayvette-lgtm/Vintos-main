@@ -102,3 +102,15 @@ lifting it is Gloria's decision. What the gate does not simulate, for either cho
 target()'s refusals (synthetic ids do not name his stores).
 
 The chooser is frozen here and the held-out seeds are scored once.
+
+## Held-out result (scored once, `results-live-gate.json`)
+
+Gate **PASS** on every benchmark. No fallback, no checker-cache miss, her words revised 0 times by either chooser.
+
+| benchmark | localization old / exact | recall | precision | conclusions | preservation |
+|---|---|---|---|---|---|
+| criteria (600) | 0.901 / 0.890 | 0.951 / 0.953 | 0.986 / 0.979 | 0.982 / 0.982 | 0.9965 / 0.9951 |
+| answerer (300) | 0.863 / 0.865 | 0.927 / 0.925 | 0.977 / 0.977 | 0.972 / 0.972 | 0.9953 / 0.9959 |
+| energy (660) | 0.748 / 0.764 | 0.849 / 0.864 | 0.974 / 0.973 | 0.957 / 0.961 | 0.9951 / 0.9938 |
+
+The two choosers differ on 25 of 600, 34 of 300 and 68 of 660 networks.
