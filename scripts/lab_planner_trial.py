@@ -229,6 +229,10 @@ def explain(value, investigation, note=None, planned=None):
             return '', ''
         return 'empty_finish', 'finish asks for a review of new evidence, and this investigation has no new completed output yet'
     request = I.bind_inputs(normalize_request(route, request), steps)
+    import lab_bond_search      # the bond-length search fills "search" exactly as the step would (lab_investigations)
+    request, searched, _view = lab_bond_search.fill(route, request, steps, steps_left=I.MAX_STEPS - len(steps))
+    if searched:
+        return 'bond_search_done', 'nothing was sent: ' + searched
     if I.FRONTIER_PLANS and isinstance(planned, dict):
         plan_ref = {k: planned.get(k) for k in ('line_id', 'plan_id', 'step_index', 'step_number', 'route', 'tool')}
         if not I.plan_step_matches(plan_ref, route, request):

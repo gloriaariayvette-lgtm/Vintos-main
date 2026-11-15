@@ -10649,6 +10649,14 @@ async def avatar_chat(msg: ChatMessage, request: Request):
                 if _spl: _vt_subblock_a += "\n\n" + _spl
             except Exception: pass
             try:
+                import print_lane as _prl; _prll = _prl.context_line()
+                if _prll: _vt_subblock_a += "\n\n" + _prll
+            except Exception: pass
+            try:
+                import paper_print as _ppr; _pprl = _ppr.context_line()
+                if _pprl: _vt_subblock_a += "\n\n" + _pprl
+            except Exception: pass
+            try:
                 _arb = _after_resonance_block(_counterpart_text)
                 if _arb: _vt_subblock_a += "\n\n" + _arb
             except Exception: pass
