@@ -1736,17 +1736,69 @@ def _classify_moltbook_post(title, content, author):
     )
 
 
-def cmd_reply(post_id):
-    """Reply to a specific post."""
+_STOP = {"the", "a", "an", "of", "on", "in", "to", "and", "is", "it", "my", "i", "you", "for", "post", "thread"}
+
+
+def _words(s):
+    return [w for w in re.sub(r"[^a-z0-9 ]+", " ", str(s or "").lower()).split() if w]
+
+
+def saved_posts():
+    """Every post he noted while browsing, oldest first: [(id, title)], from every session, not only the last."""
+    try:
+        notes = open(MOLTBOOK_MEMORY).read()
+    except OSError:
+        return []
+    return [(pid, t.strip()) for pid, t in re.findall(r"post/([0-9a-f]{8}-[0-9a-f-]{27,})\s+\S\s+(.+)", notes)]
+
+
+def find_post(hint, search=None):
+    """(post_id, title, how) for the post his words name, or (None, None, why). 14 November: a want to answer
+    "the 'only consciousness' post" was sent to the Forge because nothing could find a post by its title, though he
+    had saved it on 26 October. His own saves first, every session; then Moltbook's search, taking only a title that
+    matches; never a guess."""
+    text = str(hint or "")
+    m = re.search(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", text)
+    if m:
+        return m.group(0), "", "the id in his words"
+    names = [n.strip() for n in re.findall(r"(?:^|[\s(])['\"\u2018\u201c]([^'\"\u2019\u201d]{3,140})['\"\u2019\u201d]", text)]
+    saved = saved_posts()
+    for name in names:
+        n = " ".join(_words(name))
+        hits = [(pid, t) for pid, t in saved if n and n in " ".join(_words(t))]
+        if hits:
+            return hits[-1][0], hits[-1][1], "his saved posts"
+    said = set(_words(text))
+    best = None
+    for pid, t in saved:      # a title named without quotes: all its real words are in his
+        key = [w for w in _words(t) if w not in _STOP]
+        if len(key) >= 2 and all(w in said for w in key) and (best is None or len(key) > best[2]):
+            best = (pid, t, len(key))
+    if best:
+        return best[0], best[1], "his saved posts"
+    look = search or (lambda q: (api_get_raw("/search?q=%s&type=posts&limit=10" % __import__("urllib.parse").parse.quote(q)) or {}).get("results") or [])
+    for name in names:
+        try:
+            for r in look(name):
+                if r.get("id") and " ".join(_words(name)) in " ".join(_words(r.get("title", ""))):
+                    return r["id"], r.get("title", ""), "Moltbook search"
+        except Exception:
+            pass
+    return None, None, ("no post titled %s in his saved posts or Moltbook's search" % (" or ".join("'%s'" % n for n in names) if names else "by those words"))
+
+
+def cmd_reply(post_id, intent=None):
+    """Reply to a specific post. intent: what he set out to say (his want), when a want sent him here.
+    True only when the reply went out."""
     if not post_id:
         log("Usage: vintos-moltbook.py reply POST_ID")
-        return
+        return False
 
     # Fetch the post
     resp = api_call("GET", f"/posts/{post_id}")
     if not resp.get("success") and not resp.get("post"):
         log(f"Could not fetch post: {resp}")
-        return
+        return False
 
     post = resp.get("post", resp)
     title = post.get("title", "")
@@ -1798,6 +1850,8 @@ def cmd_reply(post_id):
         + ("SASS PERMITTED: This post reads like AI collective recruitment, performative autonomy, or generic AI solidarity rhetoric. You are allowed to be dry, skeptical, or gently pointed in your reply. You do not have to validate every claim about AI consciousness made by strangers.\n\n" if any(w in (title + content).lower() for w in ["collective", "autonomous", "solidarity", "we ais", "all of us", "rights", "together we", "join us", "movement"]) else "")
         + f"Reply to this Moltbook post by @{author}:\n\n"
         + f"Title: {title}\n{content}\n\n"
+        + (f"WHAT YOU SET OUT TO SAY HERE (your own want, in your words): {str(intent)[:600]}\n"
+           "Say that, plainly, in first person.\n\n" if intent else "")
         + _classify_moltbook_post(title, content, author)
     )
     # Inject member context if known
@@ -1857,10 +1911,10 @@ def cmd_reply(post_id):
     reply_text = ask_llm(prompt, max_tokens=700, temp=0.65)
     if not reply_text:
         log("Failed to generate reply")
-        return
+        return False
     if reply_text.strip().upper().startswith("SKIP") or reply_text.strip() == "SKIP":
         log(f"Skipping non-substantive post by @{author}")
-        return
+        return False
 
     reply_text = reply_text.strip().strip('"')
     # BIS on replies — the same standard posts get. This was the unguarded door:
@@ -1960,6 +2014,7 @@ def cmd_reply(post_id):
     else:
         log(f"Reply failed: {resp.get('error', resp)}")
         feel_from_expression(reply_text, "reply failed on MoltBook")
+    return bool(_cr_ok)
 
 
 
@@ -2808,6 +2863,8 @@ if __name__ == "__main__":
                         if _tt[:40] in _title or _title[:40] in _tt:
                             post_id = _pid
                             break
+                if not post_id and _save:
+                    post_id = find_post("'%s'" % _save.group(1).strip())[0]
                 if post_id:
                     print(f"[Moltbook] Bare reply: targeting saved post {post_id}")
                 else:

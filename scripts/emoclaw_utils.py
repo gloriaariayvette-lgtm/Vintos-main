@@ -1131,7 +1131,7 @@ def _grounding_block(want_text, source_context=""):
 
 
 # Step actions the router runs (wants-router.py ACTION_MAP) that the planner's capability text does not list.
-ROUTER_STEP_ACTIONS = ("tell_gloria", "voidex_explore", "play_music", "correlate", "make_chart", "be_silent",
+ROUTER_STEP_ACTIONS = ("tell_gloria", "moltbook", "voidex_explore", "play_music", "correlate", "make_chart", "be_silent",
                        "be_mischievous", "creative_write", "introspect", "read_memory", "send_email", "gloria",
                        "revise_ambition")
 
