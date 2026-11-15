@@ -43,6 +43,109 @@ PREREGISTERED = {
     "not_tuned": "no threshold, window or head was chosen on after-reply rows; none existed",
 }
 
+# Decode-similarity confidence, registered 14 November before any row carried it
+# (docs/review-evidence/jepa-decode-confidence-20261114/prereg.json and addendum.json). Evaluated ONCE per
+# head, on the first N distinct targets of rows written by the decode-confidence code; later rows never
+# change the verdict. Gloria's arm is a shadow (her served confidence was held by the replay): decode
+# similarity, rank-identical to a decode confidence, against the readout confidence she is served.
+DECODE_VERSION = "decode-similarity-v1"
+PREREGISTERED_DECODE = {
+    "id": "jepa-decode-confidence-after-reply-2026-11-14",
+    "registered": "2026-11-14",
+    "n": 30,
+    "gloria": {"population": "rows with trigger after_reply carrying decode_confidence_version, the served "
+                             "anchored readout's triple, on or after the registration date; one row per distinct "
+                             "Gloria target; targets she had already sent are excluded (the P1 rule)",
+               "statistic": "decode_similarity (shadow: not served)", "control": "the served readout confidence"},
+    "self": {"population": "rows whose self triple carries confidence_source decode-similarity-v1 (served), on or "
+                           "after the registration date; target = his first reply after the forecast's context, "
+                           "said after the forecast; one row per distinct target",
+             "statistic": "decode_similarity_admitted (the raw similarity the served confidence is the percentile "
+                          "of: rank-identical inside the reference range, never tied by its clipping)",
+             "control": "the self head's coherence"},
+    "pass": {"max_monotonicity": -0.20, "beat_control_by": 0.10},
+    "once": "an arm's first verdict is frozen in jepa-preregistered-decode.json with the rows it was scored on; "
+            "later runs report that record (a forgotten exchange or a reinstalled readout cannot re-score it)",
+    "not_tuned": "no row of either population existed when this was registered",
+}
+FROZEN_DECODE = os.path.join(MEM, "jepa-preregistered-decode.json")
+
+
+def served_self_rows(hist, turns, enc):
+    """Join each self forecast that served a decode confidence to his first reply after its context
+    (the jepa_self_head.evaluate ahead rule: said after the forecast too, so never a reply it already saw)."""
+    import numpy as np
+    from datetime import datetime
+    rows, seen = [], set()
+    for h in sorted(hist, key=lambda r: float(r.get("ts", 0) or 0)):
+        s = h.get("self") or {}
+        if s.get("confidence_source") != DECODE_VERSION or not s.get("emb") or s.get("decode_similarity_admitted") is None:
+            continue
+        try:
+            cut_at = datetime.fromisoformat(str(s.get("context_last_ts"))).timestamp()
+        except Exception:
+            continue
+        fts = float(h.get("ts", 0) or 0)
+        target = next((t for t in turns if t[0] > cut_at and t[2]), None)
+        if not target or target[0] <= fts:
+            continue
+        key = (target[0], target[2])
+        if key in seen:
+            continue
+        seen.add(key)
+        act = np.asarray(enc.encode([target[2][:400]], show_progress_bar=False)[0], dtype="float32")
+        p_ = np.asarray(s["emb"], dtype="float32")
+        error = 1.0 - float(p_ @ act / (np.linalg.norm(p_) * np.linalg.norm(act) + 1e-9))
+        rows.append({"iso": h.get("iso", ""), "ts": h.get("ts"), "trigger": h.get("trigger", "cron"),
+                     "s_conf": s.get("confidence"), "s_dsim": s["decode_similarity_admitted"],
+                     "s_coherence": s.get("coherence"), "s_err": round(error, 4)})
+    return rows
+
+
+def preregistered_decode(served_rows, self_rows, reg=PREREGISTERED_DECODE, frozen_path=None):
+    """The registered decode-confidence evaluation: per head, the first reg['n'] targets, scored once.
+    frozen_path: where a verdict, once reached, is kept and from then on reported as it was."""
+    frozen = {}
+    if frozen_path:
+        try:
+            frozen = json.load(open(frozen_path))
+            frozen = frozen if isinstance(frozen, dict) and frozen.get("id") == reg["id"] else {}
+        except Exception:
+            frozen = {}
+    out = {"registration": reg}
+    arms = (("gloria", sorted((r for r in served_rows if r.get("trigger") == "after_reply"
+                               and r.get("decode_version") == DECODE_VERSION and r.get("g_err") is not None
+                               and r.get("g_dsim") is not None and r.get("g_conf") is not None
+                               and str(r.get("iso", ""))[:10] >= reg["registered"]),
+                              key=lambda r: float(r.get("ts") or 0)), "g_dsim", "g_conf", "g_err"),
+            ("self", sorted((r for r in self_rows if r.get("s_err") is not None and r.get("s_coherence") is not None
+                             and str(r.get("iso", ""))[:10] >= reg["registered"]),
+                            key=lambda r: float(r.get("ts") or 0)), "s_dsim", "s_coherence", "s_err"))
+    newly = False
+    for name, elig, stat_k, ctrl_k, err_k in arms:
+        if isinstance(frozen.get(name), dict) and frozen[name].get("state") in ("PASS", "FAIL"):
+            out[name] = dict(frozen[name], frozen=True)
+            continue
+        if len(elig) < reg["n"]:
+            out[name] = {"state": "COLLECTING", "n": len(elig), "needed": reg["n"]}
+            continue
+        first = elig[:reg["n"]]
+        err = [r[err_k] for r in first]
+        mono, ctrl = spear([r[stat_k] for r in first], err), spear([r[ctrl_k] for r in first], err)
+        ok = (mono is not None and ctrl is not None and mono <= reg["pass"]["max_monotonicity"]
+              and mono <= ctrl - reg["pass"]["beat_control_by"])
+        out[name] = {"state": "PASS" if ok else "FAIL", "n": len(first), "monotonicity_decode_vs_err": mono,
+                     "CONTROL_vs_err": ctrl, "bins_low_mid_high_err": bins([r[stat_k] for r in first], err),
+                     "first_iso": first[0]["iso"][:16], "last_iso": first[-1]["iso"][:16],
+                     "scored_rows_ts": [r.get("ts") for r in first]}
+        frozen[name] = out[name]; newly = True
+    if newly and frozen_path:
+        frozen["id"] = reg["id"]
+        tmp = frozen_path + ".tmp"
+        json.dump(frozen, open(tmp, "w"), indent=2)
+        os.replace(tmp, frozen_path)
+    return out
+
 
 def spear(x, y):
     import numpy as np
@@ -84,7 +187,8 @@ def joined_rows(hist, turns, enc, checkpoint, trained_before, arrivals=None, ser
             continue
         if served is not None and h.get("ts", 0) <= served[1]:
             continue
-        row = {"iso": h["iso"], "ts": h.get("ts"), "trigger": h.get("trigger", "cron")}
+        row = {"iso": h["iso"], "ts": h.get("ts"), "trigger": h.get("trigger", "cron"),
+               "decode_version": h.get("decode_confidence_version")}
         for ax, head, index in axes:
             row.update({ax + "_conf": None, ax + "_dsim": None, ax + "_err": None})
             triple = h.get(head) or {}
@@ -192,8 +296,12 @@ def main():
     n = len(rows)
     if n < 8:
         print("[jepa-audit] only %d distinct joined outcomes - honest answer: TOO EARLY (release needs >=30 held out)" % n)
+        # the registered evaluations do not depend on the shared checkpoint's rows: keep computing them
         json.dump({"n_joined": n, "verdict": "INSUFFICIENT", "checkpoint": checkpoint,
-                   "holdout_protocol": "prospective-checkpoint-v1"}, open(OUT, "w"), indent=2); return
+                   "holdout_protocol": "prospective-checkpoint-v1",
+                   "preregistered": preregistered(rows, served_rows),
+                   "preregistered_decode": preregistered_decode(served_rows, served_self_rows(hist, turns, enc), frozen_path=FROZEN_DECODE)},
+                  open(OUT, "w"), indent=2); return
     # review 207: the verdict is computed on a HELD-OUT slice (the latest third by time), never on the
     # rows the head's own thresholds were shaped by. The full-sample numbers stay beside them.
     hold, hold_why = _cal.holdout(rows, by="time")
@@ -212,6 +320,7 @@ def main():
         res["served_gloria"] = dict(axis_stats(served_rows, "g", _cal.holdout), checkpoint=served[0], source=READOUT_SCHEMA,
                                     note="the Gloria triple predict() served; reported, not a release input")
     res["preregistered"] = preregistered(rows, served_rows)
+    res["preregistered_decode"] = preregistered_decode(served_rows, served_self_rows(hist, turns, enc), frozen_path=FROZEN_DECODE)
     res["reading"] = ("conf beats control if monotonicity is more negative than CONTROL; equal-or-neither = variance without usefulness. "
                       "lockstep near 1.0 = one global signal wearing two names.")
     json.dump(res, open(OUT, "w"), indent=2)

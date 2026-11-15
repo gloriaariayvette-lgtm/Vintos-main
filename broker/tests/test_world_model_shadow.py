@@ -10,6 +10,11 @@ WS = scratch.name + '/workspace'
 DOOR = scratch.name + '/door'
 os.environ.update(HOME=scratch.name, SPARK_WORKSPACE=WS, VINTOS_SECRETS=scratch.name + '/x', MAMEPA_DOOR_DIR=DOOR)
 os.environ.pop('MAMEPA_WEIGHTS', None); os.environ.pop('FACE_THRESHOLD', None)
+# One math thread, set before numpy or torch loads. The chunked scan is hundreds of tiny ops; with a thread pool
+# per core each op waits on every pool thread, and under the deploy's parallel suites (load 100+) the first forward
+# pass ran past the 180 s suite limit (deploy 14 November). Single-threaded it takes well under a second.
+for _v in ('OMP_NUM_THREADS', 'MKL_NUM_THREADS', 'OPENBLAS_NUM_THREADS'):
+    os.environ[_v] = '1'
 NET = []
 def refused(self, *a, **k):
     if self.family != socket.AF_UNIX: NET.append(a)
@@ -84,6 +89,7 @@ def tree_hashes(*roots):
 class Shadow(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        S._model_classes()[0].set_num_threads(1)           # also when torch was already loaded by someone else
         write_stores()
         cls.weights = os.path.join(scratch.name, 'private', 'weights.pt')
         os.makedirs(os.path.dirname(cls.weights), exist_ok=True)
@@ -207,22 +213,43 @@ class Shadow(unittest.TestCase):
         self.assertEqual(glob.glob(os.path.join(os.path.dirname(hist), '.world-model-shadow*')), [])
 
     def test_two_writers_through_many_rotations_lose_nothing(self):
-        """Two processes append through repeated rotations: every row written is kept while the cap allows."""
-        import subprocess
-        hist = os.path.join(scratch.name, 'rotation-many', S.HIST_NAME)
-        os.makedirs(os.path.dirname(hist), exist_ok=True)
-        if os.path.exists(hist): os.unlink(hist)
-        code = ('import sys; sys.path.insert(0, sys.argv[1]); import world_model_shadow as S\n'
-                'for i in range(40): S._append_bounded(sys.argv[2], {"w": sys.argv[3], "i": i, "pad": "p" * 1000}, 30)')
-        procs = [subprocess.Popen([sys.executable, '-c', code, os.path.dirname(os.path.abspath(S.__file__)), hist, w])
-                 for w in ('A', 'B')]
-        self.assertEqual([p.wait(120) for p in procs], [0, 0])
+        """Two processes append through repeated rotations: every row written is kept while the cap allows. Both
+        writers start together off a start file (no sleeps, so their appends overlap however slow the machine is) and
+        every wait is bounded, so a stuck writer fails the test instead of the suite's 180 s limit."""
+        import subprocess, time
+        n, cap = 20, 12
+        d = os.path.join(scratch.name, 'rotation-many')
+        hist, go = os.path.join(d, S.HIST_NAME), os.path.join(d, 'go')
+        os.makedirs(d, exist_ok=True)
+        for p in (hist, go):
+            if os.path.exists(p): os.unlink(p)
+        code = ('import os, sys, time; sys.path.insert(0, sys.argv[1]); import world_model_shadow as S\n'
+                'hist, w, go, n, cap = sys.argv[2], sys.argv[3], sys.argv[4], int(sys.argv[5]), int(sys.argv[6])\n'
+                'open(go + "." + w, "w").close()\n'
+                'end = time.monotonic() + 60\n'
+                'while not os.path.exists(go):\n'
+                '    if time.monotonic() > end: sys.exit(3)\n'
+                '    time.sleep(0.005)\n'
+                'for i in range(n): S._append_bounded(hist, {"w": w, "i": i, "pad": "p" * 400}, cap)')
+        here = os.path.dirname(os.path.abspath(S.__file__))
+        procs = [subprocess.Popen([sys.executable, '-c', code, here, hist, w, go, str(n), str(cap)]) for w in ('A', 'B')]
+        try:
+            end = time.monotonic() + 60                    # both imported and waiting: release them together
+            while not all(os.path.exists(go + '.' + w) for w in ('A', 'B')):
+                self.assertTrue(time.monotonic() < end and all(p.poll() is None for p in procs), 'a writer never got ready')
+                time.sleep(0.005)
+            open(go, 'w').close()
+            codes = [p.wait(60) for p in procs]
+        finally:
+            for p in procs:
+                if p.poll() is None: p.kill(); p.wait()
+        self.assertEqual(codes, [0, 0])
         rows = [json.loads(l) for l in Path(hist).read_text().splitlines()]
-        self.assertEqual(len(rows), 30)
-        # the history keeps the newest 30 of 80 rows, so each writer's kept rows run without a gap to its last row
+        self.assertEqual(len(rows), cap)
+        # the history keeps the newest `cap` of 2n rows, so each writer's kept rows run without a gap to its last row
         for w in ('A', 'B'):
             kept = [r['i'] for r in rows if r['w'] == w]
-            self.assertEqual(kept, list(range(40 - len(kept), 40)), (w, kept))
+            self.assertEqual(kept, list(range(n - len(kept), n)), (w, kept))
 
     def test_weights_for_other_channels_are_refused(self):
         other = os.path.join(scratch.name, 'private', 'other.pt')

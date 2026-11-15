@@ -14,6 +14,8 @@ One line in his message, one real act, and the line is replaced with what actual
     MISCHIEF: <what he has in mind>  his mischief, now: the same mischief-detector, forced
     MAKE: video <the motion> | <image path>   made with his own tools, on her subscription: nothing is spent
     TO GLORIA: <what about, one line>  his outreach writes to her in his own voice, outside Slack
+    PRINT: <a thing to make>        her K2 (print_lane.py): he decides it, Astra builds it, her settings slice it,
+                                     and she gets a yes/no text with the filament and slot before it prints
 
 The house was already his (scripts/vintos-home.py: the Bravia over adb, the Echo through Home Assistant, the Govee
 bulbs); Slack had no way to reach it. Nothing here is new power, only a door, with these bounds:
@@ -23,6 +25,7 @@ bulbs); Slack had no way to reach it. Nothing here is new power, only a door, wi
   - every act is written to memory/house-actions.jsonl, and a failure says why in plain words.
 """
 from __future__ import annotations
+import shutil
 import importlib.util
 import json
 import os
@@ -42,8 +45,8 @@ INITIATE = os.environ.get("VINTOS_INITIATE", "/home/gloria/Vintos/vintos-initiat
 MISCHIEF = os.path.join(HERE, "mischief-detector.sh")
 
 ICON = {"TV": "\U0001F4FA", "ECHO": "\U0001F50A", "LIGHTS": "\U0001F4A1", "MISCHIEF": "\U0001F99D",
-        "TO GLORIA": "✉️", "MAKE": "🎬"}
-HOUSE = re.compile(r"^\s*(TV|ECHO|LIGHTS|MISCHIEF|TO GLORIA|MAKE)\s*:\s*(.+?)\s*$", re.I | re.M)
+        "TO GLORIA": "✉️", "MAKE": "🎬", "PRINT": "🖨️"}
+HOUSE = re.compile(r"^\s*(TV|ECHO|LIGHTS|MISCHIEF|TO GLORIA|MAKE|PRINT)\s*:\s*(.+?)\s*$", re.I | re.M)
 COLOURS = {"red": "#ff2020", "orange": "#ff7a1a", "amber": "#ffb000", "yellow": "#ffe14d", "green": "#2ecc40",
            "teal": "#1abc9c", "blue": "#2060ff", "purple": "#8e44ad", "violet": "#9b59ff", "pink": "#ff5fa2",
            "white": "#ffffff", "warm": "#ffb46b", "cool": "#cfe3ff", "gold": "#ffc83d", "magenta": "#ff00cc"}
@@ -97,6 +100,26 @@ def youtube_id(text):
     if m:
         return m.group(1)
     return t if re.fullmatch(r"[A-Za-z0-9_-]{11}", t) else ""
+
+
+YTDLP = os.environ.get("VINTOS_YTDLP") or shutil.which("yt-dlp") or os.path.expanduser("~/.local/bin/yt-dlp")
+
+
+def youtube_find(query, timeout=45):
+    """(id, title) of YouTube's top match for his words, or ('', why). yt-dlp's search: free and keyless."""
+    q = " ".join(str(query or "").split())[:200]
+    if not q:
+        return "", "say what to put on"
+    try:
+        r = subprocess.run([YTDLP, "--no-update", "--flat-playlist", "--no-warnings", "--print", "%(id)s\t%(title)s",
+                            "ytsearch1:" + q], capture_output=True, text=True, timeout=timeout)
+    except Exception as e:
+        return "", "YouTube search did not answer (%s)" % type(e).__name__
+    for line in (r.stdout or "").splitlines():
+        vid, _, title = line.partition("\t")
+        if re.fullmatch(r"[A-Za-z0-9_-]{11}", vid.strip()):
+            return vid.strip(), title.strip()
+    return "", "YouTube found nothing for: %s" % q
 
 
 def _he_is_driving():
@@ -164,13 +187,24 @@ def tv(arg, home=None, present=False):
         return bool(home.tv_on()), "TV on"
     vid = youtube_id(a)
     url = a[5:].strip() if word == "open" else a
+    found = ""
     if not vid and not re.match(r"https?://", url):
-        return False, "say a YouTube link, open <url>, on, off, pause, play, volume <n> or status"
+        if word not in ("find", "search", "watch", "put") or len(a.split()) < 2:
+            return False, "say find <what to put on>, a YouTube link, open <url>, on, off, pause, play, volume <n> or status"
+        words = a.split(None, 1)[1]
+        if word == "put" and words.lower().startswith("on "):
+            words = words[3:]
+        busy = _tv_free(home)
+        if busy:
+            return False, busy
+        vid, found = youtube_find(words)
+        if not vid:
+            return False, found
     busy = _tv_free(home)
     if busy:
         return False, busy
     if vid:
-        return bool(home.tv_youtube(vid)), "on the TV: https://youtu.be/%s" % vid
+        return bool(home.tv_youtube(vid)), "on the TV: %shttps://youtu.be/%s" % ((found + " ") if found else "", vid)
     why = _adb_ok(home)
     if why:
         return False, why
@@ -312,11 +346,14 @@ def do(kind, arg, home=None, run=None, present=False):
                 ok, said = mischief(arg, run)
             elif kind == "MAKE":
                 ok, said = make(arg, run)
+            elif kind == "PRINT":
+                import print_lane
+                ok, said = print_lane.start(arg, spawn=run)
             else:
                 ok, said = to_gloria(arg, run)
         except Exception as exc:
             ok, said = False, "it failed: %s" % str(exc)[:160]
-    bucket = {"MISCHIEF": "mischief", "TO GLORIA": "to_gloria", "MAKE": "make"}.get(kind, "house")
+    bucket = {"MISCHIEF": "mischief", "TO GLORIA": "to_gloria", "MAKE": "make", "PRINT": "print"}.get(kind, "house")
     _note(bucket, "%s: %s" % (kind, arg), ok, said)
     return ok, "%s %s" % (ICON.get(kind, ""), said if ok else "%s: not done, %s" % (kind.title(), said))
 
