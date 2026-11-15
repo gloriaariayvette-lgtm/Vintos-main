@@ -61,5 +61,15 @@ raise SystemExit(0 if any(row.get("identifier") == identifier for row in rows) e
   fi
 done
 
-exec "$LMS" load "$MODEL_KEY" --identifier "$IDENTIFIER" --gpu max \
+"$LMS" load "$MODEL_KEY" --identifier "$IDENTIFIER" --gpu max \
   --context-length 32000 --parallel 1 --no-speculative-draft-mtp --yes
+# A lab-c1 load whose client was cut off (timeout, a killed Lab) can still land after the unloads above: AEON is the
+# one LLM this contract leaves resident.
+for extra in $("$LMS" ps --json | python3 -c '
+import json, sys
+identifier = sys.argv[1]
+print("\n".join(str(r.get("identifier")) for r in json.load(sys.stdin)
+                if r.get("type") != "embedding" and r.get("identifier") and r.get("identifier") != identifier))
+' "$IDENTIFIER"); do
+  "$LMS" unload "$extra"
+done

@@ -71,6 +71,9 @@ _STATE = {'down_until': 0.0, 'turn': None, 'calls': [], 'swap_next': 0.0}
 WATCHDOG_LOCK = os.path.join(lab.MEM, '.gemma-watchdog.lock')
 SWAP_GAP = 900.0
 SWAP_TIMEOUT = 240
+SWAP_PROVIDER, SWAP_MODEL = 'aegis_lab_c1', 'lab-c1'   # what the shim's /gemma-lab-c1-local lane reports
+REFUSED_UNTOUCHED = 3     # aegis-lab-c1-load.sh refused before it changed LM Studio: AEON is still on the card
+SWAP_STATE = os.path.join(lab.ROOT, 'planner-worm', 'swap-next.json')   # the gap survives a Lab restart
 
 
 def _env_path():
@@ -124,15 +127,34 @@ def _loader(name):
 
 
 def _run_loader(name):
+    """(exit code, the tail of what it said)."""
     done = subprocess.run([_loader(name)], text=True, capture_output=True, timeout=SWAP_TIMEOUT, check=False)
-    return done.returncode == 0
+    return done.returncode, ((done.stderr or '') + (done.stdout or '')).strip()[-300:]
+
+
+def _swap_next():
+    try:
+        with open(SWAP_STATE, encoding='utf-8') as f:
+            saved = float(json.load(f).get('next') or 0)
+    except (OSError, ValueError, TypeError, AttributeError):
+        saved = 0.0
+    return max(_STATE['swap_next'], saved)
+
+
+def _set_swap_next(at):
+    _STATE['swap_next'] = at
+    try:
+        os.makedirs(os.path.dirname(SWAP_STATE), exist_ok=True)
+        lab._atomic(SWAP_STATE, {'next': at, 'at': lab.now_iso()})
+    except Exception:
+        pass
 
 
 @contextlib.contextmanager
 def worm_on_card(call):
     """Yields True with lab-c1 loaded in AEON's place, False (call['reason'] says why) when no window opens now. On
     exit AEON is back on the card (aegis-gemma-load.sh, which also takes lab-c1 off) before the lock is let go."""
-    if time.time() < _STATE['swap_next']:
+    if time.time() < _swap_next():
         call['reason'] = 'swap_wait'
         yield False
         return
@@ -143,29 +165,40 @@ def worm_on_card(call):
             call['reason'] = 'swap_busy'
             yield False
             return
-        started = time.time()
+        started, code, said = time.time(), None, ''
         try:
             try:
-                loaded = _run_loader('aegis-lab-c1-load.sh')
-            except Exception:
-                loaded = False
+                code, said = _run_loader('aegis-lab-c1-load.sh')
+            except Exception as exc:
+                said = type(exc).__name__
             call['swap_s'] = round(time.time() - started, 2)
-            if not loaded:
+            if code != 0:
                 call['reason'] = 'swap_failed'
-            yield loaded
-        finally:
-            back = time.time()
-            try:
-                call['restored'] = _run_loader('aegis-gemma-load.sh')
-            except Exception:
-                call['restored'] = False
-            call['restore_s'] = round(time.time() - back, 2)
-            _STATE['swap_next'] = time.time() + _swap_gap()
-            if not call['restored']:          # the five-minute watchdog reloads AEON; the Lab's faults say so now
+                call['error'] = said[-200:]
                 try:
-                    lab._fault('lab_c1_restore_aeon', RuntimeError('AEON reload after the planner worm failed'))
+                    lab._fault('lab_c1_load', RuntimeError('planner worm load failed: ' + said[-200:]))
                 except Exception:
                     pass
+            yield code == 0
+        finally:
+            gap = _swap_gap() if code == 0 else 4 * _swap_gap()   # a failing load is not retried every gap
+            if code == REFUSED_UNTOUCHED:     # refused before it changed LM Studio: AEON never left; no reload
+                call['restored'] = None
+            else:
+                back = time.time()
+                try:
+                    rc, words = _run_loader('aegis-gemma-load.sh')
+                except Exception as exc:
+                    rc, words = None, type(exc).__name__
+                call['restored'] = rc == 0
+                call['restore_s'] = round(time.time() - back, 2)
+                if not call['restored']:      # the five-minute watchdog reloads AEON; the Lab's faults say so now
+                    try:
+                        lab._fault('lab_c1_restore_aeon', RuntimeError('AEON reload after the planner worm failed: '
+                                                                       + str(words)[-200:]))
+                    except Exception:
+                        pass
+            _set_swap_next(time.time() + gap)
 
 
 def _ask(name, system, prompt, timeout=None):
@@ -176,6 +209,9 @@ def _ask(name, system, prompt, timeout=None):
     req = urllib.request.Request(_url(), data=json.dumps(body).encode(), headers={'Content-Type': 'application/json'})
     with urllib.request.urlopen(req, timeout=timeout or _timeout()) as response:
         data = json.loads(response.read())
+    if _swap_mode() and (data.get('provider') != SWAP_PROVIDER or data.get('model') != SWAP_MODEL):
+        # a lane typo or a shim without the worm's lane: whatever answered is not the worm, so nothing is credited
+        raise ValueError('not the worm: %s/%s' % (str(data.get('provider'))[:40], str(data.get('model'))[:40]))
     return str(((data.get('choices') or [{}])[0].get('message') or {}).get('content') or '')
 
 

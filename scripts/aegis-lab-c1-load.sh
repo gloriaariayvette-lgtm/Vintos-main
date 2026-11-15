@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # The Lab planner worm (c1: the Lab-planner LoRA fused on AEON, Q4_K_M, 7.4 GB) in AEON's place on Aegis's 16 GB card.
+# Exit 3: refused before LM Studio was changed (AEON still resident). Any other failure: the caller reloads AEON.
 # Called by lab_planner_trial (LAB_PLANNER_TRIAL_LOAD=swap) while it holds the Gemma watchdog lock; the caller puts
 # AEON back with aegis-gemma-load.sh, which also takes lab-c1 off. Two 12B models never share the card: every LLM is
 # unloaded first, and the load is refused if any is still resident.
@@ -20,16 +21,19 @@ if isinstance(rows, dict): rows = rows.get("models", [])
 matches = [row for row in rows if row.get("modelKey") == model_key]
 ok = len(matches) == 1 and matches[0].get("path") == expected and matches[0].get("architecture") == "gemma4" \
      and (matches[0].get("quantization") or {}).get("name") == "Q4_K_M" and int(matches[0].get("sizeBytes") or 0) == size
-if not ok: raise SystemExit("refusing lab-c1 load: installed artifact is not the expected c1 Gemma 4 Q4_K_M file")
+if not ok:
+    print("refusing lab-c1 load: installed artifact is not the expected c1 Gemma 4 Q4_K_M file", file=sys.stderr)
+    raise SystemExit(3)
 ' "$MODEL_KEY" "$EXPECTED_PATH" "$EXPECTED_BYTES"
 
 curl -fsS --max-time 5 "$BASE/api/v1/models" >/dev/null || {
-  echo "refusing lab-c1 load: LM Studio HTTP server is not answering at $BASE" >&2; exit 1; }
+  echo "refusing lab-c1 load: LM Studio HTTP server is not answering at $BASE" >&2; exit 3; }
 
-llms() {   # identifiers of resident LLMs (the Nomic embedding model is not one)
+llms() {   # identifiers of every resident model that is not an embedding model (fails closed on an odd row)
   "$LMS" ps --json </dev/null | python3 -c '
 import json, sys
-print("\n".join(r.get("identifier") or "" for r in json.load(sys.stdin) if r.get("type") == "llm"))'
+rows = json.load(sys.stdin)
+print("\n".join(str(r.get("identifier") or r.get("modelKey") or "?") for r in rows if r.get("type") != "embedding"))'
 }
 for resident in $(llms); do
   "$LMS" unload "$resident" </dev/null
