@@ -227,6 +227,22 @@ class Shadow(unittest.TestCase):
     def test_nothing_reads_the_state_file_or_the_organ(self):
         mine = {'scripts/hdc_episodic.py', 'broker/tests/test_hdc_episodic.py'}
         allowed = {'scripts/deploy-atelier.sh', 'docs/entry-owners.md', 'docs/untested.md'}   # the manifest and its reports
+        # the tag-keyed recall reuses the vector code (binding, Store, clean-up, time slots) and nothing else: never
+        # this organ's state, stores or writer (checked below on its imports)
+        vector_users = {'scripts/hdc_tag_recall.py', 'broker/tests/test_hdc_tag_recall.py'}
+        allowed |= vector_users
+        vector_names = {'D', 'MAX_CAP', 'MIN_SCORE', 'Store', 'bound', 'vec', 'date_of', 'day_part', 'recall', '_num',
+                        'cleanup_set', 'TZ'}
+        for rel in vector_users:
+            p = REPO / rel
+            if not p.exists(): continue
+            tree = ast.parse(p.read_text())
+            for n in ast.walk(tree):
+                if isinstance(n, ast.ImportFrom) and n.module == 'hdc_episodic':
+                    self.assertLessEqual({a.name for a in n.names}, vector_names, rel)
+                if isinstance(n, ast.Import):
+                    self.assertNotIn('hdc_episodic', [a.name for a in n.names], rel + ' must import names, not the organ')
+            self.assertNotIn('hdc-episodic-shadow', p.read_text(), rel)
         hits = []
         for root in ('scripts', 'bin', 'broker', 'agent-room', 'docs'):
             for p in glob.glob(str(REPO / root / '**' / '*'), recursive=True):

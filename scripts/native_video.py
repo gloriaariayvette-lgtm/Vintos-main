@@ -308,9 +308,22 @@ def _store_record(entry):
     return next((r for r in rows if isinstance(r, dict) and str(r.get(field)) == wanted), None)
 
 
-def tag_memory(tag, tag_map=None):
+def tag_memory(tag, tag_map=None, hdc=None):
     """The memory Gloria linked to one detected tag, or a record saying plainly that nothing is linked or that the
-    linked record was not found. Never a guess."""
+    linked record was not found. Never a guess.
+
+    ``hdc`` (opt-in, default None): a hdc_tag_recall.TagRecall. The answer above is built exactly as without it; the
+    tag's most salient recalled sightings are only added beside it, under 'episodes', and never make it 'found'."""
+    out = _tag_memory(tag, tag_map)
+    if hdc is not None:
+        try:
+            out["episodes"] = list(hdc.top(out["tag"]))
+        except Exception:
+            out["episodes"] = []
+    return out
+
+
+def _tag_memory(tag, tag_map=None):
     key = "%s:%s" % (tag.get("family"), tag.get("tag_id"))
     entry = (tag_map if tag_map is not None else load_tag_map()).get(key)
     out = {"tag": key, "at": tag.get("at"), "label": None, "memory": None, "found": False}
@@ -332,11 +345,12 @@ def tag_memory(tag, tag_map=None):
     return out
 
 
-def tag_lines(tags, tag_map=None):
-    """One line per distinct tag seen in the window, with its linked memory, placed beside the frames."""
+def tag_lines(tags, tag_map=None, hdc=None):
+    """One line per distinct tag seen in the window, with its linked memory, placed beside the frames. With ``hdc``
+    (opt-in), a second line after it gives the tag's most salient recalled sightings, marked as recalled."""
     seen, lines = set(), []
     for tag in tags or []:
-        hit = tag_memory(tag, tag_map)
+        hit = tag_memory(tag, tag_map, hdc)
         if hit["tag"] in seen:
             continue
         seen.add(hit["tag"])
@@ -347,6 +361,11 @@ def tag_lines(tags, tag_map=None):
                 " (%s)" % hit["label"] if hit["label"] else "", text))
         else:
             lines.append("[TAG %s seen - %s. Do not guess what it stands for.]" % (hit["tag"], hit["note"]))
+        if hit.get("episodes"):
+            lines.append("[TAG %s - its own recalled sightings, most salient first (fuzzy recall, not a memory Gloria "
+                         "linked): %s]" % (hit["tag"], "; ".join(
+                             "%s %s in %s, %s %s (x%s)" % (e["who"], e["what"], e["where"], e["day"], e["part"],
+                                                          e["salience"]) for e in hit["episodes"])))
     return lines
 
 
@@ -355,14 +374,14 @@ def window_tags(receipts):
     return [dict(t, at=r.get("at")) for r in receipts or [] for t in r.get("tags") or []]
 
 
-def senses_block(record, keyframes=(), tags=(), tag_map=None):
+def senses_block(record, keyframes=(), tags=(), tag_map=None, hdc=None):
     """Content parts for the current conversation turn: the frames themselves (in memory, as image parts), one
     short provenance line, and for each AprilTag seen the memory linked to it. The provenance line says what was
-    seen came from frames that were not kept."""
+    seen came from frames that were not kept. ``hdc``: see tag_lines (opt-in, off by default)."""
     from record_gaps import VIDEO_GAP_RULE
     parts = [{"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + base64.b64encode(b).decode()}}
              for b in keyframes]
-    parts += [{"type": "text", "text": line} for line in tag_lines(tags, tag_map)]
+    parts += [{"type": "text", "text": line} for line in tag_lines(tags, tag_map, hdc)]
     span = [s["at"] for s in record.get("segments") or [] if s.get("at")]
     line = ("[SENSES - live video through your own eyes, %d frame(s)%s; keyframe %s, source %s. %s The frames "
             "themselves were not kept.]" % (record.get("frames", 0),

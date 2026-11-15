@@ -287,6 +287,7 @@ SCRIPTS="$SCRIPTS native_audio.py"   # explicit local waveform route; disabled u
 SCRIPTS="$SCRIPTS native_video.py native_video_sources.py"   # explicit local live-frame route and frame sources; disabled until configured
 SCRIPTS="$SCRIPTS world_model_shadow.py"   # the state model in shadow: writes its expectations, read by nothing; cron not installed by deploy (2026-11-13)
 SCRIPTS="$SCRIPTS hdc_episodic.py"   # who/what/where/when episodic memory in shadow (hyperdimensional): writes its own state file, read by nothing; no cron installed by deploy (2026-11-15)
+SCRIPTS="$SCRIPTS hdc_tag_recall.py"   # tag-keyed HDC recall behind the AprilTag lookup, opt-in (native_video tag_memory hdc=, server --tag-hdc); writes only its own state from its CLI; no cron (2026-11-15)
 BINS="$BINS mirror-trigger.sh"   # its cron entry runs the ~/Vintos copy, which was in no list; it matched the checkout when the thread gate was added (2026-10-27)
 
 CLIENTFILES="clients/mobile/stratagem_voice.js clients/mobile/index.html clients/mobile/client_lifecycle.js clients/mobile/avatar-bundle.js"
