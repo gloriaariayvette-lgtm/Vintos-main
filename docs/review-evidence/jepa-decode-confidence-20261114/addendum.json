@@ -1,0 +1,35 @@
+{
+  "id": "jepa-decode-confidence-2026-11-14-addendum",
+  "written": "2026-11-14, AFTER the RD replay was scored once (result.json) and BEFORE any forecast carries a decode confidence; no prospective row exists. It changes nothing about how the replay was judged.",
+  "replay_outcome": {
+    "gloria": "FAIL. The served anchored readout's decode similarity is -0.117 vs its own confidence -0.240 (n=46, 14-26 October). Its forecast sits on her latest turns (decode similarity median .992), so the signal saturates. The registered map fit a positive slope (+0.014) and, rounded to 3 decimals, a constant confidence (Spearman undefined): fails on slope and on the bars either way. The R1/TTT evidence was for the shared checkpoint's forecast, which has not been served since 22 October. Held: nothing installed for Gloria.",
+    "self": "PASS. The self head's decode similarity -0.476 vs its coherence -0.114 (n=30, 16-26 October), slope negative, map MSE .0041 vs constant .0074 on the second half. Served."
+  },
+  "deviations": [
+    {
+      "what": "the self confidence's map form",
+      "registered": "clip(1 - expected_error / 2, 0, 1) with expected_error linear in decode similarity",
+      "served": "the percentile of the forecast's decode similarity among the 30 replay rows' decode similarities (forecast-time numbers only), the same form as the self head's own confidence (a coherence percentile)",
+      "why": "the registered form was written for the Gloria consumers (gloria_prediction reads 1 - expected error / 2). The self triple's one reader, emoclaw_utils._novelty_directive, compares it with HI_CONF 0.70 as a relative confidence; the registered form gives .85-.93 on the replay range, so every forecast would read as 'commit'. Both forms are monotone in decode similarity: no Spearman number or bar changes."
+    },
+    {
+      "what": "the prospective Gloria arm",
+      "registered": "rows whose served Gloria triple carries confidence_source decode-similarity-v1",
+      "now": "a shadow arm: after-reply rows written by this code (decode_confidence_version on the row), decode similarity (rank-identical to any monotone decode confidence) against the served readout confidence, first 30, scored once, same bars",
+      "why": "Gloria's decode confidence is held, so the registered population would never exist. The shadow keeps a prospective answer for her decision."
+    },
+    {
+      "what": "a prospective self arm",
+      "now": "rows whose self triple serves the decode confidence, his first reply after the forecast's context and after the forecast (the jepa_self_head.evaluate ahead rule), one per target, first 30, scored once; control the self head's coherence; same bars",
+      "why": "the self confidence is now served; it gets the same prospective test"
+    }
+  ],
+  "review_fixes": {
+    "written": "2026-11-14, after the independent review, still before any prospective row exists",
+    "served_similarity_set": "the served self confidence is computed from the forecast's similarity to his last 12 ADMITTED replies (jepa_self_head.exchanges, each cut to 300 chars): the set the replay measured. The chat-row decode_similarity field is kept as it was, beside it as decode_similarity_admitted.",
+    "self_statistic": "the prospective self arm scores the raw decode_similarity_admitted (rank-identical to the percentile inside the reference range, with no ties from its clipping); control unchanged",
+    "scored_once": "each arm's first verdict is frozen in memory/jepa-preregistered-decode.json with the forecast times it was scored on, and reported from there afterwards",
+    "provenance_rerun": "result-rerun.json: the same replay rerun with provenance and with the self forecast dated by its last seen exchange (no look-ahead in the one-day window). Forecasts came from anchored-readout-v1 1a563a0a (Gloria) and self-head-v2 a0a77ba0 (self, the bound checkpoint). Every number is identical to result.json; result.json remains the scored-once record."
+  },
+  "binding_form": "PREREGISTERED_DECODE in scripts/jepa_calibration_audit.py"
+}

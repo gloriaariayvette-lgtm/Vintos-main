@@ -266,7 +266,9 @@ def _urllib_transport(url, body, timeout):
 
 
 def is_aeon(provider, model):
-    return (provider in AEON_PROVIDERS or str(provider).startswith("pool_")) and "aeon" in str(model).lower()
+    # the house model on Aegis is the Lab planner worm (lab-c1, AEON + a LoRA) since 14 November; it counts as local AEON
+    return (provider in AEON_PROVIDERS or str(provider).startswith("pool_")) and (
+        "aeon" in str(model).lower() or (provider == "aegis_gemma" and str(model) == "lab-c1"))
 
 
 def call_aeon(messages, sampling, timeout, transport=None):

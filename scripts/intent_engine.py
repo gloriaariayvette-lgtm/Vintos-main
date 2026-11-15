@@ -1178,47 +1178,153 @@ def _receptive_judge(packet):
     return gloria_judge.judge_receptive(packet)
 
 
-def _open_earlier_ask(row, came):
-    """The latest earlier delivered move inside the window whose record says ignored or partly and that no later
-    record has credited yet, or None."""
+# Its lifecycle is its own (review, 14 November, 12:16): her reply is admitted for it on row["receptive_evidence"]
+# by note_response whatever became of the move's axes - closed by a device event, expired or settled - and judged by
+# _receptive_pass, which writes row["receptive"] (and receptive_rev) and nothing else: an axis verdict is never
+# reopened and no effect is replayed. A judge that fails (a timeout, the budget) leaves the record open and pending,
+# tried again on later passes with a backoff, until it answers or receptivity.TRIES_MAX / GIVE_UP_DAYS make it a
+# terminal judge failure. Evidence, per move, all hers and inside the 48 hours:
+#   first  her first message after the move
+#   later  her next message, when it came before any newer move of his reached her - her own follow-up
+EARLIER_ASKS_MAX = 4          # the open earlier asks one judgment is shown, the most recent first
+RECEPTIVE_DROPPED = {"n": 0}
+
+
+def _sig(text):
+    import hashlib
+    return hashlib.sha256(str(text or "").encode("utf-8")).hexdigest()[:16]
+
+
+def _seal_evidence(row):
+    """Her words off the receptive evidence once its record is terminal: when and from where stay, with a fingerprint
+    that still tells one reply of hers reaching two moves from two replies (retention review, 14 November)."""
+    ev = _receptive_ev(row)
+    for k in ("first", "later"):
+        part = ev.get(k)
+        if isinstance(part, dict) and "text" in part:
+            part["sig"] = _sig(part.pop("text"))
+
+
+def _ev_sig(part):
+    if not isinstance(part, dict):
+        return None
+    return part.get("sig") or (_sig(part["text"]) if part.get("text") else None)
+
+
+def _receptive_ev(row):
+    ev = row.get("receptive_evidence") if isinstance(row, dict) else None
+    return ev if isinstance(ev, dict) else {}
+
+
+def _receptive_first(row):
+    """Her first reply to this move inside the window, as {text, at, source}, or None: the admitted evidence, else
+    (a row noted before 14 November's lifecycle) her reply in the axis slot when it is hers."""
+    RC = _rc()
+    opened = _stamp(row.get("delivered_at")) or _stamp(row.get("timestamp"))
+    first = _receptive_ev(row).get("first")
+    if not isinstance(first, dict):
+        text, src = row.get("response_text"), row.get("response_source")
+        if not text or _her_follow_up(text, src)[1]:
+            return None
+        first = {"text": text, "at": row.get("response_at"), "source": src}
+    came = _stamp(first.get("at"))
+    if opened is None or came is None or came < opened or came - opened > RC.RESPONSE_WINDOW_HOURS * 3600:
+        return None
+    return first
+
+
+def _admit_receptive(row, led, text, source, at, now):
+    """Her words admitted as receptive evidence on one delivered move; True when the row changed."""
+    RC = _rc()
+    if not isinstance(row, dict) or row.get("status") != "delivered" or not row.get("reply") or RC.terminal(row, now):
+        return False
+    opened = _stamp(row.get("delivered_at"))
+    if opened is None or now < opened or now - opened > RC.RESPONSE_WINDOW_HOURS * 3600:
+        return False
+    ev = dict(_receptive_ev(row))
+    first = ev.get("first") if isinstance(ev.get("first"), dict) else _receptive_first(row)
+    if first is None:
+        if RC.label_of(row) is not None:
+            return False                     # judged before evidence was kept apart: nothing to attach a follow-up to
+        ev["first"] = {"text": text, "at": at, "source": source}
+    elif "later" in ev or first.get("text") == text:
+        return False
+    else:
+        # her own follow-up counts only while no newer move of his has reached her: after one, her words answer it.
+        # A turn whose selection failed still sent him out with a reply (record_failed_selection): it blocks too.
+        for other in led:
+            if not isinstance(other, dict) or other.get("status") not in ("delivered", "failed") or _same_row(other, row):
+                continue
+            t = _stamp(other.get("delivered_at")) or _stamp(other.get("timestamp"))
+            if t is not None and t > opened:
+                return False
+        ev["first"] = first
+        ev["later"] = {"text": text, "at": at, "source": source}
+    row["receptive_evidence"] = ev
+    return True
+
+
+def _open_earlier_asks(row, came):
+    """The earlier delivered moves inside the window whose record says ignored or partly, that nothing has raised
+    yet (no credit, no follow-up), and whose own reply from her came before this move - the most recent
+    EARLIER_ASKS_MAX, oldest first."""
     RC = _rc()
     led = _load("intent-ledger.json") or []
     cmap = RC.credited(led)
     opened = _stamp(row.get("delivered_at")) or _stamp(row.get("timestamp"))
-    best = None
+    mine = _receptive_first(row) or {}
+    found = []
     for other in led:
         if not isinstance(other, dict) or other.get("status") != "delivered" or _same_row(other, row):
             continue
         t = _stamp(other.get("delivered_at"))
         if t is None or opened is None or came is None or t >= opened or came - t > RC.RESPONSE_WINDOW_HOURS * 3600:
             continue
-        if RC.label_of(other) not in ("ignored", "partly") or RC.row_key(other) in cmap or not other.get("reply"):
+        lab = RC.label_of(other)
+        if lab not in ("ignored", "partly") or RC.effective(other, cmap) != lab or not other.get("reply"):
             continue
         # her reply to that move must have come before this move: one reply of hers that reached both moves is one
         # piece of evidence, judged on each move once - never a second roll that can only raise the first (review)
-        seen = _stamp(other.get("response_at"))
-        if seen is None or seen >= opened or (row.get("response_text") and other.get("response_text") == row.get("response_text")):
+        theirs = (_receptive_first(other) or _receptive_ev(other).get("first")
+                  or {"at": other.get("response_at"), "text": other.get("response_text")})
+        seen = _stamp(theirs.get("at"))
+        if seen is None or seen >= opened or (_ev_sig(mine) and _ev_sig(theirs) == _ev_sig(mine)):
             continue
-        if best is None or t > best[0]:
-            best = (t, other)
-    return best[1] if best else None
+        found.append((t, other))
+    return [o for _t, o in sorted(found, key=lambda x: x[0])[-EARLIER_ASKS_MAX:]]
 
 
-def _judge_receptive(row, reply, hers, source=None, now=None):
+def _open_earlier_ask(row, came):
+    """The latest of _open_earlier_asks, or None (the one-ask form older callers read)."""
+    asks = _open_earlier_asks(row, came)
+    return asks[-1] if asks else None
+
+
+def _judge_receptive(row, reply, hers, source=None, now=None, at=None, later=None):
     """Her receptivity to this move: a record of fixed labels and counts, never words - or None when nothing of hers
-    came inside the window (silence is absence, never a refusal)."""
+    came inside the window (silence is absence, never a refusal). With `later` (her follow-up, {text, at, source}),
+    the judgment is on that follow-up only, her first reply beside it as context, and no earlier ask is offered."""
     RC = _rc()
     opened = _stamp(row.get("delivered_at")) or _stamp(row.get("timestamp"))
-    came = _stamp(row.get("response_at")) or now or datetime.now().timestamp()
+    came = _stamp((later or {}).get("at")) or _stamp(at) or _stamp(row.get("response_at")) or now or datetime.now().timestamp()
     if opened is None or came - opened > RC.RESPONSE_WINDOW_HOURS * 3600:
         return None
     words, media = _her_words(hers, source)
-    if not words and not media:
-        return None
-    earlier = _open_earlier_ask(row, came)
-    packet = {"his_reply": str(reply), "her_reply": words, "her_later_message": "",
-              "his_earlier_open_ask": str(earlier.get("reply") or "") if earlier else "",
-              "facts": {"her_reply_has_media_unseen": bool(media), "source": str(source or "text"),
+    if later is not None:
+        lwords, lmedia = _her_words(later.get("text"), later.get("source"))
+        if not lwords and not lmedia:
+            return None
+        asks = []
+    else:
+        if not words and not media:
+            return None
+        lwords, lmedia = "", False
+        asks = _open_earlier_asks(row, came)
+    packet = {"his_reply": str(reply), "her_reply": words, "her_later_message": lwords,
+              "his_earlier_open_asks": [{"n": i + 1, "his_reply": str(a.get("reply") or "")} for i, a in enumerate(asks)],
+              "facts": {"her_reply_has_media_unseen": bool(lmedia if later is not None else media),
+                        "source": str((later or {}).get("source") or source or "text"),
+                        "decide_on_her_later_message": later is not None,
                         "later_moves_of_his_before_her_reply": _later_moves(row, came)}}
     try:
         got = _receptive_judge(packet)
@@ -1226,8 +1332,9 @@ def _judge_receptive(row, reply, hers, source=None, now=None):
         got = {"label": None, "status": "error", "detail": type(err).__name__}
     got = got if isinstance(got, dict) else {}
     gap = (came - opened) / 3600
-    rec = RC.record(got.get("label"), RECEPTIVE_JUDGE, gap_hours=gap,
-                    credits=RC.row_key(earlier) if earlier is not None and got.get("answers_earlier") is True else None,
+    nums = got.get("answers_earlier") if isinstance(got.get("answers_earlier"), list) else []
+    credits = [RC.row_key(asks[n - 1]) for n in nums if isinstance(n, int) and not isinstance(n, bool) and 1 <= n <= len(asks)]
+    rec = RC.record(got.get("label"), RECEPTIVE_JUDGE, gap_hours=gap, credits=credits or None,
                     status=str(got.get("status") or ""), model=got.get("model"))
     if rec is None:      # no clean answer: kept for the audit, never counted
         rec = {"label": None, "judge": RECEPTIVE_JUDGE, "at": datetime.now().isoformat(),
@@ -1235,10 +1342,114 @@ def _judge_receptive(row, reply, hers, source=None, now=None):
     return rec
 
 
+def _failed(prev, rec, opened, now):
+    """A failed attempt on top of the one before: its tries, when it may be tried again, terminal when spent. The
+    week's budget spends no try (review: a closed cap would otherwise use every try in hours, long before it
+    reopens): it waits an hour at a time, and only GIVE_UP_DAYS ends it."""
+    RC = _rc()
+    budget = str(rec.get("status") or "") == "budget"
+    tries = int((prev or {}).get("tries", 0) or 0) + (0 if budget else 1)
+    wait = 3600 if budget else RC.RETRY_MINUTES * 60 * (2 ** tries)
+    out = dict(rec, tries=tries, retry_after=round(now + wait, 1))
+    if (not budget and tries >= RC.TRIES_MAX) or (opened is not None and now - opened > RC.GIVE_UP_DAYS * 86400):
+        out["terminal"] = True
+    return out
+
+
+def _persist_receptive(row, read_rev, rec):
+    """Write this move's receptive record if nothing else wrote one since it was read; True when it landed. Only
+    row["receptive"] and its revision are written: the axes, their verdicts and their effects are never touched."""
+    from store_guard import transaction, write_json
+    with transaction(LEDGER):
+        led = _load("intent-ledger.json") or []
+        for current in led:
+            if not _same_row(current, row):
+                continue
+            ok = int(current.get("receptive_rev", 0) or 0) == int(read_rev or 0)
+            have = _rc().label_of(current)
+            if ok and have is not None and (rec.get("label") != have or isinstance((current.get("receptive") or {}).get("follow_up"), dict)
+                                            or not ("follow_up" in rec or "follow_up_failed" in rec)):
+                ok = False               # a label (a re-measure's included) is never replaced; only one follow-up is added
+            if not ok:
+                RECEPTIVE_DROPPED["n"] += 1
+                return False
+            current["receptive"] = rec
+            current["receptive_rev"] = int(read_rev or 0) + 1
+            if _rc().terminal(current):
+                _seal_evidence(current)      # judged for good: her words leave the record, a fingerprint stays
+            write_json(LEDGER, led[-500:])
+            return True
+    return False
+
+
+def _receptive_one(row, now):
+    RC = _rc()
+    reply = row.get("reply")
+    if not reply:
+        return None
+    read_rev = int(row.get("receptive_rev", 0) or 0)
+    prev = row.get("receptive") if isinstance(row.get("receptive"), dict) else None
+    opened = _stamp(row.get("delivered_at")) or _stamp(row.get("timestamp"))
+    lab = RC.label_of(row)
+    first = _receptive_first(row)
+    if lab is None:
+        if first is None:
+            return None
+        got = _judge_receptive(row, reply, first.get("text"), first.get("source"), now=now, at=first.get("at"))
+        if got is None:          # admitted, but it holds no words and no media: closed, never re-tried for ever
+            return _persist_receptive(row, read_rev, {"label": None, "judge": RECEPTIVE_JUDGE, "status": "no_evidence",
+                                                      "terminal": True, "at": datetime.now().isoformat()})
+        rec = got if got.get("label") is not None else _failed(prev, got, opened, now)
+        return _persist_receptive(row, read_rev, rec)
+    later = _receptive_ev(row).get("later")
+    if not isinstance(later, dict) or first is None or isinstance(prev.get("follow_up"), dict):
+        return None
+    got = _judge_receptive(row, reply, first.get("text"), first.get("source"), now=now, later=later)
+    if got is None:
+        return _persist_receptive(row, read_rev, dict(prev, follow_up={"label": None, "status": "no_evidence", "terminal": True}))
+    if got.get("label") is not None:
+        got.pop("credits", None)
+        return _persist_receptive(row, read_rev, dict(prev, follow_up=got))
+    failed = _failed(prev.get("follow_up_failed"), got, opened, now)
+    rec = dict(prev, follow_up_failed=failed)
+    if failed.get("terminal"):
+        rec["follow_up"] = dict(failed, label=None)
+    return _persist_receptive(row, read_rev, rec)
+
+
+def _receptive_due(row, now):
+    RC = _rc()
+    if not isinstance(row, dict) or row.get("status") != "delivered" or not row.get("reply") or RC.terminal(row, now):
+        return False
+    rec = row.get("receptive") if isinstance(row.get("receptive"), dict) else {}
+    wait = rec.get("follow_up_failed") if RC.label_of(row) is not None else rec
+    try:
+        if float((wait or {}).get("retry_after") or 0) > now:
+            return False
+    except (TypeError, ValueError):
+        pass
+    if RC.label_of(row) is None:
+        return _receptive_first(row) is not None
+    return isinstance(_receptive_ev(row).get("later"), dict)
+
+
+def _receptive_pass(now=None):
+    """Judge every move whose receptive record is open and has evidence, oldest first (an earlier move's label is
+    in place before a later move is offered it as an open ask). Each row is guarded on its own."""
+    now = now or datetime.now().timestamp()
+    led = _load("intent-ledger.json") or []
+    due = sorted((r for r in led if _receptive_due(r, now)), key=lambda r: r.get("delivered_at") or r.get("timestamp") or "")
+    for row in due:
+        fresh = next((c for c in (_load("intent-ledger.json") or []) if _same_row(c, row)), None)
+        if fresh is not None and _receptive_due(fresh, now):
+            _guarded("resolve_previous.receptive", lambda fresh=fresh: _receptive_one(fresh, now), whole=True)
+
+
 def _note_receptive(row, reply, hers, source=None):
-    """Once per row; a failure here never stops the row's own resolution."""
+    """One judgment of her first reply on a row in hand (the re-measure and older tests); the live path is
+    _receptive_pass. A record with no label (the judge failed, the cap) stays open for a later pass."""
     if _rc().label_of(row) is not None or not row.get("delivered_at") or not reply:
-        return          # a record with no label (the judge failed, the cap) stays open for a later pass or a re-measure
+        return
     try:
         rec = _judge_receptive(row, reply, hers, source)
     except Exception as err:
@@ -1246,6 +1457,11 @@ def _note_receptive(row, reply, hers, source=None):
         return
     if rec is not None:
         row["receptive"] = rec
+
+
+def receptive_has_reply(row):
+    """For receptivity.partition: does a move with no record hold her reply inside the window?"""
+    return _receptive_first(row) is not None
 
 
 def _judge_gloria(row, tgt, ax, reply, hers, source=None, now=None):
@@ -1329,6 +1545,14 @@ def note_response(raw, source=None):
     with transaction(LEDGER):
         led = _load("intent-ledger.json") or []
         changed = False
+        if hers:
+            # her words are admitted for her receptivity on every move they can answer, whatever its axes say -
+            # before the axis slot below may take them (14 November, 12:16 review: a move closed by a device event
+            # or an expiry could not admit her first answer inside its 48 hours)
+            _at = datetime.now().isoformat(); _now = _stamp(_at)
+            for row in led:
+                changed = _guarded("note_response.receptive", lambda row=row: _admit_receptive(
+                    row, led, text, str(source) if source else None, _at, _now), default=False) or changed
         for row in led:
             held = row.get("response_text")
             if held and hers and _her_follow_up(held, row.get("response_source"))[1] in ("device_event_only", "not_her_words"):
@@ -1398,6 +1622,15 @@ def resolver_wait(timeout=30):
 def resolve_previous(recent_text="", source=None, note=True, every=False):
     if note and str(recent_text).strip():
         note_response(recent_text, **({"source": source} if source else {}))
+    try:
+        _resolve_axes(recent_text, source, every)
+    finally:
+        # her receptivity has its own pending state (14 November, 12:16 review): judged, or retried after a failed
+        # judge, on every pass - whether or not any axis is still open
+        _guarded("resolve_previous.receptive", _receptive_pass, whole=True)
+
+
+def _resolve_axes(recent_text="", source=None, every=False):
     # effects an accepted verdict left unapplied - a process that died after it was written, a write that failed -
     # are applied first, each once (round five)
     try: _drain_effects()
@@ -1494,10 +1727,7 @@ def _resolve_row(last, recent_text="", source=None):
                        "detail": {"axis": "field/gloria/self" if isinstance(r, dict) else "single"}})
         else:
             last.pop("response_text", None); last.pop("response_source", None); last.pop("response_at", None)   # the device event was not her reply: that is still to come
-        if _late and not _none:
-            # her words came after her axis's 24 hours: no verdict on her axis, but inside the fair window her
-            # response to the move still counts for her receptivity (14 November)
-            _note_receptive(last, reply, _hers, source)
+        # (her words after her axis's 24 hours still count for her receptivity inside its 48: _receptive_pass)
         _land(last, _rev, fx)
         return
     if not isinstance(r, dict):
@@ -1563,8 +1793,7 @@ def _resolve_row(last, recent_text="", source=None):
     else: last.pop("held_reason", None)
     last["realized"] = r
     fx.append({"dest": "outcome", "verdict": dict(r), "detail": {"axis": "field/gloria/self"}})
-    _note_receptive(last, reply, recent_text, source)      # her receptivity to the move, whatever her axis says
-    _land(last, _rev, fx)
+    _land(last, _rev, fx)      # her receptivity to the move is judged apart, whatever her axis says (_receptive_pass)
 
 def record_pending(target, source="conversation", event_id=None, claim_once=False):
 
@@ -1743,11 +1972,9 @@ def _persist_resolution(row, read_rev=0, effects=()):
                 current["resolution_dropped"] = {"n": int(_d.get("n", 0) or 0) + 1, "reason": why, "at": datetime.now().isoformat()}
             else:
                 # Preserve deliveries/selections appended while the judge was running.
-                _had = {"receptive": copy.deepcopy(current.get("receptive"))}
+                # (her receptive record is not this writer's: _persist_receptive writes it, on its own revision)
                 current.update({key: copy.deepcopy(row[key]) for key in ("realized", "held_attempts", "held_reason", "skipped_observations",
-                                                                         "gloria_judge", "adherence", "receptive") if key in row})
-                if _rc().label_of(_had) is not None:
-                    current["receptive"] = _had["receptive"]   # a labelled record is never replaced (a re-measure may have written it while this pass judged)
+                                                                         "gloria_judge", "adherence") if key in row})
                 if "held_reason" not in row: current.pop("held_reason", None)
                 if "skipped_observations" in row and "response_text" not in row:
                     current.pop("response_text", None); current.pop("response_source", None); current.pop("response_at", None)   # so her next reply is stored

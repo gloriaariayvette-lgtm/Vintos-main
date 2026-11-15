@@ -178,10 +178,21 @@ def capture_findings(capability, want_text):
             if os.path.exists(search_log):
                 with open(search_log) as f:
                     searches = json.load(f)
-                if searches:
-                    synthesis = searches[-1].get("synthesis", "")[:500]
-                    if synthesis:
-                        return synthesis
+                # the log is {"searches": [...]} (vintos-websearch.py); read as a list it raised KeyError, and every
+                # web_search step was left "Web search completed", without what it found or where (15 November)
+                if isinstance(searches, dict):
+                    searches = searches.get("searches") or []
+                # only a row this step's search wrote: vintos-websearch.py exits 0 without a row when it has no
+                # question, the search is unavailable or nothing came back, and an older search's addresses must
+                # never be credited to this step (review, 15 November)
+                _since = os.environ.get("VINTOS_WEB_SEARCH_STARTED", "")
+                if searches and isinstance(searches[-1], dict) and _since and \
+                        str(searches[-1].get("timestamp") or "") >= _since:
+                    synthesis = str(searches[-1].get("synthesis") or "")[:500]
+                    found = [str(u)[:300] for u in (searches[-1].get("evidence") or []) if str(u).startswith("http")][:5]
+                    if synthesis or found:
+                        # the addresses, so a read_url step after it can open the paper the search found
+                        return synthesis + (("\nAddresses found: " + " ".join(found)) if found else "")
         except:
             pass
         return "Web search completed"
@@ -306,7 +317,10 @@ def _want_end_verdict(want):
     if bool(want.get("gloria_routed")) or any((s.get("capability") or "").lower() == "gloria" for s in steps[-1:]):
         return "gloria", ""
     import requests as _hv_r, re as _hv_re, json as _hv_j
-    hist = "\n".join("- %s: %s" % (h.get("capability", ""), str(h.get("note", ""))[:120])
+    # a read_url step is shown by its own receipt line (READ IN FULL / READ IN PART), not the model's note about it
+    hist = "\n".join("- %s: %s" % (h.get("capability", ""), (str(h.get("findings") or "").split("\n", 1)[0][:240]
+                                                              if h.get("capability") == "read_url"
+                                                              else str(h.get("note", ""))[:120]))
                       for h in want.get("step_history", [])[-4:])
     try:
         r = _hv_r.post(_subcon_url("http://100.79.177.103:1234/v1/chat/completions"), json={
@@ -314,6 +328,8 @@ def _want_end_verdict(want):
             "messages": [{"role": "user", "content":
                 "A want has run all its steps. WANT: " + str(want.get("want", ""))[:250] +
                 "\nSTEPS DONE:\n" + (hist or "(no step history)") +
+                "\nA step line that begins READ IN FULL means the whole text at that address was read and kept: for a "
+                "want to read that paper or page in full, that is the thing itself done. READ IN PART is not the whole text."
                 "\nJudge honestly: was the want ACTUALLY completed - the thing itself done, not just steps ticked? "
                 'Answer ONLY JSON: {"completed": true/false, "haiku": "three short lines capturing what happened, or what was left undone"}'}]},
             timeout=45)
@@ -379,6 +395,14 @@ CAPABILITIES = [
         "keywords": ["check my email", "read email", "search email", "grocery list", "groceries", "github repository", "github issue", "github pull request"],
         "action": "plugin_query",
         "desc": "Use one explicitly named, policy-approved connected tool and preserve its receipt. Gmail and DoorDash are private read/search lanes; GitHub is read-only.",
+    },
+    {   # 15 November (Gloria): his wants to read a paper in full could only be planned as searches. Before email:
+        # "read the paper" is not a letter, and before read_memory: an address is not his own files.
+        "keywords": ["read the full paper", "read the full article", "read the full text", "full text of the",
+                     "read the paper", "read the article", "read the pdf", "read the preprint", "open the link",
+                     "open this link", "open the pdf", "the paper itself", "the pdf itself"],
+        "action": "read_url",
+        "desc": "Open one link (a page, an article or a PDF) and read its whole text, through the same safe door his letters use",
     },
     {
         "keywords": ["email", "e-mail", "write to", "reach out to", "contact the author", "contact the researcher"],
@@ -743,6 +767,15 @@ def write_journal(want_text):
             f.write(f"\n## {hour} — Want journal"
                     f"{(' [' + want_id + ']') if want_id else ''}\n\n{entry}\n")
         log(f"Want journal entry written to {journal_path}")
+        try:
+            if SCRIPTS not in sys.path: sys.path.insert(0, SCRIPTS)
+            import action_provenance as _wj_ap
+            _wj_ap.record("journal_post", "Want journal %s %s" % (today, hour), "wants-router step write_journal",
+                          trigger="a step of his want: %s" % str(want_text)[:200], want_id=want_id or None,
+                          rule="a write_journal step writes one entry into want-journals/ for the want it serves",
+                          refs={"file": "want-journals/%s.md" % today, "entry": "## %s" % hour}, mem=MEMORY_WJ)
+        except Exception as _wj_ape:
+            log(f"want journal provenance not written: {_wj_ape}")
         # Return the act's own evidence.  The caller records this exact receipt;
         # it does not go hunting in another journal directory afterward.
         return f"Want journal receipt: {journal_path}\n{entry[:700]}"
@@ -824,6 +857,7 @@ def web_search_want(want_text):
             log(f"Web search want: directed topic set: {_ws_topic[:80]}")
     except Exception as _wse:
         log(f"Web search topic extraction failed: {_wse}")
+    os.environ["VINTOS_WEB_SEARCH_STARTED"] = datetime.now().isoformat()   # capture_findings: this step's row only
     _ws_env = os.environ.copy()
     _ws_env["VINTOS_NO_WANT_SEED"] = "1"
     _ws_env["VINTOS_WANT_SEARCH"] = "1"   # search this want's topic, first (2026-09-28)
@@ -941,6 +975,37 @@ def be_mischievous(want_text):
         return True
     log(f"Mischief did not happen: {out.strip()[-200:]}")
     return False
+
+
+_MOLT = None
+
+
+def _moltbook_mod():
+    global _MOLT
+    if _MOLT is None:
+        import importlib.util as _iu
+        here = os.path.dirname(os.path.realpath(__file__))
+        for p in (os.path.join(here, "vintos-moltbook.py"), os.path.expanduser("~/Vintos/vintos-moltbook.py")):
+            if os.path.exists(p):
+                spec = _iu.spec_from_file_location("vintos_moltbook_mod", p)
+                _MOLT = _iu.module_from_spec(spec); spec.loader.exec_module(_MOLT)
+                break
+    if _MOLT is None:
+        raise FileNotFoundError("vintos-moltbook.py is not on this machine")
+    return _MOLT
+
+
+def moltbook(want_text):
+    """A want's Moltbook step: his reply on the post his words name (14 November: such a want went to the Forge as a
+    missing hand, though his Moltbook voice was already his). The post is found by its title among the posts he
+    saved, then in Moltbook's search; the reply is written by his own reply path, with his want as what he set out
+    to say; the cap wall, the grounding and the verification are that path's. True only when it went out."""
+    vm = _moltbook_mod()
+    pid, title, how = vm.find_post(want_text)
+    if not pid:
+        raise FileNotFoundError(how)
+    log("MoltBook step: replying to %s (%s, found in %s)" % (title or pid, pid, how))
+    return bool(vm.cmd_reply(pid, intent=want_text))
 
 
 def read_memory(want_text):
@@ -1640,6 +1705,8 @@ PARAM_SCHEMAS = {
                        "field": {"type": "str", "required": False, "enum": ["goal", "why", "progress", "next_step"]},
                        "text": {"type": "str", "required": False}, "reason": {"type": "str", "required": False}},
     "web_search":    {"topic": {"type": "str", "required": False}, "query": {"type": "str", "required": False}},
+    "read_url":      {"url": {"type": "str", "required": False}},
+    "moltbook":      {"post": {"type": "str", "required": False}},
     "send_email":    {"recipient": {"type": "str", "required": False}, "about": {"type": "str", "required": False},
                       "to": {"type": "str", "required": False}},
     "local_analysis": {"code": {"type": "str", "required": True},
@@ -1697,6 +1764,7 @@ ACTION_MAP = {
     "correlate": correlate,
     "make_chart": make_chart,
     "write_poem": write_poem,
+    "moltbook": moltbook,
 }
 
 
@@ -1760,6 +1828,31 @@ def local_analysis(want_text):
 
 
 ACTION_MAP["local_analysis"] = local_analysis
+
+
+def read_url(want_text):
+    """Open one link and read its whole text (want_read_url.py, 15 November): the step's {"url"}, else the first link
+    in its goal, the want, or what its earlier steps found. Through link_fetch (http(s), public hosts, size and
+    redirect caps); a PDF through the Scholar's reader. The findings name the kept text ("receipt: <file>"); NOT
+    READABLE is False, with the reason logged and kept."""
+    try:
+        params = json.loads(os.environ.get("STEP_PARAMS", "{}") or "{}")
+    except Exception:
+        params = {}
+    try:
+        if SCRIPTS not in sys.path: sys.path.insert(0, SCRIPTS)
+        import want_read_url
+        wid = os.environ.get("STEP_WANT_ID", "")
+        out = want_read_url.run(params, want_text, wid, original=os.environ.get("STEP_ORIGINAL_WANT", ""),
+                                want=want_read_url.want_row(wid, MEMORY), mem=MEMORY)
+    except Exception as e:      # never a spine block: one unreadable link is not a dead tool
+        log(f"read_url failed: {type(e).__name__}: {str(e)[:160]}")
+        return False
+    log("read_url: %s" % (str(out).split("\n", 1)[0][:160] if out else "NOT READABLE (see the line above)"))
+    return out
+
+
+ACTION_MAP["read_url"] = read_url
 
 
 def creative_write(want_text):
@@ -2460,11 +2553,15 @@ def main():
 
         # Specific operational wants need an agent-capable route, even when a
         # planner produced an easier but different song/reflection plan.
-        from want_agent import specific as _agent_specific, request as _agent_request
+        from want_agent import specific as _agent_specific, request as _agent_request, owned_by_room as _room_owned
         if _agent_specific(want):
             if _agent_request(want, "concrete task needs agent follow-through"):
                 log("  → Bound to agent room; handoff is not fulfillment")
                 continue
+        if _room_owned(want):
+            # its own unfinished agent-room request: the want lane works it, never this one too (14 November)
+            log("  → Owned by the agent room's want lane; not worked here as well")
+            continue
 
         if not _ensure_plan(want, force=bool(_args.force_want_id)):
             block = want.get("plan_block") or {}
@@ -2600,6 +2697,11 @@ def main():
                 "tv": "play_on_tv",
                 "silence": "be_silent",
                 "mischief": "be_mischievous",
+                "read_link": "read_url",
+                "open_link": "read_url",
+                "fetch_url": "read_url",
+                "read_paper": "read_url",
+                "read_pdf": "read_url",
             }
             if step_capability and step_capability not in ACTION_MAP:
                 _normalized = _cap_aliases.get(step_capability.lower().replace("-","_").replace(" ","_"))
@@ -2798,6 +2900,17 @@ def main():
                     os.environ["INTROSPECT_SEED_CONTEXT"] = "\n".join(_seed_parts)
                 else:
                     os.environ["INTROSPECT_SEED_CONTEXT"] = ""
+                # An email want's reflection also weighs what his agents brought for it, labelled with who brought it,
+                # beside his own steps' findings: the same opinion step, with their material (agent_research, 14 November)
+                if action == "introspect" and is_multistep:
+                    try:
+                        sys.path.insert(0, SCRIPTS)
+                        import agent_research as _ar
+                        _brought = _ar.seed_block(want)
+                        if _brought:
+                            os.environ["INTROSPECT_SEED_CONTEXT"] = (os.environ.get("INTROSPECT_SEED_CONTEXT", "") + "\n\n" + _brought).strip()
+                    except Exception as _are:
+                        log(f"  → agents' material not added to the reflection: {str(_are)[:120]}")
                 from want_stance import call_action
                 if action == "make_video":
                     _ran, success = call_action(action, action_fn, want, text, want.get("reasoning", ""), immediate=want.get("manually_routed", False))
@@ -2950,6 +3063,11 @@ def _spine_wrap(_name, _fn):
             log(f"  → BLOCKED ({_name}): {b.get('block_type')} — standing, not re-run "
                 f"(resume: {b.get('resume_event')})")
             return False
+        # The want this step serves, for any act it takes (action_provenance.py): set around the step, removed after,
+        # so nothing done later in this process is put down to it.
+        _ap_prev = {_k: os.environ.get(_k) for _k in ("VINTOS_ACTION_WANT_ID", "VINTOS_ACTION_ORGAN")}
+        os.environ["VINTOS_ACTION_WANT_ID"] = os.environ.get("STEP_WANT_ID", "")
+        os.environ["VINTOS_ACTION_ORGAN"] = "wants-router step %s" % _name
         try:
             out = _fn(want_text, *a, **k)
             if b:
@@ -2964,6 +3082,10 @@ def _spine_wrap(_name, _fn):
         except Exception as e:
             log(f"  → {_name} FAILED (not blocked): {str(e)[:120]}")
             return False
+        finally:
+            for _k, _v in _ap_prev.items():
+                if _v is None: os.environ.pop(_k, None)
+                else: os.environ[_k] = _v
         # `e` is unbound once its except clause ends; the block record below raised NameError instead of
         # being written, so no block was ever recorded (review, 2026-09-05)
         blocks[_name] = {"block_type": bt, "evidence": str(err)[:250],

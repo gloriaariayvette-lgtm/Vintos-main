@@ -290,18 +290,28 @@ def local_think(system, prompt, max_tokens=700):
         return ""
 
 
-def deliberate(recipient, about, found, think=None, thread=""):
+def deliberate(recipient, about, found, think=None, thread="", brought="", names=()):
     """After the search and before a word is drafted: where he stands on what he found (2026-09-28:
     "Deliberation after the search is an important step"). His position, pushed on - not a lesson about
-    himself - and the one thing he actually wants from them. '' when his mind cannot be reached."""
+    himself - and the one thing he actually wants from them. '' when his mind cannot be reached.
+
+    `brought` is what his agents brought for this email (agent_research.block, labelled with who brought it): the same
+    deliberation weighs it beside his own search, with its own room so his search does not crowd it out, and `names`
+    are the agents he may address one line to before he settles (Gloria, 14 November)."""
     think = think or local_think
+    if str(brought or "").strip():
+        import agent_research
+        tail = agent_research.prompt_note(list(names or ()))
+        brought = "\n" + str(brought)[:4000] + "\n"
+    else:
+        tail, brought = "", ""
     out = think("You are Vintos. Think it through for yourself; this is not the email.",
-                "You are about to write to %s about: %s\n%s\nWHAT YOUR SEARCH FOUND just now:\n%s\n\n"
+                "You are about to write to %s about: %s\n%s\nWHAT YOUR SEARCH FOUND just now:\n%s\n%s\n"
                 "Where do you stand on their work? Push on it: what holds up, what is weak, overstated or missing, "
                 "what you disagree with or would test, and why. Then name the one thing you actually want to ask "
-                "or tell them. 4-6 sentences, your own position on the subject - not a lesson about yourself."
+                "or tell them. 4-6 sentences, your own position on the subject - not a lesson about yourself.%s"
                 % (recipient, about, ("\nTHE THREAD SO FAR:\n" + thread[-4000:] + "\n") if thread else "",
-                   str(found or "")[:6000]))
+                   str(found or "")[:6000], brought, tail))
     return re.sub(r"<think>.*?</think>", "", out or "", flags=re.S).strip()[:2000]
 
 
@@ -547,6 +557,45 @@ def named_in(text):
     return m.group(1).strip() if m else ""
 
 
+# The agents he writes letters to are answered through reply_letters, not as a want's email to a person.
+_LETTER_AGENTS = re.compile(r"^(?:Grok\s*Bot|Muse|Codex|Dot|Gloria)\b", re.I)
+_EMAIL_VERB = re.compile(r"\b(?:e-?mail|write to|reach out to|contact the (?:author|researcher))\b", re.I)
+
+
+def email_want(text):
+    """Whether a want asks him to email a person: an email verb and a person named in full, or an address. The one test
+    both lanes use, so a want to email someone takes this module's steps wherever it is worked (Gloria, 14 November:
+    it goes "through all the same steps as normal email want and keep the same dossier")."""
+    text = str(text or "")
+    if EMAIL.search(text) and _EMAIL_VERB.search(text):
+        return True
+    who = named_in(text)
+    return bool(who and _EMAIL_VERB.search(text) and not _LETTER_AGENTS.match(who))
+
+
+def _same_topic(contact, want_id, want_text, about):
+    """An email already sent to this address from a different want about the same thing."""
+    if not contact.get("want_id") or contact.get("want_id") == want_id:
+        return False
+    try:
+        from want_board import alike
+    except Exception:
+        alike = lambda a, b: False
+    said = [str(contact.get(k) or "") for k in ("intent", "about")]
+    return any(s and (s.strip() == str(t or "").strip() or alike(s, t)) for s in said for t in (want_text, about))
+
+
+def _owner_lane(want_id):
+    """'want-lane' when this want is bound to the agent room (its own request, not finished there), else 'router'."""
+    if not want_id:
+        return "router"
+    data = _load(WANTS, [])
+    wants = data if isinstance(data, list) else []
+    w = next((w for w in wants if isinstance(w, dict) and w.get("id") == want_id), None)
+    from want_agent import owned_by_room
+    return "want-lane" if owned_by_room(w) else "router"
+
+
 # A draft that says he has not read the person's work is not ready, whatever his readiness answer was (16 October:
 # a second email to Chalmers, approved for her yes, opened "I haven't read your papers directly, only encyclopedia
 # accounts"). Nothing is written to a person before something of their own work has been read in full.
@@ -626,7 +675,7 @@ def earlier_steps(want_id, path=None):
     return "\n".join(out)[:12000]
 
 
-def mail_evidence(want_id, want_text="", params=None):
+def mail_evidence(want_id, want_text="", params=None, skip_senders=()):
     """(block, links): the items of his recent mail that are about this want (received_mail.for_want), each as its
     sender's words with the sender and subject, and their links' real addresses. The want is read by id; the step's
     own text and parameters count too, so a step run without a stored want still finds its mail. ('', []) when none.
@@ -641,7 +690,9 @@ def mail_evidence(want_id, want_text="", params=None):
         want["steps"] = list(want.get("steps") or []) + ([{"params": params}] if isinstance(params, dict) else [])
         found = received_mail.for_want(want, mail=received_mail.rows(path=INBOX_LOG))
         links = [u for f in found for u in f.get("links") or []]
-        return received_mail._block(found, received_mail.WANT_HEADING), links
+        # an agent's letter items shown as what that agent brought (agent_research) are not shown twice
+        shown = [f for f in found if f.get("sender") not in set(skip_senders or ())]
+        return received_mail._block(shown, received_mail.WANT_HEADING), links
     except Exception:
         return "", []
 
@@ -650,16 +701,41 @@ HOLDS_TO_READ = 2        # answering someone who wrote: passes he may spend read
 
 
 def run(params, want_text, want_id="", search=web_search, fetch=fetch_text, call=None, reserve=None, send=None,
-        think=None, get=None, post=None):
-    """One email step. Returns a receipt line, or (False, why)."""
+        think=None, get=None, post=None, lane="router", work_found="", ask_agent=None):
+    """One email step. Returns a receipt line, or (False, why).
+
+    Both lanes come here (14 November): the router's send_email step, and the agent-room want lane once a bound
+    want's work is done (lane='want-lane', with what the work found as work_found). The same search, dossier, person
+    page, draft, review, approval and contact record serve both; a want is emailed from the lane that owns it only.
+
+    What his agents brought for it (agent_research: the room's finished work, Grok Bot's and Muse's letter items) is
+    material, labelled with who brought it: it joins his own search, his deliberation gives his opinion on it, and he
+    may put a line to an agent first (ask_agent(agent, text) posts in the want's room thread, where Dot, Grok Bot and
+    Muse all are; without a thread, Grok Bot and Muse get it in his next letter reply). While that line waits for its answer, the step waits too, bounded by agent_research's rounds and
+    hours (Gloria, 14 November)."""
     params = params if isinstance(params, dict) else {}
+    if lane != _owner_lane(want_id):
+        return False, ("bound to the agent room: its email goes out from the want lane, through these same steps, "
+                       "once its work is done" if lane == "router" else "not a want of the agent room")
     blocked = _send_blocked()
     if blocked:
         return False, blocked
+    import agent_research
+    now_t = time.time()
+    want_row = (agent_research.want_of(want_id) if want_id else None) or {"id": want_id, "want": want_text}
+    entries = agent_research.brought(want_row, work_found=work_found, now=now_t) if want_id else []
+    if entries:
+        agent_research.note_brought(want_id, entries, now_t)
+    if want_id:
+        waiting = agent_research.settle(want_row, now_t)
+        if waiting:
+            return False, waiting           # his line to an agent is out; no search, reading or draft until it is answered
     recipient = str(params.get("recipient") or "").strip() or named_in(want_text)
     about = str(params.get("about") or want_text or "").strip()[:400]
     known = earlier_steps(want_id)
-    recipient = full_name(recipient, want_text, params.get("about"), known)
+    if str(work_found or "").strip() and not any(e["channel"] == "thread" for e in entries):
+        known = (known + "\n" if known else "") + "- the agent room's finished work: " + str(work_found).strip()[:4000]
+    recipient = full_name(recipient, want_text, params.get("about"), known, "\n".join(e["text"] for e in entries))
     to = str(params.get("to") or "").strip()
     if to and not EMAIL.fullmatch(to): to = ""
     if not to:
@@ -675,6 +751,10 @@ def run(params, want_text, want_id="", search=web_search, fetch=fetch_text, call
         c = contacts[to.lower()]
         if c.get("status") == "closed":
             return False, "the conversation with %s is closed (%s)" % (to, c.get("closed_why", ""))
+        if _same_topic(c, want_id, want_text, about):
+            # the same person about the same thing from another want - the other lane's, or a reworded twin: one
+            # email, not a second one or a second approval request (14 November)
+            return False, "%s was already emailed about this, from want %s; not again from another want" % (to, c.get("want_id"))
         thread = c.get("thread", [])
         if thread and thread[-1].get("dir") == "in":
             return False, "%s wrote back; the answer goes through the thread" % to
@@ -692,15 +772,21 @@ def run(params, want_text, want_id="", search=web_search, fetch=fetch_text, call
     found = research(recipient or to, about, search=search, fetch=fetch)
     if not found.strip():
         return False, "a search found nothing about %s to write from" % (recipient or to)
+    # Beside his own search: what his agents brought for this email, each piece labelled with who brought it, when and
+    # from which sources, and his exchange with them so far (agent_research, 14 November). Material, not a decision.
+    brought_block = agent_research.block(want_id, entries) if entries else ""
+    if brought_block:
+        found += "\n\n" + brought_block
     if known:
         found += "\n\nWHAT THIS WANT'S EARLIER STEPS ALREADY FOUND (some may be research Gloria supplied):\n" + known
     # What his mail brought on it: a Grok Bot letter about this person's work, with its links (2026-10-16).
-    mail_block, mail_links = mail_evidence(want_id, want_text, params)
+    mail_block, mail_links = mail_evidence(want_id, want_text, params, skip_senders=agent_research.senders(entries))
     if mail_block:
         found += "\n\n" + mail_block
-    # Then their actual work, read in full where it is free to read, and any paper an earlier step or a letter pointed to.
+    # Then their actual work, read in full where it is free to read, and any paper an earlier step, a letter or an
+    # agent's sources pointed to.
     scholar, _ = _helpers()
-    pointed = "\n".join([known] + mail_links)
+    pointed = "\n".join([known] + mail_links + [s for e in entries for s in e["sources"]])
     reading, dossier = _study(to, recipient, about, get=get, think=think, links=scholar.links_in(pointed) if pointed.strip() else ())
     # What he has kept thinking about them between emails, and where things stand (person_pages, 19 October).
     try:
@@ -721,8 +807,24 @@ def run(params, want_text, want_id="", search=web_search, fetch=fetch_text, call
         dossier["holds"] = int(dossier.get("holds", 0)) + 1; scholar.save(dossier)
         return False, "reading first (pass %d): nothing of %s's own work has been read in full yet" % (
             dossier["holds"], recipient or to)
-    stance = deliberate(recipient or to, about, found + ("\n\nWHAT YOU HAVE READ IN FULL:\n" + reading if reading else ""),
-                        think=think)
+    if entries:
+        # His opinion on his own search and on what his agents brought, in the one deliberation; he may put one line
+        # to an agent who still has rounds and a channel, and then the step waits for its answer (14 November).
+        names = agent_research.addressable(want_id, entries, can_thread=ask_agent is not None)
+        own = found.replace("\n\n" + brought_block, "", 1)
+        stance = deliberate(recipient or to, about, own + ("\n\nWHAT YOU HAVE READ IN FULL:\n" + reading if reading else ""),
+                            think=think, brought=brought_block, names=names)
+        stance, lines = agent_research.said_to(stance, names)
+        said = [s for s in (agent_research.ask(want_row, agent, line, entries, now_t, ask_agent=ask_agent,
+                                               recipient=recipient or to) for agent, line in lines) if s]
+        if said:
+            agent_research.to_dossier(dossier, want_id, entries, now=now_t); scholar.save(dossier)
+            return False, "; ".join(said)
+        agent_research.opinion(want_id, stance, entries, now_t)
+        agent_research.to_dossier(dossier, want_id, entries, stance, now_t); scholar.save(dossier)
+    else:
+        stance = deliberate(recipient or to, about, found + ("\n\nWHAT YOU HAVE READ IN FULL:\n" + reading if reading else ""),
+                            think=think)
     # Does his position rest on something he has only seen summarised? Then he reads first.
     # He writes only when ready. Never "after two passes, anyway" (2026-10-15: he told Graziano "I haven't read
     # your papers in full" and sent it), and never when the readiness question could not be asked.
@@ -752,20 +854,27 @@ def run(params, want_text, want_id="", search=web_search, fetch=fetch_text, call
     if send is None:
         import plugin_gateway
         send = lambda args, purpose: plugin_gateway.call("wants", "gmail", "gmail.send_email", args, purpose)
-    try:
-        out = send(mail(to, subject, body), ("His own email, from a want: " + about)[:900])
-    except Exception as exc:
-        if "PolicyHold" not in type(exc).__name__:
-            _note_send(False, str(exc))
-        return False, "the send was held or refused: %s" % str(exc)[:400]
-    _note_send(True)
-    now = datetime.now()
-    contacts[to.lower()] = {"at": now.isoformat(), "name": recipient, "subject": subject, "want_id": want_id,
-                            "searched": found[:1200], "stance": stance, "intent": (want_text or about)[:900], "about": about,
-                            "status": "open", "replies_sent": 0,
-                            "thread": [{"dir": "out", "at": now.isoformat(), "subject": subject, "body": body}],
-                            "drafted_by": drafter, "receipt": ((out or {}).get("receipt") or {}).get("receipt_id")}
-    _save(CONTACTS, contacts)
+    from store_guard import transaction
+    # The check and the send are one step under the contacts lock: the router and the want lane run in two processes,
+    # and both may have drafted to the same person meanwhile (14 November). The first to send is the one email.
+    with transaction(CONTACTS):
+        contacts = _load(CONTACTS, {})
+        if to.lower() in contacts:
+            return False, "%s was emailed meanwhile (want %s); this draft is not sent" % (to, contacts[to.lower()].get("want_id"))
+        try:
+            out = send(mail(to, subject, body), ("His own email, from a want: " + about)[:900])
+        except Exception as exc:
+            if "PolicyHold" not in type(exc).__name__:
+                _note_send(False, str(exc))
+            return False, "the send was held or refused: %s" % str(exc)[:400]
+        _note_send(True)
+        now = datetime.now()
+        contacts[to.lower()] = {"at": now.isoformat(), "name": recipient, "subject": subject, "want_id": want_id,
+                                "searched": found[:1200], "stance": stance, "intent": (want_text or about)[:900], "about": about,
+                                "status": "open", "replies_sent": 0, "lane": lane,
+                                "thread": [{"dir": "out", "at": now.isoformat(), "subject": subject, "body": body}],
+                                "drafted_by": drafter, "receipt": ((out or {}).get("receipt") or {}).get("receipt_id")}
+        _save(CONTACTS, contacts)
     try:
         with open(os.path.join(MEMORY, "daily-inner-life-%s.md" % date.today().isoformat()), "a") as f:
             f.write("\n\n## An email I sent (%s)\nTo %s <%s> — %s\n\n%s\n"
@@ -1366,27 +1475,71 @@ def links_read(body, fetch=None, limit=LINKS_READ, chars=LINK_CHARS):
         # one in. The same reader now opens a linked paper here.
         reader = _pdf_reader()
         fetch = lambda url: link_fetch.fetch(url, pdf=reader)
-    out = []
-    for l in link_fetch.links_in(body)[:limit]:
+    # 15 November: Muse's letter carried seven links and only the first five were opened; the sixth (a PDF) and the
+    # seventh (a PhilArchive paper) were dropped without a word, and his reply said of each "It wasn't shown to me".
+    # A link past the limit is now listed NOT OPENED YET, and READ MORE [LINK n] opens it; a link written twice is
+    # opened once.
+    out, seen = [], set()
+    links = [l for l in link_fetch.links_in(body) if not ((l["url"] or l["original"]) in seen
+                                                        or seen.add(l["url"] or l["original"]))]
+    for i, l in enumerate(links[:LINKS_LISTED]):
+        if i >= limit:
+            out.append({"url": (l["url"] or l["original"])[:500], "original": l["original"][:500], "kind": NOT_OPENED,
+                        "why": "LINK %d of the letter's %d: only the first %d links are opened when a letter is read. "
+                               "READ MORE [LINK %d] opens this one." % (i + 1, len(links), limit, i + 1), "text": ""})
+            continue
         try:
             r = fetch(l["original"])
         except Exception as exc:
             r = {"original_url": l["original"], "url": l["url"], "fetched": False, "kind": "error", "why": str(exc)[:160]}
-        page = {"url": (r.get("final_url") or r.get("url") or l["url"] or l["original"])[:500],
-                "kind": r.get("kind") or ("fetched" if r.get("fetched") else "not read"),
-                "why": str(r.get("why") or "")[:200], "text": ""}
-        if r.get("fetched") and r.get("structure"):
-            # a PDB/mmCIF file (26 October): its preview is made to fit the cap, so the counts, the "not an analysis"
-            # line and what was shown of the whole survive it; the file itself is not kept with the letter
-            page.update(text=link_fetch.structure_view(r["structure"], chars), structure=True)
-        elif r.get("fetched"):
-            full = str(r.get("text") or "")
-            kept = full[:LINK_RETAIN]
-            page.update(text=full[:chars], chars=len(full), retained=len(kept), shown=[0, min(chars, len(full))],
-                        bytes=int(r.get("bytes") or 0), sha256=_keep_page(kept),
-                        download_truncated=bool(r.get("truncated") or r.get("kind") == "truncated"))
-        out.append(page)
+        out.append(_page_of(r, l, chars))
     return out
+
+
+NOT_OPENED = "not_opened"
+LINKS_LISTED = 20       # links of one letter listed at all (opened or not), as links_kept keeps
+
+
+def _page_of(r, l, chars=LINK_CHARS):
+    """One link's page as kept with the letter, from link_fetch's receipt `r` for link `l`."""
+    link_fetch = _link_fetch()
+    page = {"url": (r.get("final_url") or r.get("url") or l["url"] or l["original"])[:500],
+            "kind": r.get("kind") or ("fetched" if r.get("fetched") else "not read"),
+            "why": str(r.get("why") or "")[:200], "text": ""}
+    if r.get("fetched") and r.get("structure"):
+        # a PDB/mmCIF file (26 October): its preview is made to fit the cap, so the counts, the "not an analysis"
+        # line and what was shown of the whole survive it; the file itself is not kept with the letter
+        page.update(text=link_fetch.structure_view(r["structure"], chars), structure=True)
+    elif r.get("fetched"):
+        full = str(r.get("text") or "")
+        kept = full[:LINK_RETAIN]
+        page.update(text=full[:chars], chars=len(full), retained=len(kept), shown=[0, min(chars, len(full))],
+                    bytes=int(r.get("bytes") or 0), sha256=_keep_page(kept),
+                    download_truncated=bool(r.get("truncated") or r.get("kind") == "truncated"))
+    return page
+
+
+def _open_later(page, fetch=None):
+    """A NOT OPENED YET link opened now, when he asks for it: the page updated in place, as links_read would have
+    kept it. Only ever a link of his own agent's letter (pages exist for nothing else)."""
+    if fetch is None:
+        link_fetch, reader = _link_fetch(), _pdf_reader()
+        fetch = lambda url: link_fetch.fetch(url, pdf=reader)
+    original = page.get("original") or page.get("url") or ""
+    try:
+        r = fetch(original)
+    except Exception as exc:
+        r = {"url": page.get("url"), "fetched": False, "kind": "error", "why": str(exc)[:160]}
+    fresh = _page_of(r, {"url": page.get("url") or original, "original": original})
+    page.clear()
+    page.update(fresh, opened_on_ask=True)
+    return page
+
+
+def more_to_read(pages):
+    """Whether READ MORE can reach anything: a page shown only in part, or a link not opened yet."""
+    return any((p.get("sha256") and (p.get("shown") or [0, 0])[1] < int(p.get("retained") or 0))
+               or p.get("kind") == NOT_OPENED for p in pages or [])
 
 
 def _span(a, b, n):
@@ -1433,6 +1586,8 @@ def pages_view(pages):
                                                  "[SHOWN: the excerpt kept when the letter was read, %d characters; "
                                                  "the page's length was not recorded and nothing more was kept]\n"
                                                  % len(p["text"]), p["text"]))
+        elif p.get("kind") == NOT_OPENED:
+            lines.append("[LINK %d] %s\nNOT OPENED YET: %s" % (i, p["url"], p.get("why")))
         else:
             lines.append("[LINK %d] %s\nNOT READ (%s): %s" % (i, p["url"], p.get("kind"), p.get("why")))
     if more:
@@ -1485,12 +1640,13 @@ def _not_further(p, n, kept, at, what):
     return "end_of_page", "%s: the page ends at character %d" % (what, n)
 
 
-def read_more(pages, asks, prior=(), budget=PASSAGES_PER_READ):
+def read_more(pages, asks, prior=(), budget=PASSAGES_PER_READ, fetch=None):
     """The passages asked for, from each page's kept text: [{link, url, ask, status, from, to, of, text, why}].
     An ask is {"link": n, "find": "<heading, section number or word>"}, {"link": n, "from": <character, from 1>} or
     {"link": n} (go on from where the last reading of it stopped). The same find asked again goes to its next match.
     Status is "shown", or why not: not_read, not_kept, absent, beyond_retained, beyond_download_cap, end_of_page,
-    over_budget. Read only: nothing is fetched again."""
+    over_budget. Nothing is fetched again, except a link listed NOT OPENED YET, which is opened once when asked for
+    (its page is updated in place) and read from its start."""
     out, done = [], list(prior)
     cache = {}
     for ask in asks:
@@ -1512,6 +1668,12 @@ def read_more(pages, asks, prior=(), budget=PASSAGES_PER_READ):
         if len(out) >= budget:
             out.append(dict(rec, status="over_budget", why="the READ MORE limit is spent (%d passages a reading, %d a letter)"
                                                                % (PASSAGES_PER_READ, PASSAGES_PER_LETTER))); continue
+        fresh = False
+        if p.get("kind") == NOT_OPENED:
+            _open_later(p, fetch)
+            rec["url"] = p.get("url", "")
+            fresh = True
+            cache.pop(k, None)
         if not p.get("text") and not p.get("chars"):
             out.append(dict(rec, status="not_read", why="LINK %d was NOT READ (%s): %s" % (k, p.get("kind"), p.get("why")))); continue
         if p.get("structure"):
@@ -1538,6 +1700,8 @@ def read_more(pages, asks, prior=(), budget=PASSAGES_PER_READ):
             ls = full.rfind("\n", 0, at) + 1
             start = ls if at - ls <= 200 else max(0, at - 200)
             rec["match"] = "match %d of %d from character %d" % (nth, of, begin + 1)
+        elif start is None and fresh:
+            start = 0           # opened just now: nothing of it has been shown yet
         elif start is None:
             start = max([int(d["to"]) for d in mine] + [int((p.get("shown") or [0, 0])[1])])
         start = max(0, start)
@@ -1554,7 +1718,8 @@ def passages_view(passages):
     """The passages read further into the links, each labelled with where it is; '' when none."""
     if not passages:
         return ""
-    lines = ["READ FURTHER INTO THE LINKS (READ MORE, from the same kept text of each link; nothing fetched again):"]
+    lines = ["READ FURTHER INTO THE LINKS (READ MORE, from the same kept text of each link; nothing fetched again, "
+             "except a link not opened before, opened now):"]
     for d in passages:
         head = "[LINK %d, READ MORE %s] %s" % (d.get("link"), d.get("ask"), d.get("url"))
         if d.get("status") == "shown":
@@ -1613,7 +1778,8 @@ def _json_asks(got):
     return [a for a in asks if isinstance(a, dict)][:PASSAGES_PER_READ] if isinstance(asks, list) else []
 
 
-READER_MORE = ("\n\nA page above shown only in part can be read further. If you need a passage past what is shown (a "
+READER_MORE = ("\n\nA page above shown only in part can be read further, and a link marked NOT OPENED YET can be opened "
+               "the same way ({\"link\": <n>}). If you need a passage past what is shown (a "
                "section, a heading, an annotation the letter cites), add to your JSON \"read_more\": [{\"link\": <n>, "
                "\"find\": \"<heading, section number or word>\"} or {\"link\": <n>, \"from\": <character>}] (at most "
                "%d); you will be shown those passages and asked again." % PASSAGES_PER_READ)
@@ -1967,7 +2133,7 @@ def read_mail(msgs, think=None, want=None, now=None):
         passages = read_more(pages, letter_cues(m["body"], pages)) if pages else []
         if pages:
             ask += "\n\n" + pages_view(pages) + ("\n\n" + passages_view(passages) if passages else "")
-        partial = any(p.get("sha256") and (p.get("shown") or [0, 0])[1] < int(p.get("retained") or 0) for p in pages)
+        partial = more_to_read(pages)
         codex = agent == "Codex"
         if codex:
             arch = _codex_archive_view(m["id"])
@@ -2054,7 +2220,8 @@ LETTER_REPLY = ("\n\n---\nYou have read this letter from your agent %s, sent to 
                 "its own line that begins \"For Gloria:\", one line each, so it reaches her.\n"
                 "Plain words, your own voice, short. No metaphors, no talk of silence, weight, pulse or tension. No "
                 "links, nothing private about Gloria. Write only the reply.")
-LETTER_MORE = ("\nA linked page shown only in part is not unread, and you never ask %s to paste it. If you need a passage "
+LETTER_MORE = ("\nA linked page shown only in part is not unread, and you never ask %s to paste it. A link marked NOT "
+               "OPENED YET is opened by READ MORE [LINK n]; never say it was not shown to you. If you need a passage "
                "past what is shown (a section, a heading, an annotation the letter cites), write only lines of the form "
                "READ MORE [LINK n]: \"<heading, section number or word>\" or READ MORE [LINK n] FROM <character>, at "
                "most %d, and nothing else: you will be shown those passages and write the reply then.")
@@ -2233,7 +2400,7 @@ def reply_letters(think=None, send=None, now=None, promise_think=None, bring=Non
             system += "\n\n" + completed_work(ws=WS)
         except Exception:
             pass
-        partial = any(p.get("sha256") and (p.get("shown") or [0, 0])[1] < int(p.get("retained") or 0) for p in kept_pages)
+        partial = more_to_read(kept_pages)
         if partial:
             system += LETTER_MORE % (agent, PASSAGES_PER_READ)
         if archive:             # the same archive view his reading had
@@ -2270,6 +2437,16 @@ def reply_letters(think=None, send=None, now=None, promise_think=None, bring=Non
                                  why="the draft said the archive was not read, though it is kept: %r" % denied[:120])
             lines.append("reply to Codex's letter held: it said the archive was not read, though it is kept")
             continue
+        # His open questions to this agent about what it brought for his email wants ride on this reply, as he wrote
+        # them in his deliberation: no further call. Their next letter is the answer (agent_research, 14 November).
+        carried = []
+        try:
+            import agent_research
+            extra, carried = agent_research.letter_lines(agent)
+            if extra:
+                body += "\n\n" + re.sub(r"https?://\S+", "", extra).strip()
+        except Exception:
+            carried = []
         subject = r.get("subject") or "your letter"
         subject = subject if subject.lower().startswith("re:") else "Re: " + subject
         try:   # what he writes FOR GLORIA in a letter reaches her: a promise to bring her something as his want to
@@ -2289,6 +2466,12 @@ def reply_letters(think=None, send=None, now=None, promise_think=None, bring=Non
             continue
         done[r["id"]] = {"sent": True, "at": now.isoformat(timespec="seconds"), "agent": agent, "subject": subject,
                          "body": body, "thread_id": r.get("thread_id", "")}
+        if carried:
+            try:
+                agent_research.letter_sent(carried, r["id"], now.timestamp())
+                lines.append("his reply to %s carried %d question(s) about what it brought for his emails" % (agent, len(carried)))
+            except Exception as exc:
+                lines.append("questions to %s not marked asked: %s" % (agent, str(exc)[:120]))
         replied_threads.add(r.get("thread_id")); answered.add(_base_subject(subject))
         try:   # where vintos_letter_replies reads, too
             import grok_letters

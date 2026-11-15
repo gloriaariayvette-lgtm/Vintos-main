@@ -33,6 +33,11 @@ check("the dream and its objects are read and written in the scratch workspace",
 
 DREAM_WORDS = "The open door and the closed one were the same door, seen from either side of a night."
 NOW = time.time()
+# "a second visit the same day" is NOW + 60: in the last minute before local midnight that was the next
+# day and the dream was rightly offered again (failed at 23:59). Keep the visits on NOW's own day; the
+# dream (3 hours old) and the atelier visit, which read the real clock, are unaffected by a few minutes.
+if datetime.fromtimestamp(NOW).date() != datetime.fromtimestamp(NOW + 120).date():
+    NOW -= 180
 def dream_file(hours_ago=3.0, words=DREAM_WORDS, fragments=12):
     at = datetime.now(timezone.utc) - timedelta(hours=hours_ago)
     with open(DO.DREAM, "w") as f:

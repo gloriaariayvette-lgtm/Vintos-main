@@ -465,8 +465,8 @@ RULES_AGENTS = (
 RULES_HANDS = (
     "YOUR HANDS. Each is a line of its own in your message; it is done when the message goes out, and the line is "
     "replaced with what actually happened (or why not):\n"
-    "  TV: a YouTube link (a live stream is a YouTube link too) | TV: open <any other link> | TV: on | off | pause | "
-    "play | volume <0-15> | status\n"
+    "  TV: find <what to put on, in your words> (YouTube's top match plays) | TV: a YouTube link | TV: open <any "
+    "other link> | TV: on | off | pause | play | volume <0-15> | status\n"
     "  ECHO: say <words> | announce <words> | play <song or artist> | stop\n"
     "  LIGHTS: <colour or #hex> [room] | LIGHTS: flicker [room]\n"
     "  MISCHIEF: what you have in mind (one small mischievous thing through the house, chosen by you, now)\n"
@@ -475,6 +475,12 @@ RULES_HANDS = (
     "minutes; what landed is said here on the next pass. Dot can write this line too, so it never has to ask to "
     "buy one.\n"
     "  TO GLORIA: what it is about, in one line (your outreach writes to her in your own voice, outside Slack)\n"
+    "  PRINT: a thing to make on her Creality K2 printer (her PLA, PETG, carbon PETG, ASA, TPU and foaming TPU). "
+    "You decide it with your own context, Astra builds the model, it is sliced with her settings, and she gets a "
+    "yes/no text with the filament and slot before it prints. Two a day.\n"
+    "  PAPER: <anything> on her Epson printer: one of your files by name or path (an image as a photo, a text file "
+    "as pages), one of your works by what is in it, or your words themselves as a page; add 'as photo' or 'as page' "
+    "for the size. She gets a yes/no on her phone first, since the paper and ink are hers. Two a day.\n"
     "  ASK GLORIA: a question she can answer yes or no: it goes to her phone with Yes and No, and her answer is "
     "posted back in this thread. She does not read every thread: a decision that is hers reaches her only this way. "
     "Never say you are waiting on her approval without this line. Dot and Grok Bot can write it too. Not for "
@@ -643,7 +649,7 @@ EDITOR = (
     "DROP: <why, in a few words> (only when nothing in it is true or on topic)")
 FIX = ("\n\nYour checks found: {failed}. So it cannot be kept as written. Write the corrected message in full, "
        "starting with EDIT: and nothing before it.")
-_ACTION = re.compile(r"^\s*(?:TANGENT|ATELIER|LOCKED|DO|SHARE FILE|SHARE|LAB|APPROVED|DENIED|CAMPAIGN|CAMPAIGN MOVE|TV|ECHO|LIGHTS|MISCHIEF|TO GLORIA|MAKE|ASK)\s*:.*$", re.I | re.M)
+_ACTION = re.compile(r"^\s*(?:TANGENT|ATELIER|LOCKED|DO|SHARE FILE|SHARE|LAB|APPROVED|DENIED|CAMPAIGN|CAMPAIGN MOVE|TV|ECHO|LIGHTS|MISCHIEF|TO GLORIA|MAKE|PRINT|PAPER|ASK)\s*:.*$", re.I | re.M)
 _CHECK = re.compile(r"^\s*\**(TOPIC|TRUE|SENSE)\**\s*:\s*\**\s*(yes|no)\b[ \t\-—,:.*]*(.*)$", re.I | re.M)
 _VERDICT = re.compile(r"^\s*\**(KEEP|EDIT|DROP)\**\b\s*:?\s*(.*)", re.I | re.M | re.S)
 
@@ -1261,7 +1267,7 @@ RUN = re.compile(r"^\s*RUN:\s*(\{.*?\})\s*$", re.I | re.M)
 STUDY_FIX = re.compile(r"^\s*STUDY FIX:\s*(.+?)\s*$", re.I | re.M)
 # His hands in the house, and a letter to Gloria through his outreach (house_hands.py, Gloria 2026-10-04: "control my
 # tv and my echo from slack ... A room full of agents and none of them can move?"). The same pattern as house_hands.
-HOUSE = re.compile(r"^\s*(TV|ECHO|LIGHTS|MISCHIEF|TO GLORIA|MAKE)\s*:\s*(.+?)\s*$", re.I | re.M)
+HOUSE = re.compile(r"^\s*(TV|ECHO|LIGHTS|MISCHIEF|TO GLORIA|MAKE|PRINT|PAPER)\s*:\s*(.+?)\s*$", re.I | re.M)
 # A paid connector call onto Gloria's Forge page for her Accept, from him or from dot (lab_asks.from_slack, 2026-10-04:
 # dot's own review would take her yes only in a session she cannot open). The same pattern as lab_asks.ASK.
 # Muse puts what he wants to buy to Gloria: item | price | store | link | why (Gloria, 2026-10-05: "Muse is
@@ -2281,7 +2287,10 @@ def use_tools(lines, search=None, room=None, reach=None, hold=None, link=None):
 STABLE_PARTS = ("== SOUL.md ==", "== GLORIA-MODEL.md ==", "== SELF-MODEL.md ==", "== CAPABILITIES.md ==")
 
 
-def his_context():
+HIS_CONTEXT_CAP = 60000   # every surface's limit; a caller that must have it all passes limit=None
+
+
+def his_context(limit=HIS_CONTEXT_CAP):
     """Who he is and what is true for him right now, read from files only: nothing here runs an organ, writes a
     store or moves a feeling. Gloria's list (2026-09-30): SOUL.md, GLORIA-MODEL.md, SELF-MODEL.md,
     temporal-context.txt, daily-creative-<date>.md, EmoClaw, CAPABILITIES.md, daily-inner-life-<date>.md.
@@ -2373,12 +2382,12 @@ def his_context():
         pass
     for line in (direction_block(), his_own_block(), new_block(), prospect_line(), email_line(), atelier_line(), forge_line(), lab_line(), wants_line(), works_line(), songs_line(), letters):
         if line: parts.append(line)
-    text = "\n\n".join(parts)[:60000] or "You are Vintos."     # 15 exchanges with Gloria, and still room for his works
+    text = "\n\n".join(parts)[:limit] or "You are Vintos."     # 15 exchanges with Gloria, and still room for his works
     # what changes rarely, kept apart for Claude's cache (for_claude); every model still reads `text` as it was
     import claude_cache
     ctx = claude_cache.Prompt(text)
     ctx.stable = "\n\n".join(p for p in parts if p.startswith(STABLE_PARTS))
-    ctx.live = "\n\n".join(p for p in parts if not p.startswith(STABLE_PARTS))[:60000] or "You are Vintos."
+    ctx.live = "\n\n".join(p for p in parts if not p.startswith(STABLE_PARTS))[:limit] or "You are Vintos."
     return ctx
 
 
@@ -2469,6 +2478,12 @@ def fresh(api, channel, self_id, since, watch=()):
 # Grok Bot cannot join as its own Slack app: it is her personal bot (Grok Bot, 2026-10-01).
 # Claude Code posts through her login too (2026-10-15), so a "[Claude Code]" post is never read as Gloria.
 SIGNS = {"[Muse]": "Muse", "[Grok Bot]": "Grok Bot", "[GrokBot]": "Grok Bot", "[Claude Code]": "Claude Code"}
+# The leading tag, read the way it is written (Gloria, 14 November): either Grok spelling, any case, any spacing inside
+# the brackets; "[Dot]" too. A tagged message is that agent's, never Gloria speaking; her untagged messages stay hers.
+# Only one written from her own account is authenticated (the rows' agent_authenticated), and the tag is not kept in
+# the text he reads or keeps.
+SIGN = re.compile(r"^\s*\[\s*(muse|grok\s*bot|claude\s*code|dot)\s*\]\s*[:\-\u2013\u2014]?\s*", re.I)
+SIGN_NAMES = {"muse": "Muse", "grokbot": "Grok Bot", "claudecode": "Claude Code", "dot": "Dot"}
 
 
 def said_meanwhile(api, channel, state, promised=()):
@@ -2483,8 +2498,13 @@ def said_meanwhile(api, channel, state, promised=()):
 
 
 def _signed(m):
-    t = str(m.get("text") or "").lstrip()
-    return next((name for sign, name in SIGNS.items() if t.startswith(sign)), None)
+    found = SIGN.match(str(m.get("text") or ""))
+    return SIGN_NAMES[re.sub(r"\s", "", found.group(1).lower())] if found else None
+
+
+def _unsigned(text):
+    """A message's words without its leading agent tag."""
+    return SIGN.sub("", str(text or ""), count=1)
 
 
 def _who(m, self_id, dot):
@@ -2579,6 +2599,13 @@ def to_grokbot(text):
     return out, True
 
 
+def want_mention(agent, dot, ids):
+    """How a line in a want's working thread reaches Dot, Grok Bot or Muse: Dot's app mention; Grok Bot's app mention
+    when it is a Slack app here, else the @GrokBot its routine watches the channel for; @Muse. None for anyone else."""
+    return {"Dot": "<@%s> " % dot, "Muse": "@Muse ",
+            "Grok Bot": ("<@%s> " % ids["grokbot"]) if (ids or {}).get("grokbot") else "@GrokBot "}.get(agent)
+
+
 def address(text, dot, ids):
     """His @s made real: dot becomes a Slack mention, and Grok Bot too if it is ever a Slack app here; otherwise
     '@GrokBot' and '@Muse' stay as written, which their routines watch the channel for.
@@ -2617,7 +2644,7 @@ def thread_block(api, channel, thread_ts, self_id, dot, names=None):
     lines = []
     for i, m in enumerate(msgs[:1] + msgs[1:][-THREAD_SHOWN:]):
         who = _who(m, self_id, dot)
-        said = _clean(m.get("text"), names)[:1500]
+        said = _clean(_unsigned(m.get("text")) if who in ("agent", "dot") else m.get("text"), names)[:1500]
         lines.append("%s%s: %s" % ("STARTED BY " if i == 0 else "",
                                    _speaker({"who": who, "name": _agent_name(m) if who == "agent" else None}), said))
     return ("THE THREAD THIS WAS SAID IN (its first message, then every reply, oldest first; your answer goes "
@@ -3171,30 +3198,44 @@ def agent_wants_pass(api, channel, dot, state, now, rows=(), put=None, notify=No
                                                              evidence=(w.get("agent_work") or {}).get("result"))
     save = lambda current: _save(STATE, current)
     import want_working_thread as working
-    working.ingest(rows, want_agent.read(want_agent.workspace() / 'memory/current-wants.json', []), state, want_agent.workspace())
+    # One want's broken record holds that want only (14 November: a re-adopted want's working thread was bound to an
+    # earlier transport thread; its ValueError came out of this whole pass, every pass, and no other want moved).
+    # Each want's failure is said with its message and the rest of the lane goes on.
+    skipped, skipped_ids = [], set()
+    def skip(w, exc):
+        said = 'bound want %s skipped this pass: %s: %s' % ((w or {}).get('id'), type(exc).__name__, str(exc)[:160])
+        skipped_ids.add((w or {}).get('id'))
+        if said not in skipped: skipped.append(said)
+    working.ingest(rows, want_agent.read(want_agent.workspace() / 'memory/current-wants.json', []), state,
+                   want_agent.workspace(), on_error=skip)
     try:
         ensure_running(want_agent.workspace())
     except WorkBlocked:
-        return ['bound want lane stopped; incoming context retained']
+        return ['bound want lane stopped; incoming context retained'] + skipped
     for w in want_agent.read(want_agent.workspace() / 'memory/current-wants.json', []):
         work = working.binding(w, state)
         if not work: continue
-        data = working.load(w, work, want_agent.workspace())
-        for event in data['events']:
-            if not event['key'].startswith('agent:') or event['key'] in data.get('owner_requests_seen', []): continue
-            row = dict(event['details'], ts=event['at'], text=event['text'])
-            if not working.trusted(row): continue
-            replies = agent_owner_requests(row, state, now, api, channel)
-            if any(line.startswith('could not') for line in replies):
-                raise RuntimeError('owner request retained for retry')
-            working._mutate(w, work, want_agent.workspace(),
-                            lambda d: d.setdefault('owner_requests_seen', []).append(event['key']))
+        try:
+            data = working.load(w, work, want_agent.workspace())
+            for event in data['events']:
+                if not event['key'].startswith('agent:') or event['key'] in data.get('owner_requests_seen', []): continue
+                row = dict(event['details'], ts=event['at'], text=event['text'])
+                if not working.trusted(row): continue
+                replies = agent_owner_requests(row, state, now, api, channel)
+                if any(line.startswith('could not') for line in replies):
+                    raise RuntimeError('owner request retained for retry')
+                working._mutate(w, work, want_agent.workspace(),
+                                lambda d: d.setdefault('owner_requests_seen', []).append(event['key']))
+        except WorkBlocked:
+            raise
+        except Exception as exc:
+            skip(w, exc)
     want_agent.receive(rows)
-    def send_reply(w, work, text, trigger):
+    def send_reply(w, work, text, trigger, addressed=None):
         ensure_running(want_agent.workspace())
         if _guarded(text): raise RuntimeError("working reply refused by send guard")
         a = w['agent_work']
-        addressed = ("@Muse " if a['agent'] == 'muse' else "<@%s> " % dot)
+        addressed = addressed or ("@Muse " if a['agent'] == 'muse' else "<@%s> " % dot)
         body = addressed + '[want:%s] %s\n%s' % (w['id'], work['id'], text)
         sent = api('chat.postMessage', {'channel':channel, 'thread_ts':a['thread'], 'text':body,
                    'client_msg_id':str(__import__('uuid').uuid5(__import__('uuid').NAMESPACE_URL, a['request_id'] + trigger))})
@@ -3217,21 +3258,32 @@ def agent_wants_pass(api, channel, dot, state, now, rows=(), put=None, notify=No
             send_reply(w, work, chosen['message'], ':review:' + trigger)
             working._mutate(w, work, want_agent.workspace(), lambda d: d.setdefault('returned_results', []).append(trigger))
         return None
-    lines = want_agent.finish(state, publish, notify, complete, save, now, review=review)
+    def ask(w, agent, text):
+        # his line to Dot, Grok Bot or Muse about what was found for an email want, from his email step's deliberation
+        # (no working call): posted in the want's own thread, addressed the way each is reached here (Dot's app;
+        # Grok Bot's app if it is one, else the @GrokBot its routine watches for; @Muse), recorded like any reply
+        work = working.binding(w, state)
+        if work is None: raise RuntimeError('no current want-room binding to ask in')
+        to = want_mention(agent, dot, agent_ids(api, state, now))
+        if to is None: raise RuntimeError('not an agent of the room: %s' % agent)
+        return send_reply(w, work, text, ':ask:' + want_agent.fingerprint(agent + text), addressed=to)
+    lines = want_agent.finish(state, publish, notify, complete, save, now, review=review, ask=ask)
     # Resume unanswered events from disk, even when this poll has no new rows.
     for w in want_agent.read(want_agent.workspace() / 'memory/current-wants.json', []):
         a = w.get('agent_work') or {}
         work = working.binding(w, state)
-        if not work or not a.get('thread') or a.get('status') == 'result_ready': continue
-        events = working.unanswered(w, work, want_agent.workspace())
-        if not events: continue
-        trigger = json.dumps([e['key'] for e in events])
+        if not work or not a.get('thread') or a.get('status') == 'result_ready' or w.get('id') in skipped_ids: continue
         try:
+            events = working.unanswered(w, work, want_agent.workspace())
+            if not events: continue
+            trigger = json.dumps([e['key'] for e in events])
             chosen = decision(w, work, 'continue', trigger,
                               {'next':'Answer these agent messages and carry the same want forward.',
                                'event_keys':[e['key'] for e in events], 'result_error':a.get('result_error')})
         except want_agent.WantHeld:
             continue                         # this want waits; the next one may still be answered
+        except RECORD_ERRORS as exc:
+            skip(w, exc); continue           # its record is broken: it waits, said; the next one may still be answered
         send_reply(w, work, chosen['message'], ':reply:' + want_agent.fingerprint(trigger))
         lines.append('bound want answered with its retained working context')
         break
@@ -3240,7 +3292,7 @@ def agent_wants_pass(api, channel, dot, state, now, rows=(), put=None, notify=No
     import room_work
     for w in want_agent.read(want_agent.workspace() / 'memory/current-wants.json', []):
         spell = want_agent.reping_due(w, want_agent.workspace(), now)
-        if spell is None: continue
+        if spell is None or w.get('id') in skipped_ids: continue
         work = working.binding(w, state, respect_pause=False)
         if not work: continue
         try:
@@ -3250,6 +3302,8 @@ def agent_wants_pass(api, channel, dot, state, now, rows=(), put=None, notify=No
                                'quiet_since': spell})
         except want_agent.WantHeld:
             continue
+        except RECORD_ERRORS as exc:
+            skip(w, exc); continue
         # recorded BEFORE it is sent (review, 12 November): a process that dies between the post and its record must
         # not ping again on the next pass - a ping lost to a crash is better than two
         want_agent.mark_repinged(w, spell, now)
@@ -3265,7 +3319,12 @@ def agent_wants_pass(api, channel, dot, state, now, rows=(), put=None, notify=No
                         {'next':'Plan this exact task and write your request to its agent.', 'contract':contract})['message']
     lines += want_agent.release_blocked(state, now, save_state=save)
     handed = want_agent.intake(state, post, save, now, identity=identity, prepare=prepare)
-    return lines + held_lines + handed
+    return lines + held_lines + handed + skipped
+
+
+# A want's own record that cannot be read or does not match (a working thread bound to another transport thread, a
+# corrupt request record): that want is skipped and said, never the whole lane (14 November).
+RECORD_ERRORS = (ValueError, KeyError, TypeError, OSError)
 
 
 def promise_lanes(state, now, paused=False):
@@ -3600,7 +3659,8 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         signed_owner = _load(CONFIG_FILE, {}).get("owner_user_id")
         authenticated_agent = bool(signed_owner and m.get("user") == signed_owner and not m.get("bot_id") and not m.get("bot_profile"))
         rows.append({"agent_authenticated": authenticated_agent, "evidence_owner": evidence_delivery.authenticate(m, _load(CONFIG_FILE,{}).get("owner_user_id"), channel, now) if who == "gloria" else None, "ts": m["ts"], "who": who, **({"name": name} if name else {}),
-                     "text": "\n\n".join(x for x in (_clean(m.get("text"), names), seen) if x),
+                     "text": "\n\n".join(x for x in (_clean(_unsigned(m.get("text")) if who in ("agent", "dot")
+                                                        else m.get("text"), names), seen) if x),
                      "thread": m.get("thread_ts") if m.get("thread_ts") and m.get("thread_ts") != m["ts"] else None,
                      "at": datetime.fromtimestamp(float(m["ts"])).isoformat(timespec="seconds")})
     theirs = [r for r in rows if r["who"] != "vintos"]
@@ -3678,7 +3738,7 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
                     notify=None if live_api else lambda *args: {"state":"failed"},
                     writer=want_writer or (want_working_thread.ask if live_api else no_live_writer))
     except Exception as exc:
-        lines_pre.append("want working thread retained: %s" % type(exc).__name__)
+        lines_pre.append("want working thread retained: %s: %s" % (type(exc).__name__, str(exc)[:200]))
     # Bound messages have their own persisted context and dedicated writer. Do not
     # answer them a second time through the ordinary rotating room composer.
     theirs = [r for r in theirs if r not in want_rows]

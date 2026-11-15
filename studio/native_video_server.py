@@ -314,6 +314,8 @@ def main():
     parser.add_argument("--tag-size", type=float, help="printed tag edge in metres, for tag pose")
     parser.add_argument("--mamepa", help="camera mamepa checkpoint (.npz); without it no camera memory runs")
     parser.add_argument("--tag-map", help="private resolved copy of the AprilTag map (mode 600), read only")
+    parser.add_argument("--tag-hdc", help="opt-in: private copy of scripts/hdc_tag_recall.py's state (mode 600), read "
+                        "only; a seen tag's exact records come first, unchanged, then its most salient recalled sightings")
     args = parser.parse_args()
     if args.port in (8840, 8844) or not 1024 <= args.port <= 65535:
         raise ValueError("Choose an unreserved loopback port")
@@ -326,6 +328,14 @@ def main():
         store = None
         if args.tag_map:
             store = TagMapStore(args.tag_map)
+            store._load()   # refuses a copy that others can read
+        if args.tag_hdc:
+            import sys
+            from pathlib import Path
+            from camera_mamepa import TagStore
+            sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+            from hdc_tag_recall import HdcTagStore
+            store = HdcTagStore(store or TagStore(), args.tag_hdc)
             store._load()   # refuses a copy that others can read
         # records reach a prompt only through the mamepa summary, i.e. only when a question asks for recall
         mamepa = Mamepa(Model(args.mamepa), store)

@@ -333,13 +333,21 @@ def _with_gemma_unloaded(run):
     lock): then the first failure stands."""
     try:
         import chemistry_evo2 as evo
-        guard = evo._watchdog_exclusion()
-        guard.__enter__()
+        hold = evo.lab.model_window_hold()
+        hold.__enter__()
     except Exception:
         return None
     try:
+        guard = evo._watchdog_exclusion()
+        guard.__enter__()
+    except Exception:
+        hold.__exit__(None, None, None)
+        return None
+    try:
         try:
-            if evo._lms("unload", evo.GEMMA_MODEL).returncode != 0:
+            if not evo._unload_house():
+                try: evo._restore_gemma()
+                except Exception: pass
                 return None
         except Exception:
             return None
@@ -351,6 +359,7 @@ def _with_gemma_unloaded(run):
             except Exception as exc: print("esmfold: Gemma was not reloaded: %s" % exc, file=sys.stderr)
     finally:
         guard.__exit__(None, None, None)
+        hold.__exit__(None, None, None)
 
 
 def _fault(done, body):
@@ -499,6 +508,11 @@ def run(experiment, parameters=None, shots=4096, resolver=None, transport=None, 
         parameters, contract = prepared["parameters"], prepared["sequence_request"]
         if parameters.get("protein_backend") == "esmfold":
             return _run_esmfold(parameters, contract, worker=esmfold_worker)
+    if str(experiment).strip().lower() == "molecule" and isinstance(parameters.get("bond_lengths"), str):
+        # "search" with no investigation behind it (the daily session) is the bond-length search's first request,
+        # its wide bracket; the bench is never sent the word (lab_bond_search, 14 November)
+        import lab_bond_search
+        parameters = lab_bond_search.at_door(parameters)
     reply = (transport or request)({"action": "run", "experiment": experiment,
                                     "parameters": parameters, "shots": int(shots)})
     return _protein_result(reply, contract)

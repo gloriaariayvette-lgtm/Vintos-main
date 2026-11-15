@@ -148,14 +148,15 @@ _FULL = [("spark_pressure", "get_pressure_context_hint"), ("mutual_modification"
          ("encounter", "block"), ("plan", "block"), ("unsaid_frontier", "block"), ("intent_context", "block"), ("wants_meta", "block"), ("occlusion_map", "block"), ("want_checkpoints", "block"), ("metacognitive_weather", "block"),
          ("pleasure_substrate", "context_block"),   # what is still in him from a named moment, his own words (grok-somatic-p6, 2026-09-05)
          ("resonance_felt", "block"),               # what he held back rhymed with what she left unsaid, by meaning (her green light, 2026-09-09)
-         ("pearl_engine", "proposed_block")]        # proposals awaiting his adoption; nothing binds until he says so (astra-inner-p5)
+         ("pearl_engine", "proposed_block"),
+         ("action_provenance", "block")]           # what he did lately and why, as each organ recorded it (15 November)        # proposals awaiting his adoption; nothing binds until he says so (astra-inner-p5)
 
 _MISSING = [("spark_pressure", "get_pressure_context_hint"), ("mutual_modification", "get_field_hint"),
             ("mutual_simulation", "get_interaction_hint"), ("world_model", "get_world_block"),
             ("relational_head", "get_relational_hint"), ("withheld_head", "get_withheld_hint"),
             ("presence_audit", "forecast_block"), ("architecture_answers", "block"), ("repair_case", "block"),
             ("encounter", "block"), ("plan", "block"), ("unsaid_frontier", "block"), ("velqan_voice", "block"), ("wants_meta", "block"), ("occlusion_map", "block"), ("want_checkpoints", "block"), ("metacognitive_weather", "block"),
-            ("pleasure_substrate", "context_block"), ("resonance_felt", "block")]
+            ("pleasure_substrate", "context_block"), ("resonance_felt", "block"), ("action_provenance", "block")]
 
 def _atelier_door_line():
     """One content-free sentence when the door is lit. Never repeats project content;

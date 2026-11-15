@@ -4340,6 +4340,9 @@ async def _bilateral_reply_engine(_tag, messages, message, user_msg, params):
                 try:
                     import bedroom_arrival as _ba; reply = _ba.take_picks(reply, turn_id=getattr(locals().get("_turn"), "turn_id", "") or "")   # his [ARRIVAL SONGS: ...] and [ARRIVAL ENCOUNTER: ...]
                 except Exception as _bae: print("[bedroom/picks]", _bae, flush=True)
+                try:
+                    import action_provenance as _apv; reply = _apv.take(reply)   # his [WHY: ...], answered next turn
+                except Exception as _ape: print("[provenance/why]", _ape, flush=True)
                 import re as _re_do; reply = _re_do.sub(r"\s*\[(?:DO|TOUCH|COMMAND):[^\]]*\]\s*", " ", reply).strip()  # Main text-only: hide device/command tags
 
                 # BIS final outcome
@@ -10649,6 +10652,14 @@ async def avatar_chat(msg: ChatMessage, request: Request):
                 if _spl: _vt_subblock_a += "\n\n" + _spl
             except Exception: pass
             try:
+                import print_lane as _prl; _prll = _prl.context_line()
+                if _prll: _vt_subblock_a += "\n\n" + _prll
+            except Exception: pass
+            try:
+                import paper_print as _ppr; _pprl = _ppr.context_line()
+                if _pprl: _vt_subblock_a += "\n\n" + _pprl
+            except Exception: pass
+            try:
                 _arb = _after_resonance_block(_counterpart_text)
                 if _arb: _vt_subblock_a += "\n\n" + _arb
             except Exception: pass
@@ -11300,6 +11311,10 @@ Your current self-model (excerpt):
                 reply = _ba.take_picks(reply, act=not (_test_turn or (_prov_envelope and not _prov_envelope.get("may_witness"))),
                                        turn_id=(_turn.turn_id if _turn is not None else ""))
             except Exception as _bae: print("[avatar/bedroom-picks]", _bae, flush=True)
+            try:
+                import action_provenance as _apv   # his [WHY: ...]: answered in his next context
+                reply = _apv.take(reply, act=not (_test_turn or (_prov_envelope and not _prov_envelope.get("may_witness"))))
+            except Exception as _ape: print("[avatar/why]", _ape, flush=True)
             try:
                 import spotify_watch as _spw   # his [SPOTIFY: Title - Artist]: on her Watch, avatar chat only
                 reply = _spw.take(reply, act=not (_test_turn or (_prov_envelope and not _prov_envelope.get("may_witness"))))

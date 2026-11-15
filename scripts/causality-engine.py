@@ -196,9 +196,24 @@ def ask_llm(prompt, system=None, max_tokens=2000, temp=0.7):
             capture_output=True, text=True, timeout=120
         )
         d = json.loads(r.stdout)
+        if STRICT_AEON and not plain_aeon(d):
+            log("not plain AEON (%s/%s); answer not used" % (str(d.get("provider"))[:30], str(d.get("model"))[:40]))
+            return ""
         msg = d["choices"][0]["message"]; text = msg.get("content", "") or ""; return text.strip()
     except:
         return ""
+
+
+# The engine's own runs (cron, in the causality window) count only plain AEON. realtime_causality imports the engine for
+# formation alone, all day, on the house model: formation is not the task the worm lost, and no window runs every 20 min.
+STRICT_AEON = False
+
+
+def plain_aeon(d):
+    """The causality evaluator is the one task the Lab planner worm (lab-c1) lost (Gloria, 14 November): its local runs
+    count only an answer from AEON itself, on Aegis or another machine's AEON, never the worm or another model."""
+    model = str(d.get("model") or "")
+    return model != "lab-c1" and "aeon" in model.lower()
 
 
 # === DATA COLLECTORS ===
@@ -2311,12 +2326,25 @@ def main():
 
 # Threads seed only on evidence-gated graduation at the 7/32-day tenure — see graduate_hypotheses.
 
+def _in_window():
+    """Local runs happen in the causality window: the Lab paused and plain AEON on Aegis's card for the run, the house
+    model back after (aegis-model-window.sh, Gloria 14 November). Without the window script the run goes on as it is."""
+    if _BACKEND == "self" or os.environ.get("AEGIS_MODEL_WINDOW") == "held":
+        return
+    window = os.path.join(WORKSPACE, "scripts", "aegis-model-window.sh")
+    if os.path.isfile(window):
+        os.execvp("bash", ["bash", window, sys.executable, os.path.abspath(__file__)] + sys.argv[1:])
+
+
 if __name__ == "__main__":
     import argparse as _ap
     _p = _ap.ArgumentParser()
     _p.add_argument("--nightly", action="store_true")
     _p.add_argument("--compact", action="store_true")
     _args, _ = _p.parse_known_args()
+    if not _args.compact:
+        _in_window()
+        STRICT_AEON = _BACKEND != "self"
     if _args.compact:
         print(json.dumps(compact_store(), sort_keys=True))
     elif _args.nightly:

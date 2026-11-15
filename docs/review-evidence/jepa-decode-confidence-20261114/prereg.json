@@ -1,0 +1,48 @@
+{
+  "id": "jepa-decode-confidence-2026-11-14",
+  "written": "2026-11-14, before the replay below was run and before any forecast carries a decode-similarity confidence; committed and pushed before scoring",
+  "approval": "Gloria approved decode similarity as the served JEPA confidence signal (relayed by the coordinator), on the evidence of R1 (docs/jepa-stalls-2026-11-13.md: decode similarity -.535/-.770 vs the live confidence +.236/+.357) and the test-time-training replay (branch claude/jepa-ttt 078b4317: frozen decode similarity -.769)",
+  "change": {
+    "served_confidence": "confidence = clip(1 - expected_error / 2, 0, 1), expected_error = intercept + slope * decode_similarity; decode_similarity = max cosine of the served forecast embedding to her last 12 turns (the field predict() already writes). Same range [0, 1], same direction (higher = expected closer), same meaning as the anchored readout's confidence (1 - expected cosine error / 2), so gloria_prediction's semantic_expected_error stays valid.",
+    "kept_for_audit": "the confidence that would have been served (anchored readout, or the shared relative logvar when no readout) is written beside it as legacy_confidence, on jepa-prediction.json and on every history row",
+    "unchanged": "the forecast embedding, nearest-turn decode, novelty, steering/qualification gates, the shared checkpoint (legacy_gloria / legacy_self rows), the retrain gate and calibration.verdict inputs"
+  },
+  "replay": {
+    "id": "RD-replay",
+    "data": "admitted exchanges (jepa_self_head.exchanges) strictly before 2026-10-31 00:00 local; everything at or after the cutoff is dropped before anything is encoded (the sealed persistence week is not touched). Read from byte copies of the memory files, never the live workspace.",
+    "gloria": {
+      "head": "the served Gloria head: the anchored readout jepa-readouts/gloria.npz (sha 1a563a0a..., installed 22 October)",
+      "rows": "exchanges with her words on or after 2026-10-13 (the readout's own test block onward: never fit, never used for its selection or confidence fit), one row per distinct Gloria text, window ending on his reply (the after-reply regime), forecast with jepa_readout.forecast on the exchanges before that one",
+      "decode_similarity": "max cosine of the forecast to her last 12 texts before the row (each truncated to 300 chars, as _decode)",
+      "error": "1 - cosine(forecast, her text truncated to 400 chars), as the calibration audit",
+      "control": "the readout's own confidence on the same rows (what is served today)"
+    },
+    "self": {
+      "head": "the served self head jepa-self-head.npz (self-head-v2, ahead mode, trained 2026-10-16 12:13); its confidence is unqualified today, so the served self confidence is a 0.5 placeholder",
+      "rows": "exchanges with his reply after the self head's training time, one row per distinct reply text, forecast with jepa_self_head.forecast(mode=ahead) on the exchanges before that one",
+      "decode_similarity": "max cosine of the forecast to his last 12 replies before the row",
+      "error": "1 - cosine(forecast, his reply truncated to 400 chars)",
+      "control": "the self head's coherence (the quantity its confidence is built from; its served confidence is a placeholder)"
+    },
+    "map_fit": "per head, ordinary least squares error ~ decode_similarity on the chronologically first half of its rows; the second half reports the map's error MSE against a constant (information only, not a bar). The map is monotone, so it cannot change any Spearman number.",
+    "bars": {
+      "n_min": 30,
+      "max_monotonicity": -0.20,
+      "beat_control_by": 0.10,
+      "slope": "negative (decode similarity up, expected error down)",
+      "mrr": "the forecast embeddings are byte-identical with and without the change, so ranking (MRR) is identical; the replay reports the MRR of the served forecasts"
+    },
+    "statistic": "Spearman(decode confidence, error) on all rows of the head (jepa_calibration_audit.spear), control Spearman on the same rows",
+    "if_pass": "Gloria: serve decode confidence. Self: serve decode confidence for the self triple too (confidence_placeholder becomes false).",
+    "if_fail": "Gloria: hold, nothing installed. Self: the self triple keeps its current confidence."
+  },
+  "prospective": {
+    "id": "jepa-decode-confidence-after-reply-2026-11-14",
+    "binding_form": "PREREGISTERED_DECODE in scripts/jepa_calibration_audit.py (computed automatically by the daily audit into jepa-calibration.json -> preregistered_decode)",
+    "population": "history rows with trigger after_reply whose served Gloria triple carries confidence_source decode-similarity-v1 (so only forecasts made after this change deploys), made on or after 2026-11-14; one row per distinct Gloria target; targets she had already sent are excluded (the P1 rule)",
+    "n": 30,
+    "judged": "once, on the first 30 by time; later rows never change the verdict",
+    "pass": "Spearman(served decode confidence, cosine error) <= -0.20 and <= Spearman(legacy_confidence, cosine error) - 0.10 on the same rows",
+    "not_tuned": "no row of this population exists when this is written"
+  }
+}

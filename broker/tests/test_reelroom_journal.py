@@ -64,9 +64,11 @@ def boom(*a, **k): raise RuntimeError("provider down")
 p = rr.journal_payload()
 out = rr.summary(p, caller=boom, now=t0 + 30_000)
 check("summary() returns a file with an empty memory instead of raising", out["file"] and out["summary"] == "", out)
-wrote = rr.append_session_ledger(p, out["summary"], out["file"])
+# the fixture's own clock (t0 is 2027-01-15): left to the wall clock, this row was stamped "now" and,
+# once real time passed the fixture's night, sorted after the visit committed below
+wrote = rr.append_session_ledger(p, out["summary"], out["file"], when=t0 + 30_000)
 check("the ledger takes the transcript without a narrative", wrote and ledger()[-1]["transcript"] and ledger()[-1]["narrative"] == "")
-check("idempotent by file", rr.append_session_ledger(p, "", out["file"]) is False)
+check("idempotent by file", rr.append_session_ledger(p, "", out["file"], when=t0 + 30_000) is False)
 
 print("\n--- even one exchanged message becomes a visit ---")
 rr.journal("only one message", "one answer", film_title="The Lair of the White Worm", elapsed_min=8, now=t0 + 40_000)

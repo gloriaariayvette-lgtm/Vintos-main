@@ -73,6 +73,7 @@ def router(chat_url="http://127.0.0.1:8500", app_secret="", voice_module=None,
         items = source.sent(days=max(1, min(int(days), 30)))
         top = watch_presence.top_song()
         if top: items = [top] + [i for i in items if not (i.get("surface") == "song" and i.get("ref") == top["ref"])]
+        watch_presence.face_shown(items[:5], days=max(1, min(int(days), 30)))   # what her Watch face now shows, and why
         return {"items": items[:5]}
 
     @routes.post("/api/watch/landing")

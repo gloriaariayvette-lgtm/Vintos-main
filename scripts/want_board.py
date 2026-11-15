@@ -141,7 +141,8 @@ def _planner_retry_due(w, now):
 
 
 def _gloria_answered(want_id, discussions):
-    msgs = discussions.get(want_id) or []
+    # his exchange with his agents about an email want's research is kept there too (agent_research); it is not hers
+    msgs = [m for m in discussions.get(want_id) or [] if not (isinstance(m, dict) and m.get("kind") == "agent-research")]
     return bool(msgs) and isinstance(msgs[-1], dict) and msgs[-1].get("role") == "gloria"
 
 

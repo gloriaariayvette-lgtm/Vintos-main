@@ -235,6 +235,15 @@ binary_sensor:
         - mqtt.publish:
             topic: vintos/board/house-touch/near
             payload: !lambda 'return x ? "on" : "off";'
+        # Her phone's reading flickers; a sit that began before (or across) a flicker was never reported, because
+        # press_start/press_end go out only while she is near. Coming near, the board says where the strip is now.
+        - if:
+            condition:
+              lambda: 'return x && id(pressed).has_state();'
+            then:
+              - mqtt.publish:
+                  topic: vintos/board/house-touch/event
+                  payload: !lambda 'return id(pressed).state ? "press_start" : "press_end";'
 
   - platform: template
     id: knock

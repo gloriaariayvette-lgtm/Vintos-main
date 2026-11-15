@@ -684,6 +684,12 @@ def _plan(investigation, context, ask, note=None):
     if len(recent) == 4 and len(set(recent)) == 1 and recent[0]:
         task['same_tool'] = ('Your last 4 completed steps all used %s: its kind of output is already in hand. Another '
                              'tool, read_output on what you have, or finish would move the question further.' % recent[0])
+    try:    # what the bond-length search knows about each molecule measured here: its answer and how sure it is
+        searched = __import__('lab_bond_search').planner_view(steps)
+        if searched:
+            task['bond_length_search'] = searched
+    except Exception:
+        pass
     # Smaller, complete output contract rather than the legacy journal/menu plus
     # several contradictory question contracts. No added parser/model retry.
     planned = None
@@ -1178,7 +1184,11 @@ def _observations(steps):
             left_out.append({'step': step.get('id'), 'output_file': step.get('output_file'), 'reason': why})
             continue
         total += size
-        outputs.append({'step':step['id'], 'question':step['question'], 'result':result})
+        outputs.append({'step':step['id'], 'question':step['question'], 'result':result,
+                        # the bond-length search's own reading of its measurements, with how sure it is
+                        **({'bond_length_search': step['bond_length_search']['now']}
+                           if isinstance(step.get('bond_length_search'), dict) and step['bond_length_search'].get('now')
+                           else {})})
     observations['additional_source'] = {'receipt': {'source':'investigation', 'records': outputs}}
     if left_out:
         observations['outputs_not_reviewed'] = left_out
@@ -2582,7 +2592,19 @@ def _carry_out(data, investigation, value, plan_ref, context, ask, execute, may_
         request = normalize_request(route, request)
         request = bind_inputs(request, investigation['steps'][:-1])
         request = _correct_names(investigation, step, request, investigation['steps'][:-1])
+        # "bond_lengths": "search" on a molecule request: the bond-length search chooses the lengths from what this
+        # investigation already measured, or says it is done (sure, or its budget spent) and nothing is sent
+        # (lab_bond_search; 14 November: every molecule step on record copied the menu's textbook grid)
+        import lab_bond_search
+        request, searched, search_view = lab_bond_search.fill(route, request, investigation['steps'][:-1],
+                                                               steps_left=MAX_STEPS - len(investigation['steps']) + 1)
+        if search_view:
+            step['bond_length_search'] = search_view
         step['executed_request'] = request
+        if searched and may_replan:
+            raise replan({'why_not_run': 'nothing was sent: ' + searched}, 'bond_search_done')
+        if searched:
+            raise _InputShape('nothing was sent: ' + searched)
         step['input_refs'] = _inputs(request)
         step['reference_origin'] = 'explicit_or_exact_equal_returned_value' if step['input_refs'] else None
         step['tool'] = tool_name(route, request)
@@ -2725,6 +2747,15 @@ def _carry_out(data, investigation, value, plan_ref, context, ask, execute, may_
             # a progress bar, and the traceback after it was lost (progress output is dropped first)
             step['error'] = (str(exc)[:1800] if isinstance(exc, (NamesTheMenu, lab_instruments.NotOffered))
                              else lab.bounded_error(str(exc), 300))
+    if isinstance(step.get('bond_length_search'), dict) and step.get('state') == 'completed':
+        try:    # what the search knows with this step's readings in, beside what it knew when it chose them
+            import lab_bond_search
+            now = [v for v in lab_bond_search.planner_view(investigation['steps'])
+                   if v.get('molecule') == step['bond_length_search'].get('molecule')]
+            if now:
+                step['bond_length_search']['now'] = now[0]['said']
+        except Exception:
+            pass
     _mark_same_receipt(investigation, step)
     if FRONTIER_PLANS and plan_ref and step.get('state') in ('completed', 'failed'):
         # Settle the attempt against the exact plan step it was made for. Credit needs a completed operation with a

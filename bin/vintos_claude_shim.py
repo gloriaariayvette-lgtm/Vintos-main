@@ -28,6 +28,29 @@ GEMMA_URL = "http://100.79.177.103:1234/v1/chat/completions"
 GEMMA_MODEL = "aeon-gemma-4-12b"
 AEGIS_GEMMA_URL = "http://172.18.16.1:1234/api/v1/chat"
 AEGIS_GEMMA_MODEL = "aeon/gemma-4-12b"
+# Aegis's house model (Gloria, 14 November 2026) is the Lab planner worm c1 (LoRA fused on AEON), loaded as "lab-c1";
+# plain AEON is loaded in its place only for the causality window (aegis-model-window.sh). Callers keep asking for
+# aeon/gemma-4-12b and the AEON lane sends whichever of the two is resident; replies name the model that answered.
+# The Lab's planner trial has its own worm-only lane, so a plan is credited to the worm only when the worm wrote it.
+LAB_C1_MODEL = "lab-c1"
+LAB_C1_PATH = "/gemma-lab-c1-local/v1/chat/completions"
+AEGIS_MODELS_URL = "http://172.18.16.1:1234/v1/models"
+_HOUSE = {"at": 0.0, "id": AEGIS_GEMMA_MODEL}
+
+def house_model():
+    """The identifier that answers for aeon/gemma-4-12b on Aegis now: AEON when it is resident, else the worm when it
+    is, else AEON (LM Studio then refuses, as before). LM Studio's loaded list, read at most every 3 seconds."""
+    now = time.time()
+    if now - _HOUSE["at"] < 3: return _HOUSE["id"]
+    ident = AEGIS_GEMMA_MODEL
+    try:
+        with urllib.request.urlopen(AEGIS_MODELS_URL, timeout=3) as r:
+            ids = {str(m.get("id")) for m in (json.loads(r.read()).get("data") or []) if isinstance(m, dict)}
+        if AEGIS_GEMMA_MODEL not in ids and LAB_C1_MODEL in ids: ident = LAB_C1_MODEL
+    except Exception:
+        pass
+    _HOUSE.update(at=now, id=ident)
+    return ident
 CLAUDE_MODEL = "claude-opus-4-8"
 FLEET_DEFAULT = "claude-haiku-5-5"
 LOG = "/tmp/vintos-claude-shim.log"
@@ -40,6 +63,7 @@ PROVIDER_CAPS = {
     "xai":       {"temperature", "top_p", "max_tokens", "stop", "response_format", "tools", "tool_choice", "images"},
     "gemma":     {"temperature", "top_p", "max_tokens", "stop", "response_format"},
     "aegis_gemma":{"temperature", "top_p", "max_tokens"},
+    "aegis_lab_c1":{"temperature", "top_p", "max_tokens"},
     "pool":      {"temperature", "top_p", "max_tokens", "stop", "response_format"},
 }
 SAMPLING_KEYS = ("temperature", "top_p", "max_tokens", "stop", "response_format", "tools", "tool_choice")
@@ -104,22 +128,167 @@ def idempotency_key(j):
 class _Call:
     """Per-request bookkeeping: which (provider, key) pairs have already been *sent*. A request that
     timed out after sending is never resent to the same provider within this call."""
-    def __init__(self, j):
+    def __init__(self, j, caller=None):
         self.key = idempotency_key(j); self.sent = set(); self.results = []
         # model_router reserves its own grok stage before it calls here; that call is not counted twice
         self.prereserved = bool(j.get("paid_reserved"))
+        self.caller = caller   # who sent it (classify_caller); None = in-process use, no per-caller share
+
+
+# ---------------------------------------------------------------- callers and experiments (15 November 2026)
+# On 15 November an experiment run from another Claude thread sent ~570 calls through this shim in two bursts,
+# untagged, as if they were his. They spent his whole day's Anthropic budget (400) by 06:39; the cap was then
+# raised for the shim only, but model_router (his chat, in the server's own process) still counted against 400,
+# so her messages to him went to Grok for the rest of the day. Three rules now:
+#   - an experiment says so (X-Vintos-Experiment: <name>): it is answered by Claude only, without his context
+#     preamble, against its own daily cap under its own ledger provider, so it never touches his budget;
+#   - a caller that is not part of him (its process lives outside his trees) and does not say it is an
+#     experiment gets a small daily allowance across all paid providers, then a 429, no fallback to Grok;
+#   - any one of his own callers may hold at most a share of the day's budget per provider.
+EXPERIMENT_HEADER = "X-Vintos-Experiment"
+CALLER_HEADER = "X-Vintos-Caller"
+EXPERIMENT_PROVIDER = "anthropic:experiment"
+VINTOS_ROOTS = ("~/Vintos", "~/Vintos-main", "~/.vintos")
+
+def _env_int(name, default):
+    try: return max(0, int(os.environ.get(name, default)))
+    except (TypeError, ValueError): return int(default)
+
+def caller_share():
+    try: return min(1.0, max(0.0, float(os.environ.get("VINTOS_PAID_CALLER_SHARE", "0.5"))))
+    except ValueError: return 0.5
+
+def untagged_cap():   return _env_int("VINTOS_UNTAGGED_PAID_PER_DAY", 20)
+def experiment_cap(): return _env_int("VINTOS_EXPERIMENT_PAID_PER_DAY", 300)
+# Reservations the shim leaves for model_router (his chat with her, in the server's own process): the shim's
+# callers together stop this many short of the day's cap, so her messages always find room (15 November 2026).
+def router_floor():   return _env_int("VINTOS_PAID_ROUTER_FLOOR", 50)
+OUTSIDE_BUCKET = "outside"   # every caller outside his trees shares one allowance, whatever its script is called
+
+def _day_cap():
+    try:
+        import compute_admission as CA
+        return int(CA.PAID_PER_DAY)
+    except Exception:
+        return _env_int("VINTOS_PAID_PER_DAY", 400)
+
+def _peer_pid(addr, proc="/proc"):
+    """The pid that owns the client end of a loopback TCP connection, read from /proc (Linux). None if unknown."""
+    try:
+        host, port = addr[0], int(addr[1])
+    except Exception:
+        return None
+    if host != "127.0.0.1": return None
+    want = "0100007F:%04X" % port
+    inode = None
+    try:
+        with open(os.path.join(proc, "net", "tcp")) as f:
+            for line in list(f)[1:]:
+                parts = line.split()
+                if len(parts) > 9 and parts[1] == want: inode = parts[9]; break
+    except OSError:
+        return None
+    if not inode or inode == "0": return None
+    target, me = "socket:[%s]" % inode, os.getpid()
+    try: pids = [p for p in os.listdir(proc) if p.isdigit() and int(p) != me]
+    except OSError: return None
+    for pid in pids:
+        fd_dir = os.path.join(proc, pid, "fd")
+        try: fds = os.listdir(fd_dir)
+        except OSError: continue
+        for fd in fds:
+            try:
+                if os.readlink(os.path.join(fd_dir, fd)) == target: return int(pid)
+            except OSError:
+                continue
+    return None
+
+def _his_paths():
+    """His trees, plus the household scripts that live loose in her home (the projector) or any named in
+    VINTOS_SHIM_HIS_PATHS (colon-separated)."""
+    extra = os.environ.get("VINTOS_SHIM_HIS_PATHS", "~/projector_make.py:~/projector_offer.py:~/projector_watch.py")
+    return [os.path.realpath(os.path.expanduser(r)) for r in list(VINTOS_ROOTS) + [x for x in extra.split(":") if x.strip()]]
+
+def _one_process(pid, proc):
+    """(argv, cwd, ppid) of one process, or None when it cannot be read."""
+    try:
+        with open(os.path.join(proc, str(pid), "cmdline"), "rb") as f:
+            argv = [a.decode(errors="replace") for a in f.read().split(b"\0") if a]
+        cwd = os.readlink(os.path.join(proc, str(pid), "cwd"))
+    except OSError:
+        return None
+    ppid = 0
+    try:
+        with open(os.path.join(proc, str(pid), "stat")) as f:
+            ppid = int(f.read().rsplit(")", 1)[1].split()[1])
+    except (OSError, ValueError, IndexError):
+        pass
+    return argv, cwd, ppid
+
+def _process_identity(pid, proc="/proc", depth=8):
+    """(name, is_his) for a pid: the script it runs (or its program) and whether it, or a process that started
+    it (a curl run by one of his shell organs, say), lives in his trees. (None, None) when it cannot be read."""
+    roots = _his_paths()
+    def inside(p):
+        rp = os.path.realpath(p)
+        return any(rp == r or rp.startswith(r + os.sep) for r in roots)
+    name, program, first = None, None, pid   # name: the nearest script; program: the socket holder's own program
+    for _ in range(depth):
+        got = _one_process(pid, proc)
+        if not got or not got[0]:
+            break
+        argv, cwd, ppid = got
+        if program is None: program = os.path.basename(argv[0])
+        scripts = [a for a in argv[1:] if a.endswith((".py", ".sh"))]
+        if not scripts and "-m" in argv[1:-1]: scripts = [argv[argv.index("-m") + 1]]
+        mine = [s for s in scripts if s.endswith((".py", ".sh")) and inside(os.path.join(cwd, s))]
+        if name is None and (mine or scripts): name = os.path.basename((mine or scripts)[0])
+        # an ancestor counts only by a script of his that it runs, never by where its shell happens to stand
+        if mine or (pid == first and inside(cwd)):
+            return name or program, True
+        if ppid <= 1: break
+        pid = ppid
+    if program is None: return None, None
+    return name or program, False
+
+def classify_caller(headers, client_address, pid_of=None, identity_of=None):
+    """Who sent this request. Returns {"name", "his", "experiment"}.
+    An experiment header always wins. Otherwise the calling process is read from /proc; when it cannot be read
+    the caller is treated as his (a lookup failure must never silence him) under the name "unknown"."""
+    exp = str((headers or {}).get(EXPERIMENT_HEADER) or "").strip()
+    if exp:
+        return {"name": "experiment:" + exp[:60], "his": False, "experiment": exp[:60]}
+    pid = (pid_of or _peer_pid)(client_address)
+    name, his = (identity_of or _process_identity)(pid) if pid else (None, None)
+    tag = str((headers or {}).get(CALLER_HEADER) or "").strip()[:60]
+    if his is None: his = True
+    return {"name": (tag or name or "unknown") if his else "outside:" + (name or "unknown"), "his": his, "experiment": None}
 
 
 def _admit_paid(call, provider, model):
     """A paid call through the shim reserves against the day's paid budget first, like every other
     paid door (compute_admission). Returns None to proceed, or an unavailable result when the day's
     budget for this provider is spent, so the chain moves on as it does for any refused provider.
-    The ledger failing to record is not a reason to go silent: that proceeds, as outbound accounting does."""
-    if call.prereserved or (provider, call.key) in call.sent:
+    The ledger failing to record is not a reason to go silent: that proceeds, as outbound accounting does.
+    An experiment reserves under its own provider and cap; a caller holds at most its share (see above)."""
+    c = getattr(call, "caller", None) or {}
+    # only his own callers (model_router) may say a stage was reserved already; anyone else could skip every cap
+    if (call.prereserved and (not c or c.get("his"))) or (provider, call.key) in call.sent:
         return None
+    kw = {}
+    if c.get("experiment"):
+        provider_key, organ = EXPERIMENT_PROVIDER, "vintos_claude_shim:experiment"
+        kw = {"cap": experiment_cap(), "caller": c["name"]}
+    else:
+        provider_key, organ = provider, "vintos_claude_shim"
+        if c and not c.get("his"):
+            kw = {"caller": OUTSIDE_BUCKET, "caller_cap": untagged_cap(), "caller_all_providers": True}
+        elif c:
+            kw = {"caller": c["name"], "caller_cap": int(_day_cap() * caller_share()),
+                  "cap": max(0, _day_cap() - router_floor())}
     try:
         from compute_admission import reserve_paid
-        ok, why = reserve_paid("vintos_claude_shim", provider, model=str(model or ""))
+        ok, why = reserve_paid(organ, provider_key, model=str(model or ""), **kw)
     except Exception as e:
         _log(f"paid admission unavailable ({type(e).__name__}); proceeding"); return None
     if ok: return None
@@ -213,7 +382,10 @@ def claude_complete(j, call=None, model=None):
     messages = j.get("messages", [])
     sys_txt = "\n\n".join(m.get("content", "") for m in messages
                           if m.get("role") == "system" and isinstance(m.get("content"), str))
-    sys_txt = (FLOOR + sys_txt) if sys_txt.strip() else FLOOR.strip()
+    _exp = bool((getattr(call, "caller", None) or {}).get("experiment"))
+    # an experiment is not him: it never gets his context preamble (15 November 2026)
+    if not _exp:
+        sys_txt = (FLOOR + sys_txt) if sys_txt.strip() else FLOOR.strip()
     conv = _oai_messages_to_anthropic(messages)
     if not conv:
         conv = [{"role": "user", "content": sys_txt or "."}]
@@ -268,7 +440,8 @@ def claude_complete(j, call=None, model=None):
     try:
         _u = d.get("usage") or {}
         open(USAGE_LOG, "a").write(json.dumps({
-            "ts": time.time(), "src": "shim", "model": body.get("model"), "mt": body.get("max_tokens"),
+            "ts": time.time(), "src": "shim-experiment" if _exp else "shim", "model": body.get("model"), "mt": body.get("max_tokens"),
+            "caller": (getattr(call, "caller", None) or {}).get("name"),
             "in": _u.get("input_tokens"), "out": _u.get("output_tokens"),
             "cache_read": _u.get("cache_read_input_tokens"),
             "cache_write": _u.get("cache_creation_input_tokens"),
@@ -314,25 +487,31 @@ def gemma_complete(j, call=None):
     if not res["model"]: res["model"] = GEMMA_MODEL
     return res
 
-def aegis_gemma_complete(j, call=None):
+def aegis_gemma_complete(j, call=None, model=AEGIS_GEMMA_MODEL, provider="aegis_gemma"):
     """Aegis-local utility Gemma. Native LM Studio makes thinking-off inspectable."""
     call = call or _Call(j)
-    unsup = unsupported_features(j, "aegis_gemma")
-    if unsup: return GR.make_result("aegis_gemma", status="unavailable", reason="unsupported on aegis_gemma: " + ",".join(unsup))
-    systems, turns = [], []
+    unsup = unsupported_features(j, provider)
+    if unsup: return GR.make_result(provider, status="unavailable", reason="unsupported on %s: " % provider + ",".join(unsup))
+    systems, turns, users = [], [], []
     for message in j.get("messages", []):
         content = message.get("content", "")
         if not isinstance(content, str): content = json.dumps(content, ensure_ascii=False)
         if message.get("role") == "system": systems.append(content)
-        else: turns.append("%s:\n%s" % (str(message.get("role") or "user").upper(), content))
-    body = {"model": AEGIS_GEMMA_MODEL, "input": "\n\n".join(turns) or ".",
+        else:
+            turns.append("%s:\n%s" % (str(message.get("role") or "user").upper(), content))
+            if message.get("role") == "user": users.append(content)
+    # The planner worm was trained and gated on one system turn and one plain user turn: send its prompt as the
+    # user turn itself, not under a "USER:" label it never saw.
+    text_in = users[0] if provider == "aegis_lab_c1" and len(turns) == 1 and len(users) == 1 else "\n\n".join(turns)
+    if provider == "aegis_gemma": model = house_model()   # AEON, or the worm as the house model
+    body = {"model": model, "input": text_in or ".",
             "system_prompt": "\n\n".join(systems), "reasoning": "off", "store": False,
             "max_output_tokens": int(j.get("max_tokens") or 1024)}
     if j.get("temperature") is not None: body["temperature"] = float(j["temperature"])
     if j.get("top_p") is not None: body["top_p"] = float(j["top_p"])
-    _, d, err = _post_json("aegis_gemma", AEGIS_GEMMA_URL, body, {"Content-Type": "application/json"}, 180, call)
-    if err is not None and d is None: _log(f"aegis gemma error: {err['reason']}"); return err
-    if not isinstance(d, dict): return GR.make_result("aegis_gemma", status="error", reason="non-json body")
+    _, d, err = _post_json(provider, AEGIS_GEMMA_URL, body, {"Content-Type": "application/json"}, 180, call)
+    if err is not None and d is None: _log(f"{provider} error: {err['reason']}"); return err
+    if not isinstance(d, dict): return GR.make_result(provider, status="error", reason="non-json body")
     output = d.get("output") if isinstance(d.get("output"), list) else []
     reasoning = [x for x in output if isinstance(x, dict) and x.get("type") == "reasoning" and x.get("content")]
     stats = d.get("stats") if isinstance(d.get("stats"), dict) else {}
@@ -345,7 +524,7 @@ def aegis_gemma_complete(j, call=None):
             break
     if reasoning or int(stats.get("reasoning_output_tokens") or 0) != 0:
         # The refusal keeps the stop the provider reported: a refused reply that was also cut is two facts, not one.
-        result = GR.make_result("aegis_gemma", model=d.get("model_instance_id") or AEGIS_GEMMA_MODEL,
+        result = GR.make_result(provider, model=d.get("model_instance_id") or model,
                                 status="error", reason="thinking-off contract violated", finish_reason=finish)
         result["finish_reason_source"] = finish_source
         return result
@@ -354,11 +533,15 @@ def aegis_gemma_complete(j, call=None):
     usage = {"input_tokens": stats.get("input_tokens"),
              "output_tokens": stats.get("total_output_tokens")}
     state = "valid" if text else "error"
-    result = GR.make_result("aegis_gemma", model=d.get("model_instance_id") or AEGIS_GEMMA_MODEL,
+    result = GR.make_result(provider, model=d.get("model_instance_id") or model,
                           request_id=d.get("response_id", ""), status=state, usage=usage,
                           text=text, finish_reason=finish, reason="" if text else "empty completion")
     result["finish_reason_source"] = finish_source
     return result
+
+def aegis_lab_c1_complete(j, call=None):
+    """The Lab planner worm on Aegis, through the same native thinking-off contract as AEON."""
+    return aegis_gemma_complete(j, call, model=LAB_C1_MODEL, provider="aegis_lab_c1")
 
 # ---------------------------------------------------------------- local pool (Gloria 2026-11-05)
 # A /pool/<task>/... call goes to the best model for that task on whichever machine has room (local_pool.py).
@@ -416,7 +599,7 @@ def pool_complete(j, call, task):
     return GR.make_result("pool", status="unavailable", reason="pool: " + ("; ".join(tried) or "no lane for its choices")[:300])
 
 PROVIDERS = {"anthropic": claude_complete, "xai": xai_complete, "gemma": gemma_complete,
-             "aegis_gemma": aegis_gemma_complete}
+             "aegis_gemma": aegis_gemma_complete, "aegis_lab_c1": aegis_lab_c1_complete}
 
 def forward_xai(path, raw):
     """Forward raw bytes to real x.ai on the SAME path (images / anything non-chat). Returns (status, body_bytes)."""
@@ -469,11 +652,13 @@ def _without_26b(chain):
 
 def provider_chain(j, path):
     if path == "/gemma-aegis-local/v1/chat/completions": return ["aegis_gemma"]   # Aegis AEON only, before and after the flip
+    if path == LAB_C1_PATH: return ["aegis_lab_c1"]   # the Lab's planner worm on Aegis only: no other model answers for it
     chain = _provider_chain(j, path)
     return _without_26b(chain) if aeon_everywhere() else chain
 
 def _provider_chain(j, path):
     if path == "/gemma-aegis-local/v1/chat/completions": return ["aegis_gemma"]
+    if path == LAB_C1_PATH: return ["aegis_lab_c1"]
     task = pool_task(path)
     if task == "subconscious": return subconscious_chain()
     if task: return ["pool:" + task] + POOL_FALLBACK.get(task, POOL_FALLBACK_DEFAULT)
@@ -485,10 +670,17 @@ def _provider_chain(j, path):
     if int(j.get("max_tokens") or 1024) <= 120: return ["gemma", "anthropic", "xai"]
     return ["anthropic", "xai"]
 
-def run_chain(j, path, chain=None):
-    """Try providers in order; return (final_result_or_None, all_stage_results, call)."""
-    call = _Call(j)
-    for name in (chain or provider_chain(j, path)):
+def run_chain(j, path, chain=None, caller=None):
+    """Try providers in order; return (final_result_or_None, all_stage_results, call).
+    An experiment never reaches Grok (15 November 2026): on the chat path it is answered by Claude alone; on a
+    local lane (/gemma..., /pool/...) by that lane's local models only."""
+    call = _Call(j, caller)
+    if (caller or {}).get("experiment"):
+        if path == "/v1/chat/completions": chain = ["anthropic"]
+        else: chain = [n for n in (chain or provider_chain(j, path)) if n not in ("anthropic", "xai")]
+    elif not chain:
+        chain = provider_chain(j, path)
+    for name in chain:
         res = pool_complete(j, call, name[5:]) if name.startswith("pool:") else PROVIDERS[name](j, call)
         call.results.append(res)
         if GR.usable(res):
@@ -506,7 +698,7 @@ def openai_wrap(res, requested_model=None):
            "choices": [{"index": 0, "message": msg, "finish_reason": res["finish_reason"] or "stop"}]}
     if res.get("usage"): out["usage"] = res["usage"]
     else: out["usage_estimated"] = True
-    if res["provider"] == "aegis_gemma":
+    if res["provider"] in ("aegis_gemma", "aegis_lab_c1"):
         out["choices"][0]["finish_reason"] = res["finish_reason"] or None
         out["finish_reason_source"] = res.get("finish_reason_source")
     return json.dumps(out).encode()
@@ -520,9 +712,10 @@ def error_body(results, message=None, err_type="all_providers_failed"):
     msg = message or ("shim: no provider answered: " + "; ".join("%s=%s(%s)" % (p["provider"], p["status"], p["reason"][:80]) for p in prov))
     return json.dumps({"error": {"message": msg, "type": err_type, "providers": prov}}).encode()
 
-def handle_chat(j, path):
-    """Route one chat request. Returns (http_status, headers_dict, body_bytes). Never 200 with empty content (40)."""
-    res, results, call = run_chain(j, path)
+def handle_chat(j, path, caller=None):
+    """Route one chat request. Returns (http_status, headers_dict, body_bytes). Never 200 with empty content (40).
+    A caller that is not his, or an experiment, whose paid allowance is spent gets 429 (15 November 2026)."""
+    res, results, call = run_chain(j, path, caller=caller)
     if res is not None:
         h = {"x-vintos-provider": res["provider"], "x-vintos-model": res["model"], "x-vintos-request-id": res["request_id"],
              "x-vintos-idempotency-key": call.key}
@@ -533,6 +726,13 @@ def handle_chat(j, path):
     if results and len(unsup) == len(results):
         return 400, {"x-vintos-idempotency-key": call.key}, error_body(results, "shim: no provider supports " +
                      ", ".join(sorted(set(sum((r["reason"].split(": ", 1)[1].split(",") for r in unsup), [])))), "unsupported_feature")
+    c = caller or {}
+    if results and (c.get("experiment") or not c.get("his", True)) and any(
+            str(r.get("reason", "")).startswith("paid budget") for r in results):
+        _log(f"{c.get('name')} refused: paid allowance spent -> 429")
+        return 429, {"x-vintos-idempotency-key": call.key, "Retry-After": "3600"}, error_body(
+            results, "shim: %s has spent its paid allowance for today (experiments: send %s and use their own cap)"
+            % (c.get("name"), EXPERIMENT_HEADER), "paid_allowance_spent")
     _log("all providers failed -> 502")
     return 502, {"x-vintos-idempotency-key": call.key}, error_body(results)
 
@@ -586,7 +786,11 @@ class H(BaseHTTPRequestHandler):
         # image/video generation models -> straight to grok
         if any(t in model for t in ("imagine", "image", "video")):
             _log(f"passthrough {model}"); s, b = forward_xai("/v1/chat/completions", raw); return self._send(s, b)
-        s, h, b = handle_chat(j, self.path)
+        try:
+            caller = classify_caller(self.headers, self.client_address)
+        except Exception:
+            caller = {"name": "unknown", "his": True, "experiment": None}
+        s, h, b = handle_chat(j, self.path, caller)
         return self._send(s, b, h)
 
 UNIT = """[Unit]

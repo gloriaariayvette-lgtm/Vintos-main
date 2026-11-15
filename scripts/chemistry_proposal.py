@@ -257,8 +257,18 @@ def offer(pid, want_id, why="", risks="", scope=None, permissions=None):
             return _write(dict(current, state=REFUSED, at=lab.now_iso(), refused_reason=str(refusal)[:300],
                                history=(current.get("history", []) +
                                         [{"at": lab.now_iso(), "state": REFUSED, "why": str(refusal)[:200]}])[-12:]))
-        return _advance_unlocked(pid, OFFERED, forge_proposal_id=proposal.get("id"),
-                                 forge_state=proposal.get("state"))
+        out = _advance_unlocked(pid, OFFERED, forge_proposal_id=proposal.get("id"),
+                                forge_state=proposal.get("state"))
+        try:
+            import action_provenance
+            action_provenance.record(
+                "lab_request", "instrument %s for the Forge" % (face.get("function") or pid), "chemistry_proposal",
+                trigger="its canary passed (%s)" % ((current.get("canary") or {}).get("sha256", "")[:12] or "hash not recorded"),
+                want_id=want_id, rule="an instrument goes to the Forge only against a live want; the Forge decides",
+                refs={"proposal": pid, "forge_proposal": proposal.get("id")}, mem=lab.MEM)
+        except Exception:
+            pass
+        return out
 
 
 def withdraw(pid, why=""):

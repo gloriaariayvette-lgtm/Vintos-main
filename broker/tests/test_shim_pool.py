@@ -159,5 +159,12 @@ s, h, b = run("/pool/quick/v1/chat/completions", ALL_ROOM, **{"imac:8840": lambd
 check("everything down -> 502 naming the pool's tries, never 200 empty",
       s == 502 and "pool:" in json.dumps(b) and "e4b-duo@imac" in json.dumps(b), (s, b))
 
+import local_pool as _LP
+_room = {"lmstudio_loaded": ["text-embedding-nomic-embed-text-v1.5", "lab-c1"], "gpus": []}
+check("the worm stands in for Aegis's AEON in the pool (no spill because the house model is the worm)",
+      ("aegis", "aeon/gemma-4-12b") in _LP.HOUSE_STANDINS and "lab-c1" in _LP.HOUSE_STANDINS[("aegis", "aeon/gemma-4-12b")])
+_pool = _LP.Pool(config_dir="/nonexistent")
+check("and nothing else stands in for anything", len(_LP.HOUSE_STANDINS) == 1)
+
 print("\n%d/%d passed" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

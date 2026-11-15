@@ -328,20 +328,31 @@ check("and goes into his journal as Grok Bot's letter",
 # One check every morning at the set time, after their letters and before Gloria starts Slack
 _sched = os.path.join(HOME, "email-schedule.json"); E.SCHEDULE_FILE = _sched
 check("the schedule file is the scratch one", E.SCHEDULE_FILE.startswith(HOME))
-_n = E.datetime.now()
-json.dump({"morning": (_n - __import__("datetime").timedelta(minutes=1)).strftime("%H:%M")}, open(_sched, "w"))
-E._save(E.TEND_STATE, {"at": __import__("time").time(), "checks_day": _n.date().isoformat(), "checks": 1})
-mail_calls.clear()
-E.tend(gmail=gmail2, think=reader, want=lambda *a: None)
-check("at the morning time it checks, even inside the six hours", len(mail_calls) == 1, mail_calls)
-E.tend(gmail=gmail2, think=reader, want=lambda *a: None)
-check("once a morning", len(mail_calls) == 1, mail_calls)
-if _n.hour < 23:
+# The morning is checked at an injected 09:30 today: with the real clock, "one minute ago" was
+# 23:59 yesterday in the first minute after midnight (failed then), and the "before the morning"
+# check was skipped every night from 23:00.
+_real_datetime = E.datetime
+_n = _real_datetime.combine(_real_datetime.now().date(), __import__("datetime").time(9, 30))
+class _MorningClock(_real_datetime):
+    @classmethod
+    def now(cls, tz=None):
+        return _n
+E.datetime = _MorningClock
+try:
+    json.dump({"morning": (_n - __import__("datetime").timedelta(minutes=1)).strftime("%H:%M")}, open(_sched, "w"))
+    E._save(E.TEND_STATE, {"at": __import__("time").time(), "checks_day": _n.date().isoformat(), "checks": 1})
+    mail_calls.clear()
+    E.tend(gmail=gmail2, think=reader, want=lambda *a: None)
+    check("at the morning time it checks, even inside the six hours", len(mail_calls) == 1, mail_calls)
+    E.tend(gmail=gmail2, think=reader, want=lambda *a: None)
+    check("once a morning", len(mail_calls) == 1, mail_calls)
     json.dump({"morning": (_n + __import__("datetime").timedelta(hours=1)).strftime("%H:%M")}, open(_sched, "w"))
     E._save(E.TEND_STATE, {"at": 0, "checks_day": _n.date().isoformat(), "checks": 3})
     mail_calls.clear()
     E.tend(gmail=gmail2, think=reader, want=lambda *a: None)
     check("before the morning, the last of the four checks is kept for it", mail_calls == [], mail_calls)
+finally:
+    E.datetime = _real_datetime
 check("Gloria can move the morning check in one file", E.MORNING_DEFAULT and "email-schedule.json" in E.SCHEDULE_FILE)
 # The shapes his Gmail connector really returns (Aegis receipts, 2026-10-02): from_, a snippet, and the read
 # message's text in payload.body.content

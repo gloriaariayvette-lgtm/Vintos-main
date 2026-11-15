@@ -136,11 +136,12 @@ def _paid_rows():
         return
 
 
-def paid_today(provider=None):
+def paid_today(provider=None, caller=None):
     """Count reservations; only a matching, single-use receipt can cancel one.
 
     Historical releases without IDs are ambiguous and do not reduce the cap.
     A release on a later day belongs to its original reservation's day.
+    With caller, only the reservations that caller made (its per-caller share, 15 November 2026).
     """
     day = datetime.now().strftime("%Y-%m-%d")
     reservations, released = {}, set()
@@ -148,6 +149,7 @@ def paid_today(provider=None):
     for row in _paid_rows():
         rid = row.get("reservation_id")
         if row.get("stage") == "reserved":
+            if caller is not None and row.get("caller") != caller: continue
             if rid: reservations.setdefault(rid, row)
             elif str(row.get("at", "")).startswith(day) and (provider is None or row.get("provider") == provider):
                 legacy += max(0, int(row.get("units", 1)))
@@ -159,29 +161,44 @@ def paid_today(provider=None):
         if rid not in released and str(row.get("at", "")).startswith(day)
         and (provider is None or row.get("provider") == provider))
 
-def reserve_paid(organ, provider, model="", units=1, cap=None, reservation_id=None):
+def reserve_paid(organ, provider, model="", units=1, cap=None, reservation_id=None,
+                 caller=None, caller_cap=None, caller_all_providers=False):
     from store_guard import transaction
     if type(units) is not int or units < 1: return False,"positive integer reservation required"
     try:
         with transaction(_ledger()):
-            return _reserve_paid(organ,provider,model,units,cap,reservation_id)
+            return _reserve_paid(organ,provider,model,units,cap,reservation_id,caller,caller_cap,caller_all_providers)
     except (OSError, ValueError) as exc:
         return False, "reservation could not be persisted: " + str(exc)
 
 
-def _reserve_paid(organ, provider, model="", units=1, cap=None, reservation_id=None):
+def _reserve_paid(organ, provider, model="", units=1, cap=None, reservation_id=None,
+                  caller=None, caller_cap=None, caller_all_providers=False):
     """review 79: before paid or remote work, a reservation against the day's cap. (ok, why). A refused
     reservation is recorded (stage=refused) and the caller holds; a granted one is the ledger row the
-    later usage line joins to. Foreground callers still never wait here - the cap is the only refusal."""
+    later usage line joins to. Foreground callers still never wait here - the cap is the only refusal.
+
+    caller/caller_cap (15 November 2026): one caller may hold at most caller_cap of the day's reservations
+    (for this provider, or across every provider with caller_all_providers), checked inside the same ledger
+    transaction, so no single caller can spend the whole day's budget. An experiment's bulk run did on
+    15 November and his own chat then fell to Grok for the rest of the day."""
     reservation_id = reservation_id or uuid.uuid4().hex
     if any(row.get("reservation_id") == reservation_id for row in _paid_rows()):
         return False, "reservation ID already used"
     cap = PAID_PER_DAY if cap is None else int(cap)
     used = paid_today(provider)
+    tag = {"caller": str(caller)[:80]} if caller else {}
     if used + int(units) > cap:
-        record(organ, cls="paid", provider=provider, model=model, stage="refused", extra={"units": int(units), "used_today": used, "cap": cap})
+        record(organ, cls="paid", provider=provider, model=model, stage="refused", extra=dict(tag, units=int(units), used_today=used, cap=cap))
         return False, "paid budget: %d of %d reservations used today for %s; %d more refused" % (used, cap, provider, int(units))
-    record(organ, cls="paid", provider=provider, model=model, stage="reserved", extra={"reservation_id": reservation_id, "units": int(units), "used_today": used + int(units), "cap": cap}, strict=True)
+    if caller and caller_cap is not None:
+        mine = paid_today(None if caller_all_providers else provider, caller=tag["caller"])
+        if mine + int(units) > int(caller_cap):
+            record(organ, cls="paid", provider=provider, model=model, stage="refused",
+                   extra=dict(tag, units=int(units), caller_used_today=mine, caller_cap=int(caller_cap)))
+            return False, "paid budget: caller %s used %d of its %d today%s; %d more refused" % (
+                tag["caller"], mine, int(caller_cap), "" if caller_all_providers else " for " + provider, int(units))
+    record(organ, cls="paid", provider=provider, model=model, stage="reserved", extra=dict(tag, reservation_id=reservation_id, units=int(units), used_today=used + int(units), cap=cap), strict=True)
     return True, "reserved %d (%d/%d today)" % (int(units), used + int(units), cap)
 
 def release_paid(organ, provider, model="", units=1, why="", *, reservation_id=None):

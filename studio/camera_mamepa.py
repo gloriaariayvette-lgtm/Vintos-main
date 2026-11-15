@@ -40,6 +40,7 @@ MAX_SEEN = 8192
 MEMORY_LABEL = 'CAMERA MEMORY, noted by the camera and never heard; not speech, never quote it as said'
 NOTE_CHARS = 900                   # the summary line budget (well inside the answer reserve)
 RECORD_CHARS = 240
+RECALLED_KIND = 'hdc-episode'     # records an opt-in recall store adds after the linked ones; never linked
 
 
 def _digest(path):
@@ -547,7 +548,11 @@ class Mamepa:
         lines[-1] += ']'
         if tags_text:
             for key in sorted({k for s in segs for k in s['tags']}):
-                recs = self.records.get(key) or []
+                allrecs = self.records.get(key) or []
+                # sightings an opt-in recall store adds (the server's --tag-hdc) are never linked records: they never
+                # make a tag known, and follow Gloria's own line, marked as recalled
+                recalled = [r for r in allrecs if r.get('kind') == RECALLED_KIND]
+                recs = [r for r in allrecs if r.get('kind') != RECALLED_KIND]
                 eps = self.episodes.get(key, [])
                 prior = [e for e in eps if e['stream'] != self.stream]
                 seen = ' (seen before, in an earlier stream)' if prior else ''
@@ -557,6 +562,8 @@ class Mamepa:
                     lines.append('[TAG %s in view%s - linked record(s): %s]' % (key, seen, text))
                 else:
                     lines.append('[TAG %s in view%s - no record is linked to it. Do not guess what it stands for.]' % (key, seen))
+                if recalled:
+                    lines.append('[TAG %s - %s]' % (key, '; '.join(str(r.get('text'))[:RECORD_CHARS] for r in recalled[:3])))
         text = ' '.join(lines)
         if len(text) > NOTE_CHARS:
             text = text[:NOTE_CHARS - 2].rsplit(' ', 1)[0] + ' …]'
