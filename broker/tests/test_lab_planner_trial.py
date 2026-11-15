@@ -431,5 +431,137 @@ class Report(unittest.TestCase):
         self.assertEqual(R.main(['--root', str(root), '--until', '2026-11-13T03:00:00+00:00', '--json']), 0)
 
 
+class SwapWindow(Base):
+    """LAB_PLANNER_TRIAL_LOAD=swap: the worm is loaded in AEON's place for one planning call, AEON is put back before
+    the current model can be asked, and windows open at most once per gap. The loaders are stubs: nothing runs."""
+    def setUp(self):
+        super().setUp()
+        T._STATE['swap_next'] = 0.0
+        if os.path.exists(T.SWAP_STATE):
+            os.remove(T.SWAP_STATE)
+        self.reply = {'provider': T.SWAP_PROVIDER, 'model': T.SWAP_MODEL}
+        Path(T._env_path()).write_text('LAB_PLANNER_TRIAL=c1-worm\nLAB_PLANNER_TRIAL_LOAD=swap\n')
+        self.order = []
+
+    def loader(self, ok_load=True, ok_restore=True):
+        def run(name):
+            self.order.append(name)
+            ok = ok_load if name == 'aegis-lab-c1-load.sh' else ok_restore
+            return (0, '') if ok is True else (1, 'failed') if ok is False else (ok, 'refused')
+        return patch.object(T, '_run_loader', side_effect=run)
+
+    def test_window_loads_the_worm_asks_it_and_puts_aeon_back_before_returning(self):
+        def ask(*a, **k):
+            self.order.append('ask')
+            return FIRST
+        with self.loader(), patch.object(T, '_ask', side_effect=ask), \
+                patch.object(T, 'witness', return_value=(json.loads(FIRST), '', '')):
+            call = T.propose('sys', '{}', {'question': 'q', 'steps': []})
+        self.assertEqual(self.order, ['aegis-lab-c1-load.sh', 'ask', 'aegis-gemma-load.sh'])
+        self.assertTrue(call['accepted'])
+        self.assertTrue(call['restored'])
+        self.assertIn('swap_s', call)
+        self.assertGreater(T._STATE['swap_next'], 0)
+
+    def test_inside_the_gap_no_window_and_the_current_model_plans(self):
+        T._STATE['swap_next'] = 10 ** 12
+        with self.loader() as run, patch.object(T, '_ask') as ask:
+            call = T.propose('sys', '{}', {'question': 'q', 'steps': []})
+        run.assert_not_called()
+        ask.assert_not_called()
+        self.assertEqual(call['reason'], 'swap_wait')
+        self.assertFalse(call['accepted'])
+
+    def test_a_failed_load_still_puts_aeon_back_and_asks_nothing(self):
+        with self.loader(ok_load=False) as run, patch.object(T, '_ask') as ask:
+            call = T.propose('sys', '{}', {'question': 'q', 'steps': []})
+        ask.assert_not_called()
+        self.assertEqual(self.order, ['aegis-lab-c1-load.sh', 'aegis-gemma-load.sh'])
+        self.assertEqual(call['reason'], 'swap_failed')
+        self.assertTrue(call['restored'])
+
+    def test_worm_down_mid_window_still_puts_aeon_back(self):
+        with self.loader(), patch.object(T, '_ask', side_effect=urllib.error.URLError('refused')):
+            call = T.propose('sys', '{}', {'question': 'q', 'steps': []})
+        self.assertEqual(self.order, ['aegis-lab-c1-load.sh', 'aegis-gemma-load.sh'])
+        self.assertEqual(call['reason'], 'trial_down')
+
+    def test_a_held_lock_means_no_window(self):
+        import fcntl
+        with open(T.WATCHDOG_LOCK, 'a+') as held:
+            fcntl.flock(held.fileno(), fcntl.LOCK_EX)
+            pid = os.fork()
+            if pid == 0:     # another process: flock is per open file description, so try from a child
+                try:
+                    with self.loader() as run, patch.object(T, '_ask') as ask:
+                        call = T.propose('sys', '{}', {'question': 'q', 'steps': []})
+                    os._exit(0 if call['reason'] == 'swap_busy' and not run.called and not ask.called else 1)
+                except BaseException:
+                    os._exit(2)
+            _, status = os.waitpid(pid, 0)
+        self.assertEqual(os.waitstatus_to_exitcode(status), 0)
+
+    def test_switch_without_swap_never_touches_lm_studio(self):
+        Path(T._env_path()).write_text('LAB_PLANNER_TRIAL=c1-worm\n')
+        with self.loader() as run, patch.object(T, '_ask', side_effect=urllib.error.URLError('refused')):
+            T.propose('sys', '{}', {'question': 'q', 'steps': []})
+        run.assert_not_called()
+
+    def test_the_restore_also_takes_the_worm_off_and_the_worm_loader_unloads_every_llm_first(self):
+        here = Path(T.__file__).resolve().parent
+        gemma = (here / 'aegis-gemma-load.sh').read_text()
+        worm = (here / 'aegis-lab-c1-load.sh').read_text()
+        self.assertIn('"lab-c1"', gemma.split('for resident in', 1)[1].split('\n', 1)[0])
+        self.assertLess(worm.index('"$LMS" unload "$resident"'), worm.index('exec "$LMS" load'))
+        self.assertIn('refusing lab-c1 load: still resident', worm)
+
+
+class SwapReviewFixes(SwapWindow):
+    def test_a_refusal_before_any_change_leaves_aeon_alone_and_backs_off(self):
+        import time as _t
+        with self.loader(ok_load=T.REFUSED_UNTOUCHED), patch.object(T, '_ask') as ask:
+            call = T.propose('sys', '{}', {'question': 'q', 'steps': []})
+        ask.assert_not_called()
+        self.assertEqual(self.order, ['aegis-lab-c1-load.sh'])
+        self.assertIsNone(call['restored'])
+        self.assertEqual(call['reason'], 'swap_failed')
+        self.assertGreater(T._STATE['swap_next'], _t.time() + 3 * T.SWAP_GAP)
+
+    def test_the_gap_survives_a_restart(self):
+        with self.loader(), patch.object(T, '_ask', side_effect=urllib.error.URLError('refused')):
+            T.propose('sys', '{}', {'question': 'q', 'steps': []})
+        T._STATE.update(swap_next=0.0, down_until=0.0)   # a fresh Lab process
+        with self.loader() as run:
+            call = T.propose('sys', '{}', {'question': 'q', 'steps': []})
+        self.assertEqual(call['reason'], 'swap_wait')
+
+    def test_in_swap_mode_a_reply_from_any_other_lane_is_not_the_worm(self):
+        body = json.dumps({'provider': 'xai', 'model': 'grok-4',
+                           'choices': [{'message': {'content': FIRST}}]}).encode()
+        class R:
+            def __enter__(s): return s
+            def __exit__(s, *a): return False
+            def read(s): return body
+        with self.loader(), patch.object(T.urllib.request, 'urlopen', return_value=R()):
+            call = T.propose('sys', '{}', {'question': 'q', 'steps': []})
+        self.assertFalse(call['accepted'])
+        self.assertEqual(call['reason'], 'trial_down')
+        self.assertEqual(call['error'], 'ValueError')
+        self.assertEqual(self.order, ['aegis-lab-c1-load.sh', 'aegis-gemma-load.sh'])
+
+
+class SwapDefaults(Base):
+    def test_swap_mode_defaults_to_the_shim_worm_lane_and_stays_loopback(self):
+        Path(T._env_path()).write_text('LAB_PLANNER_TRIAL=c1-worm\nLAB_PLANNER_TRIAL_LOAD=swap\n')
+        self.assertEqual(T._url(), 'http://127.0.0.1:8599/gemma-lab-c1-local/v1/chat/completions')
+        Path(T._env_path()).write_text('LAB_PLANNER_TRIAL=c1-worm\n')
+        self.assertEqual(T._url(), T.DEFAULT_URL)
+
+    def test_loaders_run_through_bash_so_a_missing_exec_bit_cannot_strand_the_house(self):
+        with patch.object(T.subprocess, 'run', return_value=Mock(returncode=0, stderr='', stdout='')) as run:
+            T._run_loader('aegis-gemma-load.sh')
+        self.assertEqual(run.call_args[0][0][0], 'bash')
+
+
 if __name__ == '__main__':
     unittest.main()

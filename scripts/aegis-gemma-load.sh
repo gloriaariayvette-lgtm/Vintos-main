@@ -48,7 +48,9 @@ curl -fsS --max-time 5 "$BASE/api/v1/models" >/dev/null || {
 # resident. Unload only this model; the Nomic embedding model stays untouched.
 # The model it replaced (Google's QAT, until 4 November) is unloaded too: LM Studio stacks models rather than
 # swapping them, and the two together (about 21 GB) do not fit Aegis's 16 GB card.
-for resident in "$IDENTIFIER" "google/gemma-4-12b-qat"; do
+# The Lab planner worm (lab-c1) is loaded only in AEON's place, for a planning call; any reload of AEON takes it off
+# first, so a Lab that died mid-call never leaves two 12B models on the card (aegis-lab-c1-load.sh).
+for resident in "$IDENTIFIER" "google/gemma-4-12b-qat" "lab-c1"; do
   if "$LMS" ps --json | python3 -c '
 import json, sys
 identifier = sys.argv[1]
@@ -59,5 +61,15 @@ raise SystemExit(0 if any(row.get("identifier") == identifier for row in rows) e
   fi
 done
 
-exec "$LMS" load "$MODEL_KEY" --identifier "$IDENTIFIER" --gpu max \
+"$LMS" load "$MODEL_KEY" --identifier "$IDENTIFIER" --gpu max \
   --context-length 32000 --parallel 1 --no-speculative-draft-mtp --yes
+# A lab-c1 load whose client was cut off (timeout, a killed Lab) can still land after the unloads above: AEON is the
+# one LLM this contract leaves resident.
+for extra in $("$LMS" ps --json | python3 -c '
+import json, sys
+identifier = sys.argv[1]
+print("\n".join(str(r.get("identifier")) for r in json.load(sys.stdin)
+                if r.get("type") != "embedding" and r.get("identifier") and r.get("identifier") != identifier))
+' "$IDENTIFIER"); do
+  "$LMS" unload "$extra"
+done
