@@ -550,5 +550,18 @@ class SwapReviewFixes(SwapWindow):
         self.assertEqual(self.order, ['aegis-lab-c1-load.sh', 'aegis-gemma-load.sh'])
 
 
+class SwapDefaults(Base):
+    def test_swap_mode_defaults_to_the_shim_worm_lane_and_stays_loopback(self):
+        Path(T._env_path()).write_text('LAB_PLANNER_TRIAL=c1-worm\nLAB_PLANNER_TRIAL_LOAD=swap\n')
+        self.assertEqual(T._url(), 'http://127.0.0.1:8599/gemma-lab-c1-local/v1/chat/completions')
+        Path(T._env_path()).write_text('LAB_PLANNER_TRIAL=c1-worm\n')
+        self.assertEqual(T._url(), T.DEFAULT_URL)
+
+    def test_loaders_run_through_bash_so_a_missing_exec_bit_cannot_strand_the_house(self):
+        with patch.object(T.subprocess, 'run', return_value=Mock(returncode=0, stderr='', stdout='')) as run:
+            T._run_loader('aegis-gemma-load.sh')
+        self.assertEqual(run.call_args[0][0][0], 'bash')
+
+
 if __name__ == '__main__':
     unittest.main()

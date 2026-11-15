@@ -61,6 +61,7 @@ import chemistry_lab as lab
 
 KNOWN = {'c1': 'lab-c1', 'c1-worm': 'lab-c1'}   # switch value -> the alias the trial server answers to
 DEFAULT_URL = 'http://127.0.0.1:8866/v1/chat/completions'
+SWAP_URL = 'http://127.0.0.1:8599/gemma-lab-c1-local/v1/chat/completions'   # the shim's Aegis-only worm lane
 DEFAULT_TIMEOUT = 120.0
 DOWN_SECONDS = 600                      # after the trial model fails to answer, the current model plans alone this long
 MAX_TOKENS = 800                        # the investigation planner's own budget
@@ -97,7 +98,7 @@ def proposer():
 
 
 def _url():
-    url = str(setting('LAB_PLANNER_TRIAL_URL', DEFAULT_URL)).strip()
+    url = str(setting('LAB_PLANNER_TRIAL_URL', SWAP_URL if _swap_mode() else DEFAULT_URL)).strip()
     host = urllib.parse.urlsplit(url).hostname or ''
     if host not in _LOOPBACK:
         raise ValueError('trial url must be loopback')   # the Lab's prompts never leave the machine by a config typo
@@ -128,7 +129,7 @@ def _loader(name):
 
 def _run_loader(name):
     """(exit code, the tail of what it said)."""
-    done = subprocess.run([_loader(name)], text=True, capture_output=True, timeout=SWAP_TIMEOUT, check=False)
+    done = subprocess.run(['bash', _loader(name)], text=True, capture_output=True, timeout=SWAP_TIMEOUT, check=False)
     return done.returncode, ((done.stderr or '') + (done.stdout or '')).strip()[-300:]
 
 
