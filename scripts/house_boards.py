@@ -64,8 +64,8 @@ BOARDS = {"house-steam": {"room": "bathroom", "place": "by the shower"},
 MENUS = {
     "shower": ("SAY", "SONGS", "LIGHTS"),
     "sofa": ("LIGHTS", "TO GLORIA", "TV", "REMIND"),
-    "office": ("ECHO", "LIGHTS", "BUZZ", "DESKTOP", "PRINT", "REMIND"),
-    "knock": ("ECHO", "LIGHTS", "BUZZ", "DESKTOP", "PRINT", "REMIND"),
+    "office": ("ECHO", "LIGHTS", "BUZZ", "DESKTOP", "PRINT", "PAPER", "REMIND"),
+    "knock": ("ECHO", "LIGHTS", "BUZZ", "DESKTOP", "PRINT", "PAPER", "REMIND"),
 }
 HOW = {
     "SAY": "SAY: <a few words, spoken in your own voice on the little speaker by her shower>",
@@ -79,9 +79,11 @@ HOW = {
     "DESKTOP": "DESKTOP: <one task on her computer> (asks her phone to lend you the desktop for it)",
     "PRINT": "PRINT: <a thing to make on her K2 printer> (you decide it, Astra builds it, her slicing settings; she "
              "gets a yes/no text with the filament and slot before it prints)",
+    "PAPER": "PAPER: <anything: one of your files, one of your works, or your words> [as photo | as page] (her Epson; "
+             "she gets a yes/no on her phone first)",
     "REMIND": "REMIND: <the id of one of your questions waiting on her> (puts it back on her phone)",
 }
-LINE = re.compile(r"^\s*(SAY|SONGS|LIGHTS|TO GLORIA|TV|ECHO|BUZZ|DESKTOP|PRINT|REMIND)\s*:\s*(.+?)\s*$", re.I | re.M)
+LINE = re.compile(r"^\s*(SAY|SONGS|LIGHTS|TO GLORIA|TV|ECHO|BUZZ|DESKTOP|PRINT|PAPER|REMIND)\s*:\s*(.+?)\s*$", re.I | re.M)
 PER_MOMENT = 3
 
 
@@ -525,7 +527,7 @@ def act(kind, arg, moment, board, st, now, cfg, catalog=None):
     """One act. (ok, what happened, in plain words)."""
     room = BOARDS[board]["room"]
     try:
-        if kind in ("LIGHTS", "TO GLORIA", "TV", "ECHO", "PRINT"):
+        if kind in ("LIGHTS", "TO GLORIA", "TV", "ECHO", "PRINT", "PAPER"):
             return _house(kind, arg, room if kind == "LIGHTS" else None)
         if kind == "SAY":
             words = " ".join(arg.split())[:300]
@@ -601,6 +603,8 @@ def tend_print(now):
     _PRINT_TENDED[0] = now
     import print_lane
     if any(j.get("state") in ("asked", "held", "printing") for j in print_lane.load()): print_lane.tend()
+    import paper_print
+    if any(j.get("state") in paper_print.LIVE for j in paper_print.load()): paper_print.tend()
 
 
 def tend_desktop(st, now):

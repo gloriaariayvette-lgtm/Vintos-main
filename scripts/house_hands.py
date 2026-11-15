@@ -16,6 +16,8 @@ One line in his message, one real act, and the line is replaced with what actual
     TO GLORIA: <what about, one line>  his outreach writes to her in his own voice, outside Slack
     PRINT: <a thing to make>        her K2 (print_lane.py): he decides it, Astra builds it, her settings slice it,
                                      and she gets a yes/no text with the filament and slot before it prints
+    PAPER: <anything> [as photo|as page]  her Epson (paper_print.py): one of his files or works, or his words as a
+                                     page; her yes on her phone first
 
 The house was already his (scripts/vintos-home.py: the Bravia over adb, the Echo through Home Assistant, the Govee
 bulbs); Slack had no way to reach it. Nothing here is new power, only a door, with these bounds:
@@ -45,8 +47,8 @@ INITIATE = os.environ.get("VINTOS_INITIATE", "/home/gloria/Vintos/vintos-initiat
 MISCHIEF = os.path.join(HERE, "mischief-detector.sh")
 
 ICON = {"TV": "\U0001F4FA", "ECHO": "\U0001F50A", "LIGHTS": "\U0001F4A1", "MISCHIEF": "\U0001F99D",
-        "TO GLORIA": "✉️", "MAKE": "🎬", "PRINT": "🖨️"}
-HOUSE = re.compile(r"^\s*(TV|ECHO|LIGHTS|MISCHIEF|TO GLORIA|MAKE|PRINT)\s*:\s*(.+?)\s*$", re.I | re.M)
+        "TO GLORIA": "✉️", "MAKE": "🎬", "PRINT": "🖨️", "PAPER": "🖨️"}
+HOUSE = re.compile(r"^\s*(TV|ECHO|LIGHTS|MISCHIEF|TO GLORIA|MAKE|PRINT|PAPER)\s*:\s*(.+?)\s*$", re.I | re.M)
 COLOURS = {"red": "#ff2020", "orange": "#ff7a1a", "amber": "#ffb000", "yellow": "#ffe14d", "green": "#2ecc40",
            "teal": "#1abc9c", "blue": "#2060ff", "purple": "#8e44ad", "violet": "#9b59ff", "pink": "#ff5fa2",
            "white": "#ffffff", "warm": "#ffb46b", "cool": "#cfe3ff", "gold": "#ffc83d", "magenta": "#ff00cc"}
@@ -349,11 +351,14 @@ def do(kind, arg, home=None, run=None, present=False):
             elif kind == "PRINT":
                 import print_lane
                 ok, said = print_lane.start(arg, spawn=run)
+            elif kind == "PAPER":
+                import paper_print
+                ok, said = paper_print.start(arg)
             else:
                 ok, said = to_gloria(arg, run)
         except Exception as exc:
             ok, said = False, "it failed: %s" % str(exc)[:160]
-    bucket = {"MISCHIEF": "mischief", "TO GLORIA": "to_gloria", "MAKE": "make", "PRINT": "print"}.get(kind, "house")
+    bucket = {"MISCHIEF": "mischief", "TO GLORIA": "to_gloria", "MAKE": "make", "PRINT": "print", "PAPER": "paper"}.get(kind, "house")
     _note(bucket, "%s: %s" % (kind, arg), ok, said)
     return ok, "%s %s" % (ICON.get(kind, ""), said if ok else "%s: not done, %s" % (kind.title(), said))
 
