@@ -15,7 +15,7 @@ def check(n, ok, d=""):
 src = open(os.path.join(REPO, "scripts", "deploy-atelier.sh")).read()
 fn = lambda name: re.search(r"^%s\(\) \{.*?^\}" % name, src, re.M | re.S).group(0)
 home_level = re.search(r"^HOME_LEVEL_FILES=.*$", src, re.M).group(0)
-lib = "\n".join([home_level] + [fn(n) for n in ("locate", "count", "live_tree", "tree_score", "dest", "outside_plan")])
+lib = "\n".join([home_level] + [fn(n) for n in ("locate", "count", "live_tree", "repo_clone", "tree_score", "dest", "outside_plan")])
 
 def put(rel, text="# x\n"):
     p = os.path.join(HOME, rel); os.makedirs(os.path.dirname(p), exist_ok=True); open(p, "w").write(text)

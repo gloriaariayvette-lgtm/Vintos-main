@@ -254,7 +254,9 @@ def apply(t, mem, meta, dry=False):
         if new is None or new == cur:
             out["why"] = "nothing to change (%s is %r)" % (t.field, cur)
             return None
-        out["row"] = dict(meta, rev=rev, at=_now(), node=t.node, store=t.store, field=t.field, was=cur, now=new,
+        # stamped with the run's own time, so the daily limit counts the day the run belongs to (a test that runs
+        # "the next night" on a later wall-clock day used to find the first night's rows dated today)
+        out["row"] = dict(meta, rev=rev, at=meta.get("at") or _now(), node=t.node, store=t.store, field=t.field, was=cur, now=new,
                           superseded=copy.deepcopy(rec))
         if dry:
             return None
@@ -363,7 +365,14 @@ def run(mem=None, dry=False, checks=CHECKS, transport=None, send=None, at=None):
     import belief_revision_sources as S
     import belief_revision_answer as A
     at = at or _now()
-    g, stats = S.build(mem)
+    # the run's own time sets the records' ages (their prior drift), so a run - and a test - means the same thing
+    # whatever day it is executed on
+    try:
+        now = datetime.fromisoformat(at.replace("Z", "+00:00"))
+        now = now if now.tzinfo else now.replace(tzinfo=timezone.utc)
+    except (ValueError, AttributeError):
+        now = None
+    g, stats = S.build(mem, now=now)
     answerer = A.Answerer(A.StoreRecords(mem, g), transport=transport)
     p = BR.localize(g, answerer, budget=checks, at=at)
     held = set(p.get("held") or [])
@@ -426,7 +435,7 @@ def run(mem=None, dry=False, checks=CHECKS, transport=None, send=None, at=None):
             if not dry and len(applied) >= room:
                 deferred.append(node)
                 continue
-            meta = {"action": w["action"], "blame": w["blame"], "why": w["why"], "mode": "dry-run" if dry else "live",
+            meta = {"at": at, "action": w["action"], "blame": w["blame"], "why": w["why"], "mode": "dry-run" if dry else "live",
                     "answers": [{"node": a["node"], "answer": a["answer"], "by": (a.get("provenance") or {}).get("by")}
                                 for a in p.get("answers") or []][:24]}
             row, why = apply(t, mem, meta, dry=dry)

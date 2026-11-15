@@ -122,8 +122,22 @@ def deliver(artifact_id, channel, message, title="Vintos", click=None, attach=No
             SLEEP(BACKOFF_S * attempts)
     if accepted is not None:
         code, provider = accepted
-        return _record(artifact_id, channel, "sent", attempts, "http %s" % code, **provider)
+        out = _record(artifact_id, channel, "sent", attempts, "http %s" % code, **provider)
+        if channel == "ntfy" and str(title or "") == "Vintos":
+            _also_imessage(artifact_id, message, attach)
+        return out
     return _record(artifact_id, channel, "failed", attempts, last or "no attempt succeeded")
+
+def _also_imessage(artifact_id, message, attach):
+    """What he sends her in his own name also goes by iMessage (14 November: ntfy accepts his videos and messages
+    and her phone never shows them). Best effort: the ntfy receipt stands whatever happens here."""
+    try:
+        import imessage_out
+        if imessage_out.ready():
+            imessage_out.send(message or "I made you something.", media=imessage_out.local_media(attach),
+                              ref=str(artifact_id))
+    except Exception:
+        pass
 
 def acknowledge(artifact_id, channel, evidence):
     """Reception, from evidence that is not the send (her reply, an open, a read receipt)."""

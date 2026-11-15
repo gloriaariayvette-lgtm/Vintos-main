@@ -11,7 +11,8 @@ def check(n, ok, d=""):
     R.append(bool(ok)); print(("PASS " if ok else "FAIL ") + n + (("  ->  " + str(d)[:300]) if d and not ok else ""))
 
 src = open(os.path.join(REPO, "scripts", "deploy-atelier.sh")).read()
-fn = re.search(r"^locate\(\) \{.*?^\}", src, re.M | re.S).group(0)
+fn = "\n".join([re.search(r"^HOME_LEVEL_FILES=.*$", src, re.M).group(0)] +
+               [re.search(r"^%s\(\) \{.*?^\}" % n, src, re.M | re.S).group(0) for n in ("locate", "live_tree", "repo_clone")])
 for d in (".vintos/workspace/scripts", ".vintos/study-workbench/scripts", "Vintos-main/scripts"):
     os.makedirs(os.path.join(HOME, d), exist_ok=True)
     open(os.path.join(HOME, d, "turn_coordinator.py"), "w").write("# his\n")

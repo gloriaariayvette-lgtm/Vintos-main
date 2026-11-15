@@ -156,7 +156,7 @@ SCRIPTS="$SCRIPTS claude_connector_catalog.py claude_connector_relay.py claude_c
 SCRIPTS="$SCRIPTS vintos_calendar.py"   # his own calendar: "do X on Y day" fires autonomously via the wants loop (Google Calendar connector can't OAuth headless), 2026-09-22
 SCRIPTS="$SCRIPTS consent_gate.py"   # consent gate: logs Gloria's y/n on morning poems + music, announces the activity, 2026-09-23
 SCRIPTS="$SCRIPTS inkbox_guard.py"   # fail-closed policy for his own Inkbox comms identity (email + iMessage), 2026-09-21
-SCRIPTS="$SCRIPTS want_email.py outward_wants.py outside_views.py scholar.py email_approvals.py lab_instruments.py lab_tool_calls.py lab_experiments.py lab_investigations.py lab_names.py lab_native_instruments.py lab_derived_sequences.py lab_family_panel.py lab_disagreement.py lab_negative_atlas.py lab_correspondence.py lab_usage_report.py lab_closed_redaction.py lab_repeat_acceptance.py lab_planner_trial.py lab_planner_trial_report.py"   # his own emails and his outward wants, 2026-09-28
+SCRIPTS="$SCRIPTS want_email.py outward_wants.py outside_views.py scholar.py email_approvals.py lab_instruments.py lab_tool_calls.py lab_experiments.py lab_investigations.py lab_names.py lab_native_instruments.py lab_derived_sequences.py lab_family_panel.py lab_disagreement.py lab_negative_atlas.py lab_correspondence.py lab_usage_report.py lab_closed_redaction.py lab_repeat_acceptance.py lab_planner_trial.py lab_planner_trial_report.py lab_bond_search.py"   # his own emails and his outward wants, 2026-09-28
 SCRIPTS="$SCRIPTS received_mail.py agent_research.py"   # what his received mail carries, put where it is used: a want's next step, ReelRoom, his context, 2026-10-16
 SCRIPTS="$SCRIPTS daily_inner_guard.py"   # door and house entries reach daily-inner only when someone spoke, 2026-09-28
 SCRIPTS="$SCRIPTS chemistry_alignment.py"   # four frontier alignments of the Lab a day, one shared log, 2026-09-28
@@ -191,7 +191,7 @@ SCRIPTS="$SCRIPTS wal-decay.py interaction-ledger.py prediction_ledger.py"   # P
 SCRIPTS="$SCRIPTS vintos-home.py"   # every home route loads it by absolute path; it did not exist on Aegis (2026-09-05)
 SCRIPTS="$SCRIPTS mischief-detector.sh mischief_log.py mischief_timing.py reelroom.py reelroom_bookmarks.py"
 SCRIPTS="$SCRIPTS robot_core.py robot_bridge.py robot_subconscious.py trial_extractor.py"
-SCRIPTS="$SCRIPTS context_selection.py isolated_exec.py run_isolated_test.py test_http_fixture.py want_stance.py skill_forge.py forge_build.py forge_resume.py forge_practice.py print_3d.py spark_sources.py spark_hands.py made_today.py forge_study.py his_inventory.py sound_read.py video_share.py tempo_check.py dot_channel.py dot_lounge.py eve_depth.py lounge_field.py room_work.py awaiting_evidence.py evidence_delivery.py want_board.py gloria_asks.py grok_reach.py midi_check.py citation_trace.py claude_cache.py self_doubt.py when_said.py vintos_mcp.py forge_want_context.py forge_house.py openclaw_skills.py astra_call.py"   # a want that holds a rate, the forge for a missing hand, the builder that fills it, the resume that hands it back to the want, the printer he does not have yet (2026-09-11)
+SCRIPTS="$SCRIPTS context_selection.py isolated_exec.py run_isolated_test.py test_http_fixture.py want_stance.py skill_forge.py forge_build.py forge_resume.py forge_practice.py print_3d.py spark_sources.py spark_hands.py made_today.py forge_study.py his_inventory.py sound_read.py video_share.py tempo_check.py dot_channel.py dot_lounge.py eve_depth.py lounge_field.py room_work.py awaiting_evidence.py evidence_delivery.py want_board.py gloria_asks.py grok_reach.py midi_check.py citation_trace.py claude_cache.py self_doubt.py when_said.py vintos_mcp.py forge_want_context.py forge_house.py openclaw_skills.py astra_call.py k2_printer.py print_lane.py imessage_out.py paper_print.py"   # a want that holds a rate, the forge for a missing hand, the builder that fills it, the resume that hands it back to the want, the printer he does not have yet (2026-09-11)
 SCRIPTS="$SCRIPTS conversation_pressure.py curiosity_scan.py metacognitive_weather.py moves.py similarity_gate.py social_calibration.py value_lineage.py voice_session_ledger.py voice_somatic_loop.py want_checkpoints.py"   # checkout ahead of the host (manifest_gap, 2026-10-16)
 SCRIPTS="$SCRIPTS pressure_gemma.py pressure_consumer.py pressure_calibration.py relationship_pressure.py"   # in no list: their fixes reached no host (2026-10-16)
 SCRIPTS="$SCRIPTS cause_head.py living_trajectory.py"   # subconscious review fixes; in no list, so never installed (2026-10-16)
@@ -439,7 +439,10 @@ locate() {
                 # looking like it worked.
                 *backup*|*backups/*|*/.graduation-review-backups/*) ;;
                 "$HOME"/repos/*|*/.openclaw/*) ;;
-                *) printf '%s\n' "$h" ;;
+                # Any other repo checkout (an experiment's clones, a scratch
+                # worktree) is never an install, wherever it sits; his named
+                # trees are kept even though ~/Vintos is itself a git repo.
+                *) if live_tree "$h" || ! repo_clone "$h"; then printf '%s\n' "$h"; fi ;;
             esac
         done | sort -u
 }
@@ -463,27 +466,51 @@ live_tree() {   # $1 = a path; succeeds when it is inside one of his install loc
     return 1
 }
 
+# A repo checkout is code, not an install (2026-11-14). Two deploys in a day refused because experiment
+# clones of the repo (~/scratch-wants-20261114, then the dream experiment's ~/dream-scratch/*) each carry a
+# scripts/turn_coordinator.py, even with VINTOS_SCRIPTS naming the live tree. A directory between the file and
+# $HOME holding a .git (dir, or the file a worktree has), a broker/tests suite or the deployer itself marks a
+# checkout; his installs carry none of them except ~/Vintos's .git, and live_tree() is asked first.
+repo_clone() {  # $1 = a path under $HOME; succeeds when it sits inside a repo checkout
+    local d="${1%/*}"
+    while [ -n "$d" ]; do
+        case "$d" in "$HOME"/*) ;; *) return 1 ;; esac   # strictly below $HOME: a dotfiles .git there marks nothing
+        if [ -e "$d/.git" ] || [ -d "$d/broker/tests" ] || [ -e "$d/scripts/deploy-atelier.sh" ]; then
+            return 0
+        fi
+        d="${d%/*}"
+    done
+    return 1
+}
+
 # turn_coordinator.py is part of the running system, so it anchors the tree.
 # New files with no copy yet are placed beside it.
-if [ -n "${VINTOS_SCRIPTS:-}" ]; then
-    ANCHOR_DIR="$(abspath "$VINTOS_SCRIPTS")"
-    [ -d "$ANCHOR_DIR" ] || die "VINTOS_SCRIPTS=$VINTOS_SCRIPTS is not a directory"
-else
+find_anchor() {   # prints his scripts dir, or refuses (exit 1) rather than guess
+    local ANCHOR_DIR="" a hits n
+    if [ -n "${VINTOS_SCRIPTS:-}" ]; then
+        a="$(abspath "$VINTOS_SCRIPTS")"
+        [ -n "$a" ] && [ -d "$a" ] || die "VINTOS_SCRIPTS=$VINTOS_SCRIPTS is not a directory"
+        if ! live_tree "$a/turn_coordinator.py" && repo_clone "$a/turn_coordinator.py"; then
+            die "VINTOS_SCRIPTS=$VINTOS_SCRIPTS is inside a repo checkout, not his install; name his live scripts dir"
+        fi
+        printf '%s' "$a"; return 0
+    fi
     hits="$(locate turn_coordinator.py)"; n="$(count "$hits")"
     if [ "$n" -eq 0 ]; then
-        printf '\nSTOP: turn_coordinator.py is nowhere under %s (depth %s).\n' "$HOME" "$DEPTH" >&2
+        printf '\nSTOP: turn_coordinator.py is nowhere under %s (depth %s), outside repo checkouts.\n' "$HOME" "$DEPTH" >&2
         printf 'Name the directory his scripts are in:\n' >&2
         printf '    VINTOS_SCRIPTS=/that/dir bash %s\n' "${BASH_SOURCE[0]}" >&2
         exit 1
     elif [ "$n" -gt 1 ]; then
-        printf '\nSTOP: turn_coordinator.py exists in more than one place:\n' >&2
+        printf '\nSTOP: turn_coordinator.py exists in more than one live-looking place (repo checkouts already left out):\n' >&2
         printf '%s\n' "$hits" | sed 's/^/    /' >&2
         printf '\nI am not going to pick. Rerun naming the live one:\n' >&2
         printf '    VINTOS_SCRIPTS=%s bash %s\n' "$(dirname -- "$(printf '%s\n' "$hits" | head -1)")" "${BASH_SOURCE[0]}" >&2
         exit 1
     fi
-    ANCHOR_DIR="$(dirname -- "$hits")"
-fi
+    printf '%s' "$(dirname -- "$hits")"
+}
+ANCHOR_DIR="$(find_anchor)" || exit 1
 say "his scripts: $ANCHOR_DIR"
 say
 
