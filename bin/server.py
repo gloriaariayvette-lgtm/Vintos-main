@@ -4343,6 +4343,9 @@ async def _bilateral_reply_engine(_tag, messages, message, user_msg, params):
                 try:
                     import action_provenance as _apv; reply = _apv.take(reply)   # his [WHY: ...], answered next turn
                 except Exception as _ape: print("[provenance/why]", _ape, flush=True)
+                try:   # his [READ: ...] / [FIND: ...]: read only, through the Study's boundary, in front of him next turn
+                    import file_reach as _frt; reply = _frt.take(reply, _tag, act=not _test_mode_active())
+                except Exception as _fre_t: print("[file-reach/take]", _fre_t, flush=True)
                 import re as _re_do; reply = _re_do.sub(r"\s*\[(?:DO|TOUCH|COMMAND):[^\]]*\]\s*", " ", reply).strip()  # Main text-only: hide device/command tags
 
                 # BIS final outcome
@@ -4589,6 +4592,10 @@ async def chat_with_vintos(msg: ChatMessage, request: Request):
         except Exception: pass
     except Exception:
         _vt_subblock = ""
+    try:   # his files, and the one she points him to, read only through the Study's boundary (file_reach.py)
+        import file_reach as _frb; _frbk = _frb.turn_block(_her, "chat", act=not _test_mode_active())
+        if _frbk: _vt_subblock += ("\n\n" if _vt_subblock else "") + _frbk
+    except Exception as _fre_b: print("[file-reach]", _fre_b, flush=True)
     # value-map + recent journal (middle context — durable, not top priority)
     _vm_ctx = ''
     try:
@@ -5254,6 +5261,10 @@ async def chat_full_context(msg: ChatMessage, request: Request):
         except Exception: pass
     except Exception:
         _vt_subblock = ""
+    try:   # his files, and the one she points him to, read only through the Study's boundary (file_reach.py)
+        import file_reach as _frb; _frbk = _frb.turn_block(_her, "chatfull", act=not _test_mode_active())
+        if _frbk: _vt_subblock += ("\n\n" if _vt_subblock else "") + _frbk
+    except Exception as _fre_b: print("[file-reach]", _fre_b, flush=True)
 
     # Inject critical context directly into user message
     # Small models ignore long system prompts but read what's next to the question
@@ -10665,6 +10676,10 @@ async def avatar_chat(msg: ChatMessage, request: Request):
             except Exception: pass
         except Exception:
             _vt_subblock_a = ""
+        try:   # his files, and the one she points him to, read only through the Study's boundary (file_reach.py)
+            import file_reach as _frb; _frbk = _frb.turn_block(_counterpart_text, _surface, act=not _test_turn)
+            if _frbk: _vt_subblock_a += ("\n\n" if _vt_subblock_a else "") + _frbk
+        except Exception as _fre_b: print("[file-reach]", _fre_b, flush=True)
         # The constitutional capsule door is outside every advisory organ's
         # parent try. Subconscious, jokes, curiosity, and the other optional
         # blocks may fail independently without vetoing an eligible capsule.
@@ -11315,6 +11330,10 @@ Your current self-model (excerpt):
                 import action_provenance as _apv   # his [WHY: ...]: answered in his next context
                 reply = _apv.take(reply, act=not (_test_turn or (_prov_envelope and not _prov_envelope.get("may_witness"))))
             except Exception as _ape: print("[avatar/why]", _ape, flush=True)
+            try:
+                import file_reach as _frt   # his [READ: ...] / [FIND: ...]: read only, in front of him next turn
+                reply = _frt.take(reply, _surface, act=not (_test_turn or (_prov_envelope and not _prov_envelope.get("may_witness"))))
+            except Exception as _fre_t: print("[avatar/file-reach]", _fre_t, flush=True)
             try:
                 import spotify_watch as _spw   # his [SPOTIFY: Title - Artist]: on her Watch, avatar chat only
                 reply = _spw.take(reply, act=not (_test_turn or (_prov_envelope and not _prov_envelope.get("may_witness"))))
