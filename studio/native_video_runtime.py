@@ -32,7 +32,11 @@ NO_REPEAT_NGRAM = 4          # no 4-token run is repeated inside one answer
 # The camera note's own template wording. An answer may report what the note says, never in the note's bookkeeping
 # words: round-4 dev answers spliced short pieces of it ("the current scene" + "has lasted" + "12 frame(s)") that no
 # single four-token run of the note catches. Active only for the phrases the asked note actually contains.
-NOTE_TEMPLATE_PHRASES = ("began at", "has lasted", "frame(", "scene(", "noted by the camera", "camera memory")
+NOTE_TEMPLATE_PHRASES = ("began at", "has lasted", "frame(", "scene(")   # each refusal is a whole word or a bracket
+# Round 5: when a speech question finds no words, that is a structured result (no_speech_captured), not note text the
+# answer could quote; the answer opens with his own sentence for it and goes on from there.
+NO_WORDS_REPLY = "I couldn't make out any words."
+NO_SOUND_REPLY = "I didn't hear anyone speaking."
 TRANSCRIBE_SPEECH = True     # a question about speech first hears the retained sound alone and transcribes it
 HEAR_MIN_CONFIDENCE = .6     # mean per-token probability below which a transcript is not trusted (dev: noise and
                              # made-up transcripts sat below .6, real speech above .62)
@@ -274,7 +278,8 @@ class LiveSession:
         self.sound_notes = SOUND_NOTE if sound_notes is None else bool(sound_notes)
         self.transcribe_speech = TRANSCRIBE_SPEECH
         self.transcript = None                     # the last hearing pass's transcript (None when none ran)
-        self._note_runs = None                     # (ids, keys) of the notes in the current question
+        self._note_runs = None                     # ((), (), template phrases) of the current question's note
+        self.no_speech_captured = False            # the last speech question found no words (a result, not a note)
         self.transcript_confidence = self.transcript_raw = None
         self.scene_markers = bool(scene_markers)   # write "[new scene]" before a frame that differs from the last
         self.last_small = None
@@ -605,18 +610,19 @@ class LiveSession:
         note = str(note or "").strip()
         sound = self.sound_note() if self.sound_notes else ""
         self.transcript = self.transcript_confidence = self.transcript_raw = None
+        speech = bool(self.transcribe_speech and self.sound_notes and SPEECH_QUESTION.search(question or ""))
+        self.no_speech_captured, reply = False, ""
+        if speech and not any(s["kind"] == "audio" and s.get("audio_tokens") for s in self.segments.values()):
+            self.no_speech_captured, reply, sound = True, NO_SOUND_REPLY, ""
 
         def question_chunk(sound):
-            # the notes' own wording may not be continued in the answer; what they carry for the answer to use (the
-            # quoted transcript, a seen tag's linked or recalled records) stays sayable
-            guard = self._ids(re.sub(r'"[^"]*"|\[TAG [^\]]*\]?', " ",
-                                     (" " + sound if sound else "") + (" " + note if note else "")))
+            # the camera note's template phrases are never said (a seen tag's records may say them)
             words = " ".join(re.sub(r'"[^"]*"|\[TAG [^\]]*\]?', " ", note or "").lower().split())
             phrases = [tuple(k for k in (self._key(t) for t in self._ids(" " + ph)) if isinstance(k, str))
                        for ph in NOTE_TEMPLATE_PHRASES if ph in words
                        and ph not in " ".join(re.findall(r'\[TAG [^\]]*\]?', note or "")).lower()]   # a record may say it
-            self._note_runs = (guard, [self._key(t) for t in guard], [ph for ph in phrases if len(ph) >= 2]) \
-                if guard else None
+            phrases = [ph for ph in phrases if len(ph) >= 2]
+            self._note_runs = ((), (), phrases) if phrases else None
             return self._ids((" " + sound if sound else "") + (" " + note if note else "")
                              + (" " + question if question else "") + self.closing)
 
@@ -697,15 +703,26 @@ class LiveSession:
                 if self.transcript_confidence < HEAR_MIN_CONFIDENCE or (
                         HEAR_ECHO.search(self.transcript) and not re.search(r'"[^"]{8,}"', self.transcript)):
                     self.transcript = ""   # too unsure, or the request echoed back: the words were not captured
-                question_ids = question_chunk(self.heard_note(self.transcript, hear_start, hear_end))
-                if len(question_ids) + int(max_tokens) > ANSWER_RESERVE:
-                    question_ids = question_chunk(self.heard_note("", hear_start, hear_end))
+                heard_text = self.heard_note(self.transcript, hear_start, hear_end)
+                if '"' in heard_text:
+                    question_ids = question_chunk(heard_text)
+                if '"' not in heard_text or len(question_ids) + int(max_tokens) > ANSWER_RESERVE:
+                    self.no_speech_captured, reply = True, NO_WORDS_REPLY   # a result, not a note to quote
+                    question_ids = question_chunk("")
             for at, embeds in recall_frames:
                 forward(self.stream.text(self._ids(" " + stamp(at) + " ") + self.boi), mask=recall_hidden)
                 forward(embeds, vision=True, mask=recall_hidden)
                 forward(self.stream.text(self.eoi), mask=recall_hidden)
             self.scores = forward(self.stream.text(question_ids))
-            for _ in range(int(max_tokens)):
+            if reply:
+                said = self._ids(reply)[:int(max_tokens)]
+                tokens.extend(said)
+                first = time.perf_counter() - started
+                if on_text:
+                    on_text(self.tokenizer.decode(tokens, skip_special_tokens=True))
+                if len(tokens) < int(max_tokens):
+                    self.scores = forward(self.stream.text(said))
+            for _ in range(int(max_tokens) - len(tokens)):
                 token = self._choose(float(temperature), tokens, self._note_runs)
                 if first is None:
                     first = time.perf_counter() - started
@@ -729,7 +746,8 @@ class LiveSession:
                   "total_seconds": time.perf_counter() - started, "window": self.window(),
                   "cache_tokens": mark, "frames_seen": self.frames, "frames_evicted": self.evicted_frames,
                   "checkpoint_sha256": self.mind.sha, "native_video": True, "transcript": self.transcript,
-                  "transcript_confidence": self.transcript_confidence}
+                  "transcript_confidence": self.transcript_confidence,
+                  "no_speech_captured": self.no_speech_captured}
         # Commit what arrived during the answer one item per step, in arrival order, so the caller can take in
         # new arrivals in between (they queue behind the held items, never ahead of them).
         committed = 0
@@ -781,22 +799,10 @@ class LiveSession:
         scores = guard_repeats(scores, history, keys)
         if not notes:
             return self._pick(scores, temperature)
-        ids, note_keys, phrases = notes[0], notes[1], (notes[2] if len(notes) > 2 else ())
-        n1 = NO_REPEAT_NGRAM - 1
-        if len(history) >= n1:
-            tail = tuple(keys[-n1:])
-            for i in range(len(ids) - n1):
-                nxt = note_keys[i + n1]
-                if tuple(note_keys[i:i + n1]) == tail and ids[i + n1] < len(scores) and _wordy(nxt):
-                    scores[ids[i + n1]] = -np.inf   # a note is never read out (its numbers are facts, never bent)
-        # the same by meaning: whitespace tokens are skipped and any token spelling the banned word is refused
+        phrases = notes[2] if len(notes) > 2 else ()
+        # whitespace tokens are skipped and any token spelling the refused word is refused
         said = [k for k in keys if isinstance(k, str)]
-        note_words = [k for k in note_keys if isinstance(k, str)]
         banned = set()
-        if len(said) >= n1:
-            tail = tuple(said[-n1:])
-            banned.update(note_words[i + n1] for i in range(len(note_words) - n1)
-                          if tuple(note_words[i:i + n1]) == tail and _wordy(note_words[i + n1]))
         for ph in phrases:
             if len(said) >= len(ph) - 1 and tuple(said[len(said) - len(ph) + 1:]) == ph[:-1]:
                 banned.add(ph[-1])

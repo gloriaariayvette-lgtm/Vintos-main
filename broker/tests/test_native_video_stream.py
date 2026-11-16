@@ -643,14 +643,19 @@ check('a transcript keeps only the spoken words, without a lead-in',
 hb.calls = []
 import native_video_runtime as _rt
 _floor, _rt.HEAR_MIN_CONFIDENCE = _rt.HEAR_MIN_CONFIDENCE, 1.01
-hs.ask('what is being said?', max_tokens=1)
+_unsure = hs.ask('what is being said?', max_tokens=3)
 _rt.HEAR_MIN_CONFIDENCE = _floor
-check('an unsure transcript is not quoted: the words were not captured', hs.transcript == '' and any(
-      c[0][:len(mind.tokenizer.encode(' [HEARD from'))] == [float(t) for t in mind.tokenizer.encode(' [HEARD from')] for c in hb.calls))
+_heard_prefix = [float(t) for t in mind.tokenizer.encode(' [HEARD')]
+check('an unsure transcript is a result, not a note: no_speech_captured, and he says so in his own words',
+      hs.transcript == '' and _unsure['no_speech_captured'] is True
+      and _unsure['tokens'] == mind.tokenizer.encode(_rt.NO_WORDS_REPLY)[:3]
+      and not any(c[0][:len(_heard_prefix)] == _heard_prefix for c in hb.calls))
 hb.calls = []
 hs.ask('which way does it move?', max_tokens=1)
 check('a speech question with no sound in the window has no hearing pass and says none was captured',
-      quiet.ask('what is being said?', max_tokens=1)['transcript'] is None)
+      quiet.ask('what is being said?', max_tokens=1)['transcript'] is None and quiet.no_speech_captured is True
+      and quiet.ask('what is being said?', max_tokens=2)['tokens'] == mind.tokenizer.encode(_rt.NO_SOUND_REPLY)[:2]
+      and quiet.ask('which way?', max_tokens=1)['no_speech_captured'] is False)
 import native_video_runtime as _rt2
 check('the hearing request echoed back is not taken as speech', _rt2.HEAR_ECHO.search('Transcribe that, word for word.')
       and _rt2.HEAR_ECHO.search('In this, word for word.') and not _rt2.HEAR_ECHO.search('He has grave doubts'))
@@ -678,24 +683,18 @@ class Reader(Backend):
         return scores
 
 
-rd = LiveSession(mind, Reader(), clock=lambda: 0.)
-rd.frame(frame(10), at=0.)
-out = rd.ask('which way does it move?', max_tokens=12)['tokens']
-note_ids = mind.tokenizer.encode(' ' + rd.sound_note())
-runs = {tuple(note_ids[i:i + 4]) for i in range(len(note_ids) - 3)}
-check('an answer never reads a note out: no four-token run of a note is continued',
-      not any(tuple(out[i:i + 4]) in runs for i in range(len(out) - 3)) and rd._note_runs is None)
 rd2 = LiveSession(mind, Reader(), clock=lambda: 0., sound_notes=False)
 rd2.frame(frame(10), at=0.)
 _g, _orig = [], rd2._choose
 rd2._choose = lambda t, h=(), n=None: (_g.append(n), _orig(t, h, n))[1]
-rd2.ask('what is this tag?', max_tokens=1, note='[CAMERA MEMORY: the current scene began at 00:00.] [TAG tag36h11:7 in '
-        'view - linked record(s): the blue mug from the Lisbon trip] [TAG tag36h11:7 - recalled sighting: Gloria, kitchen]')
-_within = lambda part, ids: any(ids[i:i + len(part)] == part for i in range(len(ids) - len(part) + 1))
-_guard = list(_g[0][0]) if _g and _g[0] else []
-check("a seen tag's linked and recalled records stay sayable; the note's own wording is still guarded",
-      _within(mind.tokenizer.encode('current scene began'), _guard)
-      and not any(_within(mind.tokenizer.encode(w), _guard) for w in ('Lisbon', 'kitchen', 'linked record')))
+_cam = '[CAMERA MEMORY: the current scene began at 00:00.] '
+rd2.ask('what is this tag?', max_tokens=1, note=_cam + '[TAG tag36h11:7 in view - linked record(s): the blue mug]')
+rd2.ask('what is this tag?', max_tokens=1, note=_cam + '[TAG tag36h11:7 in view - linked record(s): class began at 9]')
+rd2.ask('what is this?', max_tokens=1, note='[CAMERA MEMORY: something in view moved while the camera held still.]')
+_began = tuple(rd2._key(t) for t in rd2._ids(' began at'))
+check("only the camera note's template phrases are refused, never its other words; a tag record may say them",
+      _g[0] and _g[0][:2] == ((), ()) and _began in _g[0][2] and _g[1] is None and _g[2] is None
+      and rd2._note_runs is None)
 class Speller(Backend):
     """Greedy logits that spell the note's template wording with a token the note itself never used."""
     def forward(self, embeds, cache, vision=False):
