@@ -2545,12 +2545,12 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
             check_want_interference(want_text, entry["id"])
     except Exception as _wi_err:
         print(f"[express_want] Interference check failed: {_wi_err}", file=__import__("sys").stderr)
-    # Keep 10 working wants (want_board.cap). Exempt only what carries an obligation - live agent work, a promise he
-    # owes, a want she holds herself - and what is parked off the working board. Routed to her, her step pending, or
-    # worked in the last two days ranks a want first for the ten places; it is not an exemption (judge audit,
-    # 17 November: 51 of 61 live wants were exempt, so the cap removed nothing). Past the ten, a want waiting on her
-    # is parked AWAITING_GLORIA (want_board releases or wakes it); any other is dismissed. Until 2026-10-05 it
-    # protected multistep, gloria_routed and READY, and 57 of 57 were protected (Chat's inspection on Aegis).
+    # Keep 10 working wants (want_board.cap). Not counted: what carries an obligation (live agent work, a promise he
+    # owes, a want she holds herself), what is parked off the working board, and the final stage, waiting on Gloria,
+    # which leaves on its own clock (want_completion.move_on; Gloria, 17 November). Worked in the last two days is no
+    # exemption (judge audit, 17 November: 51 of 61 live wants were exempt, so the cap removed nothing): past the
+    # ten, the least recently moved are dismissed. Until 2026-10-05 it protected multistep, gloria_routed and READY,
+    # and 57 of 57 were protected (Chat's inspection on Aegis).
     try:
         wants = json.load(open(wants_file))          # re-read: the interference check may have written
     except Exception:
@@ -2563,13 +2563,12 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
         except ImportError:
             import sys as _bc_s; _bc_s.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
             from want_board import cap as _board_cap
-        _kept, _evicted_now, _parked_now = _board_cap(_open, datetime.now())
+        _kept, _evicted_now = _board_cap(_open, datetime.now())
     except Exception as _cap_e:    # a broken cap never silences a want: keep them all, say so
         print(f"[express_want] population cap unavailable: {_cap_e}", file=__import__("sys").stderr)
-        _kept, _evicted_now, _parked_now = _open, [], []
-    if _evicted_now or _parked_now:
-        print(f"[express_want] population cap: {len(_evicted_now)} dismissed, {len(_parked_now)} parked awaiting her",
-              file=__import__("sys").stderr)
+        _kept, _evicted_now = _open, []
+    if _evicted_now:
+        print(f"[express_want] population cap: {len(_evicted_now)} dismissed", file=__import__("sys").stderr)
     if _evicted_now:
         _dw_file = wants_file.replace("current-wants", "dismissed-wants")
         try:
