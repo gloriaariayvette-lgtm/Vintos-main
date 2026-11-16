@@ -613,7 +613,8 @@ class LiveSession:
                                      (" " + sound if sound else "") + (" " + note if note else "")))
             words = " ".join(re.sub(r'"[^"]*"|\[TAG [^\]]*\]?', " ", note or "").lower().split())
             phrases = [tuple(k for k in (self._key(t) for t in self._ids(" " + ph)) if isinstance(k, str))
-                       for ph in NOTE_TEMPLATE_PHRASES if ph in words]
+                       for ph in NOTE_TEMPLATE_PHRASES if ph in words
+                       and ph not in " ".join(re.findall(r'\[TAG [^\]]*\]?', note or "")).lower()]   # a record may say it
             self._note_runs = (guard, [self._key(t) for t in guard], [ph for ph in phrases if len(ph) >= 2]) \
                 if guard else None
             return self._ids((" " + sound if sound else "") + (" " + note if note else "")
@@ -799,15 +800,14 @@ class LiveSession:
         for ph in phrases:
             if len(said) >= len(ph) - 1 and tuple(said[len(said) - len(ph) + 1:]) == ph[:-1]:
                 banned.add(ph[-1])
-        first = self._pick(scores, temperature)
-        token = first
-        for _ in range(16):
+        token = self._pick(scores, temperature)
+        for _ in range(64):   # each refused spelling leaves the race; the last pick stands (never the first refused)
             key = self._key(token)
             if not (isinstance(key, str) and key in banned):
-                return token
+                break
             scores[token] = -np.inf
             token = self._pick(scores, temperature)
-        return first
+        return token
 
     def _pick(self, scores, temperature):
         if not temperature:
