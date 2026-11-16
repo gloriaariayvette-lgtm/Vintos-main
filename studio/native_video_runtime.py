@@ -623,8 +623,10 @@ class LiveSession:
                        and ph not in " ".join(re.findall(r'\[TAG [^\]]*\]?', note or "")).lower()]   # a record may say it
             phrases = [ph for ph in phrases if len(ph) >= 2]
             self._note_runs = ((), (), phrases) if phrases else None
-            return self._ids((" " + sound if sound else "") + (" " + note if note else "")
-                             + (" " + question if question else "") + self.closing)
+            # order: the camera note, the question, then what was heard last, so an answer that quotes the
+            # transcript runs on into the end of the turn, never into the camera note's label
+            return self._ids((" " + note if note else "") + (" " + question if question else "")
+                             + ("\n" + sound if sound else "") + self.closing)
 
         question_ids = question_chunk(sound)
         if len(question_ids) + int(max_tokens) + (HEAR_TOKENS * 2 if self.transcribe_speech else 0) > ANSWER_RESERVE:
@@ -700,8 +702,9 @@ class LiveSession:
                 self.stream.truncate(self.cache, hear_mark)
                 self.transcript = self.transcript_raw = self.tokenizer.decode(said, skip_special_tokens=True).strip()
                 self.transcript_confidence = float(np.exp(np.mean(logps))) if logps else 0.
-                if self.transcript_confidence < HEAR_MIN_CONFIDENCE or (
-                        HEAR_ECHO.search(self.transcript) and not re.search(r'"[^"]{8,}"', self.transcript)):
+                quoted = re.findall(r'"([^"]+)"', self.transcript)
+                if self.transcript_confidence < HEAR_MIN_CONFIDENCE or HEAR_ECHO.search(
+                        " ".join(quoted) if quoted else self.transcript):   # the request echoed, quoted or not
                     self.transcript = ""   # too unsure, or the request echoed back: the words were not captured
                 heard_text = self.heard_note(self.transcript, hear_start, hear_end)
                 if '"' in heard_text:

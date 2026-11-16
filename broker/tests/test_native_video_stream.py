@@ -585,8 +585,9 @@ heard_ids = []
 _fw = heard.stream.forward
 heard.stream.forward = lambda e, c, v=False: (heard_ids.append(e[0, :, 0].tolist()), _fw(e, c, v))[1]
 heard.ask('what is moving?', max_tokens=1)
-enc = [float(t) for t in mind.tokenizer.encode(' ' + heard.sound_note())]
-check('the sound note opens the question', any(c[:len(enc)] == enc for c in heard_ids))
+enc = [float(t) for t in mind.tokenizer.encode(chr(10) + heard.sound_note())]
+check('the sound note closes the question, after it and any camera note',
+      any(c[i:i + len(enc)] == enc for c in heard_ids for i in range(len(c))))
 check('the sound note can be turned off', LiveSession(mind, Backend(), clock=lambda: 0., sound_notes=False).sound_notes is False)
 sent = []
 cs = client.Stream.__new__(client.Stream)
@@ -628,7 +629,8 @@ audio_pos = set(int(p) for p in hs.positions[np.isin(hs.owner, [i for i, x in hs
 hear_calls = [c for c in hb.calls if c[1] and frame_pos <= c[1]]
 check('a speech question first hears the sound alone: frames and the sound pieces masked, then rolled back',
       hear_calls and all(audio_pos <= c[1] for c in hear_calls) and hs.cache == before and hres['transcript'] == 'aa')
-hq = [c for c in hb.calls if c[0][:len(mind.tokenizer.encode(' [HEARD'))] == [float(t) for t in mind.tokenizer.encode(' [HEARD')]]
+_hp = [float(t) for t in mind.tokenizer.encode('\n[HEARD')]
+hq = [c for c in hb.calls if any(c[0][i:i + len(_hp)] == _hp for i in range(len(c[0])))]
 check('the answer gets the transcript with its provenance and sees the window as usual', hq and hq[0][1] is None)
 check('the heard note says where the words came from, or that none could be made out',
       hs.heard_note('hello there', 0., 4.) == '[HEARD from the microphone (00:00-00:04): "hello there"]'
@@ -645,11 +647,11 @@ import native_video_runtime as _rt
 _floor, _rt.HEAR_MIN_CONFIDENCE = _rt.HEAR_MIN_CONFIDENCE, 1.01
 _unsure = hs.ask('what is being said?', max_tokens=3)
 _rt.HEAR_MIN_CONFIDENCE = _floor
-_heard_prefix = [float(t) for t in mind.tokenizer.encode(' [HEARD')]
+_heard_prefix = [float(t) for t in mind.tokenizer.encode('[HEARD')]
 check('an unsure transcript is a result, not a note: no_speech_captured, and he says so in his own words',
       hs.transcript == '' and _unsure['no_speech_captured'] is True
       and _unsure['tokens'] == mind.tokenizer.encode(_rt.NO_WORDS_REPLY)[:3]
-      and not any(c[0][:len(_heard_prefix)] == _heard_prefix for c in hb.calls))
+      and not any(c[0][i:i + len(_heard_prefix)] == _heard_prefix for c in hb.calls for i in range(len(c[0]))))
 hb.calls = []
 hs.ask('which way does it move?', max_tokens=1)
 check('a speech question with no sound in the window has no hearing pass and says none was captured',
@@ -657,7 +659,11 @@ check('a speech question with no sound in the window has no hearing pass and say
       and quiet.ask('what is being said?', max_tokens=2)['tokens'] == mind.tokenizer.encode(_rt.NO_SOUND_REPLY)[:2]
       and quiet.ask('which way?', max_tokens=1)['no_speech_captured'] is False)
 import native_video_runtime as _rt2
+_qe = hs.transcript
+hb.calls = []
 check('the hearing request echoed back is not taken as speech', _rt2.HEAR_ECHO.search('Transcribe that, word for word.')
+      and _rt2.HEAR_ECHO.search(' '.join(__import__('re').findall(r'"([^"]+)"',
+                                'The speaker says, "Write down exactly what the speaker says in this audio."')))
       and _rt2.HEAR_ECHO.search('In this, word for word.') and not _rt2.HEAR_ECHO.search('He has grave doubts'))
 check('visual questions do not trigger a hearing pass', not any(_rt2.SPEECH_QUESTION.search(q) for q in (
       'Tell me what you see', 'Can you tell what color the car is?', 'Is there a heart monitor?', 'Which way does it move?'))
