@@ -633,9 +633,13 @@ def _plan(investigation, context, ask, note=None):
                         'finish': ('finish asks for a review of the evidence so far; it adds no step. Choose it as '
                                    'soon as these outputs could answer the question. At the budget the evidence is '
                                    'reviewed anyway.')},
-        'available_inputs': {'structures': lab_instruments.artifacts('structure', 8),
+        # LAB_ENTITY_GROUNDING (draft, 17 Nov): once the investigation's protein is resolved, only models of that
+        # protein (and reference structures) are offered, each labelled; off, or unresolved: as before
+        'available_inputs': {'structures': __import__('lab_entity').structure_menu(investigation, 8),
                              'sequences': lab_instruments.artifacts('sequence', 8)},
         'tools': _menu(),
+        **({'structure_identities': __import__('lab_entity').labels(__import__('lab_entity').structure_menu(investigation, 8)),
+            'entity_note': __import__('lab_entity').note(investigation)} if __import__('lab_entity').enabled() else {}),
         'available_routes':list(ROUTES),
         'request_examples': {'source':{'source':'ncbi','operation':'protein','organism':'a sourced organism','term':'one protein family'},
                              'instrument':{'skill':'fold_read','operation':'structure.read',
@@ -2616,6 +2620,12 @@ def _carry_out(data, investigation, value, plan_ref, context, ask, execute, may_
                              'not_the_planned_step')
             raise ValueError(why)
         problem = _offer_problem(route, request) if may_replan else None
+        off_target = __import__('lab_entity').problem(investigation, route, request)
+        if off_target:
+            # LAB_ENTITY_GROUNDING (draft): a structure step on another protein's model is never run for this question
+            if may_replan:
+                raise replan({'why_not_run': 'nothing was sent: ' + off_target}, 'off_target_structure')
+            raise ValueError(off_target)
         if problem:
             # Told no, and asked again at once with the exact names it may choose from: it is a step only if the
             # answer to that is not a real operation either, and then it is carried out (and refused) as before

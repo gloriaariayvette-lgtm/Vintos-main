@@ -244,6 +244,9 @@ def explain(value, investigation, note=None, planned=None):
         plan_ref = {k: planned.get(k) for k in ('line_id', 'plan_id', 'step_index', 'step_number', 'route', 'tool')}
         if not I.plan_step_matches(plan_ref, route, request):
             return 'not_planned_step', 'the frontier plan names route %s, tool %s' % (planned.get('route'), planned.get('tool'))
+    off_target = __import__('lab_entity').problem(investigation, route, request)
+    if off_target:
+        return 'off_target_structure', off_target
     offer = I._offer_problem(route, request)
     if offer:
         why, choices = offer
