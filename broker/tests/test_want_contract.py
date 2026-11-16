@@ -49,7 +49,7 @@ check("an old observation from an automatic source is HELD",
 check("a current generated candidate may enter",
       wc.admission_state("structural", "current_desire", "I want the act now") == "ADMIT_CURRENT_CANDIDATE")
 check("an authored want is not made suspect for missing generated rationale",
-      wc.admission_state("chat", "", "") == "ADMIT_AUTHORED_OR_UNCLASSIFIED")
+      wc.admission_state("chat", "", "") == "ADMIT_AUTHORED")   # unclassified labels are screened now (test_want_gates)
 check("an enrichment-unavailable candidate fails open, not silently held",
       not wc.admission_state("structural", "unknown", "").startswith("HELD")
       and not wc.admission_state("latent_thread", "", "").startswith("HELD"))

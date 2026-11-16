@@ -69,16 +69,46 @@ _ALIASES = {
     "search_files": "read_memory",
 }
 
+# Source labels are written by many organs, in many spellings: "web_search" and "web-search" both reach the store
+# (judge audit, 17 November), and only the spelling listed here was screened, so the other walked past admission.
+# Every label is compared in one canonical form: lower case, "_" and spaces as "-", anything after a ":" dropped
+# ("ambition: <goal>" is the ambition organ).
+_SOURCE_ALIASES = {
+    "websearch": "web-search",
+    "latentthread": "latent-thread",
+    "wantscheck": "wants-check",
+    "idlejournal": "idle-journal",
+}
+
+# Words that are his or come to him addressed as his: what he says or writes himself, and the letters he answers.
+# Only these skip the shape screen.
+AUTHORED_SOURCES = {
+    "chat", "conversation", "voice", "journal", "mirror", "moltbook",
+    "email", "grok-letter", "letter-promise", "lab-finding",
+}
+
 GENERATED_SOURCES = {
-    "structural", "latent_thread", "emotional-reflection", "wants-check",
+    "structural", "latent-thread", "emotional-reflection", "wants-check",
     "web-search", "evolution", "idle-journal",
 }
 
 
+def canonical_source(source):
+    """One spelling for a source label: "Web_Search", "web search" and "web-search" are the same organ."""
+    s = str(source or "").strip().lower().split(":", 1)[0]
+    s = re.sub(r"[\s_]+", "-", s)
+    s = re.sub(r"-{2,}", "-", s).strip("-")
+    return _SOURCE_ALIASES.get(s.replace("-", ""), s)
+
+
 def admission_state(source, candidate_kind="", present_pull=""):
-    """Shape screen only. Roots remain the evidence; generated prose is not."""
-    if str(source or "").lower() not in GENERATED_SOURCES:
-        return "ADMIT_AUTHORED_OR_UNCLASSIFIED"
+    """Shape screen only. Roots remain the evidence; generated prose is not.
+
+    Only an authored source skips the screen. A generated source, and any label not known to be authored (a new
+    organ, a misspelling, an empty source), is screened: the screen still fails open when enrichment did not run,
+    so an unfamiliar label is never silenced, it is only no longer waved through."""
+    if canonical_source(source) in AUTHORED_SOURCES:
+        return "ADMIT_AUTHORED"
     kind = str(candidate_kind or "").lower()
     pull = str(present_pull or "").strip()
     # Enrichment unavailable (enrich_want returns candidate_kind "unknown"/empty on any LLM

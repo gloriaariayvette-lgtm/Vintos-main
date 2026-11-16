@@ -2342,17 +2342,18 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
             return {"id": _pt_id, "variation_of": _pt_id}
     except Exception as _pt_e:
         print(f"[express_want] plain-telling fold skipped: {_pt_e}", file=__import__("sys").stderr)
-    # Deduplication — check against existing unfulfilled wants
-    _want_words = set(want_text.lower().split())
+    # Deduplication — check against existing unfulfilled wants, with the "I want to" template and punctuation taken
+    # off first and the board's own content-word fold beside it (want_board.near_duplicate, judge audit 17 November)
+    try:
+        from want_board import near_duplicate as _near_dup
+    except ImportError:
+        import sys as _nd_s; _nd_s.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+        from want_board import near_duplicate as _near_dup
     for _existing in wants:
-        if _existing.get("fulfilled"):
+        if not isinstance(_existing, dict) or _existing.get("fulfilled"):
             continue
-        _existing_words = set(_existing.get("want", "").lower().split())
-        if not _want_words or not _existing_words:
-            continue
-        _overlap = len(_want_words & _existing_words) / max(len(_want_words), len(_existing_words))
-        if _overlap > 0.65:
-            print(f"[express_want] Duplicate suppressed (overlap {_overlap:.2f}): {want_text[:60]}", file=__import__("sys").stderr)
+        if _near_dup(str(want_text), str(_existing.get("want", ""))):
+            print(f"[express_want] Duplicate suppressed (same as {_existing.get('id')}): {want_text[:60]}", file=__import__("sys").stderr)
             return
 
     # Fulfilled-similarity gate — don't re-seed a desire already lived
@@ -2544,47 +2545,31 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
             check_want_interference(want_text, entry["id"])
     except Exception as _wi_err:
         print(f"[express_want] Interference check failed: {_wi_err}", file=__import__("sys").stderr)
-    # Keep the last 10 working wants. Protected: a want that completed a step in the last two days (it is being
-    # worked), one Gloria routed or holds, and anything parked off the working board (want_board.py). It
-    # protected multistep, gloria_routed and READY until 2026-10-05, and every want had become all three: 57 of 57
-    # protected, so the cap removed nothing and the board grew for a month (Chat's inspection on Aegis).
-    def _is_protected(w):
-        if w.get("board") or w.get("gloria_routed") or w.get("manually_routed"):
-            return True       # her silence is never a no; after a week it parks off the board instead (want_board)
-        # A want an agent is working, or that carries a promise he owes, is never the cap's to dismiss (12 November:
-        # the cap dismissed an adopted promise-want in work, and its promise stayed "in work" with no want).
-        _aw = w.get("agent_work") if isinstance(w.get("agent_work"), dict) else {}
-        # ... while that work or promise is live: finished agent work, a promise kept another way, or a place given
-        # back more than two weeks ago no longer protects (review, 12 November: the protected set must not grow for ever)
-        _rel = w.get("adoption_released") if isinstance(w.get("adoption_released"), dict) else {}
-        _rel_old = False
-        try: _rel_old = bool(_rel) and (__import__("time").time() - float(_rel.get("at") or 0)) > 14 * 86400
-        except (TypeError, ValueError): pass
-        if (_aw.get("status") in ("completed", "dropped") or _rel.get("reason") == "kept_another_way" or _rel_old):
-            _aw = {}
-        elif (_aw or w.get("adopted_from") or _aw.get("commitment_ids") or _aw.get("promise_ids")
-                or any(isinstance(r, dict) and r.get("kind") in ("commitment", "promise") for r in (w.get("source_refs") or []))):
-            return True
-        if any(isinstance(s, dict) and str(s.get("capability") or "").lower() in ("gloria", "you")
-               and s.get("status") != "completed" for s in (w.get("steps") or [])) and w.get("outreach_count"):
-            return True       # routed to her with a step only she can answer still pending
-        try:
-            done = [datetime.fromisoformat(str(h.get("completed_at"))[:26]) for h in (w.get("step_history") or [])
-                    if isinstance(h, dict) and h.get("completed_at")]
-            return bool(done) and (datetime.now() - max(done)).total_seconds() < 48 * 3600
-        except (TypeError, ValueError):
-            return False
+    # Keep 10 working wants (want_board.cap). Exempt only what carries an obligation - live agent work, a promise he
+    # owes, a want she holds herself - and what is parked off the working board. Routed to her, her step pending, or
+    # worked in the last two days ranks a want first for the ten places; it is not an exemption (judge audit,
+    # 17 November: 51 of 61 live wants were exempt, so the cap removed nothing). Past the ten, a want waiting on her
+    # is parked AWAITING_GLORIA (want_board releases or wakes it); any other is dismissed. Until 2026-10-05 it
+    # protected multistep, gloria_routed and READY, and 57 of 57 were protected (Chat's inspection on Aegis).
     try:
         wants = json.load(open(wants_file))          # re-read: the interference check may have written
     except Exception:
         pass
     lingering = [w for w in wants if w.get("dismissed") and not w.get("fulfilled")]   # want_board archives these
-    protected = [w for w in wants if not w.get("fulfilled") and not w.get("dismissed") and _is_protected(w)]
-    unprotected = [w for w in wants if not w.get("fulfilled") and not w.get("dismissed") and not _is_protected(w)]
-    _evicted_now = unprotected[:-10]
-    if _evicted_now:
-        print(f"[express_want] population cap: {len(_evicted_now)} dismissed, {len(protected)} protected "
-              f"(agent work, promises, routed to her, worked lately or parked)", file=__import__("sys").stderr)
+    _open = [w for w in wants if not w.get("fulfilled") and not w.get("dismissed")]
+    try:
+        try:
+            from want_board import cap as _board_cap
+        except ImportError:
+            import sys as _bc_s; _bc_s.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+            from want_board import cap as _board_cap
+        _kept, _evicted_now, _parked_now = _board_cap(_open, datetime.now())
+    except Exception as _cap_e:    # a broken cap never silences a want: keep them all, say so
+        print(f"[express_want] population cap unavailable: {_cap_e}", file=__import__("sys").stderr)
+        _kept, _evicted_now, _parked_now = _open, [], []
+    if _evicted_now or _parked_now:
+        print(f"[express_want] population cap: {len(_evicted_now)} dismissed, {len(_parked_now)} parked awaiting her",
+              file=__import__("sys").stderr)
     if _evicted_now:
         _dw_file = wants_file.replace("current-wants", "dismissed-wants")
         try:
@@ -2596,14 +2581,14 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
             _ev_w["dismissed"] = True
             _ev_w["dismissed_at"] = datetime.now().isoformat()
             _ev_w["dismissed_by"] = "population_cap"
-            _ev_w["dismissed_reason"] = "lost the protection race: more than 10 unprotected wants"
+            _ev_w["dismissed_reason"] = "past the ten working places: more than 10 wants on the working board"
             _dw_log.append(_ev_w)
             print(f"[express_want] DISMISSED (cap) {_ev_w.get('id')}: {_ev_w.get('want','')[:60]}", file=__import__("sys").stderr)
         _dw_tmp = _dw_file + ".tmp"
         with open(_dw_tmp, "w") as _dw_f:
             json.dump(_dw_log, _dw_f, indent=2)
         import os as _dw_os; _dw_os.replace(_dw_tmp, _dw_file)
-    wants = protected + unprotected[-10:] + lingering
+    wants = _kept + lingering
     with open(wants_file, "w") as f:
         json.dump(wants, f, indent=2)
     # A want that names a rate ("analyse less") opens a stance now, with this want's

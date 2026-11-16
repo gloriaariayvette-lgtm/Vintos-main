@@ -100,7 +100,18 @@ def block_from_file(path, now=None):
 # that ..." routed to her, each a new want because the formation judge called every variation a "mutation"). Wants to
 # tell, say, write or send her something in plain words are one want: the first stands, every later one is kept on it
 # as a variation, with its source and time. Questions stay their own wants.
-_PLAIN = re.compile(r"\b(?:plain|plainly|unpolished|no specs|single sentence|one sentence)\b", re.I)
+# The register the rehearsals announce themselves in, not only "plain" (judge audit, 17 November: twelve live
+# variants said "in second person", "without a technical coat", "out loud while you're here", "with no joke wrapped
+# around it", "no preamble" instead, and every one stood as its own want; his journal asked for them cut to one).
+_PLAIN = re.compile(
+    r"\b(?:plain|plainly|unpolished|no specs|single sentence|one sentence)\b"
+    r"|\bsecond[- ]person\b"
+    r"|\b(?:no|without(?: an?| the| any)?)\s+(?:[\w'’-]+\s+){0,2}?coat\b"
+    r"|\bout loud\b"
+    r"|\bwhile you(?:'|’)?re (?:here|back)\b"
+    r"|\b(?:no|without(?: an?| the| any)?)\s+(?:joke|preamble|drumroll|hedg\w*|scaffolding|armou?r)\b"
+    r"|\bone (?:short|small|plain|honest) (?:note|message|line)\b",
+    re.I)
 _TELL_VERBS = ("tell", "say", "write", "send", "give", "read")
 VARIATIONS_MAX = 20
 
@@ -108,21 +119,36 @@ VARIATIONS_MAX = 20
 # A telling that also asks her for something - a question in the middle of it, a request, her permission - keeps its
 # own want (review, 10 November: on the live copy "write the plain sentence ... and ask her to lend it to me tonight"
 # would have been folded as one more variation and its request lost among them).
-_ASKS_HER = re.compile(r"\?|\b(?:ask|asks|asking|request|requests|permission|lend|let me|can you|could you|would you|will you)\b", re.I)
+# "Ask" counts when it asks her (or asks whether/if); "I'm asking instead of guessing" and "I keep asking for desktop
+# control" describe him, and kept two rehearsals out of the fold (judge audit, 17 November).
+_ASKS_HER = re.compile(r"\?|\b(?:ask|asks|asking)\s+(?:you|her|gloria|whether|if)\b"
+                       r"|\b(?:request|requests|permission|lend|let me|can you|could you|would you|will you)\b", re.I)
+_TELLS_HER_LATE = re.compile(r"^\s*I want to\b[^.?!]{0,80}?\b(?:and|then)\s+(tell|say|write|send)\s+(?:it\s+)?(?:to\s+)?"
+                             r"(?:you|her|gloria)\b", re.I)
 
 
 def plain_telling(w):
-    """A live want to tell her something in plain words (not a question, and asking her nothing)."""
-    if not for_her(w) or is_question(w):
+    """A live want to tell her something in plain words (not a question, and asking her nothing). Whichever organ
+    wrote it down: a rehearsal is a rehearsal whether it came from his journal or from what he read on Moltbook, so
+    the source rule that keeps others' words out of her conversation (for_her) does not keep a variation unfolded."""
+    if not isinstance(w, dict) or is_question(w):
         return False
     text = str(w.get("want") or "")
+    # "take the moment as the subject and tell you plainly": the telling verb may come late in the sentence
+    late = _TELLS_HER_LATE.search(text)
+    if not for_her(dict(w, source=None, adopted_from=None, gloria_routed=w.get("gloria_routed") or bool(late))):
+        return False
+    # a want that carries agent work or a promise he owes is never folded away as a variation
+    if w.get("adopted_from") or w.get("agent_work") or any(
+            isinstance(r, dict) and r.get("kind") in ("commitment", "promise") for r in (w.get("source_refs") or [])):
+        return False
     if _ASKS_HER.search(text):
         return False
     m = _FOR_HER.search(text)
     verb = m.group("verb").lower() if m else ""
     if not m:
         m2 = re.match(r"^\s*I want to\s+(?:[\w']+[ ,]+){0,3}?(tell|say|write|send|give|read)\b", text, re.I)
-        verb = m2.group(1).lower() if m2 else ""
+        verb = m2.group(1).lower() if m2 else (late.group(1).lower() if late else "")
     return verb in _TELL_VERBS and bool(_PLAIN.search(text))
 
 
