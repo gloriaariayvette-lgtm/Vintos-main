@@ -29,6 +29,10 @@ SCENE_CHANGE = .15           # mean 32x32 luminance change (0..1) that marks a n
 SCENE_MARKER = "[new scene]"
 REPEAT_PENALTY = 1.1         # answer-token repetition penalty (the video path decodes greedily by default)
 NO_REPEAT_NGRAM = 4          # no 4-token run is repeated inside one answer
+# The camera note's own template wording. An answer may report what the note says, never in the note's bookkeeping
+# words: round-4 dev answers spliced short pieces of it ("the current scene" + "has lasted" + "12 frame(s)") that no
+# single four-token run of the note catches. Active only for the phrases the asked note actually contains.
+NOTE_TEMPLATE_PHRASES = ("began at", "has lasted", "frame(", "scene(", "noted by the camera", "camera memory")
 TRANSCRIBE_SPEECH = True     # a question about speech first hears the retained sound alone and transcribes it
 HEAR_MIN_CONFIDENCE = .6     # mean per-token probability below which a transcript is not trusted (dev: noise and
                              # made-up transcripts sat below .6, real speech above .62)
@@ -58,6 +62,11 @@ def _small_gray(rgb):
 CONTEXT = 8192
 ANSWER_RESERVE = 640         # question plus answer budget kept free at all times
 PREFIX, QUERY = -1, -2       # owners of the open-turn prefix and of a rolled-back question/answer
+
+
+def _wordy(key):
+    """A key that carries words (not a number, a space or punctuation alone)."""
+    return isinstance(key, str) and any(c.isalpha() for c in key)
 
 
 def guard_repeats(scores, history, keys=None, penalty=REPEAT_PENALTY, ngram=NO_REPEAT_NGRAM):
@@ -602,7 +611,11 @@ class LiveSession:
             # quoted transcript, a seen tag's linked or recalled records) stays sayable
             guard = self._ids(re.sub(r'"[^"]*"|\[TAG [^\]]*\]?', " ",
                                      (" " + sound if sound else "") + (" " + note if note else "")))
-            self._note_runs = (guard, [self._key(t) for t in guard]) if guard else None
+            words = " ".join(re.sub(r'"[^"]*"|\[TAG [^\]]*\]?', " ", note or "").lower().split())
+            phrases = [tuple(k for k in (self._key(t) for t in self._ids(" " + ph)) if isinstance(k, str))
+                       for ph in NOTE_TEMPLATE_PHRASES if ph in words]
+            self._note_runs = (guard, [self._key(t) for t in guard], [ph for ph in phrases if len(ph) >= 2]) \
+                if guard else None
             return self._ids((" " + sound if sound else "") + (" " + note if note else "")
                              + (" " + question if question else "") + self.closing)
 
@@ -765,12 +778,38 @@ class LiveSession:
             scores[self.blocked] = -np.inf
         keys = [self._key(t) for t in history]
         scores = guard_repeats(scores, history, keys)
-        if notes and len(history) >= NO_REPEAT_NGRAM - 1:
-            ids, note_keys = notes
-            tail = tuple(keys[-(NO_REPEAT_NGRAM - 1):])
-            for i in range(len(ids) - NO_REPEAT_NGRAM + 1):
-                if tuple(note_keys[i:i + NO_REPEAT_NGRAM - 1]) == tail and ids[i + NO_REPEAT_NGRAM - 1] < len(scores):
-                    scores[ids[i + NO_REPEAT_NGRAM - 1]] = -np.inf   # a note is never read out
+        if not notes:
+            return self._pick(scores, temperature)
+        ids, note_keys, phrases = notes[0], notes[1], (notes[2] if len(notes) > 2 else ())
+        n1 = NO_REPEAT_NGRAM - 1
+        if len(history) >= n1:
+            tail = tuple(keys[-n1:])
+            for i in range(len(ids) - n1):
+                nxt = note_keys[i + n1]
+                if tuple(note_keys[i:i + n1]) == tail and ids[i + n1] < len(scores) and _wordy(nxt):
+                    scores[ids[i + n1]] = -np.inf   # a note is never read out (its numbers are facts, never bent)
+        # the same by meaning: whitespace tokens are skipped and any token spelling the banned word is refused
+        said = [k for k in keys if isinstance(k, str)]
+        note_words = [k for k in note_keys if isinstance(k, str)]
+        banned = set()
+        if len(said) >= n1:
+            tail = tuple(said[-n1:])
+            banned.update(note_words[i + n1] for i in range(len(note_words) - n1)
+                          if tuple(note_words[i:i + n1]) == tail and _wordy(note_words[i + n1]))
+        for ph in phrases:
+            if len(said) >= len(ph) - 1 and tuple(said[len(said) - len(ph) + 1:]) == ph[:-1]:
+                banned.add(ph[-1])
+        first = self._pick(scores, temperature)
+        token = first
+        for _ in range(16):
+            key = self._key(token)
+            if not (isinstance(key, str) and key in banned):
+                return token
+            scores[token] = -np.inf
+            token = self._pick(scores, temperature)
+        return first
+
+    def _pick(self, scores, temperature):
         if not temperature:
             return int(np.argmax(scores))
         scaled = scores.astype(np.float64) / temperature

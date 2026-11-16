@@ -696,6 +696,36 @@ _guard = list(_g[0][0]) if _g and _g[0] else []
 check("a seen tag's linked and recalled records stay sayable; the note's own wording is still guarded",
       _within(mind.tokenizer.encode('current scene began'), _guard)
       and not any(_within(mind.tokenizer.encode(w), _guard) for w in ('Lisbon', 'kitchen', 'linked record')))
+class Speller(Backend):
+    """Greedy logits that spell the note's template wording with a token the note itself never used."""
+    def forward(self, embeds, cache, vision=False):
+        Backend.forward(self, embeds, cache, vision)
+        scores = np.full(64, -5.)
+        if self.generated == 0:
+            scores[60] = 3.
+        else:
+            scores[61], scores[62], scores[33] = 3., 2., 1.
+        return scores
+
+
+class SpellTok(Tokenizer):
+    words = {60: ' has', 61: ' lasted', 62: 'lasted', 33: ' still'}
+    def decode(self, tokens, **kwargs):
+        return ''.join(self.words.get(t, 'x%d ' % t) for t in tokens)
+
+
+class SpellMind(Mind):
+    tokenizer = SpellTok()
+
+
+sp = LiveSession(SpellMind(), Speller(), clock=lambda: 0., sound_notes=False)
+sp.frame(frame(10), at=0.)
+sp._ids = lambda text: [60, 61] if ' has lasted' in text else [5, 6]
+sp_toks = sp.ask('which way?', max_tokens=3, note='[CAMERA MEMORY: the current scene has lasted 4 frame(s).]')['tokens']
+check("the note's template wording is never said, whatever token spells it",
+      sp_toks[:2] == [60, 33] and sp._note_runs is None)
+check('a note guard never bends a number', runtime._wordy('lasted') and not runtime._wordy('2')
+      and not runtime._wordy(236743) and not runtime._wordy(')'))
 check('a question not about speech has no hearing pass', not any(c[1] for c in hb.calls) and hs.transcript is None)
 check('an answer never opens another thinking channel', ch.blocked == [7, 8] and 7 not in ch.ask('q', max_tokens=3)['tokens'])
 
