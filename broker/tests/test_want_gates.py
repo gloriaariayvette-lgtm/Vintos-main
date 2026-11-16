@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """The three want gates the judge audit found open (17 November):
-  1. the ten-item cap exempted 51 of 61 live wants (routed to her, worked lately, parked): now only obligations
-     (live agent work, a promise he owes, a want she holds) are exempt and parked wants stay the board's;
+  1. the ten-item cap exempted 51 of 61 live wants (routed to her, worked lately, parked): now not counted are only
+     obligations (live agent work, a promise he owes, a want she holds), parked wants (the board's), and the final
+     waiting-on-Gloria stage, which expires on move_on's clock (Gloria, 17 November); the cap never parks a want;
   2. the duplicate gate missed every "rehearsal" of the one plain telling for her, written in other registers;
   3. a source label spelled another way ("web_search" for "web-search", "absence_map") skipped the admission screen.
 Synthetic wants only; scratch HOME and workspace; no model; no socket."""
@@ -122,26 +123,44 @@ pool += [W(i, source="email", adopted_from="EC-fx%d" % i, agent_work={"request_i
 pool += [W(i) for i in range(52, 61)]
 check("fixture: 61 open wants, 51 of them exempt under the old rule", len(pool) == 61)
 standings = {w["id"]: B.standing(w, NOW.timestamp()) for w in pool}
-exempt = [k for k, v in standings.items() if v in ("owed", "parked")]
-check("only obligations and parked wants are exempt now (9 owed + 11 parked)",
-      len([v for v in standings.values() if v == "owed"]) == 9 and len(exempt) == 20, sorted(standings.items()))
+counted = [k for k, v in standings.items() if v in ("ranked", "")]
+check("not counted: 18 waiting on Gloria, 11 parked, 9 owed; counted: the other 23",
+      [len([v for v in standings.values() if v == s]) for s in ("waiting", "parked", "owed")] == [18, 11, 9]
+      and len(counted) == 23, sorted(standings.items()))
 check("finished agent work is no exemption", standings["c50"] == "" and standings["c51"] == "")
-kept, gone, parked = B.cap([dict(w) for w in pool], NOW)
+check("a want parked awaiting her is in the waiting stage too",
+      B.standing(W(99, board="awaiting_gloria"), NOW.timestamp()) == "waiting")
+before_rows = [dict(w) for w in pool]
+kept, gone = B.cap(before_rows, NOW)
 working = [w for w in kept if B.standing(w, NOW.timestamp()) in ("ranked", "")]
-check("at most ten stay on the working board", len(working) == 10, len(working))
+check("ten counted wants stay", len(working) == 10, len(working))
+check("the rest past the ten are dismissed (23 - 10)", len(gone) == 13, len(gone))
+check("every want waiting on Gloria stays, untouched: the cap never parks one",
+      all(any(k["id"] == "c%02d" % i and k.get("board") is None and "parked_by" not in k for k in kept) for i in range(18))
+      and not any(w.get("board") == "awaiting_gloria" for w in kept))
 check("every obligation stays", all(any(k["id"] == "c%02d" % i for k in kept) for i in range(41, 50)))
 check("the parked wants are left to the board", all(any(k["id"] == "c%02d" % i and k["board"] == "blocked" for k in kept)
                                                    for i in range(30, 41)))
 check("the ten places go to the most recently moved (here the lately worked)",
-      {w["id"] for w in working} == {"c%02d" % i for i in range(18, 30)} - {w["id"] for w in gone + parked}
+      {w["id"] for w in working} == {"c%02d" % i for i in range(18, 30)} - {w["id"] for w in gone}
       and all(B.standing(w, NOW.timestamp()) == "ranked" for w in working), [w["id"] for w in working])
-check("a want waiting on her past the ten is parked awaiting her, never dismissed",
-      parked and all(w["board"] == "awaiting_gloria" and w["parked_by"] == "population_cap" for w in parked)
-      and not any(w.get("gloria_routed") for w in gone))
-check("the rest past the ten are dismissed", len(gone) == 61 - 9 - 11 - 10 - len(parked) and len(gone) > 0,
-      (len(gone), len(parked)))
-k2, g2, p2 = B.cap([W(i) for i in range(5)], NOW)
-check("under the cap nothing moves", len(k2) == 5 and not g2 and not p2)
+k2, g2 = B.cap([W(i) for i in range(5)], NOW)
+check("under the cap nothing moves", len(k2) == 5 and not g2)
+k3, g3 = B.cap([W(i, gloria_routed=True) for i in range(30)] + [W(40 + i) for i in range(4)], NOW)
+check("thirty waiting on her and four others: nothing is dismissed", len(k3) == 34 and not g3)
+
+# the waiting stage keeps its own clock: move_on dismisses it after QUIET_DAYS without her answer
+import want_completion as WCO2
+check("the waiting stage expires on move_on's clock (QUIET_DAYS)", WCO2.QUIET_DAYS <= 3 and WCO2.WANTS.startswith(HOME))
+_t0 = datetime.now()
+json.dump([{"id": "wq-old", "want": "I want to tell you the fixture result.", "gloria_routed": True, "fulfilled": False,
+            "timestamp": (_t0 - timedelta(days=WCO2.QUIET_DAYS + 1)).isoformat()},
+           {"id": "wq-new", "want": "I want to tell you the other fixture result.", "gloria_routed": True, "fulfilled": False,
+            "timestamp": (_t0 - timedelta(hours=6)).isoformat()}], open(WCO2.WANTS, "w"))
+json.dump({}, open(os.path.join(MEM, "want-discussions.json"), "w"))
+WCO2.move_on(now=_t0.timestamp())
+_ids = [w["id"] for w in json.load(open(WCO2.WANTS))]
+check("... a routed want unanswered past it is dismissed; a fresh one stays", _ids == ["wq-new"], _ids)
 
 # the cap through express_want
 import emoclaw_utils as E
@@ -160,9 +179,10 @@ E.express_want("I want to compose a string quartet sketch at dusk.", source="cur
                candidate_kind="current_desire", present_pull="the fixture strings are tuned")
 after = json.load(open(path))
 live = [w for w in after if not w.get("fulfilled") and not w.get("dismissed")]
-on_board = [w for w in live if not w.get("board") and not B.owed(w)]
+on_board = [w for w in live if B.standing(w) in ("ranked", "")]
 dis = json.load(open(os.path.join(MEM, "dismissed-wants.json")))
-check("express_want leaves ten on the working board", len(on_board) == 10, len(on_board))
+check("express_want leaves ten counted wants", len(on_board) == 10, len(on_board))
+check("... and every want waiting on Gloria", sum(1 for w in live if B.standing(w) == "waiting") == 18)
 check("... dismisses the overflow into the archive with the cap's name", dis and all(d["dismissed_by"] == "population_cap" for d in dis))
 check("... and keeps every obligation", all(any(w["id"] == "c%02d" % i for w in live) for i in range(41, 50)))
 check("... and the want just formed keeps its place", any(w["want"].startswith("I want to compose a string quartet")

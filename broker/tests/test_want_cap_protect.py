@@ -34,7 +34,7 @@ adopted = {"id": "ec-fix1", "want": "I want to run the fixture comparison and ex
 promised = {"id": "jw-fix2", "want": "I want to run the fixture parser.", "source": "idle-journal", "timestamp": "2026-11-01T09:00:00",
             "fulfilled": False, "source_refs": [{"kind": "commitment", "id": "EC-fix2"}]}
 for_her = {"id": "gf-fix3", "want": "I want to ask you which fixture sketch reads better.", "source": "mirror",
-           "timestamp": "2026-11-01T09:00:00", "fulfilled": False, "outreach_count": 1,
+           "timestamp": "2026-11-01T09:00:00", "fulfilled": False, "outreach_count": 1, "gloria_routed": True,
            "steps": [{"capability": "gloria", "status": "pending"}]}
 done_work = {"id": "ec-fix4", "want": "I want to clean the archived parser batch once.", "source": "email", "adopted_from": "EC-fix4",
              "timestamp": "2026-11-01T09:00:00", "fulfilled": False,

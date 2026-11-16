@@ -145,14 +145,18 @@ def near_duplicate(a, b):
 # want with a step in the last two days and every parked want was exempt, and the judge audit found 51 of 61 live wants
 # exempt: the cap had nothing left to act on. Exemption is now kept for the few that carry an obligation - live agent
 # work, a promise he owes, a want she holds herself - and for parked wants, which are off the working board and leave
-# on the board's own clock. Being routed to her, or worked lately, no longer takes a want out of the count: the ten
-# places go to the wants that moved most recently, and a routed want that loses its place waits on her parked.
+# on the board's own clock. A want waiting on Gloria (routed to her, or parked awaiting her) is the last stage and
+# does not count either (Gloria, 17 November: "that final 'waiting on Gloria' stage should no longer count towards
+# the total of 10"); it leaves on its own clock, want_completion.move_on, after QUIET_DAYS without her answer. The cap
+# never puts a want into that stage. Worked lately is no exemption: the ten places go to the wants that moved most
+# recently, and the rest are dismissed.
 CAP = 10
 
 
-def _her_step_pending(w):
-    return any(isinstance(s, dict) and str(s.get("capability") or "").lower() in ("gloria", "you")
-               and s.get("status") != "completed" for s in (w.get("steps") or [])) and bool(w.get("outreach_count"))
+def waiting_on_gloria(w):
+    """The final stage: put to her and waiting on her answer. The same test move_on expires on
+    (want_completion.routed_to_gloria), so nothing exempt here is left without a clock."""
+    return bool(w.get("gloria_routed")) or w.get("board") == "awaiting_gloria"
 
 
 def owed(w, now=None):
@@ -174,15 +178,15 @@ def owed(w, now=None):
 
 
 def standing(w, now=None):
-    """How an open want stands against the cap: "parked" (off the working board), "owed" (exempt), "ranked" (routed
-    to her, her step pending, or a step done in the last PROTECT_HOURS: first in line for the ten places) or ""."""
+    """How an open want stands against the cap. Not counted: "waiting" (on Gloria), "parked" (off the working board),
+    "owed" (an obligation). Counted: "ranked" (a step done in the last PROTECT_HOURS: first on a tie) or ""."""
     now = _now().timestamp() if now is None else now
+    if waiting_on_gloria(w):
+        return "waiting"
     if w.get("board"):
         return "parked"
     if owed(w, now):
         return "owed"
-    if w.get("gloria_routed") or _her_step_pending(w):
-        return "ranked"
     done = [_t(h.get("completed_at")) for h in (w.get("step_history") or []) if isinstance(h, dict)]
     if done and now - max(done) < PROTECT_HOURS * 3600:
         return "ranked"
@@ -190,26 +194,17 @@ def standing(w, now=None):
 
 
 def cap(open_rows, now=None, limit=CAP):
-    """(kept, dismissed, parked) for the open wants. At most `limit` stay on the working board: the most recently
-    moved (begun, a step completed, woken), so a want just formed always has a place; on a tie a ranked want first,
-    then the later in the list. A want past the limit that is waiting on her is parked AWAITING_GLORIA, not dismissed
-    (her silence is never a no; the board releases it on its own clock or wakes it when she answers); any other is
-    returned for dismissal. Rows are changed in place."""
+    """(kept, dismissed) for the open wants. Of the counted wants at most `limit` stay: the most recently moved
+    (begun, a step completed, woken), so a want just formed always has a place; on a tie a lately worked want first,
+    then the later in the list. The rest are returned for dismissal. Wants waiting on Gloria, parked or owed are
+    never counted and never touched."""
     now = _now().timestamp() if now is None else (now.timestamp() if isinstance(now, datetime) else float(now))
-    stamp = datetime.fromtimestamp(now).isoformat(timespec="seconds")
     rows = [w for w in open_rows if isinstance(w, dict)]
     idx = [i for i, w in enumerate(rows) if standing(w, now) in ("ranked", "")]
     order = sorted(idx, key=lambda i: (last_moved(rows[i]), standing(rows[i], now) == "ranked", i), reverse=True)
-    dismissed, parked = [], []
-    for i in sorted(order[limit:]):
-        w = rows[i]
-        if w.get("gloria_routed") or _her_step_pending(w):
-            w["board"], w["parked_at"], w["parked_by"] = "awaiting_gloria", stamp, "population_cap"
-            parked.append(w)
-        else:
-            dismissed.append(w)
+    dismissed = [rows[i] for i in sorted(order[limit:])]
     gone = {id(w) for w in dismissed}
-    return [w for w in rows if id(w) not in gone], dismissed, parked
+    return [w for w in rows if id(w) not in gone], dismissed
 
 
 def _block(w):

@@ -185,10 +185,10 @@ check("... and the echo keeps the line's start and lineage", rows[echo["id"]]["b
 # --- the population cap protects only what is being worked ----------------------------------------------------------
 esrc = open(os.path.join(REPO, "scripts", "emoclaw_utils.py")).read()
 bsrc = open(os.path.join(REPO, "scripts", "want_board.py")).read()
-cap = bsrc.split("def owed(w", 1)[1].split("def _block(w)", 1)[0]
+cap = bsrc.split("def waiting_on_gloria(w", 1)[1].split("def _block(w)", 1)[0]
 check("the cap no longer protects every multistep or READY want",
       'w.get("multistep")' not in cap and '"READY"' not in cap and "PROTECT_HOURS" in cap, cap[:400])
-check("... ranks what Gloria routed, exempts what she holds, and leaves parked wants to the board",
+check("... leaves out what waits on Gloria, what she holds, and what is parked",
       'w.get("gloria_routed")' in cap and 'w.get("manually_routed")' in cap and 'w.get("board")' in cap)
 check("express_want caps through the board", "from want_board import cap as _board_cap" in esrc and "def _is_protected" not in esrc)
 check("the bin copy of emoclaw_utils is the same file", esrc == open(os.path.join(REPO, "bin", "emoclaw_utils.py")).read())
