@@ -204,14 +204,21 @@ class Stream:
         return self._send(self.base + "/video/audio", {"session_id": self.session_id, "at": self._at(captured),
                           "audio": base64.b64encode(pcm).decode()})
 
-    def ask(self, question, max_tokens=128, wait=True):
-        """``wait=False`` returns a PendingAnswer at once, so the caller keeps capturing while it is decoded."""
+    def ask(self, question, max_tokens=128, wait=True, recall=None, recall_earlier=None, recent_seconds=None):
+        """``wait=False`` returns a PendingAnswer at once, so the caller keeps capturing while it is decoded.
+        ``recall=True`` asks with the camera memory (its note and the onset view); ``recall_earlier=True`` shows the
+        most recent earlier scene again; ``recent_seconds`` limits the view. Unset, the service defaults apply."""
         if self.pending is not None and not self.pending.done():
             raise BlockingIOError("An answer is already being decoded")
 
         def call():
-            result = self._send(self.base + "/video/ask", {"session_id": self.session_id, "question": question,
-                                "max_tokens": int(max_tokens)})
+            body = {"session_id": self.session_id, "question": question, "max_tokens": int(max_tokens)}
+            for key, value in (("recall", recall), ("recall_earlier", recall_earlier)):
+                if value is not None:
+                    body[key] = bool(value)
+            if recent_seconds is not None:
+                body["recent_seconds"] = float(recent_seconds)
+            result = self._send(self.base + "/video/ask", body)
             if result.get("checkpoint_sha256") != ANCHOR_SHA256 or result.get("native_video") is not True:
                 raise RuntimeError("Video answer came from an unverified checkpoint")
             return result

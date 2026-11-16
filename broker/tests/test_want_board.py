@@ -184,10 +184,13 @@ check("... and the echo keeps the line's start and lineage", rows[echo["id"]]["b
 
 # --- the population cap protects only what is being worked ----------------------------------------------------------
 esrc = open(os.path.join(REPO, "scripts", "emoclaw_utils.py")).read()
-cap = esrc.split("def _is_protected(w):", 1)[1].split("try:\n        wants = json.load", 1)[0]
+bsrc = open(os.path.join(REPO, "scripts", "want_board.py")).read()
+cap = bsrc.split("def owed(w", 1)[1].split("def _block(w)", 1)[0]
 check("the cap no longer protects every multistep or READY want",
-      'w.get("multistep")' not in cap and '"READY"' not in cap and "48 * 3600" in cap, cap[:400])
-check("... and still protects what Gloria routed or holds, and what is parked", 'w.get("gloria_routed")' in cap and 'w.get("board")' in cap)
+      'w.get("multistep")' not in cap and '"READY"' not in cap and "PROTECT_HOURS" in cap, cap[:400])
+check("... ranks what Gloria routed, exempts what she holds, and leaves parked wants to the board",
+      'w.get("gloria_routed")' in cap and 'w.get("manually_routed")' in cap and 'w.get("board")' in cap)
+check("express_want caps through the board", "from want_board import cap as _board_cap" in esrc and "def _is_protected" not in esrc)
 check("the bin copy of emoclaw_utils is the same file", esrc == open(os.path.join(REPO, "bin", "emoclaw_utils.py")).read())
 check("age_one is his aging, now callable for one want, and age_wants uses it",
       "def age_one(w):" in esrc and "row = age_one(w)" in esrc)

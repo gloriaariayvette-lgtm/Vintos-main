@@ -516,7 +516,7 @@ class Looper(Backend):
         return scores
 
 
-loop = LiveSession(mind, Looper(), clock=lambda: 0.)
+loop = LiveSession(mind, Looper(), clock=lambda: 0., sound_notes=False)   # the loop guard alone
 loop.frame(frame(10), at=0.)
 toks = loop.ask('what is moving?', max_tokens=24)['tokens']
 runs = [tuple(toks[i:i + 4]) for i in range(len(toks) - 3)]
@@ -571,6 +571,167 @@ r = brk.frame(frame(50), at=2.)
 check('after a failed answer the held arrivals are committed in order and new ones are not held',
       held_after_fault == 1 and not r.get('deferred') and not brk.deferred
       and [s['at'] for s in brk.window() if s['kind'] == 'frame'] == [0., 1., 2.])
+quiet = LiveSession(mind, Backend(), clock=lambda: 0.)
+quiet.frame(frame(10), at=0.)
+check('with no sound in the window the question says none was captured (record-gap rule)',
+      quiet.sound_note() == '[SOUND: none captured, so no speech was captured.]')
+heard = LiveSession(mind, Backend(), clock=lambda: 0.)
+heard.frame(frame(10), at=0.)
+heard.audio(np.zeros(16000 * 2, np.float32) + .01, at=0.)
+heard._end_audio_span()
+check('with sound the question says it is heard directly, has no transcript, and words come only from it',
+      heard.sound_note() == '[SOUND: 2 s from the microphone (00:00-00:02), heard directly, no transcript.]')
+heard_ids = []
+_fw = heard.stream.forward
+heard.stream.forward = lambda e, c, v=False: (heard_ids.append(e[0, :, 0].tolist()), _fw(e, c, v))[1]
+heard.ask('what is moving?', max_tokens=1)
+enc = [float(t) for t in mind.tokenizer.encode(chr(10) + heard.sound_note())]
+check('the sound note closes the question, after it and any camera note',
+      any(c[i:i + len(enc)] == enc for c in heard_ids for i in range(len(c))))
+check('the sound note can be turned off', LiveSession(mind, Backend(), clock=lambda: 0., sound_notes=False).sound_notes is False)
+sent = []
+cs = client.Stream.__new__(client.Stream)
+cs.pending, cs.session_id, cs.base = None, 'sid', 'http://127.0.0.1:9'
+cs._send = lambda url, body: (sent.append(body), {'checkpoint_sha256': client.ANCHOR_SHA256, 'native_video': True})[1]
+cs.ask('q', 8, recall=True, recall_earlier=False, recent_seconds=4)
+cs.ask('q', 8)
+check('the client can ask with the camera memory, and leaves the service defaults alone otherwise',
+      sent[0]['recall'] is True and sent[0]['recall_earlier'] is False and sent[0]['recent_seconds'] == 4.
+      and 'recall' not in sent[1] and 'recall_earlier' not in sent[1])
+class Hearer(Backend):
+    """Records each forward (values and the hidden set); decodes 'A B' then EOS on the hearing prompt, then EOS."""
+    def __init__(self): self.calls, self.hidden, self.k = [], None, 0
+    def forward(self, embeds, cache, vision=False):
+        Backend.forward(self, embeds, cache, vision)
+        self.calls.append((embeds[0, :, 0].tolist(), self.hidden))
+        scores = np.full(64, -5.)
+        if embeds.shape[1] > 1:
+            self.k = 0
+            scores[11 if self.hidden else 0] = 5.
+        else:
+            self.k += 1
+            scores[12 if self.k == 1 else 0] = 5.
+        return scores
+
+
+hb = Hearer()
+hs = LiveSession(mind, hb, clock=lambda: 0.)
+hs.frame(frame(10), at=0.)
+hs.audio(np.zeros(16000, np.float32) + .01, at=0.)
+hs.frame(frame(20), at=1.)
+hs.audio(np.zeros(16000, np.float32) + .01, at=1.)
+hs.ask('which way?', max_tokens=1)   # commits the pending close
+before = list(hs.cache)
+hb.calls = []
+hres = hs.ask('what is being said?', max_tokens=2)
+frame_pos = set(int(p) for p in hs.positions[np.isin(hs.owner, [i for i, x in hs.segments.items() if x['kind'] == 'frame'])])
+audio_pos = set(int(p) for p in hs.positions[np.isin(hs.owner, [i for i, x in hs.segments.items() if x['kind'] == 'audio'])])
+hear_calls = [c for c in hb.calls if c[1] and frame_pos <= c[1]]
+check('a speech question first hears the sound alone: frames and the sound pieces masked, then rolled back',
+      hear_calls and all(audio_pos <= c[1] for c in hear_calls) and hs.cache == before and hres['transcript'] == 'aa')
+_hp = [float(t) for t in mind.tokenizer.encode('\n[HEARD')]
+hq = [c for c in hb.calls if any(c[0][i:i + len(_hp)] == _hp for i in range(len(c[0])))]
+check('the answer gets the transcript with its provenance and sees the window as usual', hq and hq[0][1] is None)
+check('the heard note says where the words came from, or that none could be made out',
+      hs.heard_note('hello there', 0., 4.) == '[HEARD from the microphone (00:00-00:04): "hello there"]'
+      and 'the words were not captured' in hs.heard_note('No words.', 0., 4.)
+      and 'the words were not captured' in hs.heard_note('The audio contains no discernible words.', 0., 4.)
+      and 'the words were not captured' in hs.heard_note('', 0., 4.))
+check('markup and misreadings are not transcripts', ': "Nor is it so."' in hs.heard_note('**Nor is it so.**', 0., 4.)
+      and runtime.HEAR_ECHO.search('The word for "trans" in English is across') and runtime.HEAR_ECHO.search('In this case, the translation is'))
+check('a transcript keeps only the spoken words, without a lead-in',
+      ': "Nor is it so."' in hs.heard_note('The words spoken in this clip are: "Nor is it so."', 0., 4.)
+      and 'words spoken' not in hs.heard_note('The words spoken in this clip are: "Nor is it so."', 0., 4.))
+hb.calls = []
+import native_video_runtime as _rt
+_floor, _rt.HEAR_MIN_CONFIDENCE = _rt.HEAR_MIN_CONFIDENCE, 1.01
+_unsure = hs.ask('what is being said?', max_tokens=3)
+_rt.HEAR_MIN_CONFIDENCE = _floor
+_heard_prefix = [float(t) for t in mind.tokenizer.encode('[HEARD')]
+check('an unsure transcript is a result, not a note: no_speech_captured, and he says so in his own words',
+      hs.transcript == '' and _unsure['no_speech_captured'] is True
+      and _unsure['tokens'] == mind.tokenizer.encode(_rt.NO_WORDS_REPLY)[:3]
+      and not any(c[0][i:i + len(_heard_prefix)] == _heard_prefix for c in hb.calls for i in range(len(c[0]))))
+hb.calls = []
+hs.ask('which way does it move?', max_tokens=1)
+check('a speech question with no sound in the window has no hearing pass and says none was captured',
+      quiet.ask('what is being said?', max_tokens=1)['transcript'] is None and quiet.no_speech_captured is True
+      and quiet.ask('what is being said?', max_tokens=2)['tokens'] == mind.tokenizer.encode(_rt.NO_SOUND_REPLY)[:2]
+      and quiet.ask('which way?', max_tokens=1)['no_speech_captured'] is False)
+import native_video_runtime as _rt2
+_qe = hs.transcript
+hb.calls = []
+check('the hearing request echoed back is not taken as speech', _rt2.HEAR_ECHO.search('Transcribe that, word for word.')
+      and _rt2.HEAR_ECHO.search(' '.join(__import__('re').findall(r'"([^"]+)"',
+                                'The speaker says, "Write down exactly what the speaker says in this audio."')))
+      and _rt2.HEAR_ECHO.search('In this, word for word.') and not _rt2.HEAR_ECHO.search('He has grave doubts'))
+check('visual questions do not trigger a hearing pass', not any(_rt2.SPEECH_QUESTION.search(q) for q in (
+      'Tell me what you see', 'Can you tell what color the car is?', 'Is there a heart monitor?', 'Which way does it move?'))
+      and all(_rt2.SPEECH_QUESTION.search(q) for q in ('What is being said?', 'What did she say?', 'Who is talking?')))
+check('a transcript that starts with "Nothing" is kept', not _rt2.NO_WORDS.search('Nothing could be further from the truth')
+      and _rt2.NO_WORDS.search('Nothing.'))
+check('the notes are records, not instructions', not any(w in n.lower() for n in (quiet.sound_note(), heard.sound_note(),
+      hs.heard_note('', 0., 4.)) for w in ('if asked', 'do not', 'never', 'say ')))
+class Reader(Backend):
+    """Greedy logits that would copy the question chunk's opening tokens back out, token by token."""
+    def __init__(self): self.q, self.k = [], 0
+    def forward(self, embeds, cache, vision=False):
+        Backend.forward(self, embeds, cache, vision)
+        vals = [int(v) for v in embeds[0, :, 0].tolist()]
+        if len(vals) > 20:
+            self.q, self.k = vals, 0
+        elif len(vals) == 1:
+            self.k += 1
+        scores = np.full(64, -5.)
+        if self.q:
+            scores[self.q[1 + self.k] % 64] = 5.
+        scores[33] = 4.
+        return scores
+
+
+rd2 = LiveSession(mind, Reader(), clock=lambda: 0., sound_notes=False)
+rd2.frame(frame(10), at=0.)
+_g, _orig = [], rd2._choose
+rd2._choose = lambda t, h=(), n=None: (_g.append(n), _orig(t, h, n))[1]
+_cam = '[CAMERA MEMORY: the current scene began at 00:00.] '
+rd2.ask('what is this tag?', max_tokens=1, note=_cam + '[TAG tag36h11:7 in view - linked record(s): the blue mug]')
+rd2.ask('what is this tag?', max_tokens=1, note=_cam + '[TAG tag36h11:7 in view - linked record(s): class began at 9]')
+rd2.ask('what is this?', max_tokens=1, note='[CAMERA MEMORY: something in view moved while the camera held still.]')
+_began = tuple(rd2._key(t) for t in rd2._ids(' began at'))
+check("only the camera note's template phrases are refused, never its other words; a tag record may say them",
+      _g[0] and _g[0][:2] == ((), ()) and _began in _g[0][2] and _g[1] is None and _g[2] is None
+      and rd2._note_runs is None)
+class Speller(Backend):
+    """Greedy logits that spell the note's template wording with a token the note itself never used."""
+    def forward(self, embeds, cache, vision=False):
+        Backend.forward(self, embeds, cache, vision)
+        scores = np.full(64, -5.)
+        if self.generated == 0:
+            scores[60] = 3.
+        else:
+            scores[61], scores[62], scores[33] = 3., 2., 1.
+        return scores
+
+
+class SpellTok(Tokenizer):
+    words = {60: ' has', 61: ' lasted', 62: 'lasted', 33: ' still'}
+    def decode(self, tokens, **kwargs):
+        return ''.join(self.words.get(t, 'x%d ' % t) for t in tokens)
+
+
+class SpellMind(Mind):
+    tokenizer = SpellTok()
+
+
+sp = LiveSession(SpellMind(), Speller(), clock=lambda: 0., sound_notes=False)
+sp.frame(frame(10), at=0.)
+sp._ids = lambda text: [60, 61] if ' has lasted' in text else [5, 6]
+sp_toks = sp.ask('which way?', max_tokens=3, note='[CAMERA MEMORY: the current scene has lasted 4 frame(s).]')['tokens']
+check("the note's template wording is never said, whatever token spells it",
+      sp_toks[:2] == [60, 33] and sp._note_runs is None)
+check('a note guard never bends a number', runtime._wordy('lasted') and not runtime._wordy('2')
+      and not runtime._wordy(236743) and not runtime._wordy(')'))
+check('a question not about speech has no hearing pass', not any(c[1] for c in hb.calls) and hs.transcript is None)
 check('an answer never opens another thinking channel', ch.blocked == [7, 8] and 7 not in ch.ask('q', max_tokens=3)['tokens'])
 
 check('nothing but the test fixtures was written', not any(memory_dir.iterdir()))

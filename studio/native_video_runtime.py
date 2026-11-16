@@ -10,6 +10,7 @@ continues without re-reading what it already saw.
 No downloads, records, network access or background processes are started here. Frames stay in memory.
 """
 import hashlib
+import re
 import time
 
 import numpy as np
@@ -28,6 +29,28 @@ SCENE_CHANGE = .15           # mean 32x32 luminance change (0..1) that marks a n
 SCENE_MARKER = "[new scene]"
 REPEAT_PENALTY = 1.1         # answer-token repetition penalty (the video path decodes greedily by default)
 NO_REPEAT_NGRAM = 4          # no 4-token run is repeated inside one answer
+# The camera note's own template wording. An answer may report what the note says, never in the note's bookkeeping
+# words: round-4 dev answers spliced short pieces of it ("the current scene" + "has lasted" + "12 frame(s)") that no
+# single four-token run of the note catches. Active only for the phrases the asked note actually contains.
+NOTE_TEMPLATE_PHRASES = ("began at", "has lasted", "frame(", "scene(")   # each refusal is a whole word or a bracket
+# Round 5: when a speech question finds no words, that is a structured result (no_speech_captured), not note text the
+# answer could quote; the answer opens with his own sentence for it and goes on from there.
+NO_WORDS_REPLY = "I couldn't make out any words."
+NO_SOUND_REPLY = "I didn't hear anyone speaking."
+TRANSCRIBE_SPEECH = True     # a question about speech first hears the retained sound alone and transcribes it
+HEAR_MIN_CONFIDENCE = .6     # mean per-token probability below which a transcript is not trusted (dev: noise and
+                             # made-up transcripts sat below .6, real speech above .62)
+HEAR_SECONDS = 8.            # "what is being said" hears the retained sound (the audio window is eight seconds)
+HEAR_TOKENS = 16             # the transcript budget: about twelve words, so the first answer token stays near a second
+HEAR_PROMPT = " Write down exactly what the speaker says in this audio."
+SPEECH_QUESTION = re.compile(r"\b(said|say|says|saying|speak|speaks|speaking|spoke|talk|talks|talking|hear|heard|"
+                             r"hearing|words?|transcri\w*|voices?|audio|conversation|told)\b", re.I)
+NO_WORDS = re.compile(r"^\W*(no words|no speech|nothing\W*$|silence\W*$|\[?inaudible)|\bno (discernible |spoken |audible |clear )?"
+                      r"(words|speech)\b|\b(muffled|difficult to understand|sound effect)\b", re.I)
+HEAR_ECHO = re.compile(r"\b(word for word|transcrib\w*|write down|what the speaker says|the word (is|for)|translation|in this (case|context)|\(note)", re.I)   # the request echoed or misread (a word lookup, a translation), not speech
+LEAD_IN = re.compile(r"^\W*(the )?(words|audio|speech)( spoken)?( in this (clip|audio|passage|video))?( says| are| is)?\s*:\s*",
+                     re.I)
+SOUND_NOTE = True            # every question says what sound this turn holds (the record-gap rule for speech)
 LIVE_ANSWER_TOKENS = 32      # answers during a live stream are capped so ingestion never waits long
 
 
@@ -43,6 +66,11 @@ def _small_gray(rgb):
 CONTEXT = 8192
 ANSWER_RESERVE = 640         # question plus answer budget kept free at all times
 PREFIX, QUERY = -1, -2       # owners of the open-turn prefix and of a rolled-back question/answer
+
+
+def _wordy(key):
+    """A key that carries words (not a number, a space or punctuation alone)."""
+    return isinstance(key, str) and any(c.isalpha() for c in key)
 
 
 def guard_repeats(scores, history, keys=None, penalty=REPEAT_PENALTY, ngram=NO_REPEAT_NGRAM):
@@ -241,12 +269,18 @@ class LiveSession:
 
     def __init__(self, mind, stream, instruction=None, retain_frames=RETAIN_FRAMES,
                  retain_audio_tokens=RETAIN_AUDIO_TOKENS, clock=time.monotonic, on_embedding=None, scene_markers=False,
-                 on_pixels=None):
+                 on_pixels=None, sound_notes=None):
         # on_embedding(kind, at, embeds, ref): the projected embeddings exactly as they enter the mind, for a tap.
         # on_pixels(at, thumb, ref): a 96-px thumbnail of each committed frame (camera_motion), just before its
         # on_embedding call; the thumbnail lives only in memory.
         self.on_embedding = on_embedding
         self.on_pixels = on_pixels
+        self.sound_notes = SOUND_NOTE if sound_notes is None else bool(sound_notes)
+        self.transcribe_speech = TRANSCRIBE_SPEECH
+        self.transcript = None                     # the last hearing pass's transcript (None when none ran)
+        self._note_runs = None                     # ((), (), template phrases) of the current question's note
+        self.no_speech_captured = False            # the last speech question found no words (a result, not a note)
+        self.transcript_confidence = self.transcript_raw = None
         self.scene_markers = bool(scene_markers)   # write "[new scene]" before a frame that differs from the last
         self.last_small = None
         self.answering = False                     # while True, frames and audio are encoded/held, then committed
@@ -422,6 +456,7 @@ class LiveSession:
             frames = self.audio_tail[:take * FRAME].reshape(take, FRAME)
             embeds = self.stream.audio(frames)
             self._forward(embeds, self.audio_span)
+            span.setdefault("_embeds", []).append(embeds)
             self._tap("audio", at + span["audio_tokens"] * FRAME / SAMPLE_RATE, embeds, "span:%d" % self.audio_span)
             self.audio_tail = self.audio_tail[take * FRAME:].copy()
             span["audio_tokens"] += take
@@ -447,6 +482,7 @@ class LiveSession:
             frames = np.pad(self.audio_tail, (0, n * FRAME - len(self.audio_tail))).reshape(n, FRAME)
             embeds = self.stream.audio(frames)
             self._forward(embeds, self.audio_span)
+            span.setdefault("_embeds", []).append(embeds)
             self._tap("audio", span["at"] + span["audio_tokens"] * FRAME / SAMPLE_RATE, embeds, "span:%d" % self.audio_span)
             span["audio_tokens"] += n
             self.audio_tokens += n
@@ -462,6 +498,38 @@ class LiveSession:
                 self.on_embedding(kind, at, embeds, ref)
             except Exception:
                 pass   # a consumer never affects what the mind sees
+
+    def _concat(self, parts):
+        if len(parts) == 1:
+            return parts[0]
+        mx = getattr(self.stream, "mx", None)
+        return mx.concatenate(parts, axis=1) if mx is not None else np.concatenate([np.asarray(p) for p in parts], axis=1)
+
+    @staticmethod
+    def heard_note(transcript, start, end):
+        """The transcript the hearing pass made, with its provenance; or that no words could be made out."""
+        start, end = stamp(start), stamp(end)
+        text = re.sub(r"\$\\text\{|\}\$|\*\*|__", "", transcript or "")   # markup is not speech
+        text = " ".join(LEAD_IN.sub("", text).split())
+        quoted = re.findall(r'"([^"]+)"', text)
+        text = " ".join(quoted) if quoted else text
+        text = text.replace('"', "'").strip()[:400]
+        if not text or NO_WORDS.search(text):
+            return ("[HEARD from the microphone (%s-%s): words not made out, so for what is being said: the words were "
+                    "not captured.]" % (start, end))
+        return '[HEARD from the microphone (%s-%s): "%s"]' % (start, end, text)
+
+    def sound_note(self):
+        """Provenance of what can be said about speech: the sound this turn holds is the microphone's own audio,
+        heard directly, with no written transcript; with none, nothing was captured. Words must come from that
+        sound, never from the picture or the camera's notes (the record-gap rule)."""
+        spans = [s for s in self.segments.values() if s["kind"] == "audio" and s.get("audio_tokens")]
+        if not spans:
+            return "[SOUND: none captured, so no speech was captured.]"
+        seconds = sum(s["audio_tokens"] for s in spans) * FRAME / SAMPLE_RATE
+        end = max(s["at"] + s["audio_tokens"] * FRAME / SAMPLE_RATE for s in spans)
+        return "[SOUND: %d s from the microphone (%s-%s), heard directly, no transcript.]" % (
+            max(1, round(seconds)), stamp(min(s["at"] for s in spans)), stamp(end))
 
     def _count(self, kind):
         return sum(1 for s in self.segments.values() if s["kind"] == kind)
@@ -497,7 +565,8 @@ class LiveSession:
 
     def window(self):
         """Provenance of what the mind currently holds: one record per retained frame or audio span."""
-        return [dict({k: v for k, v in s.items() if k != "digest"}, segment=i) for i, s in sorted(self.segments.items())]
+        return [dict({k: v for k, v in s.items() if k != "digest" and not k.startswith("_")}, segment=i)
+                for i, s in sorted(self.segments.items())]
 
     def ask(self, question, max_tokens=128, temperature=0, on_text=None, recent_seconds=None, view_from=None,
             note=None, recall_frames=None):
@@ -539,8 +608,28 @@ class LiveSession:
         mark = self.stream.length(self.cache)
         question = str(question).strip()
         note = str(note or "").strip()
-        question_ids = self._ids((" " + note if note else "") + (" " + question if question else "") + self.closing)
-        if len(question_ids) + int(max_tokens) > ANSWER_RESERVE:
+        sound = self.sound_note() if self.sound_notes else ""
+        self.transcript = self.transcript_confidence = self.transcript_raw = None
+        speech = bool(self.transcribe_speech and self.sound_notes and SPEECH_QUESTION.search(question or ""))
+        self.no_speech_captured, reply = False, ""
+        if speech and not any(s["kind"] == "audio" and s.get("audio_tokens") for s in self.segments.values()):
+            self.no_speech_captured, reply, sound = True, NO_SOUND_REPLY, ""
+
+        def question_chunk(sound):
+            # the camera note's template phrases are never said (a seen tag's records may say them)
+            words = " ".join(re.sub(r'"[^"]*"|\[TAG [^\]]*\]?', " ", note or "").lower().split())
+            phrases = [tuple(k for k in (self._key(t) for t in self._ids(" " + ph)) if isinstance(k, str))
+                       for ph in NOTE_TEMPLATE_PHRASES if ph in words
+                       and ph not in " ".join(re.findall(r'\[TAG [^\]]*\]?', note or "")).lower()]   # a record may say it
+            phrases = [ph for ph in phrases if len(ph) >= 2]
+            self._note_runs = ((), (), phrases) if phrases else None
+            # order: the camera note, the question, then what was heard last, so an answer that quotes the
+            # transcript runs on into the end of the turn, never into the camera note's label
+            return self._ids((" " + note if note else "") + (" " + question if question else "")
+                             + ("\n" + sound if sound else "") + self.closing)
+
+        question_ids = question_chunk(sound)
+        if len(question_ids) + int(max_tokens) + (HEAR_TOKENS * 2 if self.transcribe_speech else 0) > ANSWER_RESERVE:
             raise ValueError("Question and answer exceed the reserved budget")
         recall_frames = list(recall_frames or [])
         recall_tokens = sum(int(e.shape[1]) + 8 for _, e in recall_frames)
@@ -560,6 +649,26 @@ class LiveSession:
         window_frames = [i for i, s in self.segments.items() if s["kind"] == "frame"]
         everything = set(int(p) for p in self.positions[np.isin(self.owner, window_frames)])
         recall_hidden = (everything | (hidden or set())) or None
+        heard = []
+        if self.transcribe_speech and self.sound_notes and SPEECH_QUESTION.search(question or ""):
+            spans = sorted((s["at"], i) for i, s in self.segments.items() if s["kind"] == "audio" and s.get("_embeds"))
+            heard = [(at, e) for at, i in spans for e in self.segments[i]["_embeds"]]
+            keep, need = [], int(HEAR_SECONDS * SAMPLE_RATE / FRAME)
+            for piece in reversed(heard):           # the last HEAR_SECONDS: what is being said now
+                if need <= 0:
+                    break
+                keep.insert(0, piece)
+                need -= int(piece[1].shape[1])
+            heard = keep
+        if heard:
+            hear_end = max(s["at"] + s["audio_tokens"] * FRAME / SAMPLE_RATE
+                           for s in self.segments.values() if s["kind"] == "audio" and s.get("audio_tokens"))
+            hear_start = max(0., hear_end - sum(int(e.shape[1]) for _, e in heard) * FRAME / SAMPLE_RATE)
+            pieces = set(int(p) for p in self.positions[np.isin(self.owner, [i for _, i in spans])])
+            heard_hidden = (everything | pieces) or None   # the sound alone: no frame and none of its own pieces
+            if self.stream.length(self.cache) + recall_tokens + sum(int(e.shape[1]) for _, e in heard) + 64 \
+                    + ANSWER_RESERVE > CONTEXT:
+                raise ValueError("Recalled frames exceed the existing 8192 token budget")
         tokens, finish_reason, first = [], "length", None
         self.answering = True
 
@@ -571,13 +680,53 @@ class LiveSession:
                 self.stream.hidden = None
 
         try:
+            if heard:
+                # Hearing pass: the retained sound in one piece, without the frames that cut it into pieces, is
+                # transcribed; then rolled back. The answer gets the transcript with where it came from.
+                hear_mark = self.stream.length(self.cache)
+                forward(self.stream.text(self._ids(" " + stamp(hear_start) + " ") + self.boa), mask=heard_hidden)
+                forward(self._concat([e for _, e in heard]), mask=heard_hidden)
+                self.scores = forward(self.stream.text(self.eoa + self._ids(HEAR_PROMPT + self.closing)), mask=heard_hidden)
+                yield 0   # arrivals are taken in (encoded and held) between hearing steps too
+                said, logps = [], []
+                for _ in range(HEAR_TOKENS):
+                    t = self._choose(0., said)
+                    z = self.scores.astype(np.float64)
+                    z = z[np.isfinite(z)]
+                    logps.append(float(self.scores[t]) - float(np.max(z) + np.log(np.exp(z - np.max(z)).sum())))
+                    if t in self.mind.eos:
+                        break
+                    said.append(t)
+                    self.scores = forward(self.stream.text([t]), mask=heard_hidden)
+                    yield 0
+                self.stream.truncate(self.cache, hear_mark)
+                self.transcript = self.transcript_raw = self.tokenizer.decode(said, skip_special_tokens=True).strip()
+                self.transcript_confidence = float(np.exp(np.mean(logps))) if logps else 0.
+                quoted = re.findall(r'"([^"]+)"', self.transcript)
+                if self.transcript_confidence < HEAR_MIN_CONFIDENCE or HEAR_ECHO.search(
+                        " ".join(quoted) if quoted else self.transcript):   # the request echoed, quoted or not
+                    self.transcript = ""   # too unsure, or the request echoed back: the words were not captured
+                heard_text = self.heard_note(self.transcript, hear_start, hear_end)
+                if '"' in heard_text:
+                    question_ids = question_chunk(heard_text)
+                if '"' not in heard_text or len(question_ids) + int(max_tokens) > ANSWER_RESERVE:
+                    self.no_speech_captured, reply = True, NO_WORDS_REPLY   # a result, not a note to quote
+                    question_ids = question_chunk("")
             for at, embeds in recall_frames:
                 forward(self.stream.text(self._ids(" " + stamp(at) + " ") + self.boi), mask=recall_hidden)
                 forward(embeds, vision=True, mask=recall_hidden)
                 forward(self.stream.text(self.eoi), mask=recall_hidden)
             self.scores = forward(self.stream.text(question_ids))
-            for _ in range(int(max_tokens)):
-                token = self._choose(float(temperature), tokens)
+            if reply:
+                said = self._ids(reply)[:int(max_tokens)]
+                tokens.extend(said)
+                first = time.perf_counter() - started
+                if on_text:
+                    on_text(self.tokenizer.decode(tokens, skip_special_tokens=True))
+                if len(tokens) < int(max_tokens):
+                    self.scores = forward(self.stream.text(said))
+            for _ in range(int(max_tokens) - len(tokens)):
+                token = self._choose(float(temperature), tokens, self._note_runs)
                 if first is None:
                     first = time.perf_counter() - started
                 if token in self.mind.eos:
@@ -591,6 +740,7 @@ class LiveSession:
                     yield len(tokens)
         finally:
             self.stream.truncate(self.cache, mark)
+            self._note_runs = None
             self.owner, self.positions = self.owner[:mark], self.positions[:mark]
             self.answering = False
             self.pending_close = None
@@ -598,7 +748,9 @@ class LiveSession:
                   "finish_reason": finish_reason, "first_token_seconds": first,
                   "total_seconds": time.perf_counter() - started, "window": self.window(),
                   "cache_tokens": mark, "frames_seen": self.frames, "frames_evicted": self.evicted_frames,
-                  "checkpoint_sha256": self.mind.sha, "native_video": True}
+                  "checkpoint_sha256": self.mind.sha, "native_video": True, "transcript": self.transcript,
+                  "transcript_confidence": self.transcript_confidence,
+                  "no_speech_captured": self.no_speech_captured}
         # Commit what arrived during the answer one item per step, in arrival order, so the caller can take in
         # new arrivals in between (they queue behind the held items, never ahead of them).
         committed = 0
@@ -641,12 +793,32 @@ class LiveSession:
             key = self._keys[token] = self.tokenizer.decode([token], skip_special_tokens=False).strip().lower() or token
         return key
 
-    def _choose(self, temperature, history=()):
+    def _choose(self, temperature, history=(), notes=None):
         scores = self.scores.copy()
         scores[self.mind.suppress] = -np.inf
         if self.blocked:
             scores[self.blocked] = -np.inf
-        scores = guard_repeats(scores, history, [self._key(t) for t in history])
+        keys = [self._key(t) for t in history]
+        scores = guard_repeats(scores, history, keys)
+        if not notes:
+            return self._pick(scores, temperature)
+        phrases = notes[2] if len(notes) > 2 else ()
+        # whitespace tokens are skipped and any token spelling the refused word is refused
+        said = [k for k in keys if isinstance(k, str)]
+        banned = set()
+        for ph in phrases:
+            if len(said) >= len(ph) - 1 and tuple(said[len(said) - len(ph) + 1:]) == ph[:-1]:
+                banned.add(ph[-1])
+        token = self._pick(scores, temperature)
+        for _ in range(64):   # each refused spelling leaves the race; the last pick stands (never the first refused)
+            key = self._key(token)
+            if not (isinstance(key, str) and key in banned):
+                break
+            scores[token] = -np.inf
+            token = self._pick(scores, temperature)
+        return token
+
+    def _pick(self, scores, temperature):
         if not temperature:
             return int(np.argmax(scores))
         scaled = scores.astype(np.float64) / temperature

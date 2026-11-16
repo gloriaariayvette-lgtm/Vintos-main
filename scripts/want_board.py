@@ -118,6 +118,100 @@ def alike(a, b):
     return bool(wa and wb) and len(shared) >= SAME_MIN and len(shared) / min(len(wa), len(wb)) >= SAME
 
 
+# "I want to", "I'd like to", "I need to": the template every want is written in carries no meaning of its own, so it
+# is taken off before two wants are compared (judge audit, 17 November: the admission check compared raw
+# whitespace-split words, so "tonight," and "tonight" differed and the shared template counted as agreement).
+_TEMPLATE = re.compile(r"^\s*i\s+(?:really\s+)?(?:want|need|wish|would\s+like)\s+(?:to\s+)?", re.I)
+DUP_OVERLAP = 0.65      # share of the larger want's words, after the template is taken off
+
+
+def _tokens(text):
+    text = str(text or "").replace("’", "'")
+    text = re.sub(r"\bI'd\b", "I would", text, flags=re.I)
+    return set(re.findall(r"[a-z0-9]+", _TEMPLATE.sub("", text).lower()))
+
+
+def near_duplicate(a, b):
+    """True when a new want is an existing one again: the same words once the template and punctuation are gone, or
+    the same content words in other order (alike, the board's own fold)."""
+    ta, tb = _tokens(a), _tokens(b)
+    if ta and tb and len(ta & tb) / max(len(ta), len(tb)) > DUP_OVERLAP:
+        return True
+    return alike(a, b)
+
+
+# ---- the ten-item cap ----
+# The working board holds CAP wants. Until 17 November every want the router had put to Gloria (gloria_routed), every
+# want with a step in the last two days and every parked want was exempt, and the judge audit found 51 of 61 live wants
+# exempt: the cap had nothing left to act on. Exemption is now kept for the few that carry an obligation - live agent
+# work, a promise he owes, a want she holds herself - and for parked wants, which are off the working board and leave
+# on the board's own clock. Being routed to her, or worked lately, no longer takes a want out of the count: the ten
+# places go to the wants that moved most recently, and a routed want that loses its place waits on her parked.
+CAP = 10
+
+
+def _her_step_pending(w):
+    return any(isinstance(s, dict) and str(s.get("capability") or "").lower() in ("gloria", "you")
+               and s.get("status") != "completed" for s in (w.get("steps") or [])) and bool(w.get("outreach_count"))
+
+
+def owed(w, now=None):
+    """Live agent work or a promise he owes, or a want she holds herself: never the cap's to dismiss. Finished agent
+    work, a promise kept another way, or a place given back more than two weeks ago no longer counts (12 November)."""
+    if w.get("manually_routed"):
+        return True
+    now = _now().timestamp() if now is None else now
+    aw = w.get("agent_work") if isinstance(w.get("agent_work"), dict) else {}
+    rel = w.get("adoption_released") if isinstance(w.get("adoption_released"), dict) else {}
+    try:
+        rel_old = bool(rel) and now - float(rel.get("at") or 0) > 14 * 86400
+    except (TypeError, ValueError):
+        rel_old = False
+    if aw.get("status") in ("completed", "dropped") or rel.get("reason") == "kept_another_way" or rel_old:
+        return False
+    return bool(aw or w.get("adopted_from") or any(isinstance(r, dict) and r.get("kind") in ("commitment", "promise")
+                                                  for r in (w.get("source_refs") or [])))
+
+
+def standing(w, now=None):
+    """How an open want stands against the cap: "parked" (off the working board), "owed" (exempt), "ranked" (routed
+    to her, her step pending, or a step done in the last PROTECT_HOURS: first in line for the ten places) or ""."""
+    now = _now().timestamp() if now is None else now
+    if w.get("board"):
+        return "parked"
+    if owed(w, now):
+        return "owed"
+    if w.get("gloria_routed") or _her_step_pending(w):
+        return "ranked"
+    done = [_t(h.get("completed_at")) for h in (w.get("step_history") or []) if isinstance(h, dict)]
+    if done and now - max(done) < PROTECT_HOURS * 3600:
+        return "ranked"
+    return ""
+
+
+def cap(open_rows, now=None, limit=CAP):
+    """(kept, dismissed, parked) for the open wants. At most `limit` stay on the working board: the most recently
+    moved (begun, a step completed, woken), so a want just formed always has a place; on a tie a ranked want first,
+    then the later in the list. A want past the limit that is waiting on her is parked AWAITING_GLORIA, not dismissed
+    (her silence is never a no; the board releases it on its own clock or wakes it when she answers); any other is
+    returned for dismissal. Rows are changed in place."""
+    now = _now().timestamp() if now is None else (now.timestamp() if isinstance(now, datetime) else float(now))
+    stamp = datetime.fromtimestamp(now).isoformat(timespec="seconds")
+    rows = [w for w in open_rows if isinstance(w, dict)]
+    idx = [i for i, w in enumerate(rows) if standing(w, now) in ("ranked", "")]
+    order = sorted(idx, key=lambda i: (last_moved(rows[i]), standing(rows[i], now) == "ranked", i), reverse=True)
+    dismissed, parked = [], []
+    for i in sorted(order[limit:]):
+        w = rows[i]
+        if w.get("gloria_routed") or _her_step_pending(w):
+            w["board"], w["parked_at"], w["parked_by"] = "awaiting_gloria", stamp, "population_cap"
+            parked.append(w)
+        else:
+            dismissed.append(w)
+    gone = {id(w) for w in dismissed}
+    return [w for w in rows if id(w) not in gone], dismissed, parked
+
+
 def _block(w):
     """The block on this want, or {}: the router's plan block, or the Forge's missing hand ("blocked")."""
     for key in ("blocked", "plan_block"):

@@ -20,7 +20,9 @@ sys.path.insert(0, str(repo / 'scripts'))
 import camera_mamepa as cm
 from camera_mamepa import CallableTagStore, DictTagStore, Mamepa, Model
 from native_sensory_tap import SensoryTap
+import native_video_runtime
 from native_video_runtime import LiveSession
+native_video_runtime.SOUND_NOTE = False   # these checks read the question chunk exactly; the sound note has its own tests
 from native_video_server import VideoService
 
 
@@ -425,12 +427,22 @@ for k in range(6):
 segs = mo.current()
 check('a pixel cut opens a new scene even when the latent forecast was not surprised',
       len(segs) == 2 and segs[1]['opened_by'] == 'cut' and segs[1]['start'] == 2.)
-check('each scene keeps its own motion', cm.motion_phrase(segs[0]) == 'something in view moved left'
-      and cm.motion_phrase(segs[1]) == 'something in view moved down')
+check('each scene keeps its own motion', cm.motion_phrase(segs[0]) == 'something in view moved left while the camera held still'
+      and cm.motion_phrase(segs[1]) == 'something in view moved down while the camera held still')
 text = mo.summary()['text']
 check('the summary says what moved in the present and in the earlier scene, naming nothing',
-      'Since 00:02, something in view moved down.' in text and 'In the earlier scene 00:00-00:01, something in view moved left.' in text
+      'Since 00:02, something in view moved down while the camera held still.' in text and 'In the earlier scene 00:00-00:01, something in view moved left while' in text
       and 'square' not in text)
-check('the recall note says how the earlier scene moved', 'in that earlier scene something in view moved left' in mo.recall()['note'])
+check('the recall note says how the earlier scene moved', 'in that earlier scene something in view moved left while the camera held still' in mo.recall()['note'])
 check('motion records survive a dump', json.loads(json.dumps(mo.dump()))['segments'][-1]['motion']['moving'] == 5)
+check('camera notes say they were noted by the camera, never heard', text.startswith('[' + cm.MEMORY_LABEL)
+      and 'never quote it as said' in mo.recall()['note'])
+bright = cmo.thumb(np.clip(square(.5, 0).astype(np.float32) * 1.25, 0, 255).astype(np.uint8))
+st = cmo.step(cmo.thumb(square(-.5, 0)), bright)
+check('an exposure jump during motion is neither a cut nor lost motion', st['reliable'] and cmo.direction(st['dx'], st['dy']) == 'left')
+flat = np.full((96, 96, 3), .4, np.float32)
+check('a pure exposure jump is no change at all', cmo.step(flat, flat * 1.3)['changed'] == 0.)
+check('a pan with no clear direction never claims the camera held still',
+      cm.motion_phrase({'motion': {'dx': -.1, 'dy': 0., 'moving': 2, 'pan_dx': .05, 'pan_dy': .05, 'pans': 1, 'steps': 3}})
+      == 'something in view moved left')
 print('all camera mamepa checks passed')
