@@ -10,8 +10,25 @@
 esphome:
   name: house-steam
   friendly_name: House steam board
+  on_boot:
+    priority: 600
+    then:
+      - lambda: 'shower_dac::mute_idle();'
+  project:
+    name: vintos.house-speaker
+    version: "2026.11.12-steam-r4"
   includes:
     - shower_dac.h
+    - wav_pcm.h
+    - steam_signal.h
+
+external_components:
+  - source:
+      type: local
+      path: components
+    components: [speaker_streaming]
+
+speaker_streaming:
 
 esp32:
   board: esp32dev
@@ -42,6 +59,7 @@ logger:
 mqtt:
   id: mqtt_client
   broker: 192.168.1.91
+  idf_send_async: true
   discovery: false
   reboot_timeout: 0s
   on_message:
@@ -50,9 +68,9 @@ mqtt:
       then:
         - if:
             condition:
-              binary_sensor.is_on: gloria_near
+              binary_sensor.is_on: shower_active
             then:
-              - lambda: 'shower_dac::play(x);'
+              - lambda: 'shower_dac::play(x, id(speaker_volume).state / 100.0f);'
     - topic: vintos/board/house-steam/stop
       then:
         - lambda: 'shower_dac::stop();'
@@ -62,6 +80,12 @@ esp32_ble_tracker:
     active: false
 
 globals:
+  - id: steam_state
+    type: int
+    initial_value: "-1"
+  - id: steam_voltage
+    type: float
+    initial_value: "NAN"
   - id: near_until
     type: uint32_t
     initial_value: '0'
@@ -69,7 +93,42 @@ globals:
     type: bool
     initial_value: 'false'
 
+text_sensor:
+  - platform: template
+    name: "Audio output mode"
+    entity_category: diagnostic
+    update_interval: 1s
+    lambda: 'return std::string(shower_dac::idle_muted() ? "grounded idle" : "active DAC");'
+  - platform: template
+    name: "Board reset reason"
+    entity_category: diagnostic
+    update_interval: 10s
+    lambda: 'return std::to_string(int(esp_reset_reason()));'
+  - platform: template
+    name: "Audio network mode"
+    entity_category: diagnostic
+    update_interval: 1s
+    lambda: |-
+      wifi_ps_type_t mode;
+      if (esp_wifi_get_ps(&mode) != ESP_OK) return std::string("unknown");
+      return std::string(mode == WIFI_PS_NONE ? "low latency" : "normal");
+  - platform: template
+    name: "Speaker playback"
+    entity_category: diagnostic
+    update_interval: 1s
+    lambda: 'return std::string(shower_dac::status());'
+
 number:
+  - platform: template
+    id: speaker_volume
+    name: "Speaker volume"
+    optimistic: true
+    min_value: 0
+    max_value: 100
+    step: 1
+    initial_value: 100
+    restore_value: true
+    unit_of_measurement: "%"
   - platform: template     # her phone's signal at 1 m from this board; set from a real reading, no reflash needed
     id: rssi_at_1m
     name: "Gloria phone signal at 1 m"
@@ -84,13 +143,33 @@ number:
     id: steam_threshold
     name: "Steam threshold"
     optimistic: true
-    min_value: 1
+    min_value: 3
     max_value: 100
     step: 1
     initial_value: 30
     restore_value: true
 
 interval:
+  - interval: 2s
+    then:
+      - if:
+          condition:
+            binary_sensor.is_on: gloria_near
+          then:
+            - mqtt.publish_json:
+                topic: vintos/board/house-steam/diagnostic
+                payload: |-
+                  root["revision"] = "steam-r4";
+                  root["uptime_ms"] = millis();
+                  root["reset_reason"] = int(esp_reset_reason());
+                  root["idle_muted"] = shower_dac::idle_muted();
+                  root["signal_pin"] = gpio_get_level(GPIO_NUM_25);
+                  root["heap_free"] = esp_get_free_heap_size();
+                  root["heap_low_water"] = esp_get_minimum_free_heap_size();
+                  root["largest_free_block"] = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
+                  root["gpio34_v"] = id(steam_voltage);
+                  root["filtered_wetness"] = id(steam_raw).state;
+                  root["steam_state"] = id(steam_state);
   # tells house_boards.py when the speaker is free, so the next song can go
   - interval: 1s
     then:
@@ -102,6 +181,27 @@ interval:
           }
 
 sensor:
+  - platform: template
+    name: "Steam signal voltage"
+    entity_category: diagnostic
+    unit_of_measurement: V
+    accuracy_decimals: 3
+    update_interval: 2s
+    lambda: 'return id(steam_voltage);'
+  - platform: template
+    name: "Steam signal level"
+    entity_category: diagnostic
+    accuracy_decimals: 2
+    update_interval: 2s
+    lambda: 'return id(steam_raw).state;'
+  - platform: template
+    name: "Audio free memory"
+    entity_category: diagnostic
+    unit_of_measurement: B
+    accuracy_decimals: 0
+    update_interval: 5s
+    lambda: 'return esp_get_free_heap_size();'
+
   - platform: ble_rssi
     irk: !secret gloria_phone_irk
     id: gloria_phone_rssi
@@ -115,22 +215,32 @@ sensor:
         - lambda: |-
             float d = pow(10.0f, (id(rssi_at_1m).state - x) / 25.0f);
             if (d <= 1.0f) id(near_until) = millis() + 15000;
-        - mqtt.publish_json:
-            topic: espresense/devices/gloria-phone/house-steam
-            payload: |-
-              root["id"] = "gloria-phone";
-              root["rssi"] = x;
-              root["rssi@1m"] = id(rssi_at_1m).state;
-              root["distance"] = pow(10.0f, (id(rssi_at_1m).state - x) / 25.0f);
+        - if:
+            condition:
+              binary_sensor.is_on: shower_active
+            then:
+            - mqtt.publish_json:
+                topic: espresense/devices/gloria-phone/house-steam
+                payload: |-
+                  root["id"] = "gloria-phone";
+                  root["rssi"] = x;
+                  root["rssi@1m"] = id(rssi_at_1m).state;
+                  root["distance"] = pow(10.0f, (id(rssi_at_1m).state - x) / 25.0f);
 
   - platform: adc
     pin: GPIO34
     id: steam_raw
     attenuation: 12db
+    samples: 32
+    sampling_mode: avg
     update_interval: 2s
     internal: true
     filters:
-      - lambda: return (1.0f - x / 3.3f) * 100.0f;   # wet pads read lower: 0 dry, 100 soaked
+      - lambda: |-
+          static house_steam::Signal signal;
+          id(steam_voltage) = x;
+          id(steam_state) = signal.update(x, id(steam_threshold).state, millis());
+          return signal.score();
     on_value:
       then:
         - if:
@@ -146,31 +256,31 @@ binary_sensor:
     id: gloria_near
     name: "Gloria within 1 m"
     lambda: 'return (int32_t)(id(near_until) - millis()) > 0;'
+
+  - platform: template
+    id: steam_on
+    name: "Steam"
+    lambda: |-
+      if (id(steam_state) < 0) return {};
+      return id(steam_state) == 1;
+
+  - platform: template
+    id: shower_active
+    internal: true
+    lambda: 'return id(steam_on).has_state() && id(steam_on).state && id(gloria_near).state;'
     on_state:
       then:
         - mqtt.publish:
             topic: vintos/board/house-steam/near
             payload: !lambda 'return x ? "on" : "off";'
-
-  - platform: template
-    id: steam_on
-    name: "Steam"
-    lambda: 'return id(steam_raw).state > id(steam_threshold).state;'
-    filters:
-      - delayed_on: 4s       # a splash is not steam
-      - delayed_off: 30s
     on_press:
       then:
-        - if:
-            condition:
-              binary_sensor.is_on: gloria_near
-            then:
-              - mqtt.publish:
-                  topic: vintos/board/house-steam/event
-                  payload: steam_start
+        - mqtt.publish:
+            topic: vintos/board/house-steam/event
+            payload: steam_start
     on_release:
       then:
-        - lambda: 'shower_dac::stop();'     # the shower is over: whatever he was playing stops
+        - lambda: 'shower_dac::stop();'
         - mqtt.publish:
             topic: vintos/board/house-steam/event
             payload: steam_end
