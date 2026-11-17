@@ -35,14 +35,11 @@ for _m in ("sol", "argon", "local"):
     check("a %s toggle that falls through to Claude asks Opus 5.5, not Opus 4.8" % _m,
           M.current_claude_model() == "claude-opus-5-5", M.current_claude_model())
 M.write_mode({"mode": "claude", "force_grok_turns": 0})
-check("Opus 4.8 is asked only when she chose it", M.current_claude_model() == "claude-opus-4-8")
-check("a Claude fallback order: the other Claudes, the toggle's own skipped",
-      M.claude_fallbacks("claude-opus-5-5") == ["claude-sonnet-5-5"]
-      and M.claude_fallbacks("claude-opus-4-8") == ["claude-opus-5-5", "claude-sonnet-5-5"])
-os.environ["VINTOS_CLAUDE_FALLBACKS"] = "claude-sonnet-5-5, grok-4, claude-haiku-5-5"
-check("the order can be set; only Claude ids count", M.claude_fallbacks("claude-opus-5-5") == ["claude-sonnet-5-5", "claude-haiku-5-5"],
-      M.claude_fallbacks("claude-opus-5-5"))
-del os.environ["VINTOS_CLAUDE_FALLBACKS"]
+check("Opus 4.8 is a full toggle choice: saved as 'claude', read back, and asked for",
+      M.current_mode() == "claude" and M.current_claude_model() == "claude-opus-4-8")
+check("and it stays in the toggle's model table", M.CLAUDE_MODELS.get("claude") == "claude-opus-4-8")
+check("there is no Claude-to-Claude fallback list any more", not hasattr(M, "claude_fallbacks")
+      and not hasattr(M, "CLAUDE_FALLBACKS"))
 M._LAST_GOOD.clear(); os.remove(M._MODE_FILE)
 
 import threading

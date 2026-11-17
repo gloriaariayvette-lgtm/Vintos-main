@@ -43,7 +43,7 @@ class Tests(unittest.TestCase):
                      gemini_draft=self.b,SOL_MODEL='fixture-request-a',GEMINI_MODEL='fixture-request-b',
                      GEMMA_MODEL='fixture-local',_claude=self.fallback,_grok_result=self.last,
                      _reserve_provider=Mock(),has_images=lambda _:False,current_claude_model=lambda:'fixture-fallback',
-                     current_mode=lambda:'fixture-mode',claude_fallbacks=lambda primary:[],
+                     current_mode=lambda:'fixture-mode',
                      words_left=lambda _:True,ROUTE_BUDGET_S=1,ROUTE_FLOOR_S=1)
         exec(compile(ast.Module(body=nodes,type_ignores=[]),'actual-router-functions','exec'),self.ns)
 
@@ -80,16 +80,17 @@ class Tests(unittest.TestCase):
         self.a.assert_awaited_once();self.b.assert_awaited_once()
         self.fallback.assert_not_awaited();self.last.assert_not_awaited()
 
-    def test_empty_or_raised_direct_call_keeps_existing_fallback(self):
+    def test_empty_or_raised_direct_call_falls_to_grok(self):
+        # the one fallback is Grok (Gloria, 17 November 2026: "Always fall back to Grok"); no Claude in Sol's or Argon's place
         for mode,draft in [('sol',self.a),('argon',self.b)]:
             for failure in (None,RuntimeError('synthetic draft failure')):
                 draft.side_effect=failure
                 draft.return_value=(None,'')
-                self.record.reset_mock();self.fallback.reset_mock()
-                self.assertEqual(self.run_route(mode)[0],'synthetic fallback')
-                self.fallback.assert_awaited_once()
+                self.record.reset_mock();self.fallback.reset_mock();self.last.reset_mock()
+                self.assertEqual(self.run_route(mode)[0],'synthetic last')
+                self.fallback.assert_not_awaited();self.last.assert_awaited_once()
                 self.assertEqual(self.record.call_count,1)
-                self.assertEqual(self.record.call_args.kwargs['stage'],'claude')
+                self.assertEqual(self.record.call_args.kwargs['stage'],'grok')
                 self.assertNotIn('model_identity_evidence',self.record.call_args.kwargs['extra'])
             draft.side_effect=None
 

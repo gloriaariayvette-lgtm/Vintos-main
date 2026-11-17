@@ -88,34 +88,19 @@ CLAUDE_MODELS = {"claude": "claude-opus-4-8",
                  "opus55": "claude-opus-5-5",   # replaced the Sonnet 5 slot (Gloria, 2026-09-24)
                  "fable": "claude-fable-5-2"}   # Fable 5.2 (Gloria, 2026-11-12)
 LEGACY_MODES = {"sonnet": "opus55"}   # a toggle saved as "sonnet" before the swap now means Opus 5.5
-DEFAULT_MODE = "opus55"   # no toggle readable: Opus 5.5, never a silent Opus 4.8 (Gloria, 17 November 2026)
-# The Claude a non-Claude toggle (Sol, Argon, local) falls through to when its own model does not answer. It was
-# CLAUDE_MODEL (Opus 4.8): with the toggle on Argon or local, a failed draft was answered by Opus 4.8 (17 November).
+# Opus 4.8 ("claude") is a full toggle choice and stays one (Gloria, 17 November: "I love 4.8"). What changed is only
+# that a silent default never stands in for a different choice:
+DEFAULT_MODE = "opus55"   # no toggle file readable and none read before in this process
+# the Claude id a non-Claude toggle (Sol, Argon, local) reports; their failures now go to Grok, not to a Claude
 FALLTHROUGH_CLAUDE = "claude-opus-5-5"
-# When the toggle's Claude does not answer (error, overload, timeout, cut off), the other Claude models are asked
-# before Grok, in this order, the toggle's own skipped (Gloria, 17 November: "falls to Grok every time"). Grok only
-# when every Claude option is out - or the day's Anthropic cap is spent, which all of them share. A refusal still goes
-# straight to Grok (the guard's rule: a Claude that declines is the toggle being wrong, not a model being down).
-# VINTOS_CLAUDE_FALLBACKS (comma-separated model ids; in vintos.env or the environment) replaces the order.
-CLAUDE_FALLBACKS = ("claude-opus-5-5", "claude-sonnet-5-5")
+# The fallback is Grok, always (Gloria, 17 November: "It should never fall back to Sonnet. Always fall back to Grok."):
+# the toggle's own model is asked, and if it does not answer, Grok. No other Claude is ever asked in its place.
 def current_mode():
     m = read_mode().get("mode", DEFAULT_MODE)
     return LEGACY_MODES.get(m, m)
 def current_claude_model():
     """The CHAT toggle's model. Only chat surfaces follow it; every other place uses location_model()."""
     return CLAUDE_MODELS.get(current_mode(), FALLTHROUGH_CLAUDE)
-def claude_fallbacks(primary):
-    """The Claude models to ask, in order, after `primary` does not answer."""
-    raw = os.environ.get("VINTOS_CLAUDE_FALLBACKS", "")
-    if not raw:
-        try: raw = _env("VINTOS_CLAUDE_FALLBACKS")
-        except Exception: raw = ""
-    order = [m.strip() for m in str(raw or "").split(",") if m.strip().startswith("claude-")] or list(CLAUDE_FALLBACKS)
-    out = []
-    for m in order:
-        if m != primary and m not in out:
-            out.append(m)
-    return out
 # Each place he acts has its own model (Gloria, 2026-09-24). Flipping the chat toggle used to change
 # his model everywhere at once; now it changes only the chat. A place not listed follows the chat toggle.
 # Every place but the chat is Opus 5.5 (Gloria, 2026-10-20: "switch them all to Opus 5.5, just don't replace Opus 4.8
@@ -714,7 +699,8 @@ async def route_reply_result(surface, system_text, convo, params, grok_endpoint,
                 return res
         except Exception as _se:
             print("[router/sol toggle]", str(_se)[:120], flush=True)
-        # fall through: Claude next, grok as the unchanged safety net
+        # Sol did not answer: Grok, the one fallback (Gloria, 17 November) - never a Claude in Sol's place
+        return await grok_stage("grok(sol did not answer)")
     if read_mode().get("mode") == "argon":
         _toggle_t0 = _rb_t.time()
         try:
@@ -730,7 +716,8 @@ async def route_reply_result(surface, system_text, convo, params, grok_endpoint,
                 return res
         except Exception as _ae:
             print("[router/argon toggle]", str(_ae)[:120], flush=True)
-        # fall through: Claude next, grok as the unchanged safety net
+        # Argon did not answer: Grok, the one fallback (Gloria, 17 November) - never a Claude in Argon's place
+        return await grok_stage("grok(argon did not answer)")
     if read_mode().get("mode") == "local":
         _t0l = _rb_t.time()
         try:
@@ -742,57 +729,47 @@ async def route_reply_result(surface, system_text, convo, params, grok_endpoint,
                 _ledger(res, surface, _t0l, "local-toggle"); return res
         except Exception as _le:
             stages.append(GR.make_result("gemma", model=GEMMA_MODEL, status="unavailable", reason=str(_le)[:200]))
-        # The explicit local choice degrades to the existing Claude→Grok route;
-        # it never turns an offline Mac into an empty avatar reply.
+        # The explicit local choice degrades to Grok, the one fallback (Gloria, 17 November); it never turns an
+        # offline Mac into an empty avatar reply, and never puts a Claude in its place.
+        return await grok_stage("grok(local did not answer)")
     if _consume_forced():
         return await grok_stage("grok(forced)")
     why = "grok(refusal)"
     _t0 = _rb_t.time()
     primary = current_claude_model()
-    # her toggle and the model it asks for, every turn (17 November: she chose Opus 5.5 and could not see what was asked)
+    # her toggle and the model it asks for, every turn (17 November: she chose Opus 5.5 and could not see what was
+    # asked); the model that served is printed by the caller ("[router] avatar served by ...") and kept in the ledger
     print("[router] %s: toggle %s -> requesting %s" % (surface, current_mode(), primary), flush=True)
-    for _i, _model in enumerate([primary] + claude_fallbacks(primary)):
-        # the Claude stages share the route budget; Grok, the safety net, gets what is left, never less than a
+    try:
+        # the primary gets at most the route budget; the safety net gets what is left, never less than a
         # floor. Before this the two stages could take 120s each while the caller had already given up
         # and answered "no reply formed" (review P10, 2026-09-05).
-        _budget = ROUTE_BUDGET_S - (_rb_t.time() - _t0)
-        if _i and _budget < ROUTE_FLOOR_S:
-            print("[router] %s: no time left to ask %s; Grok next" % (surface, _model), flush=True)
-            break
-        if _i:
-            print("[router] %s: %s did not answer (%s); asking %s before Grok" % (surface, primary, why, _model), flush=True)
-        _ts = _rb_t.time()
-        try:
-            res = await _rb_aio.wait_for(_claude(system_text, convo, params, reason,
-                                                 paid_reservation if not _i else None, model=_model), timeout=_budget)
-            stages.append(res); _ledger(res, surface, _ts, "claude" if not _i else "claude-fallback")
-            if GR.usable(res) and res["status"] == "truncated" and not words_left(res["text"]):
-                # cut off before a single word reached her: the same model once more, without thinking, rather than
-                # a tag fragment as his reply or another model's voice
-                res["status"], res["reason"] = "unavailable", "cut off before any words: %r" % res["text"][:40]
-                _t1 = _rb_t.time()
-                res = await _rb_aio.wait_for(_claude(system_text, convo, params, False, None, model=_model),
-                                             timeout=max(ROUTE_FLOOR_S, ROUTE_BUDGET_S - (_rb_t.time() - _t0)))
-                stages.append(res); _ledger(res, surface, _t1, "claude-again")
-                if GR.usable(res) and not words_left(res["text"]):
-                    res["status"], res["reason"] = "unavailable", "cut off before any words again"
-            if GR.usable(res):
-                res["route"] = "claude:" + _model + ("" if not _i else "(fallback from %s)" % primary)
-                res["stages"] = stages
-                return res
-            why = "grok(%s)" % ("refusal" if res["status"] == "held" else res["status"])
-            if res["status"] == "held":
-                break                                       # a refusal: Grok, as before (the guard's rule)
-        except _rb_aio.TimeoutError:
-            why = "grok(primary timed out at %ds)" % int(_budget)
-            stages.append(GR.make_result("anthropic", model=_model, status="unavailable",
-                                         reason="timed out after send (%ds); not retried" % int(_budget)))
-        except Exception as e:
-            why = "grok(error:%s)" % str(e)[:40]
-            stages.append(GR.make_result("anthropic", model=_model, status="unavailable", reason=str(e)[:200]))
-            if "paid budget" in str(e):
-                break                                       # the day's Anthropic cap is every Claude's: all are out
-    print("[router] %s: every Claude option is out (%s); Grok" % (surface, why), flush=True)
+        res = await _rb_aio.wait_for(_claude(system_text, convo, params, reason, paid_reservation, model=primary),
+                                     timeout=ROUTE_BUDGET_S)
+        stages.append(res); _ledger(res, surface, _t0, "claude")
+        if GR.usable(res) and res["status"] == "truncated" and not words_left(res["text"]):
+            # cut off before a single word reached her: the same model once more, without thinking, rather than
+            # a tag fragment as his reply or another model's voice
+            res["status"], res["reason"] = "unavailable", "cut off before any words: %r" % res["text"][:40]
+            _t1 = _rb_t.time()
+            res = await _rb_aio.wait_for(_claude(system_text, convo, params, False, paid_reservation, model=primary),
+                                         timeout=max(ROUTE_FLOOR_S, ROUTE_BUDGET_S - (_rb_t.time() - _t0)))
+            stages.append(res); _ledger(res, surface, _t1, "claude-again")
+            if GR.usable(res) and not words_left(res["text"]):
+                res["status"], res["reason"] = "unavailable", "cut off before any words again"
+        if GR.usable(res):
+            res["route"] = "claude:" + primary; res["stages"] = stages
+            return res
+        why = "grok(%s)" % ("refusal" if res["status"] == "held" else res["status"])
+    except _rb_aio.TimeoutError:
+        why = "grok(primary timed out at %ds)" % int(ROUTE_BUDGET_S)
+        stages.append(GR.make_result("anthropic", model=primary, status="unavailable",
+                                     reason="timed out after send (%ds); not retried" % int(ROUTE_BUDGET_S)))
+    except Exception as e:
+        why = "grok(error:%s)" % str(e)[:40]
+        stages.append(GR.make_result("anthropic", model=primary, status="unavailable", reason=str(e)[:200]))
+    # the one fallback is Grok (Gloria, 17 November: "Always fall back to Grok"), for a failure, a refusal or the cap
+    print("[router] %s: %s did not answer (%s); Grok" % (surface, primary, why), flush=True)
     _left = max(ROUTE_FLOOR_S, ROUTE_BUDGET_S + ROUTE_FLOOR_S - (_rb_t.time() - _t0))
     return await grok_stage(why, timeout=_left)
 
