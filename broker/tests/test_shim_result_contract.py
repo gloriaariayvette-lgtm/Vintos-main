@@ -279,7 +279,7 @@ check("router: stop_reason=max_tokens -> truncated", r["status"] == "truncated" 
 check("router: temperature is NOT sent to anthropic (rejected by current models)", _FakeClient.posts[0][2].get("temperature") is None, _FakeClient.posts[0][2])
 t = asyncio.run(MR.route_reply("avatar", "sys", [{"role": "user", "content": "hi"}], {"max_tokens": 50},
                                "http://127.0.0.1:8599/v1/chat/completions", {}, "grok-4"))
-check("route_reply tuple view unchanged for existing callers", t[0] == "router text" and t[2] == "claude:claude-opus-4-8", t)
+check("route_reply tuple view unchanged for existing callers", t[0] == "router text" and t[2] == "claude:" + MR.current_claude_model(), t)   # no toggle file: Opus 5.5 (17 Nov), whatever the HOME holds
 async def refuse_then_grok(url, hdrs, body):
     if "anthropic" in url: return {"id": "m", "model": "claude-opus-4-8", "stop_reason": "refusal", "content": [], "usage": {"input_tokens": 1, "output_tokens": 0}}
     return XAI_OK(body, hdrs)
