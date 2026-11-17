@@ -309,15 +309,26 @@ def action_candidates(board, conversation):
     out = []
     rows = sorted([w for w in rows if isinstance(w, dict)],
                   key=lambda w: stamp(w.get("timestamp") or w.get("created_at")), reverse=True)
+    # The wants board's own tests, so a house act never revives what the board has set aside (17 November, on
+    # integrating with the want gates): waiting on Gloria is the final stage and expires on want_completion's clock,
+    # a parked want (any board) is off the working board, and the source label is spelled the one canonical way.
+    try:
+        from want_board import waiting_on_gloria as _waiting
+    except Exception:
+        _waiting = lambda w: bool(w.get('gloria_routed')) or w.get('board') == 'awaiting_gloria'
+    try:
+        from want_contract import canonical_source as _canon
+    except Exception:
+        _canon = lambda s: s
     for w in rows:
-        if (not isinstance(w, dict) or w.get('fulfilled') or w.get('dismissed') or w.get('gloria_routed')
-                or w.get('board') == 'awaiting_gloria'): continue
+        if (not isinstance(w, dict) or w.get('fulfilled') or w.get('dismissed') or _waiting(w)
+                or w.get('board')): continue
         text = str(w.get('want') or '')
         for act, pattern in patterns.items():
             if (act == 'DESKTOP' and board != 'house-touch') or (act == 'TV' and board != 'house-press-mic'): continue
             if re.search(pattern, text, re.I):
                 out.append({'want_id':w.get('id'), 'objective':short(text,600),
-                            'possible_action':act, 'source':w.get('source'),
+                            'possible_action':act, 'source':_canon(w.get('source')) if w.get('source') else w.get('source'),
                             'execution_status':(w.get('agent_work') or {}).get('status','not agent-owned'),
                             'authority':'proposal only; existing approval and in-use protections apply'})
         if len(out)>=5: break

@@ -49,6 +49,14 @@ class Tests(unittest.TestCase):
   self.write('current-wants.json',[{'id':'dead','want':'watch a film','dismissed':True},{'id':'web','want':'compare the document on the website','source':'email'},{'id':'film','want':'watch a documentary','source':'idle-journal'}])
   office=H.action_candidates('house-touch',[]);sofa=H.action_candidates('house-press-mic',[])
   self.assertEqual([x['want_id'] for x in office],['web']);self.assertEqual([x['want_id'] for x in sofa],['film']);self.assertIn('proposal only',office[0]['authority'])
+ def test_action_candidates_respect_the_want_gates(self):
+  # waiting on Gloria (routed or parked awaiting her) and any parked want stay out; the source label is canonical
+  self.write('current-wants.json',[{'id':'routed','want':'compare the document on the website','gloria_routed':True},
+   {'id':'awaiting','want':'search the website for the chart','board':'awaiting_gloria'},
+   {'id':'parked','want':'read the spreadsheet file','board':'parked'},
+   {'id':'live','want':'compare the chart in the document','source':'Web_Search'}])
+  office=H.action_candidates('house-touch',[])
+  self.assertEqual([x['want_id'] for x in office],['live']);self.assertEqual(office[0]['source'],'web-search')
  def test_board_prompt_proposes_real_work_without_forced_quota(self):
   ctx={'catalog':[],'conversation':[],'outcomes':[],'action_candidates':[{'want_id':'web','objective':'compare documents','possible_action':'DESKTOP'}]}
   _,user=B.prompt('office','house-touch',self.now,B.DEFAULTS,asks=[],want='',st={'boards':{},'shower':{}},context=ctx)
