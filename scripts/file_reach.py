@@ -57,7 +57,7 @@ _ON_WORDS = ("on", "more", "next", "continue", "read on", "the rest", "rest")
 # her "read on" / "keep reading" / "the rest of the note": go on from where the last cut-off read stopped
 _READ_ON = re.compile(r"\b(?:read on\b(?!\s+(?:the|a|an|my|your|his|her|our|this|that|it)\b)|keep reading|carry on reading|go on reading|continue reading|read the rest"
                       r"|rest of (?:the|that|it|this) (?:file|note|summary|doc\w*)|(?:from )?where you left off)\b", re.I)
-_CONT = re.compile(r"continues .{0,40}?\[READ: ([^\]\n]+?):(\d+)\]")
+_CONT = re.compile(r"continues .{0,40}?\[READ: ([^\]\n]+?):(\d+)(?::(\d+))?\]")
 _CONT_OLD = re.compile(r"continue with \[READ: ([^\]\n]+?):(\d+)\]")   # rows kept before 17 Nov
 _EXT = r"(?:md|txt|py|sh|json|yaml|yml|toml)"
 _PATHISH = re.compile(r"(?<![\w./~-])((?:~|/home/[\w.-]+)?[\w./~-]*?[\w.-]+\." + _EXT + r")(?::(\d{1,6}))?(?![\w/])", re.I)
@@ -146,7 +146,10 @@ def read(arg, cap=OPEN_CHARS):
     """One file, read only: numbered lines from a start line, cut at cap with where to continue. (label, text, sha, n)
     or (None, why, None, 0). Never larger than MAX_BYTES; undecodable bytes are shown replaced, never raised."""
     r = room()
-    path_arg, _, start = str(arg or "").strip().rpartition(":") if re.search(r":\d+\s*$", str(arg or "")) else (arg, "", "")
+    position = re.search(r":(\d+)(?::(\d+))?\s*$", str(arg or ""))
+    path_arg = str(arg)[:position.start()] if position else arg
+    start = position.group(1) if position else ""
+    offset = int(position.group(2) or 0) if position else 0
     p, lab = _resolve(r, path_arg)
     if not p:
         return None, "%s: %s is not there, or not one of the files you may read" % (_UNABLE, str(arg)[:160]), None, 0
@@ -164,16 +167,26 @@ def read(arg, cap=OPEN_CHARS):
     out, used, i = [], 0, a - 1
     while i < len(lines):
         # the cap counts the file's own text; the line numbers in front are extra (OPEN_TOTAL covers them)
-        if out and used + len(lines[i]) + 1 > cap: break
-        out.append("%5d  %s" % (i + 1, lines[i][:cap])); used += len(lines[i]) + 1; i += 1
+        segment = lines[i][offset:]
+        if out and used + len(segment) + 1 > cap: break
+        available = max(1, cap - used)
+        out.append("%5d  %s" % (i + 1, segment[:available]))
+        if len(segment) > available:
+            offset += available
+            break
+        used += len(segment) + 1
+        i += 1
+        offset = 0
     body = "\n".join(out)
     if i < len(lines):
-        body += "\n" + more_line(lab, i, len(lines))
+        body += "\n" + more_line(lab, i, len(lines), offset)
     return lab, body, hashlib.sha256(data).hexdigest()[:16], len(lines)
 
 
-def more_line(lab, last, total):
+def more_line(lab, last, total, offset=0):
     """Where a cut-off read stopped, and how to go on."""
+    if offset:
+        return "... (line %d continues at character %d; continues — ask to read on, or [READ: %s:%d:%d])" % (last + 1, offset, lab, last + 1, offset)
     return "... (lines %d-%d of %d not shown yet; continues — ask to read on, or [READ: %s:%d])" % (
         last + 1, total, total, lab, last + 1)
 
@@ -183,10 +196,14 @@ def next_of(row):
     if not isinstance(row, dict) or row.get("kind") != "read" or not row.get("label"):
         return None
     if row.get("next"):
-        return row["label"], int(_num(row["next"]))
+        base = (row["label"], int(_num(row["next"])))
+        return base + (int(_num(row["next_char"])),) if row.get("next_char") else base
     text = str(row.get("text") or "")
     m = _CONT.search(text) or _CONT_OLD.search(text)
-    return (m.group(1), int(m.group(2))) if m else None
+    if not m:
+        return None
+    base = (m.group(1), int(m.group(2)))
+    return base + (int(m.group(3)),) if m.re is _CONT and m.group(3) else base
 
 
 def read_on_arg(mem=None):
@@ -194,7 +211,7 @@ def read_on_arg(mem=None):
     for row in sorted(_load(mem), key=lambda x: _num(x.get("at")), reverse=True):
         if row.get("kind") == "read" and row.get("label"):
             nx = next_of(row)
-            return ("%s:%d" % nx) if nx else None
+            return (("%s:%d:%d" if len(nx) == 3 else "%s:%d") % nx) if nx else None
     return None
 
 
@@ -373,7 +390,8 @@ def _do(kind, arg, by, surface, now, mem=None):
             lab, text, sha, n = read(arg)
             m = _CONT.search(text or "") if lab else None
             return {"at": now, "by": by, "surface": surface, "kind": "read", "asked": str(asked)[:200],
-                    "label": lab, "sha": sha, "lines": n, "text": text, "next": int(m.group(2)) if m else None}
+                    "label": lab, "sha": sha, "lines": n, "text": text, "next": int(m.group(2)) if m else None,
+                    "next_char": int(m.group(3)) if m and m.group(3) else None}
         return {"at": now, "by": by, "surface": surface, "kind": "find", "asked": str(arg)[:200],
                 "label": None, "sha": None, "lines": 0, "text": str(find(arg))[:OPEN_CHARS]}
     except (Exception, SystemExit) as e:
