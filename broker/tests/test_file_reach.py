@@ -75,8 +75,9 @@ check("her message naming a refused file reads nothing", F.asks_in("read ~/outsi
 big = "\n".join("x" * 70 for _ in range(400))
 write(os.path.join(WS, "shared", "LONG.md"), big)
 lab, text, _, _ = F.read("shared/LONG.md")
-check("a long file is cut at the cap and says where to go on", len(text) <= F.OPEN_CHARS + 120
-      and "[READ: shared/LONG.md:" in text, text[-200:])
+_own = "\n".join(l[7:] for l in text.split("\n") if l[:5].strip().isdigit())
+check("a long file is cut at the cap and says where to go on", len(_own) <= F.OPEN_CHARS
+      and "[READ: shared/LONG.md:" in text and "ask to read on" in text, text[-200:])
 check("the Study may read shared/ but never edit it", room.resolve("shared/PLAN-FOR-TODAY.md")
       and room.resolve("shared/PLAN-FOR-TODAY.md", for_edit=True) is None)
 check("a shared file is named shared/, not docs/shared/",

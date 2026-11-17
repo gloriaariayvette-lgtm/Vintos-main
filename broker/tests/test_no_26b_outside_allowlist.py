@@ -120,13 +120,18 @@ check("and the old target cannot be set", _refused(lambda: T.set_target("gemma" 
 open(os.path.join(TMP, ".vintos", "subcon-target.json"), "w").write('{"target": "aeon"}')
 url, model = T.generative_route("http://100.79.177.103:1234/v1/chat/completions", "some-old-model")
 check("a caller's default resolves to AEON's subconscious lane", (url, model) == (T.SHIM_SUBCONSCIOUS, "aeon-gemma-4-12b"), (url, model))
-check("AEON's lane has no other fallback", T.pool_chain() == ["pool:aeon", "aegis_gemma"], T.pool_chain())
+check("AEON's lane: AEON on the MacBook, then the pool's subconscious task (17 Nov)",
+      T.pool_chain() == ["gemma", "pool:subconscious"], T.pool_chain())
 import vintos_claude_shim as S
-check("the shim's subconscious lane is AEON only", S.subconscious_chain() == ["pool:aeon", "aegis_gemma"], S.subconscious_chain())
+S.house_model = lambda: S.LAB_C1_MODEL      # no LM Studio here
+check("the shim's subconscious lane is that one", S.subconscious_chain() == ["gemma", "pool:subconscious"], S.subconscious_chain())
+check("the MacBook lane ('gemma') serves AEON, not the 26B", S.GEMMA_MODEL == "aeon-gemma-4-12b" and S.GEMMA_IS_AEON
+      and "26b" not in S.GEMMA_MODEL.lower())
 for p, j in (("/v1/chat/completions", {"max_tokens": 80}), ("/gemma/v1/chat/completions", {}), ("/gemma-aegis/v1/chat/completions", {}),
              ("/pool/subconscious/v1/chat/completions", {})):
     c = S.provider_chain(dict(j), p)
-    check("shim %s never reaches the 26B" % p, "gemma" not in c, c)
+    check("shim %s never reaches the 26B (every local lane is AEON)" % p,
+          all(n in ("gemma", "aegis_gemma", "anthropic", "xai") or n.startswith("pool:") for n in c), c)
 
 print("--- every image call takes AEON's own vision (Gloria 2026-11-08: \"Yes, vision to Aeon\") ---")
 VISION_CALLERS = ("scripts/image_sight.py", "bin/gallery-walk.py", "scripts/screen_share.py", "scripts/desktop_agent.py",

@@ -141,7 +141,7 @@ class Tests(unittest.TestCase):
         self.case.run_route('sol')
         self.response_a['output']=[]
         capture=W.Capture('synthetic-next','synthetic-surface',100)
-        self.assertEqual(self.case.run_route('sol',observer=capture.observe)[0],'synthetic fallback')
+        self.assertEqual(self.case.run_route('sol',observer=capture.observe)[0],'synthetic last')   # Grok, the one fallback
         self.assertNotEqual(capture._attempts[0]['served_model'],'fixture-served-a')
         self.assertNotEqual(self.case.record.call_args.kwargs['extra'].get('provider_request_id'),'fixture-response-a')
 

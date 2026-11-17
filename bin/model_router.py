@@ -88,12 +88,19 @@ CLAUDE_MODELS = {"claude": "claude-opus-4-8",
                  "opus55": "claude-opus-5-5",   # replaced the Sonnet 5 slot (Gloria, 2026-09-24)
                  "fable": "claude-fable-5-2"}   # Fable 5.2 (Gloria, 2026-11-12)
 LEGACY_MODES = {"sonnet": "opus55"}   # a toggle saved as "sonnet" before the swap now means Opus 5.5
+# Opus 4.8 ("claude") is a full toggle choice and stays one (Gloria, 17 November: "I love 4.8"). What changed is only
+# that a silent default never stands in for a different choice:
+DEFAULT_MODE = "opus55"   # no toggle file readable and none read before in this process
+# the Claude id a non-Claude toggle (Sol, Argon, local) reports; their failures now go to Grok, not to a Claude
+FALLTHROUGH_CLAUDE = "claude-opus-5-5"
+# The fallback is Grok, always (Gloria, 17 November: "It should never fall back to Sonnet. Always fall back to Grok."):
+# the toggle's own model is asked, and if it does not answer, Grok. No other Claude is ever asked in its place.
 def current_mode():
-    m = read_mode().get("mode", "claude")
+    m = read_mode().get("mode", DEFAULT_MODE)
     return LEGACY_MODES.get(m, m)
 def current_claude_model():
     """The CHAT toggle's model. Only chat surfaces follow it; every other place uses location_model()."""
-    return CLAUDE_MODELS.get(current_mode(), CLAUDE_MODEL)
+    return CLAUDE_MODELS.get(current_mode(), FALLTHROUGH_CLAUDE)
 # Each place he acts has its own model (Gloria, 2026-09-24). Flipping the chat toggle used to change
 # his model everywhere at once; now it changes only the chat. A place not listed follows the chat toggle.
 # Every place but the chat is Opus 5.5 (Gloria, 2026-10-20: "switch them all to Opus 5.5, just don't replace Opus 4.8
@@ -292,7 +299,7 @@ def read_mode():
             break
         except Exception:
             time.sleep(0.02)
-    return dict(_LAST_GOOD) if _LAST_GOOD else {"mode": "claude", "force_grok_turns": 0}
+    return dict(_LAST_GOOD) if _LAST_GOOD else {"mode": DEFAULT_MODE, "force_grok_turns": 0}
 
 def write_mode(m):
     try:
@@ -542,15 +549,16 @@ def words_left(text):
     return _TAG_ONLY.sub(" ", str(text or "")).strip()
 
 
-async def _claude(system_text, convo, params, reason, paid_reservation=None):
+async def _claude(system_text, convo, params, reason, paid_reservation=None, model=None):
     key = _anthropic_key()
     if not key: raise RuntimeError("no anthropic key")
+    model = model or current_claude_model()
     # `reason` no longer turns thinking on: no one thinks (Gloria, 2026-10-08: "No one is to have thinking on.").
     # A model that cannot be told not to (Opus 5.5, Fable) thinks as little as it can, and is still given room so
     # its thinking never eats the reply.
-    thinking = GR.thinking_off(current_claude_model())
+    thinking = GR.thinking_off(model)
     max_tok = max(int(params.get("max_tokens", 400)), 128) + (0 if thinking else THINK_ROOM)
-    body = {"model": current_claude_model(), "max_tokens": max_tok,
+    body = {"model": model, "max_tokens": max_tok,
             "messages": for_anthropic(convo)}
     _learned_body(body, system_text, body["model"])
     GR.least_thinking(body)
@@ -558,7 +566,7 @@ async def _claude(system_text, convo, params, reason, paid_reservation=None):
     # ("temperature is deprecated for this model"), which 400'd the whole claude
     # route. Only stop passes through.
     if params.get("stop"): body["stop_sequences"] = [params["stop"]] if isinstance(params["stop"], str) else list(params["stop"])
-    _reserve_provider("anthropic",current_claude_model(),paid_reservation)
+    _reserve_provider("anthropic",model,paid_reservation)
     async with httpx.AsyncClient(timeout=120) as c:
         r = await paid_http.asend(c.post, __file__, "https://api.anthropic.com/v1/messages", json=body,
             headers={"content-type": "application/json", "anthropic-version": "2023-06-01",
@@ -691,7 +699,8 @@ async def route_reply_result(surface, system_text, convo, params, grok_endpoint,
                 return res
         except Exception as _se:
             print("[router/sol toggle]", str(_se)[:120], flush=True)
-        # fall through: Claude next, grok as the unchanged safety net
+        # Sol did not answer: Grok, the one fallback (Gloria, 17 November) - never a Claude in Sol's place
+        return await grok_stage("grok(sol did not answer)")
     if read_mode().get("mode") == "argon":
         _toggle_t0 = _rb_t.time()
         try:
@@ -707,7 +716,8 @@ async def route_reply_result(surface, system_text, convo, params, grok_endpoint,
                 return res
         except Exception as _ae:
             print("[router/argon toggle]", str(_ae)[:120], flush=True)
-        # fall through: Claude next, grok as the unchanged safety net
+        # Argon did not answer: Grok, the one fallback (Gloria, 17 November) - never a Claude in Argon's place
+        return await grok_stage("grok(argon did not answer)")
     if read_mode().get("mode") == "local":
         _t0l = _rb_t.time()
         try:
@@ -719,39 +729,47 @@ async def route_reply_result(surface, system_text, convo, params, grok_endpoint,
                 _ledger(res, surface, _t0l, "local-toggle"); return res
         except Exception as _le:
             stages.append(GR.make_result("gemma", model=GEMMA_MODEL, status="unavailable", reason=str(_le)[:200]))
-        # The explicit local choice degrades to the existing Claude→Grok route;
-        # it never turns an offline Mac into an empty avatar reply.
+        # The explicit local choice degrades to Grok, the one fallback (Gloria, 17 November); it never turns an
+        # offline Mac into an empty avatar reply, and never puts a Claude in its place.
+        return await grok_stage("grok(local did not answer)")
     if _consume_forced():
         return await grok_stage("grok(forced)")
     why = "grok(refusal)"
     _t0 = _rb_t.time()
+    primary = current_claude_model()
+    # her toggle and the model it asks for, every turn (17 November: she chose Opus 5.5 and could not see what was
+    # asked); the model that served is printed by the caller ("[router] avatar served by ...") and kept in the ledger
+    print("[router] %s: toggle %s -> requesting %s" % (surface, current_mode(), primary), flush=True)
     try:
         # the primary gets at most the route budget; the safety net gets what is left, never less than a
         # floor. Before this the two stages could take 120s each while the caller had already given up
         # and answered "no reply formed" (review P10, 2026-09-05).
-        res = await _rb_aio.wait_for(_claude(system_text, convo, params, reason, paid_reservation), timeout=ROUTE_BUDGET_S)
+        res = await _rb_aio.wait_for(_claude(system_text, convo, params, reason, paid_reservation, model=primary),
+                                     timeout=ROUTE_BUDGET_S)
         stages.append(res); _ledger(res, surface, _t0, "claude")
         if GR.usable(res) and res["status"] == "truncated" and not words_left(res["text"]):
             # cut off before a single word reached her: the same model once more, without thinking, rather than
             # a tag fragment as his reply or another model's voice
             res["status"], res["reason"] = "unavailable", "cut off before any words: %r" % res["text"][:40]
             _t1 = _rb_t.time()
-            res = await _rb_aio.wait_for(_claude(system_text, convo, params, False, paid_reservation),
+            res = await _rb_aio.wait_for(_claude(system_text, convo, params, False, paid_reservation, model=primary),
                                          timeout=max(ROUTE_FLOOR_S, ROUTE_BUDGET_S - (_rb_t.time() - _t0)))
             stages.append(res); _ledger(res, surface, _t1, "claude-again")
             if GR.usable(res) and not words_left(res["text"]):
                 res["status"], res["reason"] = "unavailable", "cut off before any words again"
         if GR.usable(res):
-            res["route"] = "claude:" + current_claude_model(); res["stages"] = stages
+            res["route"] = "claude:" + primary; res["stages"] = stages
             return res
         why = "grok(%s)" % ("refusal" if res["status"] == "held" else res["status"])
     except _rb_aio.TimeoutError:
         why = "grok(primary timed out at %ds)" % int(ROUTE_BUDGET_S)
-        stages.append(GR.make_result("anthropic", model=current_claude_model(), status="unavailable",
+        stages.append(GR.make_result("anthropic", model=primary, status="unavailable",
                                      reason="timed out after send (%ds); not retried" % int(ROUTE_BUDGET_S)))
     except Exception as e:
         why = "grok(error:%s)" % str(e)[:40]
-        stages.append(GR.make_result("anthropic", model=current_claude_model(), status="unavailable", reason=str(e)[:200]))
+        stages.append(GR.make_result("anthropic", model=primary, status="unavailable", reason=str(e)[:200]))
+    # the one fallback is Grok (Gloria, 17 November: "Always fall back to Grok"), for a failure, a refusal or the cap
+    print("[router] %s: %s did not answer (%s); Grok" % (surface, primary, why), flush=True)
     _left = max(ROUTE_FLOOR_S, ROUTE_BUDGET_S + ROUTE_FLOOR_S - (_rb_t.time() - _t0))
     return await grok_stage(why, timeout=_left)
 

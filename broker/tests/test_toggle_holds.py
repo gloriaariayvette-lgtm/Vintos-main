@@ -28,7 +28,19 @@ M.arm_grok_turns(1)                                       # a read-modify-write 
 check("and a save during it keeps her choice", json.load(open(M._MODE_FILE))["mode"] == "opus55"
       and json.load(open(M._MODE_FILE))["force_grok_turns"] == 1, open(M._MODE_FILE).read())
 M._LAST_GOOD.clear(); os.remove(M._MODE_FILE)
-check("with no file ever written, the default is still Opus 4.8", M.current_mode() == "claude")
+check("with no file ever written, the default is Opus 5.5, never a silent Opus 4.8 (17 Nov)",
+      M.current_mode() == "opus55" and M.current_claude_model() == "claude-opus-5-5", M.current_mode())
+for _m in ("sol", "argon", "local"):
+    M.write_mode({"mode": _m, "force_grok_turns": 0})
+    check("a %s toggle that falls through to Claude asks Opus 5.5, not Opus 4.8" % _m,
+          M.current_claude_model() == "claude-opus-5-5", M.current_claude_model())
+M.write_mode({"mode": "claude", "force_grok_turns": 0})
+check("Opus 4.8 is a full toggle choice: saved as 'claude', read back, and asked for",
+      M.current_mode() == "claude" and M.current_claude_model() == "claude-opus-4-8")
+check("and it stays in the toggle's model table", M.CLAUDE_MODELS.get("claude") == "claude-opus-4-8")
+check("there is no Claude-to-Claude fallback list any more", not hasattr(M, "claude_fallbacks")
+      and not hasattr(M, "CLAUDE_FALLBACKS"))
+M._LAST_GOOD.clear(); os.remove(M._MODE_FILE)
 
 import threading
 M.write_mode({"mode": "opus55", "force_grok_turns": 0})

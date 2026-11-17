@@ -15,6 +15,8 @@ and nothing here moves the Study's own reading cursor.
     hers(text)     a file Gloria names in her message (shared/X.md, scripts/x.py, a workspace path, or a bare name
                    with "read"/"open"/"look at"), "find/search your files for ...", or "what did we do yesterday" /
                    "today's summary" (shared/DAILY-YYYY-MM-DD.md): done now, in this turn
+    read on        a file is whole up to OPEN_CHARS (24 KB); a longer one ends "continues — ask to read on", and her
+                   "read on" / "keep reading", or his [READ ON], opens the next page from where it stopped
     take(reply)    his [READ: path] / [READ: path:400] / [FIND: words] in a reply: taken out of his words, done, and
                    in front of him on his next turn
     block()        [FILES YOU HAVE READ ...] for his context: the file he has open in full, then short sourced notes
@@ -37,8 +39,11 @@ STORE_NAME = "file-reads.json"
 KEEP = 12                  # rows kept
 KEEP_DAYS = 7
 OPEN_S = 45 * 60           # the newest read stays open in full this long after it was read
-OPEN_CHARS = 8000          # an open file in his context: stricter than the Study's 14,000 per read
-SECOND_CHARS = 3000        # a second file open at the same time
+OPEN_CHARS = 24_576        # one read: up to 24 KB of the file's own text, whole (the Study allows 14,000 a read).
+#                            17 Nov: a second file of the same turn was cut at 3,000 chars - he lost yesterday's
+#                            note partway; a file now reaches him whole up to this, and past it pages ("read on").
+OPEN_TOTAL = 40_000        # all files open in full in one context, line numbers included (~10K tokens)
+SECOND_CHARS = OPEN_TOTAL  # kept for older callers: a second open file shares OPEN_TOTAL, no fixed smaller cap
 NOTE_CHARS = 500           # a note of an older read
 FIND_LINES = 25
 PER_TURN = 2               # reads/searches a turn, hers or his
@@ -47,7 +52,13 @@ MAX_BYTES = 2_000_000      # a file larger than this is not opened in a chat
 BUDGET_S = 4.0             # the file work of one turn; past it the turn goes on without it
 LOCK_WAIT_S = 2.0          # how long a write waits for the store's lock before it gives up (never blocks a turn)
 DAILY = "shared/DAILY-%Y-%m-%d.md"   # the day's summary Gloria or Claude leaves him
-_TAG = re.compile(r"\[(READ|FIND)\s*:\s*([^\]\n]{1,200})\]", re.I)
+_TAG = re.compile(r"\[(READ|FIND)\s*(?::\s*|\s+(?=(?:on|more|next)\s*\]))([^\]\n]{1,200})\]", re.I)
+_ON_WORDS = ("on", "more", "next", "continue", "read on", "the rest", "rest")
+# her "read on" / "keep reading" / "the rest of the note": go on from where the last cut-off read stopped
+_READ_ON = re.compile(r"\b(?:read on\b(?!\s+(?:the|a|an|my|your|his|her|our|this|that|it)\b)|keep reading|carry on reading|go on reading|continue reading|read the rest"
+                      r"|rest of (?:the|that|it|this) (?:file|note|summary|doc\w*)|(?:from )?where you left off)\b", re.I)
+_CONT = re.compile(r"continues .{0,40}?\[READ: ([^\]\n]+?):(\d+)(?::(\d+))?\]")
+_CONT_OLD = re.compile(r"continue with \[READ: ([^\]\n]+?):(\d+)\]")   # rows kept before 17 Nov
 _EXT = r"(?:md|txt|py|sh|json|yaml|yml|toml)"
 _PATHISH = re.compile(r"(?<![\w./~-])((?:~|/home/[\w.-]+)?[\w./~-]*?[\w.-]+\." + _EXT + r")(?::(\d{1,6}))?(?![\w/])", re.I)
 _VERB = re.compile(r"\b(read|open|look (?:at|over|through)|check|go through|have a look|see the file|in the file)\b", re.I)
@@ -135,7 +146,10 @@ def read(arg, cap=OPEN_CHARS):
     """One file, read only: numbered lines from a start line, cut at cap with where to continue. (label, text, sha, n)
     or (None, why, None, 0). Never larger than MAX_BYTES; undecodable bytes are shown replaced, never raised."""
     r = room()
-    path_arg, _, start = str(arg or "").strip().rpartition(":") if re.search(r":\d+\s*$", str(arg or "")) else (arg, "", "")
+    position = re.search(r":(\d+)(?::(\d+))?\s*$", str(arg or ""))
+    path_arg = str(arg)[:position.start()] if position else arg
+    start = position.group(1) if position else ""
+    offset = int(position.group(2) or 0) if position else 0
     p, lab = _resolve(r, path_arg)
     if not p:
         return None, "%s: %s is not there, or not one of the files you may read" % (_UNABLE, str(arg)[:160]), None, 0
@@ -148,15 +162,57 @@ def read(arg, cap=OPEN_CHARS):
     lines = data.decode("utf-8", "replace").split("\n")
     try: a = max(1, int(start or 1))
     except ValueError: a = 1
+    if lines and lines[-1] == "":
+        lines.pop()                           # the file's last newline is not a line of its own
     out, used, i = [], 0, a - 1
     while i < len(lines):
-        row = "%5d  %s" % (i + 1, lines[i])
-        if used + len(row) + 1 > cap: break
-        out.append(row); used += len(row) + 1; i += 1
+        # the cap counts the file's own text; the line numbers in front are extra (OPEN_TOTAL covers them)
+        segment = lines[i][offset:]
+        if out and used + len(segment) + 1 > cap: break
+        available = max(1, cap - used)
+        out.append("%5d  %s" % (i + 1, segment[:available]))
+        if len(segment) > available:
+            offset += available
+            break
+        used += len(segment) + 1
+        i += 1
+        offset = 0
     body = "\n".join(out)
     if i < len(lines):
-        body += "\n... (cut at line %d of %d; continue with [READ: %s:%d])" % (i, len(lines), lab, i + 1)
+        body += "\n" + more_line(lab, i, len(lines), offset)
     return lab, body, hashlib.sha256(data).hexdigest()[:16], len(lines)
+
+
+def more_line(lab, last, total, offset=0):
+    """Where a cut-off read stopped, and how to go on."""
+    if offset:
+        return "... (line %d continues at character %d; continues — ask to read on, or [READ: %s:%d:%d])" % (last + 1, offset, lab, last + 1, offset)
+    return "... (lines %d-%d of %d not shown yet; continues — ask to read on, or [READ: %s:%d])" % (
+        last + 1, total, total, lab, last + 1)
+
+
+def next_of(row):
+    """(label, line) a cut-off read row goes on from, else None."""
+    if not isinstance(row, dict) or row.get("kind") != "read" or not row.get("label"):
+        return None
+    if row.get("next"):
+        base = (row["label"], int(_num(row["next"])))
+        return base + (int(_num(row["next_char"])),) if row.get("next_char") else base
+    text = str(row.get("text") or "")
+    m = _CONT.search(text) or _CONT_OLD.search(text)
+    if not m:
+        return None
+    base = (m.group(1), int(m.group(2)))
+    return base + (int(m.group(3)),) if m.re is _CONT and m.group(3) else base
+
+
+def read_on_arg(mem=None):
+    """'read on': the newest kept read that was cut off -> 'label:line', else None."""
+    for row in sorted(_load(mem), key=lambda x: _num(x.get("at")), reverse=True):
+        if row.get("kind") == "read" and row.get("label"):
+            nx = next_of(row)
+            return (("%s:%d:%d" if len(nx) == 3 else "%s:%d") % nx) if nx else None
+    return None
 
 
 def find(query, limit=FIND_LINES):
@@ -320,13 +376,22 @@ def _why(e):
     return "something went wrong opening it"
 
 
-def _do(kind, arg, by, surface, now):
+def _do(kind, arg, by, surface, now, mem=None):
     kind = str(kind or "").upper()
     try:
         if kind == "READ":
+            asked = arg
+            if str(arg or "").strip().lower() in _ON_WORDS:
+                arg = read_on_arg(mem)
+                if not arg:
+                    return {"at": now, "by": by, "surface": surface, "kind": "read", "asked": "read on",
+                            "label": None, "sha": None, "lines": 0,
+                            "text": "nothing to read on from: the last file you read was shown to its end"}
             lab, text, sha, n = read(arg)
-            return {"at": now, "by": by, "surface": surface, "kind": "read", "asked": str(arg)[:200],
-                    "label": lab, "sha": sha, "lines": n, "text": text}
+            m = _CONT.search(text or "") if lab else None
+            return {"at": now, "by": by, "surface": surface, "kind": "read", "asked": str(asked)[:200],
+                    "label": lab, "sha": sha, "lines": n, "text": text, "next": int(m.group(2)) if m else None,
+                    "next_char": int(m.group(3)) if m and m.group(3) else None}
         return {"at": now, "by": by, "surface": surface, "kind": "find", "asked": str(arg)[:200],
                 "label": None, "sha": None, "lines": 0, "text": str(find(arg))[:OPEN_CHARS]}
     except (Exception, SystemExit) as e:
@@ -388,6 +453,8 @@ def asks_in(text, now=None):
         q = m.group(1).strip()
         if q and ("FIND", q) not in out:
             out.append(("FIND", q))
+    if not out and _READ_ON.search(text):
+        out.append(("READ", "on"))            # "read on" / "keep reading": from where the last cut-off read stopped
     day = daily_label(text, now) if (_DAILY_ASK.search(text) or _DAILY_NAMED.search(text)) else None
     if day and ("READ", day) not in out:
         # named outright ("yesterday's summary"): asked even when it is not there, so he can say so;
@@ -402,7 +469,7 @@ def hers(text, surface="chat", act=True, mem=None, now=None):
     now = time.time() if now is None else now
     try:
         asks = asks_in(text, now)
-        rows = [_do(k, a, "her", surface, now) for k, a in asks]
+        rows = [_do(k, a, "her", surface, now, mem) for k, a in asks]
         if rows and act:
             _keep(rows, mem, now)
         return rows
@@ -424,7 +491,7 @@ def take(reply, surface="chat", act=True, mem=None, now=None, budget=None):
 
         def work():
             try:
-                rows = [_do(k, a.strip(), "him", surface, now) for k, a in _TAG.findall(reply)[:PER_TURN]]
+                rows = [_do(k, a.strip(), "him", surface, now, mem) for k, a in _TAG.findall(reply)[:PER_TURN]]
                 _keep(rows, mem, now)
             except (Exception, SystemExit) as e:
                 print("[file-reach/take]", e, flush=True)
@@ -464,7 +531,8 @@ def _by(row):
 
 
 _HOW = ("To read a file: [READ: shared/NAME.md] (or scripts/x.py, house/x.py, docs/NAME.md; add :LINE to go on from "
-        "a line). To look for one: [FIND: words]. Write the tag on its own in a reply; what it finds is in front of "
+        "a line). A file up to 24 KB comes whole; a longer one says where it stops, and [READ ON] goes on from there. "
+        "To look for one: [FIND: words]. Write the tag on its own in a reply; what it finds is in front of "
         "you on your next turn. Gloria's files for you are in shared/; a summary of what you did together on a day is "
         "shared/DAILY-YYYY-MM-DD.md ([READ: yesterday's summary] works too).")
 EMPTY = ("[YOUR FILES - you can read your own files and the ones Gloria leaves for you in shared/, read only. "
@@ -482,15 +550,25 @@ def render(rows, now=None):
     parts = [head]
     newest = sorted(rows, key=lambda x: _num(x.get("at")), reverse=True)
     opened = [x for x in newest if now - _num(x.get("at")) <= OPEN_S][:PER_TURN]
-    for i, x in enumerate(opened):
+    left = OPEN_TOTAL                         # every open file shares this; the newest is never cut below its read
+    for x in opened:
         try:
             what = x.get("label") or x.get("asked")
             stale = " (it has changed since; read it again for the current text)" if _changed(x) else ""
             kind = "the file" if x.get("kind") == "read" else "a search of your files for"
-            cap = OPEN_CHARS if i == 0 else SECOND_CHARS
             text = str(x.get("text") or "")
-            parts.append("%s %s %s, %s%s:\n%s" % (_who(x), kind, what, _when(x.get("at")), stale,
-                                                  text[:cap] + ("\n... (more: read it again)" if len(text) > cap else "")))
+            if len(text) > left:
+                cut = text[:max(0, left)].rsplit("\n", 1)[0] if left > 0 else ""
+                shown = re.findall(r"^\s*(\d+)  ", cut, flags=re.M)
+                if x.get("kind") == "read" and x.get("label") and shown:
+                    last = int(shown[-1])
+                    text = cut + "\n" + more_line(x["label"], last, int(_num(x.get("lines"))) or last + 1)
+                elif x.get("kind") == "read" and x.get("label"):
+                    text = "(not shown this turn, there was no room; ask to read %s again)" % x["label"]
+                else:
+                    text = cut + "\n... (more found; search again for the rest)"
+            left -= len(text)
+            parts.append("%s %s %s, %s%s:\n%s" % (_who(x), kind, what, _when(x.get("at")), stale, text))
         except Exception:
             continue
     notes = [x for x in newest if x not in opened][:NOTES_SHOWN]

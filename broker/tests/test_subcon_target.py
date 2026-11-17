@@ -179,14 +179,14 @@ check("emotion_read.py follows the flipped flag (endpoint and model together)",
 check("emotion_read.py keeps its eleven-key contract and cap", list(er.DIMS) == list(T.DIMENSIONS) and er.CAP == 0.10)
 import vintos_claude_shim as SH
 chain = SH.provider_chain({}, "/pool/subconscious/v1/chat/completions")
-check("the flipped shim lane is AEON only, never the 26B", chain == ["pool:aeon", "aegis_gemma"], chain)
+check("the flipped shim lane is AEON on the MacBook, then the pool's subconscious task", chain == ["gemma", "pool:subconscious"], chain)
 T.RECORD, T.RECORD_SHA256 = REAL_RECORD, REAL_PIN
 er = load_reader("unmet")
 check("under an unmet record emotion_read.py still reads through AEON's lane", er.MODEL == "aeon-gemma-4-12b"
       and er.LM_URL == T.SHIM_SUBCONSCIOUS, (er.LM_URL, er.MODEL))
 check("under an unmet record the shim's subconscious lane is still AEON only",
-      SH.provider_chain({}, "/pool/subconscious/v1/chat/completions") == ["pool:aeon", "aegis_gemma"])
-check("other pool tasks keep their own lanes, all AEON", SH.provider_chain({}, "/pool/quick/v1/chat/completions") == ["pool:quick", "aegis_gemma", "pool:aeon"])
+      SH.provider_chain({}, "/pool/subconscious/v1/chat/completions") == ["gemma", "pool:subconscious"])
+check("other pool tasks keep their own lanes, all AEON", SH.provider_chain({}, "/pool/quick/v1/chat/completions") == ["pool:quick", "aegis_gemma", "gemma"])
 srv = open(os.path.join(REPO, "bin", "server.py")).read()
 fn = srv[srv.index("def nudge_emotions_from_text"):srv.index("def nudge_emotions_from_text") + 9000]
 check("the server's live read takes its route from the flag", "generative_route(_emo_url, _model)" in fn and "_u.Request(_emo_url," in fn)

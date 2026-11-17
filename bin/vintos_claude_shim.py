@@ -26,6 +26,7 @@ ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
 XAI_URL = "https://api.x.ai/v1/chat/completions"
 GEMMA_URL = "http://100.79.177.103:1234/v1/chat/completions"
 GEMMA_MODEL = "aeon-gemma-4-12b"
+GEMMA_IS_AEON = GEMMA_MODEL.startswith("aeon")   # the MacBook lane serves AEON (since 8 November), not the 26B
 AEGIS_GEMMA_URL = "http://172.18.16.1:1234/api/v1/chat"
 AEGIS_GEMMA_MODEL = "aeon/gemma-4-12b"
 # Aegis's house model (Gloria, 14 November 2026) is the Lab planner worm c1 (LoRA fused on AEON), loaded as "lab-c1";
@@ -39,19 +40,26 @@ _HOUSE = {"at": 0.0, "id": AEGIS_GEMMA_MODEL}
 
 def house_model():
     """The identifier that answers for aeon/gemma-4-12b on Aegis now: AEON when it is resident, else the worm when it
-    is, else AEON (LM Studio then refuses, as before). LM Studio's loaded list, read at most every 3 seconds."""
+    is, else None - neither is loaded (a window's swap in progress), and asking LM Studio for AEON then only earned a
+    "model not found" (17 November: 7 of them that morning). When the list cannot be read, AEON, as before.
+    LM Studio's loaded list, read at most every 3 seconds."""
     now = time.time()
     if now - _HOUSE["at"] < 3: return _HOUSE["id"]
     ident = AEGIS_GEMMA_MODEL
     try:
         with urllib.request.urlopen(AEGIS_MODELS_URL, timeout=3) as r:
             ids = {str(m.get("id")) for m in (json.loads(r.read()).get("data") or []) if isinstance(m, dict)}
-        if AEGIS_GEMMA_MODEL not in ids and LAB_C1_MODEL in ids: ident = LAB_C1_MODEL
+        if AEGIS_GEMMA_MODEL not in ids:
+            ident = LAB_C1_MODEL if LAB_C1_MODEL in ids else None
     except Exception:
         pass
     _HOUSE.update(at=now, id=ident)
     return ident
-CLAUDE_MODEL = "claude-opus-4-8"
+
+# The worm answers the Lab only (Gloria, 17 November): the Lab's own lanes may get it as Aegis's house model; his inner
+# work on the other Aegis lanes, and his subconscious, never does - they go to AEON (the MacBook's first) instead.
+LAB_PATHS = ("/gemma-aegis-local/v1/chat/completions", LAB_C1_PATH)
+CLAUDE_MODEL = "claude-opus-5-5"   # the introspection Opus configuration_discovery.py reads from here (was 4.8)
 FLEET_DEFAULT = "claude-haiku-5-5"
 LOG = "/tmp/vintos-claude-shim.log"
 USAGE_LOG = os.path.expanduser("~/.vintos/logs/anthropic-usage.jsonl")
@@ -133,6 +141,7 @@ class _Call:
         # model_router reserves its own grok stage before it calls here; that call is not counted twice
         self.prereserved = bool(j.get("paid_reserved"))
         self.caller = caller   # who sent it (classify_caller); None = in-process use, no per-caller share
+        self.worm_ok = True    # run_chain: False unless the path is one of the Lab's own (LAB_PATHS)
 
 
 # ---------------------------------------------------------------- callers and experiments (15 November 2026)
@@ -503,7 +512,14 @@ def aegis_gemma_complete(j, call=None, model=AEGIS_GEMMA_MODEL, provider="aegis_
     # The planner worm was trained and gated on one system turn and one plain user turn: send its prompt as the
     # user turn itself, not under a "USER:" label it never saw.
     text_in = users[0] if provider == "aegis_lab_c1" and len(turns) == 1 and len(users) == 1 else "\n\n".join(turns)
-    if provider == "aegis_gemma": model = house_model()   # AEON, or the worm as the house model
+    if provider == "aegis_gemma":
+        model = house_model()   # AEON, or the worm as the house model, or None (nothing resident)
+        if model is None:
+            return GR.make_result(provider, status="unavailable",
+                                  reason="nothing resident on Aegis (neither %s nor %s is loaded)" % (AEGIS_GEMMA_MODEL, LAB_C1_MODEL))
+        if model == LAB_C1_MODEL and not getattr(call, "worm_ok", True):
+            return GR.make_result(provider, model=model, status="unavailable",
+                                  reason="Aegis holds the Lab worm (lab-c1); it answers the Lab only")
     body = {"model": model, "input": text_in or ".",
             "system_prompt": "\n\n".join(systems), "reasoning": "off", "store": False,
             "max_output_tokens": int(j.get("max_tokens") or 1024)}
@@ -576,7 +592,7 @@ def llama_complete(j, call, b):
 def pool_complete(j, call, task):
     """Try the pool's choices for this task in order; unavailable (with every reason) when none answers."""
     backends, verdicts = POOL.choose(task, _pool_tokens(j))
-    if aeon_everywhere():   # after the flip the pool never places a call on the 26B either
+    if aeon_everywhere() and not GEMMA_IS_AEON:   # after the flip the pool never places a call on the 26B either
         backends = [b for b in backends if not (b.get("kind") == "lmstudio" and b["model"] == GEMMA_MODEL)]
     if not backends:
         why = "; ".join("%s@%s %s" % (v.get("model", ""), v.get("machine", ""), v["reason"]) if v.get("machine") else v["reason"]
@@ -642,10 +658,13 @@ def aeon_everywhere():
         return False
 
 def _without_26b(chain):
-    """Each 26B step becomes the AEON lanes; other steps (Claude, x.ai) keep their place. No duplicates."""
+    """Each 26B step becomes the AEON lanes; other steps (Claude, x.ai) keep their place. No duplicates.
+    Since 8 November the MacBook lane ("gemma") IS AEON (GEMMA_MODEL is aeon-gemma-4-12b), so it is kept: turning it
+    into the Aegis lanes sent his subconscious and inner calls to Aegis - to the Lab worm, once it became the house
+    model (17 November)."""
     out = []
     for name in chain:
-        for n in (["pool:aeon", "aegis_gemma"] if name == "gemma" else [name]):
+        for n in (["pool:aeon", "aegis_gemma"] if name == "gemma" and not GEMMA_IS_AEON else [name]):
             if n not in out:
                 out.append(n)
     return out
@@ -662,8 +681,12 @@ def _provider_chain(j, path):
     task = pool_task(path)
     if task == "subconscious": return subconscious_chain()
     if task: return ["pool:" + task] + POOL_FALLBACK.get(task, POOL_FALLBACK_DEFAULT)
-    # the Aegis lane may spill to another machine's AEON when Aegis is busy (pool task "aeon")
-    if path.startswith("/gemma-aegis"): return ["pool:aeon", "aegis_gemma", "gemma", "xai"]
+    # the Aegis lane may spill to another machine's AEON when Aegis is busy (pool task "aeon"). When Aegis does not
+    # hold AEON (the Lab worm is its house model outside the causality window), these inner calls go to AEON on the
+    # MacBook first (Gloria, 17 November), then any AEON with room, then x.ai.
+    if path.startswith("/gemma-aegis"):
+        if house_model() != AEGIS_GEMMA_MODEL: return ["gemma", "pool:aeon", "xai"]
+        return ["pool:aeon", "aegis_gemma", "gemma", "xai"]
     if path.startswith("/gemma"): return ["gemma", "xai"]
     if j.get("route") == "grok": return ["xai"]
     # one-word verdicts / mechanical calls up to 120 tokens ride local gemma first (Gloria 2026-08-26/09-02)
@@ -675,6 +698,8 @@ def run_chain(j, path, chain=None, caller=None):
     An experiment never reaches Grok (15 November 2026): on the chat path it is answered by Claude alone; on a
     local lane (/gemma..., /pool/...) by that lane's local models only."""
     call = _Call(j, caller)
+    call.worm_ok = path in LAB_PATHS
+    who = " path=%s caller=%s" % (path, (caller or {}).get("name") or "-")
     if (caller or {}).get("experiment"):
         if path == "/v1/chat/completions": chain = ["anthropic"]
         else: chain = [n for n in (chain or provider_chain(j, path)) if n not in ("anthropic", "xai")]
@@ -684,8 +709,8 @@ def run_chain(j, path, chain=None, caller=None):
         res = pool_complete(j, call, name[5:]) if name.startswith("pool:") else PROVIDERS[name](j, call)
         call.results.append(res)
         if GR.usable(res):
-            _log(f"{name} ok ({res['model']}, {res['status']})"); return res, call.results, call
-        _log(f"{name} {res['status']}: {res['reason'][:100]} -> next")
+            _log(f"{name} ok ({res['model']}, {res['status']}){who}"); return res, call.results, call
+        _log(f"{name} {res['status']}: {res['reason'][:100]} -> next{who}")
     return None, call.results, call
 
 def openai_wrap(res, requested_model=None):

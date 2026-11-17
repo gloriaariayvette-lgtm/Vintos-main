@@ -43,6 +43,8 @@ sys.modules["httpx"] = fake_httpx
 
 import gen_result as GR
 import vintos_claude_shim as S
+_REAL_HOUSE = S.house_model
+S.house_model = lambda: S.AEGIS_GEMMA_MODEL   # Aegis holds AEON in this suite; no LM Studio is asked
 import model_router as MR
 S.LOG = os.path.join(TMP, "shim.log"); S.USAGE_LOG = os.path.join(TMP, "usage.jsonl")
 MR.USAGE_LOG = os.path.join(TMP, "usage.jsonl"); MR._MODE_FILE = os.path.join(TMP, "mode.json"); MR._KEY_FILE = os.path.join(TMP, "nokey")
@@ -97,7 +99,7 @@ check("empty completions from every provider -> 502, not 200+empty", s == 502 an
 s, h, b = run(dict(BASE), path="/gemma/v1/chat/completions", gemma=lambda b_, h_: socket.timeout("timed out"), xai=EMPTY_XAI)
 check("/gemma route with gemma timeout + empty grok -> 502 (old code answered 200 empty)", s == 502, (s, b))
 check("named Aegis utility lane does not inherit the Mac Gemma default",
-      S.provider_chain(BASE, "/gemma-aegis/v1/chat/completions") == ["pool:aeon", "aegis_gemma", "xai"]
+      S.provider_chain(BASE, "/gemma-aegis/v1/chat/completions") == ["pool:aeon", "aegis_gemma", "gemma", "xai"]
       and S.AEGIS_GEMMA_URL == "http://172.18.16.1:1234/api/v1/chat"
       and S.AEGIS_GEMMA_MODEL == "aeon/gemma-4-12b")
 s, h, b = run(dict(BASE), path="/gemma-aegis/v1/chat/completions", gemma=AEGIS_OK,
@@ -165,11 +167,20 @@ def house_with(ids, handler):
     _open.__name__ = "_open"
     S.urllib.request.urlopen = _open
     S._HOUSE.update(at=0.0)
+    S.house_model = _REAL_HOUSE   # here LM Studio's loaded list is the fake one above
 CALLS.clear(); house_with(["text-embedding-nomic-embed-text-v1.5", "lab-c1"], C1_OK)
 s_, h_, b_ = S.handle_chat(dict(BASE), "/gemma-aegis-local/v1/chat/completions"); b_ = json.loads(b_)
 check("the worm as house model: an aeon/gemma-4-12b request is sent to lab-c1 and the reply names lab-c1",
       s_ == 200 and CALLS[0][1].get("model") == "lab-c1" and b_["model"] == "lab-c1"
       and h_["x-vintos-provider"] == "aegis_gemma", (s_, h_, CALLS))
+CALLS.clear(); house_with(["text-embedding-nomic-embed-text-v1.5"], AEGIS_OK)
+s_, h_, b_ = S.handle_chat(dict(BASE), "/gemma-aegis-local/v1/chat/completions"); b_ = json.loads(b_)
+check("neither AEON nor the worm loaded (a window's swap): refused here, LM Studio is never asked for a model it lacks",
+      s_ == 502 and not CALLS and "nothing resident on Aegis" in json.dumps(b_), (s_, b_, CALLS))
+CALLS.clear(); house_with(["text-embedding-nomic-embed-text-v1.5", "lab-c1"], C1_OK)
+s_, h_, b_ = S.handle_chat(dict(BASE), "/gemma-aegis/v1/chat/completions"); b_ = json.loads(b_)
+check("the worm resident: an inner call on /gemma-aegis is never answered by the worm",
+      not any(c[1].get("model") == "lab-c1" for c in CALLS) and b_.get("model") != "lab-c1", (s_, b_, CALLS))
 CALLS.clear(); house_with(["aeon/gemma-4-12b"], AEGIS_OK)
 s_, h_, b_ = S.handle_chat(dict(BASE), "/gemma-aegis-local/v1/chat/completions"); b_ = json.loads(b_)
 check("in the causality window (AEON resident) the same request is AEON's", s_ == 200
@@ -216,12 +227,12 @@ s, h, b = run(tiny, gemma=lambda b_, h_: {"id": "g", "model": "gemma", "choices"
               anthropic=TOOL_ANTH, xai=XAI_OK)
 check("tools on a tiny call: gemma skipped (would drop tools), anthropic answers", h["x-vintos-provider"] == "anthropic"
       and [c[0] for c in CALLS] == ["anthropic"], (h, [c[0] for c in CALLS]))
-check("the local AEON stage recorded as explicit 'unsupported on aegis_gemma: tools' (the 26B lane is gone)",
-      any(r["reason"] == "unsupported on aegis_gemma: tool_choice,tools" for r in S.run_chain(tiny, "/v1/chat/completions")[1]),
+check("the local AEON stage (the MacBook lane) recorded as explicit 'unsupported on gemma: tools'",
+      any(r["reason"] == "unsupported on gemma: tool_choice,tools" for r in S.run_chain(tiny, "/v1/chat/completions")[1]),
       S.run_chain(tiny, "/v1/chat/completions")[1][0])
 s, h, b = run(dict(tiny), path="/gemma/v1/chat/completions", gemma=lambda b_, h_: {"choices": []}, xai=XAI_DOWN)
 check("/gemma route + tools, grok down -> 502 body says the local lane is unsupported (not silently dropped)",
-      s == 502 and any(p["reason"].startswith("unsupported on aegis_gemma") for p in b["error"]["providers"]), (s, b))
+      s == 502 and any(p["reason"].startswith("unsupported on gemma") for p in b["error"]["providers"]), (s, b))
 jsonreq = dict(BASE, response_format={"type": "json_object"})
 s, h, b = run(jsonreq, anthropic=ANTH_OK, xai=lambda b_, h_: XAI_OK(b_, h_) | {"choices": [{"message": {"content": '{"a":1}'}, "finish_reason": "stop"}]})
 check("response_format json: anthropic cannot honour it -> failed over to grok with response_format intact",
@@ -268,7 +279,7 @@ check("router: stop_reason=max_tokens -> truncated", r["status"] == "truncated" 
 check("router: temperature is NOT sent to anthropic (rejected by current models)", _FakeClient.posts[0][2].get("temperature") is None, _FakeClient.posts[0][2])
 t = asyncio.run(MR.route_reply("avatar", "sys", [{"role": "user", "content": "hi"}], {"max_tokens": 50},
                                "http://127.0.0.1:8599/v1/chat/completions", {}, "grok-4"))
-check("route_reply tuple view unchanged for existing callers", t[0] == "router text" and t[2] == "claude:claude-opus-4-8", t)
+check("route_reply tuple view unchanged for existing callers", t[0] == "router text" and t[2] == "claude:" + MR.current_claude_model(), t)   # no toggle file: Opus 5.5 (17 Nov), whatever the HOME holds
 async def refuse_then_grok(url, hdrs, body):
     if "anthropic" in url: return {"id": "m", "model": "claude-opus-4-8", "stop_reason": "refusal", "content": [], "usage": {"input_tokens": 1, "output_tokens": 0}}
     return XAI_OK(body, hdrs)
