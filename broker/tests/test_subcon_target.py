@@ -80,7 +80,7 @@ write_flag({"target": "aeon"})
 # The 26B was removed (Gloria 2026-11-08): calls go to AEON whatever the record says; the record decides only
 # whether AEON's residual readings are admitted.
 check("under an unmet record calls still go to AEON (there is no other model)", T.active() == "aeon"
-      and T.generative_route(OLD_URL, OLD_MODEL) == (T.SHIM_SUBCONSCIOUS, "aeon-gemma-4-12b"))
+      and T.generative_route(OLD_URL, OLD_MODEL) == ("http://127.0.0.1:8599/gemma-lab-c1-local/v1/chat/completions", "lab-c1"))
 check("no partial reading: under an unmet record AEON's readings are not admitted", T.constructs("aeon") == {})
 clear()
 check("no flag -> AEON", T.active() == "aeon" and T.receipt()["identity"] == T.TARGETS["aeon"]["identity"])
@@ -107,7 +107,7 @@ check("readings keep only finite numbers", T.admitted_readings(reading) == {"Aro
 check("a reading set from the other checkpoint is refused whole",
       T.admitted_readings(reading, identity="some-other-checkpoint") == {})
 check("generated reads move to the shim's subconscious lane",
-      T.generative_route(OLD_URL, OLD_MODEL) == (T.SHIM_SUBCONSCIOUS, "aeon-gemma-4-12b"))
+      T.generative_route(OLD_URL, OLD_MODEL) == ("http://127.0.0.1:8599/gemma-lab-c1-local/v1/chat/completions", "lab-c1"))
 check("the removed 26B target cannot be set", refused("gemma" + "26b") is not None and T.active() == "aeon")
 
 print("--- one unmet item blocks the whole flip ---")
@@ -175,15 +175,15 @@ def load_reader(tag):
     m = importlib.util.module_from_spec(sp); sp.loader.exec_module(m); return m
 er = load_reader("aeon")
 check("emotion_read.py follows the flipped flag (endpoint and model together)",
-      er.LM_URL == T.SHIM_SUBCONSCIOUS and er.MODEL == "aeon-gemma-4-12b", (er.LM_URL, er.MODEL))
+      er.LM_URL.endswith("/gemma-lab-c1-local/v1/chat/completions") and er.MODEL == "lab-c1", (er.LM_URL, er.MODEL))
 check("emotion_read.py keeps its eleven-key contract and cap", list(er.DIMS) == list(T.DIMENSIONS) and er.CAP == 0.10)
 import vintos_claude_shim as SH
 chain = SH.provider_chain({}, "/pool/subconscious/v1/chat/completions")
 check("the flipped shim lane is AEON only, never the 26B", chain == ["pool:aeon", "aegis_gemma"], chain)
 T.RECORD, T.RECORD_SHA256 = REAL_RECORD, REAL_PIN
 er = load_reader("unmet")
-check("under an unmet record emotion_read.py still reads through AEON's lane", er.MODEL == "aeon-gemma-4-12b"
-      and er.LM_URL == T.SHIM_SUBCONSCIOUS, (er.LM_URL, er.MODEL))
+check("under an unmet record emotion_read.py still reads through AEON's lane", er.MODEL == "lab-c1"
+      and er.LM_URL.endswith("/gemma-lab-c1-local/v1/chat/completions"), (er.LM_URL, er.MODEL))
 check("under an unmet record the shim's subconscious lane is still AEON only",
       SH.provider_chain({}, "/pool/subconscious/v1/chat/completions") == ["pool:aeon", "aegis_gemma"])
 check("other pool tasks keep their own lanes, all AEON", SH.provider_chain({}, "/pool/quick/v1/chat/completions") == ["pool:quick", "aegis_gemma", "pool:aeon"])

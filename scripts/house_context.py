@@ -307,7 +307,9 @@ def action_candidates(board, conversation):
                 'TV': r'\b(watch|video|film|movie|youtube|documentary|television)\b'}
     import re
     out = []
-    for w in reversed(rows):
+    rows = sorted([w for w in rows if isinstance(w, dict)],
+                  key=lambda w: stamp(w.get("timestamp") or w.get("created_at")), reverse=True)
+    for w in rows:
         if (not isinstance(w, dict) or w.get('fulfilled') or w.get('dismissed') or w.get('gloria_routed')
                 or w.get('board') == 'awaiting_gloria'): continue
         text = str(w.get('want') or '')
@@ -316,6 +318,7 @@ def action_candidates(board, conversation):
             if re.search(pattern, text, re.I):
                 out.append({'want_id':w.get('id'), 'objective':short(text,600),
                             'possible_action':act, 'source':w.get('source'),
+                            'execution_status':(w.get('agent_work') or {}).get('status','not agent-owned'),
                             'authority':'proposal only; existing approval and in-use protections apply'})
         if len(out)>=5: break
     return out[:5]

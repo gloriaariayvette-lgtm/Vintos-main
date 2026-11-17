@@ -19,3 +19,13 @@ Office readiness includes read-only printer status. The running steam YAML/heade
 - Initial recovery fixture failed because it omitted source ownership. Added a real synthetic source receipt/operational task; kept the production ownership check unchanged. Focused regression then passed.
 - Preserved the causality route while moving the named working callers. No old-model failover is permitted for these working requests.
 - Validation totals and any subsequent failure diagnosis will be appended after the complete isolated matrix. No merge/deploy is authorized by test success alone.
+
+## First full-matrix failures and corrections
+
+The initial matrix ran all 743 suites: 734 passed, 9 failed. It is retained as round 1, not reported as a successful release.
+
+- The source reconciliation also detached fulfilled work that still needed normal completion cleanup. Restricted reconciliation to dismissed/merged sources; added a regression preserving fulfilled cleanup. Completion binding and its 71-check coarse-clock wrapper now pass.
+- Three routing suites still asserted the retired generation role. Extended the shared text/streaming/vision defaults to the adopted working route and changed those role assertions, retaining pinned direction-identity and explicit causality-window tests. Focused route suites pass (52/52, 94/94, 160/160 and 48/48); the Linux causality-window suite passes 20/20.
+- Four failures read a September 15 optional iPhone source checkout I had linked into scratch. It lacks later avatar, save-song, video and wants UI features. The actual deploy checkout has no such optional sibling. The final matrix removes only that newly introduced scratch symlink, matching the deployment layout; it does not alter the app, remove assertions, or claim a phone validation. The required separate film-room source fixture remains present.
+
+Existing per-request spending caps remain explicit: the old capped request is not silently reset by this repair. The new admission and local response recovery let other work proceed without increasing the daily budget. Steam calibration remains waiting for the naturally occurring wet window offered by the owner.

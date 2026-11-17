@@ -30,6 +30,10 @@ class Tests(unittest.TestCase):
  def test_corrupt_store_is_not_an_empty_store(self):
   row=self.work();state={'room_work':{'open':[row]}};self.write('current-wants.json',[]).write_text('{bad')
   self.write('dismissed-wants.json',[{'id':'one','agent_work':{'request_id':row['want_request_id']}}]);A.reconcile_source_work(state,self.now,ws=self.ws);self.assertEqual(state['room_work']['open'],[row])
+ def test_fulfilled_binding_is_left_for_completion_cleanup(self):
+  row=self.work();state={'room_work':{'open':[row]}};self.write('current-wants.json',[])
+  self.write('fulfilled-wants.json',[{'id':'one','fulfilled':True,'agent_work':{'request_id':row['want_request_id'],'status':'completed'}}])
+  A.reconcile_source_work(state,self.now,ws=self.ws);self.assertEqual(state['room_work']['open'],[row])
  def test_future_receipt_instruction_not_completion_claim(self):
   self.assertEqual(W.shape_problem({'message':'Then post WANT RESULT WA-fixture on its own line.','accept':False},'opening'),'')
   for text in ('WANT RESULT WA-fixture','All finished. WANT RESULT WA-fixture','WORK DONE RW-fixture'):
@@ -42,8 +46,8 @@ class Tests(unittest.TestCase):
   data={'schema':'want-working-thread-v1','want_id':'one','request_id':row['want_request_id'],'work_id':row['id'],'goal_sha256':want['agent_work']['goal_sha256'],'generations':{'opening:x':{'at':1,'state':'response_observed','result':{'text':json.dumps({'message':'Then post WANT RESULT WA-fixture.','accept':False}),'observations':[{'status':'valid'}]}}}};f.write_text(json.dumps(data));original=f.read_bytes()
   lines=A.recover_local_review(state,self.now,ws=self.ws);self.assertTrue(lines);self.assertFalse(json.loads((self.mem/'current-wants.json').read_text())[0]['agent_work'].get('blocked'));self.assertEqual(f.read_bytes(),original);self.assertFalse((self.mem/'want-work-control/calls.json').exists())
  def test_working_route_does_not_change_causality_route(self):
-  url,model,extra=S.working_route();self.assertIn('/gemma-lab-c1-local/',url);self.assertEqual(model,'lab-c1');self.assertEqual(S.generative_route('x','y')[1],'aeon-gemma-4-12b')
-  f=self.ws/'backends.json';f.write_text(json.dumps([{'machine':'aegis','kind':'lmstudio','url':'http://fixture/v1/chat/completions','model':'old'}]));self.assertEqual(S.working_route('http://wrong',vision=True,backends_path=str(f))[:2],('http://fixture/v1/chat/completions','lab-c1'))
+  url,model,extra=S.working_route();self.assertIn('/gemma-lab-c1-local/',url);self.assertEqual(model,'lab-c1');self.assertEqual(S.generative_route('x','y')[1],'lab-c1');self.assertEqual(S.target()['identity'],'AEON-7-Gemma-4-12B-it-AEON-Abliterated-K4-BF16')
+  f=self.ws/'backends.json';f.write_text(json.dumps([{'machine':'aegis','kind':'lmstudio','url':'http://fixture/v1/chat/completions','model':'old'}]));self.assertEqual(S.working_route('http://wrong',vision=True,backends_path=str(f))[:2],('http://fixture/v1/chat/completions','lab-c1'));self.assertEqual(S.brain_route('http://wrong','old',str(f))[:2],('http://fixture','lab-c1'))
  def test_action_candidates_are_live_grounded_and_room_specific(self):
   self.write('current-wants.json',[{'id':'dead','want':'watch a film','dismissed':True},{'id':'web','want':'compare the document on the website','source':'email'},{'id':'film','want':'watch a documentary','source':'idle-journal'}])
   office=H.action_candidates('house-touch',[]);sofa=H.action_candidates('house-press-mic',[])

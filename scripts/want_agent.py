@@ -593,7 +593,7 @@ def reconcile_source_work(state, now, *, ws=None, save_state=None):
             current = json.loads(path.read_text())
             if not isinstance(current, list): raise ValueError('current wants is not a list')
             archives = []
-            for name in ('dismissed-wants.json', 'fulfilled-wants.json', 'merged-wants.json'):
+            for name in ('dismissed-wants.json', 'merged-wants.json'):
                 source = ws / 'memory' / name
                 if not source.exists(): continue
                 rows = json.loads(source.read_text())

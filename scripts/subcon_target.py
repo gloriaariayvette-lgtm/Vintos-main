@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """subcon_target.py — which model his subconscious emotion work runs on (Gloria 2026-11-07).
 
-His subconscious, emotion, text and vision work all run on AEON. The 26B is removed (Gloria 2026-11-08: "we can
-remove 26b completely once we confirm everything is in Aeon"): there is no other target and nothing to fall back to.
-The flag file (~/.vintos/subcon-target.json) is kept for status and accepts only "aeon".
+The admitted direction instrument and its flag are kept separate from generative work.
+Text, streaming and vision work use working_route(). The explicit causality window
+keeps its own model and is not rewritten by these working routes. A direction record
+is never transferred to different weights by changing a serving name.
 
 Gloria: "IT HAS TO ALL PASS." AEON can be the target only when it has passed the 26B's full bar, all of it:
   model level   the Pain paper-protocol replication (S2 feel-colon, final token) AUC >= .85, and all six Pain
@@ -189,51 +190,26 @@ def pool_chain():
 
 
 def generative_route(default_url, default_model):
-    """(url, model) for generated subconscious/emotion work: AEON's subconscious lane, always."""
-    g = target()["generative"]
-    return (g["url"], g["model"]) if g else (default_url, default_model)
+    """Generated work uses the adopted worker; measurement identity is separate."""
+    url, model, _ = working_route(default_url)
+    return url, model
 
 
 POOL_BACKENDS = os.path.join("~", ".vintos", "pool", "backends.json")
 
 
 def brain_route(default_base, default_model, backends_path=None):
-    """(base url, model, extra body fields) for the local call's brain: the first AEON backend in the private pool config by machine preference. No AEON backend there: its own route."""
-    b = target().get("brain")
-    if not b:
-        return default_base, default_model, {}
-    try:
-        rows = json.load(open(os.path.expanduser(backends_path or POOL_BACKENDS)))
-    except Exception:
-        return default_base, default_model, {}
-    rows = [r for r in rows if isinstance(r, dict) and r.get("label") == b["backend"] and r.get("url")]
-    rank = {m: i for i, m in enumerate(b["prefer"])}
-    rows.sort(key=lambda r: rank.get(r.get("machine"), len(rank)))
-    if not rows:
-        return default_base, default_model, {}
-    url = str(rows[0]["url"])
-    base = url[: -len("/v1/chat/completions")] if url.endswith("/v1/chat/completions") else url
-    return base, str(rows[0].get("model") or b["backend"]), json.loads(json.dumps(b["extra"]))
+    """Streaming work uses the configured worker directly, never an older fallback."""
+    default = str(default_base or '').rstrip('/')
+    if not default.endswith('/v1/chat/completions'): default += '/v1/chat/completions'
+    url, model, extra = working_route(default, vision=True, backends_path=backends_path)
+    base = url[:-len('/v1/chat/completions')] if url.endswith('/v1/chat/completions') else url
+    return base, model, extra
 
 
 def vision_route(default_url, default_model, backends_path=None):
-    """(chat url, model, extra body fields) for a call that sends images. AEON's vision model at the caller's own endpoint (the MacBook's LM Studio), or, for a caller with
-    no endpoint of its own, the MacBook LM Studio address from the private pool config. Nothing there: its own route."""
-    v = target().get("vision")
-    if not v:
-        return default_url, default_model, {}
-    url = default_url
-    if not url:
-        try:
-            rows = json.load(open(os.path.expanduser(backends_path or POOL_BACKENDS)))
-        except Exception:
-            rows = []
-        rows = [r for r in rows if isinstance(r, dict) and r.get("machine") == v["machine"]
-                and r.get("kind") == "lmstudio" and str(r.get("url") or "").endswith("/v1/chat/completions")]
-        if not rows:
-            return default_url, default_model, {}
-        url = str(rows[0]["url"])
-    return url, v["model"], json.loads(json.dumps(v["extra"]))
+    """Image work uses the same adopted worker at its configured image endpoint."""
+    return working_route(default_url, vision=True, backends_path=backends_path)
 
 
 

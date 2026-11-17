@@ -408,6 +408,7 @@ def prompt(moment, board, now, cfg, asks=None, want=None, st=None, context=None)
                  "For desktop, propose one bounded task with a visible done condition; the phone ask obtains her Yes. "
                  "For TV, choose a relevant title/query when it fits the moment; respect an already-used TV. "
                  "Use outreach or a buzz when that is the purposeful choice, rather than automatically substituting it for available work. "
+                 "If an agent already owns a candidate, choose a distinct supporting step or wait instead of restarting it. "
                  "Do not choose an action merely to exercise a capability. Choose NOTHING when that fits. Speak plainly from what is known and choose a working "
                  "channel rather than reciting every unavailable device. Desktop work still needs her explicit Yes. "
                  "For SONGS, choose listed IDs in the order you mean; no invented titles or track URLs.")

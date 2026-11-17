@@ -93,7 +93,7 @@ for f in [x for x in SUBCONSCIOUS if x.endswith(".py")]:
     back = (ns["_subcon_url"](CHAT), ns["_subcon_model"](MODEL))
     passing(False)
     # the 26B was removed (2026-11-08): with or without a passing record or a flag file, the route is AEON's lane
-    check("%s routes to AEON" % f, len(fns) == 3 and before == after == back == (T.SHIM_SUBCONSCIOUS, "aeon-gemma-4-12b"),
+    check("%s routes to AEON" % f, len(fns) == 3 and before == after == back == ("http://127.0.0.1:8599/gemma-lab-c1-local/v1/chat/completions", "lab-c1"),
           (before, after, back))
 
 print("--- the shell scripts ---")
@@ -117,13 +117,13 @@ for f in [x for x in SUBCONSCIOUS if x.endswith(".sh")]:
     syntax = subprocess.run(["bash", "-n", os.path.join(REPO, f)], capture_output=True).returncode == 0
     n, names, off = run_shell(f, False)
     _, _, on = run_shell(f, True)
-    aeon = lambda o: ("url=%s model=aeon-gemma-4-12b" % T.SHIM_SUBCONSCIOUS) in o and all(
-        ("%s=%s" % (v, T.SHIM_SUBCONSCIOUS)) in o or ("%s=aeon-gemma-4-12b" % v) in o for v in names)
+    aeon = lambda o: ("url=%s model=lab-c1" % "http://127.0.0.1:8599/gemma-lab-c1-local/v1/chat/completions") in o and all(
+        ("%s=%s" % (v, "http://127.0.0.1:8599/gemma-lab-c1-local/v1/chat/completions")) in o or ("%s=lab-c1" % v) in o for v in names)
     # the 26B was removed (2026-11-08): with or without a flag file the script's route is AEON's lane
     check("%s parses and routes to AEON" % f, syntax and n == 2 and aeon(off) and aeon(on), (syntax, n, off, on))
 check("the route command prints AEON's lane", subprocess.run(
     ["python3", os.path.join(REPO, "scripts", "subcon_target.py"), "route", "", ""], capture_output=True, text=True).stdout
-      == T.SHIM_SUBCONSCIOUS + "\naeon-gemma-4-12b\n")
+      == "http://127.0.0.1:8599/gemma-lab-c1-local/v1/chat/completions\nlab-c1\n")
 
 print("--- vision callers follow the flag to AEON's vision (2026-11-08) ---")
 for f in VISION:

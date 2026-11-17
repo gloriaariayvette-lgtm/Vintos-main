@@ -71,7 +71,7 @@ for f in [x for x in OTHER if x.endswith(".py")]:
     exec(compile(ast.Module(body=fns, type_ignores=[]), f, "exec"), ns)
     state(False); before = (ns["_subcon_url"](CHAT), ns["_subcon_model"](MODEL))
     state(True); after = (ns["_subcon_url"](CHAT), ns["_subcon_model"](MODEL))
-    check("%s routes to AEON" % f, len(fns) == 3 and before == after == (T.SHIM_SUBCONSCIOUS, "aeon-gemma-4-12b"),
+    check("%s routes to AEON" % f, len(fns) == 3 and before == after == ("http://127.0.0.1:8599/gemma-lab-c1-local/v1/chat/completions", "lab-c1"),
           (before, after))
 for f in [x for x in OTHER if x.endswith(".sh")]:
     t = src(f)

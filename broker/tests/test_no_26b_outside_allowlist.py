@@ -119,7 +119,7 @@ check("an unknown name in the flag file: still AEON", T.active() == "aeon")
 check("and the old target cannot be set", _refused(lambda: T.set_target("gemma" + "26b")))
 open(os.path.join(TMP, ".vintos", "subcon-target.json"), "w").write('{"target": "aeon"}')
 url, model = T.generative_route("http://100.79.177.103:1234/v1/chat/completions", "some-old-model")
-check("a caller's default resolves to AEON's subconscious lane", (url, model) == (T.SHIM_SUBCONSCIOUS, "aeon-gemma-4-12b"), (url, model))
+check("a caller's default resolves to AEON's subconscious lane", (url, model) == ("http://127.0.0.1:8599/gemma-lab-c1-local/v1/chat/completions", "lab-c1"), (url, model))
 check("AEON's lane has no other fallback", T.pool_chain() == ["pool:aeon", "aegis_gemma"], T.pool_chain())
 import vintos_claude_shim as S
 check("the shim's subconscious lane is AEON only", S.subconscious_chain() == ["pool:aeon", "aegis_gemma"], S.subconscious_chain())
@@ -139,14 +139,14 @@ for fn in ("async def _describe_photo", "[vision clip] claude failed"):
     check("server %s: the local eye is AEON's vision route" % fn.split()[-1], "_vision_route(" in part and '"model": _vmodel' in part)
 v = T.vision_route("http://lmstudio.invalid/v1/chat/completions", "some-old-model")
 check("with the flag on AEON, an image call resolves to AEON's vision model, thinking off, at the same endpoint",
-      v == ("http://lmstudio.invalid/v1/chat/completions", "aeon-gemma-4-12b", {"reasoning_effort": "none"}), v)
+      v == ("http://lmstudio.invalid/v1/chat/completions", "lab-c1", {"reasoning_effort": "none", "chat_template_kwargs": {"enable_thinking": False}}), v)
 bk = os.path.join(TMP, "backends.json")
-open(bk, "w").write(json.dumps([{"label": "x", "machine": "macbook", "kind": "lmstudio", "model": "m",
-                                 "url": "http://mac.invalid/v1/chat/completions"}]))
-check("a caller with no endpoint of its own (the Reel Room) gets the MacBook LM Studio address from the pool config",
-      T.vision_route(None, "m", backends_path=bk)[:2] == ("http://mac.invalid/v1/chat/completions", "aeon-gemma-4-12b"))
-check("no MacBook address in the pool config: the caller keeps its own route",
-      T.vision_route(None, "m", backends_path=os.path.join(TMP, "none.json")) == (None, "m", {}))
+open(bk, "w").write(json.dumps([{"label": "x", "machine": "aegis", "kind": "lmstudio", "model": "m",
+                                 "url": "http://aegis.invalid/v1/chat/completions"}]))
+check("a caller with no endpoint of its own (the Reel Room) gets the configured working address from the pool config",
+      T.vision_route(None, "m", backends_path=bk)[:2] == ("http://aegis.invalid/v1/chat/completions", "lab-c1"))
+check("no working address: the old model is never substituted",
+      T.vision_route(None, "m", backends_path=os.path.join(TMP, "none.json")) == (None, "lab-c1", {"reasoning_effort": "none", "chat_template_kwargs": {"enable_thinking": False}}))
 er = src("scripts/emotion_read.py")
 check("emotion_read keeps its own emotion-lane hook (resolving to AEON), and the deploy installs that version",
       "LM_URL, MODEL = _subcon.generative_route(LM_URL, MODEL)" in er and "emotion_read.py" in installed)
@@ -161,9 +161,9 @@ for f, call in (("scripts/browser_jev.py", '_url, _model = _subcon_route(getattr
     exec(compile(ast.Module(body=fns, type_ignores=[]), f, "exec"), ns)
     got = ns["_subcon_route"]("http://100.79.177.103:1234/v1/chat/completions", "some-old-model")
     check("%s: its text call goes through the flag, and resolves to AEON" % f,
-          len(fns) == 1 and call in t and got == (T.SHIM_SUBCONSCIOUS, "aeon-gemma-4-12b"), got)
-check("desktop_control: an explicit VINTOS_DESKTOP_MODEL_URL keeps its own route",
-      'if "VINTOS_DESKTOP_MODEL_URL" not in os.environ:' in src("scripts/desktop_control.py"))
+          len(fns) == 1 and call in t and got == ("http://127.0.0.1:8599/gemma-lab-c1-local/v1/chat/completions", "lab-c1"), got)
+check("desktop_control: a legacy model override cannot bypass the working route",
+      'if "VINTOS_DESKTOP_MODEL_URL" not in os.environ:' not in src("scripts/desktop_control.py"))
 os.remove(os.path.join(TMP, ".vintos", "subcon-target.json"))
 
 print("\n%d/%d passed" % (sum(R), len(R)))
