@@ -27,12 +27,13 @@ if echo "$MODELS" | grep -q "$MODEL"; then
     sleep 5
   done
   echo "[$(date '+%F %T')] Gemma loaded but unresponsive after 2 pings — reloading" >> "$LOG"
+  # only a loaded model is unloaded: unloading one that is not there is LM Studio's "Model Not Found" (17 Nov)
+  "$LMS" unload "$MODEL" >> "$LOG" 2>&1
+  sleep 3
 else
   echo "[$(date '+%F %T')] Gemma not loaded — loading one instance" >> "$LOG"
 fi
 
-"$LMS" unload "$MODEL" >> "$LOG" 2>&1
-sleep 3
 "$LOADER" >> "$LOG" 2>&1
 sleep 3
 RESP2=$(curl -s --max-time 90 -X POST "$BASE/v1/chat/completions" -H "Content-Type: application/json" -d "$PING" 2>/dev/null)

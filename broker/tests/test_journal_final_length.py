@@ -136,11 +136,12 @@ check("an empty audit response changes nothing", keeps("x" * 4000, "") == "uncha
 print("\n--- which shim path each call actually takes ---")
 shim = src(os.path.join(REPO, "bin", "vintos_claude_shim.py"))
 check("the named Aegis journal chain never reaches Claude (AEON on any pool machine, then Aegis, Mac Gemma, x.ai)",
-      'if path.startswith("/gemma-aegis"): return ["pool:aeon", "aegis_gemma", "gemma", "xai"]' in shim)
+      'return ["pool:aeon", "aegis_gemma", "gemma", "xai"]' in shim
+      and 'if house_model() != AEGIS_GEMMA_MODEL: return ["gemma", "pool:aeon", "xai"]' in shim)
 check("and the plain chat path goes to Claude first, whatever model name is in the body",
       'return ["anthropic", "xai"]' in shim)
 check("so a grok model name on /gemma-aegis is served by Aegis, which forces 12B",
-      'if provider == "aegis_gemma": model = house_model()' in shim and '"reasoning": "off"' in shim)
+      'model = house_model()   # AEON, or the worm as the house model' in shim and '"reasoning": "off"' in shim)
 check("audit 2 is on the named Aegis path, knowingly",
       "8599/gemma-aegis/v1/chat/completions" in audit2)
 

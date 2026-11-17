@@ -11781,8 +11781,13 @@ async def avatar_set_brain(request: Request):
         want = str(body.get("brain") or body.get("mode") or "").lower()
         import model_router as _mr
         want = _mr.LEGACY_MODES.get(want, want)
-        mode = want if want in ("grok", "sol", "argon", "opus55", "fable", "local") else "claude"
+        if want not in ("claude", "grok", "sol", "argon", "opus55", "fable", "local"):
+            # an unknown name used to save "claude" (Opus 4.8) over her choice; now nothing changes (17 November)
+            print("[toggle] unknown brain %r ignored; the toggle stays %s" % (want[:40], _mr.current_mode()), flush=True)
+            return {"mode": _mr.current_mode(), "error": "unknown brain %r" % want[:40]}
+        mode = want
         _mr.update_mode(lambda m: m.update(mode=mode))
+        print("[toggle] avatar brain set to %s (requests %s)" % (mode, _mr.current_claude_model() if mode in _mr.CLAUDE_MODELS else mode), flush=True)
         return {"mode": _mr.current_mode()}   # what was actually saved, not what was asked
     except Exception as e:
         return {"mode": "", "error": str(e)}

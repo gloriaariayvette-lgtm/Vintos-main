@@ -102,17 +102,19 @@ import vintos_claude_shim as S
 PATHS = {"/gemma-aegis/v1/chat/completions": {}, "/gemma/v1/chat/completions": {}, "/v1/chat/completions": {"max_tokens": 80},
          "/pool/deep/v1/chat/completions": {}, "/pool/general/v1/chat/completions": {}, "/pool/aeon/v1/chat/completions": {},
          "/pool/quick/v1/chat/completions": {}, "/pool/subconscious/v1/chat/completions": {}}
+S.house_model = lambda: S.AEGIS_GEMMA_MODEL   # Aegis holds AEON in this suite; no LM Studio is asked
+# Since 8 November the MacBook lane ("gemma") serves AEON (aeon-gemma-4-12b), so "gemma" in a chain is AEON, not the 26B.
+check("the MacBook lane is AEON", S.GEMMA_MODEL == "aeon-gemma-4-12b" and S.GEMMA_IS_AEON)
 state(False)
 before = {p: S.provider_chain(dict(j), p) for p, j in PATHS.items()}
-check("with no passing record the chains are already AEON (the 26B was removed)", all("gemma" not in c for c in before.values()), before)
 state(True)
 after = {p: S.provider_chain(dict(j), p) for p, j in PATHS.items()}
-check("after the flip no chain contains the 26B", all("gemma" not in c for c in after.values()), after)
-check("the /gemma-aegis fallback is AEON, then x.ai as before",
-      after["/gemma-aegis/v1/chat/completions"] == ["pool:aeon", "aegis_gemma", "xai"], after["/gemma-aegis/v1/chat/completions"])
-check("short calls ride AEON first, then Claude and x.ai as before",
-      after["/v1/chat/completions"] == ["pool:aeon", "aegis_gemma", "anthropic", "xai"], after["/v1/chat/completions"])
-check("the explicit /gemma path goes to AEON", after["/gemma/v1/chat/completions"] == ["pool:aeon", "aegis_gemma", "xai"])
+check("the flag does not change any chain (AEON is the only target)", before == after, (before, after))
+check("the /gemma-aegis fallback is AEON (Aegis, then the MacBook), then x.ai",
+      after["/gemma-aegis/v1/chat/completions"] == ["pool:aeon", "aegis_gemma", "gemma", "xai"], after["/gemma-aegis/v1/chat/completions"])
+check("short calls ride AEON on the MacBook first, then Claude and x.ai",
+      after["/v1/chat/completions"] == ["gemma", "anthropic", "xai"], after["/v1/chat/completions"])
+check("the explicit /gemma path goes to AEON on the MacBook", after["/gemma/v1/chat/completions"] == ["gemma", "xai"])
 check("long default calls are untouched (Claude, x.ai)", S.provider_chain({"max_tokens": 2000}, "/v1/chat/completions") == ["anthropic", "xai"])
 
 called = []
@@ -124,10 +126,11 @@ S.POOL = _Pool()
 S.gemma_complete = lambda j, call: (called.append("gemma"), S.GR.make_result("gemma", model=S.GEMMA_MODEL, status="valid", text="from 26b"))[1]
 S.llama_complete = lambda j, call, b: (called.append("aeon"), S.GR.make_result("pool_studio", model=b["model"], status="valid", text="from aeon"))[1]
 res = S.pool_complete({"messages": [{"role": "user", "content": "x"}]}, S._Call({"messages": []}), "general")
-check("after the flip the pool never places a call on the 26B", called == ["aeon"] and res.get("text") == "from aeon", (called, res))
+check("the pool places a call on the MacBook's AEON (the lane that once held the 26B) like any other AEON",
+      called == ["gemma"] and res.get("text") == "from 26b", (called, res))
 state(False); called.clear()
 res = S.pool_complete({"messages": [{"role": "user", "content": "x"}]}, S._Call({"messages": []}), "general")
-check("with no passing record the pool still never places a call on the old lane", called == ["aeon"], called)
+check("and the flag does not change that", called == ["gemma"], called)
 os.remove(FLAG)
 
 print("\n%d/%d passed" % (sum(R), len(R)))

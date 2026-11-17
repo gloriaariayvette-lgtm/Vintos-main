@@ -49,7 +49,10 @@ TARGETS = {
         "sha256": "02fd375821a7b50e783f408a75bf714ea85fc0dc67c933991642ef76d9b0d9ce",
         "lock": "offline/residual_emotion/model-lock-aeon.json",
         "constructs": None,   # from the pass record, only once every item passes
-        "pool_chain": ["pool:aeon", "aegis_gemma"],
+        # His subconscious runs on AEON in the MacBook's LM Studio (the shim's "gemma" lane: aeon-gemma-4-12b there
+        # since 8 November); the pool's subconscious task (other AEON hosts, never the Lab worm) only if it is down.
+        # Before 17 November this was the Aegis AEON lane, which by then answered with the Lab worm (lab-c1).
+        "pool_chain": ["gemma", "pool:subconscious"],
         "generative": {"url": SHIM_SUBCONSCIOUS, "model": "aeon-gemma-4-12b"},
         # The local call's brain streams, so it talks to an AEON backend directly (address from the private pool
         # config, the Studio first), thinking off.

@@ -43,6 +43,7 @@ class Tests(unittest.TestCase):
                      gemini_draft=self.b,SOL_MODEL='fixture-request-a',GEMINI_MODEL='fixture-request-b',
                      GEMMA_MODEL='fixture-local',_claude=self.fallback,_grok_result=self.last,
                      _reserve_provider=Mock(),has_images=lambda _:False,current_claude_model=lambda:'fixture-fallback',
+                     current_mode=lambda:'fixture-mode',claude_fallbacks=lambda primary:[],
                      words_left=lambda _:True,ROUTE_BUDGET_S=1,ROUTE_FLOOR_S=1)
         exec(compile(ast.Module(body=nodes,type_ignores=[]),'actual-router-functions','exec'),self.ns)
 

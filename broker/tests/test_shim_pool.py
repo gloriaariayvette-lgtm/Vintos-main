@@ -23,6 +23,8 @@ def check(n, ok, d=""):
 import local_pool as LP
 import vintos_claude_shim as S
 S.LOG = os.path.join(TMP, "shim.log"); S.USAGE_LOG = os.path.join(TMP, "usage.jsonl")
+HOUSE = [S.AEGIS_GEMMA_MODEL]            # what Aegis's LM Studio holds in this suite: AEON unless a check says
+S.house_model = lambda: HOUSE[0]
 GiB = LP.GiB
 
 CFG = os.path.join(TMP, "pool"); os.makedirs(CFG)
@@ -86,12 +88,20 @@ check("no config -> nothing", (lambda q: (q.refresh(), q.choose("quick", 1)[0])[
 
 print("--- the shim's chains ---")
 # the 26B was removed (2026-11-08): every chain is AEON (then Claude / x.ai where it had them)
-check("/pool/quick -> pool, then Aegis AEON, then AEON's pool",
-      S.provider_chain({}, "/pool/quick/v1/chat/completions") == ["pool:quick", "aegis_gemma", "pool:aeon"])
-check("/pool/subconscious is AEON only",
-      S.provider_chain({}, "/pool/subconscious/v1/chat/completions") == ["pool:aeon", "aegis_gemma"])
-check("/gemma-aegis may spill to another AEON, then x.ai",
-      S.provider_chain({}, "/gemma-aegis/v1/chat/completions") == ["pool:aeon", "aegis_gemma", "xai"])
+# the MacBook lane ("gemma") is AEON since 2026-11-08 (GEMMA_MODEL aeon-gemma-4-12b), so it is a lane of its own again
+check("/pool/quick -> pool, then Aegis AEON, then AEON on the MacBook",
+      S.provider_chain({}, "/pool/quick/v1/chat/completions") == ["pool:quick", "aegis_gemma", "gemma"],
+      S.provider_chain({}, "/pool/quick/v1/chat/completions"))
+check("/pool/subconscious is AEON on the MacBook, then the pool's subconscious task (17 Nov)",
+      S.provider_chain({}, "/pool/subconscious/v1/chat/completions") == ["gemma", "pool:subconscious"])
+check("/gemma-aegis while Aegis holds AEON: Aegis first, may spill to another AEON, then x.ai",
+      S.provider_chain({}, "/gemma-aegis/v1/chat/completions") == ["pool:aeon", "aegis_gemma", "gemma", "xai"])
+HOUSE[0] = S.LAB_C1_MODEL
+check("/gemma-aegis while Aegis holds the Lab worm: AEON on the MacBook first, then AEON with room, then x.ai",
+      S.provider_chain({}, "/gemma-aegis/v1/chat/completions") == ["gemma", "pool:aeon", "xai"])
+check("the Lab's own lanes are unchanged", S.provider_chain({}, "/gemma-aegis-local/v1/chat/completions") == ["aegis_gemma"]
+      and S.provider_chain({}, S.LAB_C1_PATH) == ["aegis_lab_c1"])
+HOUSE[0] = S.AEGIS_GEMMA_MODEL
 check("/gemma-aegis-local stays on Aegis only", S.provider_chain({}, "/gemma-aegis-local/v1/chat/completions") == ["aegis_gemma"])
 check("pool paths are chat paths", S.pool_task("/pool/quick/v1/chat/completions") == "quick" and S.pool_task("/v1/chat/completions") is None
       and S.pool_task("/pool/") is None)
@@ -145,13 +155,39 @@ check("pool has no reading -> the old Aegis lane answers", s == 200 and h["x-vin
 
 s, h, b = run("/pool/aeon/v1/chat/completions", dict(ALL_ROOM, studio=room(10)),
               **{"172.18.16.1": lambda body: socket.timeout("timed out"), "100.79.177.103": oai("from the 26b")})
-check("Aegis timed out via the pool -> not resent on its old lane, and never sent to the MacBook",
-      sum("172.18.16.1" in u for u, _ in CALLS) == 1 and not any("100.79.177.103" in u for u, _ in CALLS), (s, h, [u for u, _ in CALLS]))
+check("Aegis timed out via the pool -> not resent on its old lane; AEON on the MacBook answers",
+      sum("172.18.16.1" in u for u, _ in CALLS) == 1 and s == 200 and h["x-vintos-provider"] == "gemma"
+      and CALLS[-1][1]["model"] == "aeon-gemma-4-12b", (s, h, [u for u, _ in CALLS]))
 
 s, h, b = run("/pool/subconscious/v1/chat/completions", dict(ALL_ROOM, studio=room(60)),
-              **{"studio:8840": oai("felt"), "172.18.16.1": AEGIS_OK, "aegis/": oai("felt")})
-check("subconscious is answered by AEON, never the MacBook", s == 200 and h["x-vintos-provider"] != "gemma"
-      and not any("100.79.177.103" in u for u, _ in CALLS), (s, h, [u for u, _ in CALLS]))
+              **{"studio:8840": oai("felt"), "172.18.16.1": AEGIS_OK, "aegis/": oai("felt"), "100.79.177.103": oai("felt")})
+check("subconscious is answered by AEON on the MacBook, and nothing else is asked",
+      s == 200 and h["x-vintos-provider"] == "gemma" and [u for u, _ in CALLS] == [S.GEMMA_URL]
+      and CALLS[0][1]["model"] == "aeon-gemma-4-12b", (s, h, [u for u, _ in CALLS]))
+HOUSE[0] = S.LAB_C1_MODEL
+s, h, b = run("/pool/subconscious/v1/chat/completions", dict(ALL_ROOM, studio=room(60)),
+              **{"studio:8840": oai("felt"), "172.18.16.1": AEGIS_OK, "100.79.177.103": lambda body: ConnectionRefusedError("down")})
+check("MacBook down (this suite's subconscious task lists only the MacBook): an error, never the Lab worm on Aegis",
+      s == 502 and not any("172.18.16.1" in u for u, _ in CALLS), (s, h, [u for u, _ in CALLS]))
+json.dump(dict(TASKS, subconscious={"models": ["gemma-26b", "aeon-12b"]}), open(os.path.join(CFG, "tasks.json"), "w"))
+s, h, b = run("/pool/subconscious/v1/chat/completions", dict(ALL_ROOM, studio=room(60)),
+              **{"studio:8840": oai("felt"), "172.18.16.1": AEGIS_OK, "100.79.177.103": lambda body: ConnectionRefusedError("down")})
+check("MacBook down, other AEON hosts listed (the live config): the Studio's AEON answers, never the worm",
+      s == 200 and h.get("x-vintos-pool-machine") == "studio" and not any("172.18.16.1" in u for u, _ in CALLS),
+      (s, h, [u for u, _ in CALLS]))
+json.dump(TASKS, open(os.path.join(CFG, "tasks.json"), "w"))
+s, h, b = run("/gemma-aegis/v1/chat/completions", dict(ALL_ROOM, studio=room(60)),
+              **{"studio:8840": oai("x"), "172.18.16.1": AEGIS_OK, "100.79.177.103": oai("from the macbook")})
+check("an inner check on /gemma-aegis while the worm is resident goes to AEON on the MacBook",
+      s == 200 and h["x-vintos-provider"] == "gemma" and not any("172.18.16.1" in u for u, _ in CALLS), (s, h))
+s, h, b = run("/gemma-aegis-local/v1/chat/completions", ALL_ROOM, **{"172.18.16.1": AEGIS_OK})
+check("the Lab's own lane still gets the worm as Aegis's house model",
+      s == 200 and h["x-vintos-provider"] == "aegis_gemma" and CALLS[0][1]["model"] == S.LAB_C1_MODEL, (s, h, CALLS[:1]))
+HOUSE[0] = None
+s, h, b = run("/gemma-aegis-local/v1/chat/completions", ALL_ROOM, **{"172.18.16.1": AEGIS_OK})
+check("nothing resident on Aegis: refused here, never a 'model not found' from LM Studio",
+      s == 502 and not CALLS and "nothing resident" in json.dumps(b), (s, b))
+HOUSE[0] = S.AEGIS_GEMMA_MODEL
 
 s, h, b = run("/pool/quick/v1/chat/completions", ALL_ROOM, **{"imac:8840": lambda body: ConnectionRefusedError("refused"),
               "studio:8840": lambda body: ConnectionRefusedError("refused"), "172.18.16.1": lambda body: ConnectionRefusedError("refused"),
