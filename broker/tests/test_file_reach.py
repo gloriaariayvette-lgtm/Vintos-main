@@ -4,6 +4,7 @@ inside the Study's own boundary, and what he read stays with him across turns (1
 
 A throwaway HOME with synthetic files; no model is called; nothing is sent."""
 import hashlib, json, os, socket, sys, tempfile, time
+from datetime import datetime, timedelta
 HERE = os.path.dirname(os.path.abspath(__file__)); REPO = os.path.dirname(os.path.dirname(HERE))
 HOME = tempfile.mkdtemp(prefix="file-reach-"); os.environ["HOME"] = HOME
 WS = os.path.join(HOME, ".vintos", "workspace"); os.environ["SPARK_WORKSPACE"] = WS
@@ -69,7 +70,7 @@ for bad, why in (("/etc/passwd", "outside the roots"), ("shared/../../../outside
                  ("shared/sneaky.md", "a link out of the roots"), ("shared/api-token.md", "a secret's name"),
                  ("memory/private-diary.md", "his private memory"), (os.path.join(HOME, "outside.md"), "a home path")):
     lab, text, _, _ = F.read(bad)
-    check("refused: %s" % why, lab is None and text.startswith("not opened"), text)
+    check("refused: %s" % why, lab is None and text.startswith("couldn't open that"), text)
 check("her message naming a refused file reads nothing", F.asks_in("read ~/outside.md and memory/private-diary.md") == [])
 big = "\n".join("x" * 70 for _ in range(400))
 write(os.path.join(WS, "shared", "LONG.md"), big)
@@ -126,6 +127,27 @@ write(os.path.join(WS, "shared", "PLAN-FOR-TODAY.md"), "# What is tested today\n
 os.remove(os.path.join(WS, "shared", "LONG.md"))
 check("nothing outside his memory store was written", tree_hash() == before)
 check("the Study's reading cursor was not moved", not os.path.exists(os.path.join(WS, "memory", "study-session.json")))
+
+# --- the day's summary: "what did we do yesterday" opens shared/DAILY-<yesterday>.md
+NOW = time.mktime((2026, 11, 17, 15, 0, 0, 0, 0, -1))
+write(os.path.join(WS, "shared", "DAILY-2026-11-16.md"), "# Yesterday\nthe cells grew in the dish\n")
+check("yesterday's summary is that day's file in shared/",
+      F.daily_label("yesterday's summary", NOW) == "shared/DAILY-2026-11-16.md"
+      and F.daily_label("today's summary", NOW) == "shared/DAILY-2026-11-17.md")
+check("'what did we do yesterday' opens yesterday's summary",
+      F.asks_in("what did we do yesterday?", NOW) == [("READ", "shared/DAILY-2026-11-16.md")])
+blk = F.turn_block("hey, what did we do yesterday?", "avatar", act=False, now=NOW)
+check("and it is in front of him in that turn", "the cells grew in the dish" in blk, blk[:600])
+check("a question about a day with no summary opens nothing", F.asks_in("what did we do today?", NOW) == [])
+check("asked by name and not there: asked, so he can say he couldn't open it",
+      F.asks_in("can you read today's summary", NOW) == [("READ", "shared/DAILY-2026-11-17.md")]
+      and "couldn't open that" in F.turn_block("can you read today's summary", "avatar", act=False, now=NOW))
+real_y = (datetime.now() - timedelta(days=1)).strftime("shared/DAILY-%Y-%m-%d.md")
+write(os.path.join(WS, real_y), "# Yesterday\nmagnets\n")
+check("his own [READ: yesterday's summary] opens it", F.read("yesterday's summary")[0] == real_y)
+check("an ordinary 'today' in her message is not a summary request",
+      F.asks_in("read shared/PLAN-FOR-TODAY.md, it says what we test today", NOW)
+      == [("READ", "shared/PLAN-FOR-TODAY.md")])
 
 # --- wired into the main chat and the avatar chat
 src = open(os.path.join(REPO, "bin", "server.py")).read()
