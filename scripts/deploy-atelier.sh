@@ -290,6 +290,21 @@ SCRIPTS="$SCRIPTS world_model_shadow.py"   # the state model in shadow: writes i
 SCRIPTS="$SCRIPTS hdc_episodic.py"   # who/what/where/when episodic memory in shadow (hyperdimensional): writes its own state file, read by nothing; no cron installed by deploy (2026-11-15)
 SCRIPTS="$SCRIPTS hdc_tag_recall.py"   # tag-keyed HDC recall behind the AprilTag lookup, opt-in (native_video tag_memory hdc=, server --tag-hdc); writes only its own state from its CLI; no cron (2026-11-15)
 BINS="$BINS mirror-trigger.sh"   # its cron entry runs the ~/Vintos copy, which was in no list; it matched the checkout when the thread gate was added (2026-10-27)
+SCRIPTS="$SCRIPTS lab_entity.py"   # the Lab's entity grounding, loaded by lab_investigations/lab_planner_trial with __import__; in no list, so the 16 November deploy left it out and Gloria copied it by hand (2026-11-17)
+
+# >>> import closure
+# Every repo module an installed script imports is installed with it (2026-11-17). The lists above are kept by hand,
+# and a NEW script that only an import names was missed: lab_names.py on 28 October, lab_entity.py on 16 November
+# (an __import__ the old check did not read). deploy_closure.py walks import / from-import / __import__ /
+# importlib.import_module from every listed script, transitively, and names each scripts/X.py no list carries; it is
+# added to SCRIPTS here, so the plan, the stage and the backups treat it like any listed file (NEW beside the anchor).
+_CLOSURE="$( { printf 'scripts/%s\n' $SCRIPTS; printf 'bin/%s\n' $BINS; } | python3 "$SRC/scripts/deploy_closure.py" --src "$SRC")" \
+    || die "the import closure (scripts/deploy_closure.py) could not be computed — nothing installed"
+for _c in $_CLOSURE; do
+    say "closure: ${_c#scripts/} is imported by an installed script and was in no list; installing it too"
+    SCRIPTS+=" ${_c#scripts/}"
+done
+# <<< import closure
 
 CLIENTFILES="clients/mobile/stratagem_voice.js clients/mobile/index.html clients/mobile/client_lifecycle.js clients/mobile/avatar-bundle.js"
 MANIFEST="$(printf 'scripts/%s\n' $SCRIPTS; printf 'bin/%s\n' $BINS; printf '%s\n' $SKILLFILES $DOMAINFILES $CLIENTFILES broker/vintos-emoclaw-provenance.conf
