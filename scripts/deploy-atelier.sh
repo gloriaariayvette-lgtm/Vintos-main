@@ -292,20 +292,6 @@ SCRIPTS="$SCRIPTS hdc_tag_recall.py"   # tag-keyed HDC recall behind the AprilTa
 BINS="$BINS mirror-trigger.sh"   # its cron entry runs the ~/Vintos copy, which was in no list; it matched the checkout when the thread gate was added (2026-10-27)
 SCRIPTS="$SCRIPTS lab_entity.py"   # the Lab's entity grounding, loaded by lab_investigations/lab_planner_trial with __import__; in no list, so the 16 November deploy left it out and Gloria copied it by hand (2026-11-17)
 
-# >>> import closure
-# Every repo module an installed script imports is installed with it (2026-11-17). The lists above are kept by hand,
-# and a NEW script that only an import names was missed: lab_names.py on 28 October, lab_entity.py on 16 November
-# (an __import__ the old check did not read). deploy_closure.py walks import / from-import / __import__ /
-# importlib.import_module from every listed script, transitively, and names each scripts/X.py no list carries; it is
-# added to SCRIPTS here, so the plan, the stage and the backups treat it like any listed file (NEW beside the anchor).
-_CLOSURE="$( { printf 'scripts/%s\n' $SCRIPTS; printf 'bin/%s\n' $BINS; } | python3 "$SRC/scripts/deploy_closure.py" --src "$SRC")" \
-    || die "the import closure (scripts/deploy_closure.py) could not be computed — nothing installed"
-for _c in $_CLOSURE; do
-    say "closure: ${_c#scripts/} is imported by an installed script and was in no list; installing it too"
-    SCRIPTS+=" ${_c#scripts/}"
-done
-# <<< import closure
-
 CLIENTFILES="clients/mobile/stratagem_voice.js clients/mobile/index.html clients/mobile/client_lifecycle.js clients/mobile/avatar-bundle.js"
 MANIFEST="$(printf 'scripts/%s\n' $SCRIPTS; printf 'bin/%s\n' $BINS; printf '%s\n' $SKILLFILES $DOMAINFILES $CLIENTFILES broker/vintos-emoclaw-provenance.conf
             printf 'broker/%s\n' broker.py stratagem_store.py "$UNIT_NAME.service" "$REVIEW_UNIT_NAME.service" "$CHEM_UNIT_NAME.service" "$PLUGIN_GATEWAY_UNIT_NAME.service" "$CHEM_SESSION_NAME.service" "$CHEM_SESSION_NAME.timer" "$SOMATIC_NAME.service" "$SOMATIC_NAME.timer"
@@ -358,6 +344,22 @@ missing=""
 for f in $MANIFEST; do [ -f "$SRC/$f" ] || missing="$missing $f"; done
 [ -f "$SRC/broker/$UNIT_NAME.service" ] || missing="$missing broker/$UNIT_NAME.service"   # the unit is what makes it a service
 [ -z "$missing" ] || die "source is incomplete —$missing"
+
+# >>> import closure
+# Every repo module an installed script imports is installed with it (2026-11-17). The lists above are kept by hand,
+# and a NEW script that only an import names was missed: lab_names.py on 28 October, lab_entity.py on 16 November
+# (an __import__ the old check did not read). deploy_closure.py walks import / from-import / __import__ /
+# importlib.import_module from every listed script, transitively, and names each scripts/X.py no list carries; it is
+# added to SCRIPTS and the manifest here (after the branch guard and the completeness check, before the parse check,
+# the suites and the plan), so the plan, the stage and the backups treat it like any listed file (NEW beside the anchor).
+_CLOSURE="$( { printf 'scripts/%s\n' $SCRIPTS; printf 'bin/%s\n' $BINS; } | python3 "$SRC/scripts/deploy_closure.py" --src "$SRC")" \
+    || die "the import closure (scripts/deploy_closure.py) could not be computed — nothing installed"
+for _c in $_CLOSURE; do
+    say "closure: ${_c#scripts/} is imported by an installed script and was in no list; installing it too"
+    SCRIPTS+=" ${_c#scripts/}"
+    MANIFEST="$(printf '%s\n%s\n' "$MANIFEST" "$_c" | sort -u)"
+done
+# <<< import closure
 
 # Every source must PARSE, not just exist: .py with python3.12 (his host's
 # interpreter) when present, .sh with bash -n, units must at least declare a

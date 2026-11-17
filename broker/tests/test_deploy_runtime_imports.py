@@ -71,15 +71,21 @@ try:
 
     # the deploy's own shell block, run as written, on this synthetic checkout
     block = SH[SH.index("# >>> import closure"):SH.index("# <<< import closure")]
-    check("the deploy computes the closure before the manifest and the plan",
-          SH.index("# >>> import closure") < SH.index('MANIFEST="$(printf') < SH.index('say "== plan =="'))
+    check("the deploy computes the closure after the branch guard and completeness check, before parse check, "
+          "suites and plan",
+          SH.index("only '$_want' is deployed") < SH.index('die "source is incomplete') < SH.index("# >>> import closure")
+          < SH.index('say "== parse check') < SH.index('say "== suites =="') < SH.index('say "== plan =="'))
     script = ('say() { printf "%%s\\n" "$*"; }\ndie() { printf "STOP: %%s\\n" "$*"; exit 1; }\n'
-              'SRC=%s\nSCRIPTS="organ_a.py"\nBINS=""\n%s\nprintf "FINAL %%s\\n" "$SCRIPTS"\n') % (tmp, block)
+              'SRC=%s\nSCRIPTS="organ_a.py"\nBINS=""\nMANIFEST="scripts/organ_a.py"\n%s\n'
+              'printf "FINAL %%s\\n" "$SCRIPTS"\nprintf "MANIFEST %%s\\n" $MANIFEST\n') % (tmp, block)
     shutil.copy2(os.path.join(SCRIPTS, "deploy_closure.py"), os.path.join(tmp, "scripts", "deploy_closure.py"))
     run = subprocess.run(["bash", "-c", script], capture_output=True, text=True, timeout=60)
     final = (re.findall(r"^FINAL (.*)$", run.stdout, re.M) or [""])[-1].split()
-    check("run by the deploy, the new scripts join SCRIPTS (so the plan installs them NEW beside the anchor)",
+    staged = re.findall(r"^MANIFEST (.*)$", run.stdout, re.M)
+    check("run by the deploy, the new scripts join SCRIPTS and the manifest (so they are staged, validated and "
+          "installed NEW beside the anchor)",
           run.returncode == 0 and final == ["organ_a.py", "organ_b.py", "organ_c.py", "organ_d.py"]
+          and staged == ["scripts/organ_%s.py" % c for c in "abcd"]
           and "closure: organ_b.py" in run.stdout, run.stdout + run.stderr)
     os.remove(os.path.join(tmp, "scripts", "deploy_closure.py"))
     run = subprocess.run(["bash", "-c", script], capture_output=True, text=True, timeout=60)
