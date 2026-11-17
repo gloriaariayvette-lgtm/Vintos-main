@@ -236,6 +236,32 @@ def vision_route(default_url, default_model, backends_path=None):
     return url, v["model"], json.loads(json.dumps(v["extra"]))
 
 
+
+def working_route(default_url=None, *, vision=False, backends_path=None):
+    """The adopted house worker, separate from the causality/measurement routes.
+
+    Text uses its existing worker-only shim lane. Images use the same worker on
+    the configured Aegis endpoint. Neither route substitutes the older model.
+    """
+    model = "lab-c1"
+    extra = {"reasoning_effort": "none", "chat_template_kwargs": {"enable_thinking": False}}
+    if not vision:
+        return (os.environ.get("VINTOS_WORKING_API") or
+                "http://127.0.0.1:8599/gemma-lab-c1-local/v1/chat/completions", model, extra)
+    explicit = os.environ.get("VINTOS_WORKING_VISION_API")
+    if explicit: return explicit, model, extra
+    try:
+        with open(os.path.expanduser(backends_path or POOL_BACKENDS)) as f: rows = json.load(f)
+    except FileNotFoundError:
+        rows = []
+    if not isinstance(rows, list): raise ValueError("working backend configuration must be a list")
+    rows = [r for r in rows if isinstance(r, dict) and r.get("machine") == "aegis"
+            and r.get("kind") == "lmstudio" and str(r.get("url") or "").endswith("/v1/chat/completions")]
+    # A caller's endpoint is usable in isolated/explicit deployments; the model
+    # identity remains fixed, so an unavailable worker fails rather than spilling.
+    return (str(rows[0]["url"]) if rows else default_url), model, extra
+
+
 def set_target(name):
     """Write the flag atomically. AEON is refused, with every unmet item listed, until all of it passes."""
     if name not in TARGETS:

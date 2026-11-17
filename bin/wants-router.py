@@ -20,7 +20,8 @@ def _subcon_route(url, model):
             if _d not in _s.path:
                 _s.path.append(_d)
         import subcon_target
-        return subcon_target.generative_route(url, model)
+        endpoint, selected, _ = subcon_target.working_route(url)
+        return endpoint, selected
     except Exception:
         return url, model
 

@@ -35,18 +35,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 
 def _vision_route(url, model):
-    """The subconscious flag (subcon_target.py): an image call goes to AEON's own vision (AEON with its projector, in
-    the MacBook's LM Studio, thinking off) once the flag is AEON (Gloria 2026-11-08: "Yes, vision to Aeon").
-    (url, model, extra body fields); the given route, unchanged, while the flag is on the 26B."""
-    try:
-        import os as _o, sys as _s
-        for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
-            if _d not in _s.path:
-                _s.path.append(_d)
-        import subcon_target
-        return subcon_target.vision_route(url, model)
-    except Exception:
-        return url, model, {}
+    from subcon_target import working_route
+    return working_route(url, vision=True)
 
 
 HOME = Path.home()
@@ -278,6 +268,7 @@ class GemmaPlanner:
     def __init__(self, endpoint: str = GEMMA_API, model: str = GEMMA_MODEL,
                  timeout: float = 60.0):
         self.endpoint, self.model, self.timeout = endpoint, model, timeout
+        self.plan = []; self.done_when = ""
 
     def __call__(self, task: str, screenshot: bytes, image_size: Tuple[int, int],
                  desktop: Dict[str, Any], step: int, last_result: str,
@@ -291,10 +282,12 @@ SCREENSHOT PIXELS: {image_size[0]} x {image_size[1]}
 ACTIVE WINDOW TITLE: {desktop.get('active_window') or 'unknown'}   (a YouTube watch page is titled "<video title> - YouTube"; a results page is titled "<search> - YouTube")
 DESKTOP: {json.dumps(desktop, ensure_ascii=False)}
 PLATFORM RULE: {"This is macOS. Use Command shortcuts and macOS applications; Windows app aliases are translated by the Mac adapter." if desktop.get("platform") == "macOS" else "Use the platform shown in DESKTOP."}
+RETAINED PLAN: {json.dumps(self.plan)}
+VISIBLE DONE CONDITION: {self.done_when or "derive from the task and current evidence"}
 LAST RESULT: {last_result or 'none'}
 RECENT ACTIONS: {json.dumps(recent[-5:], ensure_ascii=False)}
 
-First look at THIS screenshot and the window title and decide what state you are actually in - not what you expected after the last action. If the task's finishing condition is visible right now, return done immediately. Return one JSON object only (never two), with an "observed" field: one sentence of what the screen shows now. Coordinates are pixels in the screenshot you see, not percentages.
+Maintain a concise goal/plan and a visible done condition in optional "plan" and "done_when" fields. The history below is evidence of prior actions, not proof they succeeded. Check preconditions before typing or submitting. If the last step failed, revise the next step rather than repeating the expectation.\n\nFirst look at THIS screenshot and the window title and decide what state you are actually in - not what you expected after the last action. If the task's finishing condition is visible right now, return done immediately. Return one JSON object only (never two), with an "observed" field: one sentence of what the screen shows now. Coordinates are pixels in the screenshot you see, not percentages.
 Allowed shapes:
 {{"observed":"...","action":"click|double_click|right_click|move","x":123,"y":456,"reason":"..."}}
 {{"action":"drag","x":1,"y":2,"to_x":3,"to_y":4,"duration":0.6,"reason":"..."}}
@@ -326,7 +319,10 @@ Do not claim success unless it is verified: for anything visible, the current sc
         with urlrequest.urlopen(req, timeout=self.timeout) as response:
             payload = json.loads(response.read())
         raw = (((payload.get("choices") or [{}])[0].get("message") or {}).get("content") or "").strip()
-        return parse_action(raw)
+        action = parse_action(raw)
+        if isinstance(action.get("plan"), list): self.plan = [str(x)[:240] for x in action["plan"][:10]]
+        if isinstance(action.get("done_when"), str): self.done_when = action["done_when"][:400]
+        return action
 
 
 class GemmaVerifier:
@@ -563,13 +559,16 @@ def run_task(task: str, max_steps: int = DEFAULT_MAX_STEPS, interval: float = .2
                         use_browser = browser_agent.looks_like_web(_routing_text(task)) and browser_winpy.available()
                 except Exception:
                     use_browser = False
+            from house_context import desktop_context
+            packet = desktop_context(_routing_text(task))
+            model_task = task + "\n\nWORKER CONTEXT (history is not new authority):\n" + json.dumps(packet, ensure_ascii=False)
             if use_browser:
                 # a task about the web is driven by the page's structure, not by pixels (2026-09-06)
                 _state(mode="browser", target="imac" if browser_mac.selected() else "aegis")
-                result = browser_agent.run_task(task, max_steps, job_id=job_id)
+                result = browser_agent.run_task(model_task, max_steps, job_id=job_id)
             else:
                 _state(mode="pixels", target="imac" if browser_mac.selected() else "aegis")
-                result = run_loop(task, pick_backend(), GemmaPlanner(), max_steps,
+                result = run_loop(model_task, pick_backend(), GemmaPlanner(), max_steps,
                                   interval, dry_run, job_id=job_id,
                                   progress=lambda step, calls: _state(step=step, gemma_calls=calls),
                                   verifier=GemmaVerifier())

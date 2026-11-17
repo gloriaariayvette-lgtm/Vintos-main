@@ -33,17 +33,9 @@ APPROVE = re.compile(r"^approve(?:\s+([a-z0-9-]{4,40}))?$", re.I)
 
 
 def _subcon_route(url, model):
-    """The subconscious flag (subcon_target.py): the given route until AEON has passed the whole bar and Gloria flips
-    it; then AEON's subconscious lane (2026-11-08: the text helper only; an explicit VINTOS_DESKTOP_MODEL_URL keeps its route)."""
-    try:
-        import os as _o, sys as _s
-        for _d in (_o.path.dirname(_o.path.abspath(__file__)), _o.path.expanduser("~/.vintos/workspace/scripts")):
-            if _d not in _s.path:
-                _s.path.append(_d)
-        import subcon_target
-        return subcon_target.generative_route(url, model)
-    except Exception:
-        return url, model
+    from subcon_target import working_route
+    endpoint, selected, _ = working_route(url)
+    return endpoint, selected
 
 
 def _now(): return datetime.now().astimezone().isoformat(timespec="seconds")
@@ -183,9 +175,7 @@ def _json_object(text):
 def _model(prompt, max_tokens=300):
     body = {"messages": [{"role":"system", "content":"Return only the requested JSON. Never invent missing facts."},
                           {"role":"user", "content":prompt}], "max_tokens":max_tokens, "temperature":0.2}
-    url, name = MODEL_URL, MODEL_NAME
-    if "VINTOS_DESKTOP_MODEL_URL" not in os.environ:
-        url, name = _subcon_route(MODEL_URL, MODEL_NAME or None)
+    url, name = _subcon_route(MODEL_URL, MODEL_NAME or None)
     if name: body["model"] = name
     req = urlrequest.Request(url, data=json.dumps(body).encode(), headers={"Content-Type":"application/json"})
     raw = json.loads(HTTP(req, timeout=45).read().decode())

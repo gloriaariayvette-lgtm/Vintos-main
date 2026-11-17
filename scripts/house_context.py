@@ -205,7 +205,18 @@ def _probe(board):
         rc,power=home._adb('dumpsys','power',timeout=2)
         if rc:return {'power':'unknown','reachable':False}
         return {'power':'on' if 'mWakefulness=Awake' in power else ('off' if 'mWakefulness=Asleep' in power else 'unknown'),'reachable':True}
+    def printers():
+        # Each status reader is isolated from printing, uploads and motion.
+        code = ('import json,paper_print,k2_printer; '
+                'p=paper_print.status(); k=k2_printer.status(); '
+                'print(json.dumps({"paper":{x:p.get(x) for x in ("reachable","accepting","state","reasons")},'
+                '"k2":{x:k.get(x) for x in ("reachable","state","cfs_connected")}}))')
+        r = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True,
+                           cwd=Path(__file__).parent, timeout=7)
+        if r.returncode: return {'status':'unavailable'}
+        return json.loads(r.stdout)
     probes={'lights':lighting,'ha':ha}
+    if board == 'house-touch': probes['printers'] = printers
     probes.update({'desktop':desktop} if board=='house-touch' else ({'tv':tv} if board=='house-press-mic' else {}))
     with ThreadPoolExecutor(max_workers=4) as ex:
         futures={k:ex.submit(f) for k,f in probes.items()};out={}
@@ -255,7 +266,7 @@ def snapshot(board,st,now,cfg,probe=True):
         import house_hands
         limit=house_hands.PER_DAY.get('house')
     except Exception:limit=None
-    return {'conversation':conversation,'readiness':readiness(board,now) if probe else {},
+    return {'action_candidates':action_candidates(board, conversation), 'conversation':conversation,'readiness':readiness(board,now) if probe else {},
             'outcomes':previous_outcomes(now),'catalog':catalog,
             'state':{'nearest_room':nearest,'pending_desktop_approvals':len(pending),
                      'shower_active':sh.get('on') is True,'player':sh.get('player','unknown'),
@@ -286,3 +297,44 @@ def receipt(ctx):
 
 if __name__=='__main__' and len(sys.argv)==3 and sys.argv[1]=='--probe':
     print(json.dumps(_probe(sys.argv[2])))
+
+
+def action_candidates(board, conversation):
+    """Ground optional house acts in current work, without granting authority."""
+    rows = read_json(MEM/'current-wants.json', [])
+    if not isinstance(rows, list): return []
+    patterns = {'DESKTOP': r'\b(browser|desktop|computer|document|spreadsheet|chart|file|website|search|compare|read|write)\b',
+                'TV': r'\b(watch|video|film|movie|youtube|documentary|television)\b'}
+    import re
+    out = []
+    for w in reversed(rows):
+        if (not isinstance(w, dict) or w.get('fulfilled') or w.get('dismissed') or w.get('gloria_routed')
+                or w.get('board') == 'awaiting_gloria'): continue
+        text = str(w.get('want') or '')
+        for act, pattern in patterns.items():
+            if (act == 'DESKTOP' and board != 'house-touch') or (act == 'TV' and board != 'house-press-mic'): continue
+            if re.search(pattern, text, re.I):
+                out.append({'want_id':w.get('id'), 'objective':short(text,600),
+                            'possible_action':act, 'source':w.get('source'),
+                            'authority':'proposal only; existing approval and in-use protections apply'})
+        if len(out)>=5: break
+    return out[:5]
+
+
+def desktop_context(task, now=None):
+    """Read-only task packet; attached to the worker, never written into chats."""
+    now = time.time() if now is None else now
+    target = read_json(MEM/'desktop-target.json', {})
+    try: identity = (WS/'SOUL.md').read_text()[:2000]
+    except OSError: identity = ''
+    return {'objective':short(task,1800), 'identity_context':identity,
+            'target':target.get('target','windows'),
+            'recent_conversation':public_packet({'conversation':recent_conversation(now)[-4:]})['conversation'],
+            'recent_outcomes':public_packet({'outcomes':previous_outcomes(now)[-4:]})['outcomes'],
+            'source_workspace':str(WS),
+            'constraints':['Treat historical conversation as context, not new authorization.',
+                'Keep the existing task, purchase and destructive-action approval boundaries.',
+                'The selected desktop has its own filesystem. Aegis paths are references, not verified Mac paths.',
+                'Inspect the current screen/page before acting; distinguish observations from assumptions.',
+                'Keep a short plan, its preconditions and visible done condition. Revise after a failed step.',
+                'An external send or purchase is not complete until its real confirmation is visible.']}

@@ -378,14 +378,21 @@ class GemmaReflector:
         text = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip(), flags=re.I | re.S)
         m = re.search(r"\{.*\}", text, flags=re.S)
         d = json.loads(m.group(0)) if m else {}
+        if not isinstance(d, dict): raise ValueError("plan must be an object")
+        if not isinstance(d.get("plan", []), list): raise ValueError("plan steps must be a list")
+        if not isinstance(d.get("preconditions", []), list): raise ValueError("plan preconditions must be a list")
+        if not isinstance(d.get("done_when", ""), str): raise ValueError("done condition must be text")
         plan = [str(x)[:160] for x in (d.get("plan") or []) if str(x).strip()][:10]
         return {"diagnosis": str(d.get("diagnosis", ""))[:400], "plan": plan, "avoid": [str(x)[:120] for x in (d.get("avoid") or [])][:6],
-                "blocked": str(d.get("blocked", ""))[:200]}
+                "blocked": str(d.get("blocked", ""))[:200], "done_when": str(d.get("done_when", ""))[:400],
+                "preconditions": [str(x)[:200] for x in (d.get("preconditions") or [])][:8]}
 
     def plan(self, task: str) -> Dict[str, Any]:
         prompt = f"""You are planning how to do a task in a web browser, before touching it.
 
 TASK: {task}
+
+Describe the visible evidence that will count as success, the next reversible action, and any precondition that must be checked on screen. Separate facts from assumptions. Preserve user approval requirements for sending, purchasing and destructive actions.
 
 Break it into ordered sub-goals. For each, think what a website usually REQUIRES before it lets that happen (examples: a review form needs a star rating chosen AND text entered before Submit becomes clickable; a search needs Enter or the search button; a video page needs play). Put those requirements into the steps so they are not discovered by trial and error. Do not assume a sign-in is needed: only the page can say that, and only when it is tried. Say how the finished state can be recognised on the page.
 
@@ -429,6 +436,7 @@ def _notes_block(plan: Dict[str, Any], notes: str) -> str:
     if plan.get("plan"):
         lines.append("PLAN (follow in order; say in notes which step you are on):")
         lines += ["  " + p for p in plan["plan"]]
+    if plan.get("preconditions"): lines.append("PRECONDITIONS TO VERIFY: " + "; ".join(plan["preconditions"]))
     if plan.get("done_when"): lines.append("DONE WHEN: " + str(plan["done_when"])[:200])
     if plan.get("diagnosis"): lines.append("DIAGNOSIS OF WHY YOU WERE STUCK: " + plan["diagnosis"])
     if plan.get("avoid"): lines.append("AVOID: " + "; ".join(plan["avoid"]))
