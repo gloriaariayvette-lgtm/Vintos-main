@@ -37,6 +37,12 @@ LISTED = set(re.findall(r"[A-Za-z0-9_\-]+\.py", SH))
 HERE = {f for f in os.listdir(SCRIPTS) if f.endswith(".py")}
 HERE_BIN = {f for f in os.listdir(BIN) if f.endswith(".py")}
 
+KNOWN = {"affective_weight.py", "bandwidth_collapse.py", "command_bubble.py", "conflict_surface.py",
+         "constitutional_tiers.py", "ghost_lean.py", "image_sight.py", "inclination_engine.py", "model_config.py",
+         "nifrathir.py", "reading.py", "resonance_marks.py", "session_map.py", "somatic_felt.py", "truth_lock.py",
+         "yearning_scars.py", "forge_verification_ack.py"}   # the list this suite kept before 17 November
+check("the modules installed by another route are the same as before, now in deploy_closure",
+      {n + ".py" for n in DC.INSTALLED_ELSEWHERE} == KNOWN)
 check("the deploy lists lab_names.py beside lab_investigations.py", "lab_names.py" in LISTED)
 check("the deploy lists lab_entity.py (16 November: left out, copied by hand)", "lab_entity.py" in LISTED)
 check("and file_reach.py", "file_reach.py" in LISTED)
