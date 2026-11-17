@@ -81,7 +81,11 @@ MODE_FILE = os.path.join(HOME, ".vintos", "study-mode.json")
 BACKUPS = os.path.join(HOME, ".vintos", "backups")
 
 ROOTS = {"scripts": os.path.join(WORKSPACE, "scripts"), "house": os.path.join(HOME, "Vintos"),
-         "docs": WORKSPACE}   # docs = the workspace root itself, .md files only
+         "docs": WORKSPACE,   # docs = the workspace root itself, .md files only
+         "shared": os.path.join(WORKSPACE, "shared")}
+# shared = what Gloria or Claude put there for him to read (a test plan, a note): read and searched like the rest,
+# never edited from any room - it is theirs, not his (Gloria, 17 November 2026: point him at an exact file).
+READ_ONLY_ROOTS = ("shared",)
 # Two deny lists (2026-09-04, grok-study-p1). SECRET: never readable, never listed. TOUCH: he may READ and
 # GREP them - his body's laws are his to know - but never EDIT them from this room; those go to Gloria by hand.
 SECRET_DENY = re.compile(r"(key|secret|token|credential|\.env|vintos\.env)", re.I)
@@ -120,7 +124,8 @@ EDIT_RE = re.compile(r"^EDIT:\s*(\S+)\s*\n<<<<\n(.*?)\n====\n(.*?)\n>>>>\s*(?:\n
 def _label_path(path):
     """Absolute path -> 'label/rest' under the root that holds it (the form resolve() and READ accept), else None."""
     real = os.path.realpath(path)
-    for label, root in ROOTS.items():
+    # the deepest root that holds it: shared/ lies inside the docs root and is named by its own label
+    for label, root in sorted(ROOTS.items(), key=lambda kv: -len(os.path.realpath(kv[1]))):
         r = os.path.realpath(root)
         if real.startswith(r + os.sep):
             return label + "/" + os.path.relpath(real, r)
@@ -151,6 +156,8 @@ def resolve(rel, for_edit=False):
         if SECRET_DENY.search(_name) or SECRET_DENY.search(_rel):
             return None
         if for_edit and (TOUCH_DENY.search(_name) or TOUCH_DENY.search(_rel) or _is_chokepoint(real)):
+            return None
+        if for_edit and any(real.startswith(os.path.realpath(ROOTS[k]) + os.sep) for k in READ_ONLY_ROOTS):
             return None
         if os.path.isfile(real) and real.endswith(TEXT_EXT):
             return real
@@ -243,7 +250,7 @@ def session_coverage():
 def code_map():
     out = []
     for label, root in ROOTS.items():
-        exts = (".md",) if label == "docs" else (".py", ".sh")
+        exts = (".md",) if label == "docs" else (".md", ".txt") if label == "shared" else (".py", ".sh")
         try:
             names = sorted(f for f in os.listdir(root) if f.endswith(exts) and not f.startswith(".")
                            and ".bak" not in f and not DENY_NAME.search(f))

@@ -2,11 +2,15 @@
 """A deployed script never imports a repo script the deploy does not install (Lab fault F-b20d601162, 28 October:
 "No module named 'lab_names'". lab_names.py came with the protein-name check on 27 October, but deploy-atelier.sh never
 listed it, so every Lab tick that named a protein failed on Aegis while the tests passed against the repo's scripts/).
+16 November, again: lab_entity.py, loaded with __import__('lab_entity'), which this check did not read; Gloria copied
+it in by hand. Since 17 November the deploy closes the list itself (scripts/deploy_closure.py).
 
-1. A clean staged layout built only from the deploy's own list imports lab_investigations and its naming helper, with
-   the repo's scripts/ off the path. 2. No listed script imports, anywhere in its body, a repo-local module the deploy
-   does not list, except the ones already installed some other way (KNOWN, below: a new gap fails). Offline."""
-import ast
+1. Deploy closure: every module imported (import x / from x import / __import__('x') / importlib.import_module('x'))
+   by an installed script is itself installed, or is not a repo module (stdlib / third-party), or reaches Aegis by
+   another named route (deploy_closure.INSTALLED_ELSEWHERE). 2. The closure is computed by the deploy itself, before
+   the plan, and adds new scripts transitively (a synthetic checkout, run through the deploy's own shell block).
+3. A clean staged layout built only from the deploy's own list imports the Lab's naming and entity paths, with the
+   repo's scripts/ off the path. Offline."""
 import os
 import re
 import shutil
@@ -16,62 +20,113 @@ import tempfile
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SCRIPTS = os.path.join(REPO, "scripts")
+BIN = os.path.join(REPO, "bin")
+sys.path.insert(0, SCRIPTS)
+import deploy_closure as DC  # noqa: E402
+
 R = []
 
 
 def check(name, ok, detail=""):
     R.append(bool(ok))
-    print(("PASS " if ok else "FAIL ") + name + (("  ->  " + str(detail)[:400]) if detail and not ok else ""))
+    print(("PASS " if ok else "FAIL ") + name + (("  ->  " + str(detail)[:600]) if detail and not ok else ""))
 
 
 SH = open(os.path.join(SCRIPTS, "deploy-atelier.sh")).read()
 LISTED = set(re.findall(r"[A-Za-z0-9_\-]+\.py", SH))
 HERE = {f for f in os.listdir(SCRIPTS) if f.endswith(".py")}
+HERE_BIN = {f for f in os.listdir(BIN) if f.endswith(".py")}
 
-# Imported by a deployed script but installed by another route before this check existed. Not new: a module added
-# here must say how it reaches Aegis.
 KNOWN = {"affective_weight.py", "bandwidth_collapse.py", "command_bubble.py", "conflict_surface.py",
          "constitutional_tiers.py", "ghost_lean.py", "image_sight.py", "inclination_engine.py", "model_config.py",
          "nifrathir.py", "reading.py", "resonance_marks.py", "session_map.py", "somatic_felt.py", "truth_lock.py",
-         "yearning_scars.py",
-         "forge_verification_ack.py"}   # used only inside the Forge, installed there from forge-loop-files.txt
-
-
-def imports(path):
-    try:
-        tree = ast.parse(open(path).read())
-    except SyntaxError:
-        return set()
-    out = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            out |= {a.name.split(".")[0] for a in node.names}
-        elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
-            out.add(node.module.split(".")[0])
-    return out
-
-
+         "yearning_scars.py", "forge_verification_ack.py"}   # the list this suite kept before 17 November
+check("the modules installed by another route are the same as before, now in deploy_closure",
+      {n + ".py" for n in DC.INSTALLED_ELSEWHERE} == KNOWN)
 check("the deploy lists lab_names.py beside lab_investigations.py", "lab_names.py" in LISTED)
+check("the deploy lists lab_entity.py (16 November: left out, copied by hand)", "lab_entity.py" in LISTED)
+check("and file_reach.py", "file_reach.py" in LISTED)
 
+# --- the import reader sees every form
+tmp = tempfile.mkdtemp(prefix="closure-")
+try:
+    os.makedirs(os.path.join(tmp, "scripts")); os.makedirs(os.path.join(tmp, "bin"))
+    def put(rel, text):
+        open(os.path.join(tmp, rel), "w").write(text)
+    put("scripts/organ_a.py", "import json\nx = __import__('organ_b').f\n")
+    put("scripts/organ_b.py", "import importlib\ndef f():\n    return importlib.import_module('organ_c')\n")
+    put("scripts/organ_c.py", "from organ_d import y\nimport os, numpy\n")
+    put("scripts/organ_d.py", "y = 1\n")
+    put("scripts/organ_twin.py", "z = 1\n")
+    put("bin/organ_twin.py", "z = 2\n")
+    put("scripts/organ_e.py", "import organ_twin\nimport model_config\nimport organ_missing_nowhere\n")
+    put("scripts/model_config.py", "q = 1\n")
+    put("scripts/organ_broken.py", "def (:\n")
+    check("the reader sees import, from-import, __import__ and importlib.import_module",
+          DC.imported_names(os.path.join(tmp, "scripts/organ_a.py")) >= {"json", "organ_b"}
+          and "organ_c" in DC.imported_names(os.path.join(tmp, "scripts/organ_b.py"))
+          and DC.imported_names(os.path.join(tmp, "scripts/organ_c.py")) >= {"organ_d", "os", "numpy"})
+    check("a file that does not parse imports nothing (the parse check stops the deploy, not this)",
+          DC.imported_names(os.path.join(tmp, "scripts/organ_broken.py")) == set())
+    got = DC.closure(tmp, ["scripts/organ_a.py"])
+    check("a new script named only by an import is added, transitively",
+          got == ["scripts/organ_b.py", "scripts/organ_c.py", "scripts/organ_d.py"], got)
+    got = DC.closure(tmp, ["scripts/organ_e.py", "bin/organ_twin.py"])
+    check("a module already installed from bin/, one installed elsewhere, and a non-repo name are not added",
+          got == [], got)
+
+    # the deploy's own shell block, run as written, on this synthetic checkout
+    block = SH[SH.index("# >>> import closure"):SH.index("# <<< import closure")]
+    check("the deploy computes the closure after the branch guard and completeness check, before parse check, "
+          "suites and plan",
+          SH.index("only '$_want' is deployed") < SH.index('die "source is incomplete') < SH.index("# >>> import closure")
+          < SH.index('say "== parse check') < SH.index('say "== suites =="') < SH.index('say "== plan =="'))
+    script = ('say() { printf "%%s\\n" "$*"; }\ndie() { printf "STOP: %%s\\n" "$*"; exit 1; }\n'
+              'SRC=%s\nSCRIPTS="organ_a.py"\nBINS=""\nMANIFEST="scripts/organ_a.py"\n%s\n'
+              'printf "FINAL %%s\\n" "$SCRIPTS"\nprintf "MANIFEST %%s\\n" $MANIFEST\n') % (tmp, block)
+    shutil.copy2(os.path.join(SCRIPTS, "deploy_closure.py"), os.path.join(tmp, "scripts", "deploy_closure.py"))
+    run = subprocess.run(["bash", "-c", script], capture_output=True, text=True, timeout=60)
+    final = (re.findall(r"^FINAL (.*)$", run.stdout, re.M) or [""])[-1].split()
+    staged = re.findall(r"^MANIFEST (.*)$", run.stdout, re.M)
+    check("run by the deploy, the new scripts join SCRIPTS and the manifest (so they are staged, validated and "
+          "installed NEW beside the anchor)",
+          run.returncode == 0 and final == ["organ_a.py", "organ_b.py", "organ_c.py", "organ_d.py"]
+          and staged == ["scripts/organ_%s.py" % c for c in "abcd"]
+          and "closure: organ_b.py" in run.stdout, run.stdout + run.stderr)
+    os.remove(os.path.join(tmp, "scripts", "deploy_closure.py"))
+    run = subprocess.run(["bash", "-c", script], capture_output=True, text=True, timeout=60)
+    check("and a closure that cannot be computed stops the deploy", run.returncode == 1 and "STOP" in run.stdout,
+          run.stdout + run.stderr)
+finally:
+    shutil.rmtree(tmp, ignore_errors=True)
+
+# --- the real checkout: the closed manifest leaves no repo import uninstalled
+manifest = ["scripts/" + f for f in LISTED & HERE] + ["bin/" + f for f in LISTED & HERE_BIN if f not in HERE]
+added = DC.closure(REPO, manifest)
+installed = {os.path.basename(m)[:-3] for m in manifest + added}
+repo_modules = {f[:-3] for f in HERE | HERE_BIN}
 gaps = {}
-for f in sorted(LISTED & HERE):
-    for n in imports(os.path.join(SCRIPTS, f)):
-        m = n + ".py"
-        if m in HERE and m not in LISTED and m not in KNOWN:
-            gaps.setdefault(m, []).append(f)
-check("no deployed script imports a repo module the deploy does not install", not gaps, gaps)
+for rel in manifest + added:
+    for n in DC.imported_names(os.path.join(REPO, rel)):
+        if n in repo_modules and n not in installed and n not in DC.INSTALLED_ELSEWHERE:
+            gaps.setdefault(n + ".py", []).append(rel)
+check("deploy closure: every module an installed script imports is installed, stdlib/third-party, or installed "
+      "elsewhere", not gaps, gaps)
+check("and today the lists already carry everything (the closure adds nothing)", added == [], added)
 
+# --- a staged layout from the deploy's own list
 stage = tempfile.mkdtemp(prefix="deploy-stage-")
 try:
     for f in LISTED & HERE:
         shutil.copy2(os.path.join(SCRIPTS, f), stage)
     probe = ("import sys; sys.path = [p for p in sys.path if not p.startswith(%r)]; sys.path.insert(0, %r); "
-             "import importlib; importlib.import_module('lab_names'); import lab_investigations as L; "
+             "import importlib; importlib.import_module('lab_names'); importlib.import_module('lab_entity'); "
+             "import lab_investigations as L; "
              "assert hasattr(L, '_correct_names') and hasattr(L, '_name_notes'); print('ok')") % (REPO, stage)
     env = dict(os.environ, HOME=stage, SPARK_WORKSPACE=os.path.join(stage, "ws"), PYTHONDONTWRITEBYTECODE="1",
                PYTHONPATH="")
     run = subprocess.run([sys.executable, "-c", probe], cwd=stage, env=env, capture_output=True, text=True, timeout=120)
-    check("a staged layout built only from the deploy list imports the Lab's naming path",
+    check("a staged layout built only from the deploy list imports the Lab's naming and entity paths",
           run.returncode == 0 and run.stdout.strip().endswith("ok"), (run.stdout + run.stderr)[-400:])
     os.remove(os.path.join(stage, "lab_names.py"))
     run = subprocess.run([sys.executable, "-c", probe], cwd=stage, env=env, capture_output=True, text=True, timeout=120)

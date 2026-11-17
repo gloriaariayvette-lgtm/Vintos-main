@@ -387,7 +387,17 @@ def shape_problem(decision, phase):
         return 'accept is required and must be true or false (false outside the result phase).'
     if phase != 'result' and decision['accept']:
         return 'accept must be false outside the result phase.'
-    if 'WANT RESULT' in message or 'WORK DONE' in message:
+    import re
+    def asserted_marker(text):
+        for match in re.finditer(r'WANT RESULT|WORK DONE', text):
+            clause = re.split(r'[.\n!?]', text[:match.start()])[-1].strip()
+            # A future imperative to the agent is not an owner's result assertion.
+            instruction = re.fullmatch(
+                r'(?:(?:Then|Please)\s+)?(?:post|send|write|return|reply with)\s*[`"\s]*', clause, re.I)
+            if not instruction:
+                return True
+        return False
+    if asserted_marker(message):
         # The result phase starts only from the agent's verified result (want_agent.py result, then its WANT RESULT
         # line); his own marker would be a claim without the files, and WORK DONE is room control.
         return ('Do not write WANT RESULT or WORK DONE. If you think the work is finished, ask the agent to record '

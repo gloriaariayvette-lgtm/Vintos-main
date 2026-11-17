@@ -404,13 +404,19 @@ def prompt(moment, board, now, cfg, asks=None, want=None, st=None, context=None)
     want = his_want() if want is None else want
     if want: lines.append("What is most alive in you right now: %s" % want)
     lines.append("Choose a response connected to this moment. One meaningful act is often enough; the allowance "
-                 "is a ceiling. Choose NOTHING when that fits. Speak plainly from what is known and choose a working "
+                 "is a ceiling. First consider whether a concrete action_candidate can advance real work or something to enjoy together. "
+                 "For desktop, propose one bounded task with a visible done condition; the phone ask obtains her Yes. "
+                 "For TV, choose a relevant title/query when it fits the moment; respect an already-used TV. "
+                 "Use outreach or a buzz when that is the purposeful choice, rather than automatically substituting it for available work. "
+                 "If an agent already owns a candidate, choose a distinct supporting step or wait instead of restarting it. "
+                 "Do not choose an action merely to exercise a capability. Choose NOTHING when that fits. Speak plainly from what is known and choose a working "
                  "channel rather than reciting every unavailable device. Desktop work still needs her explicit Yes. "
                  "For SONGS, choose listed IDs in the order you mean; no invented titles or track URLs.")
     lines.append("\nWhat you can do here, one line each (at most %d):" % PER_MOMENT)
     lines += ["  " + (HOW[k] % cfg["songs_max"] if k == "SONGS" else HOW[k]) for k in menu
               if k != "REMIND" or asks]
-    lines.append("Write only those lines, or the one word NOTHING.")
+    lines.append("Add CHOICE: one short sentence naming the intended outcome or concrete reason to wait. "
+                 "Then write the action lines, or NOTHING. This is an action summary, not private reasoning.")
     return system, "\n".join(lines)
 
 
@@ -611,14 +617,19 @@ def tend_desktop(st, now):
     """A desktop she lent him (her Yes on his ask) starts its one task, once."""
     import gloria_asks
     for d in st["desktop"]:
-        if d.get("started"): continue
+        if d.get("started") or now < float(d.get("retry_after") or 0): continue
         row = gloria_asks.get(d["ask"]) or {}
         if row.get("state") != "answered": continue
-        d["started"] = True
+        if str(row.get("answer", "")).lower() != "yes":
+            d["started"] = True; d["status"] = "declined"
+            continue
         if str(row.get("answer", "")).lower() == "yes":
             import desktop_control
             out = desktop_control.start_from_chat("/desktop-control to " + d["task"], surface="house-boards")
-            _log({"kind": "desktop", "ask": d["ask"], "task": d["task"], "accepted": bool(out.get("accepted"))}, now)
+            d["started"] = bool(out.get("accepted"))
+            d["status"] = "accepted" if d["started"] else "launch_rejected"
+            if not d["started"]: d["retry_after"] = now + 300
+            _log({"kind": "desktop", "status": d["status"], "ask": d["ask"], "task": d["task"], "accepted": bool(out.get("accepted"))}, now)
     st["desktop"] = [d for d in st["desktop"] if not d.get("started") or now - d["at"] < 86400]
 
 
@@ -668,7 +679,8 @@ def moment(name, board, st, now, cfg, decide=None):
         done.append({"act": kind, "arg": arg[:200], "ok": bool(ok), "said": str(said)[:240]})
     if name == "shower": tend_shower(st, now)
     row = {"kind": "moment", "moment": name, "board": board, "decided": True, "acts": done,
-           "nothing": not done, "context": context_receipt}
+           "nothing": not done, "context": context_receipt,
+           "choice": next((m.group(1)[:240] for m in re.finditer(r"^CHOICE:\s*(.+)$", reply or "", re.M)), "") }
     _log(row, now)
     return row
 

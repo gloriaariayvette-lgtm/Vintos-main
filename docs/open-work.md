@@ -8554,3 +8554,10 @@ reaches the results channel. Eight more cases in the same test file. ACTIVE revi
 Review of the follow-up: a want that gave its place back before any agent had it is not handed over
 later, and one whose promise its room work kept first is released (`kept_another_way`) and never handed
 over, so a promise is not done again. Two new cases.
+
+
+## 16 November — boards and wants repair, review branch only
+
+`codex/boards-wants-only-20261116` contains grounded board-choice context, approved-desktop launch retry, exact archived-source capacity reconciliation and recovery of a retained response falsely held by the receipt guard. It includes the retained steam firmware and required sources, preserving quiet idle and the joint steam/phone gate. Source `cbd51fbc` passed all 744 isolated broker suites on Aegis. A temporary-copy dry run released the three stale slots and recovered the held response while live input hashes stayed unchanged. No model, shared routing or desktop-worker change is included. The rejected `codex/house-action-repair-20261116` must not be merged. Details: `docs/briefs/boards-wants-only-20261116.md`.
+
+Still open: main-thread review, Gloria's integration approval and owner-run deployment, then ordinary runtime acceptance. Steam sensitivity needs the natural wet window Gloria offered; do not guess a lower threshold from dry readings. No OTA flash was performed in this repair.

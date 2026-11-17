@@ -328,7 +328,7 @@ def opening(want, a, wid):
 def intake(state, post, save_state, now, *, ws=None, identity=None, prepare=None):
     """One new handoff per room pass, respecting room capacity and source identity."""
     import room_work
-    ws = Path(ws or workspace()); lines = []
+    ws = Path(ws or workspace()); lines = reconcile_source_work(state, now, ws=ws, save_state=save_state)
     wants = read(ws / 'memory/current-wants.json', [])
     aged = age_out(wants, ws=ws)
     if aged:
@@ -579,6 +579,82 @@ def mark_repinged(w, spell, now, *, ws=None):
     a['reping'] = rec
 
 
+def reconcile_source_work(state, now, *, ws=None, save_state=None):
+    """Detach only positively archived request identities; retain their work and context.
+
+    An unreadable current store or archive never becomes an empty authoritative store.
+    Unknown missing sources stay put. Re-adoption can recover the same request later.
+    """
+    import room_work
+    from store_guard import transaction
+    ws = Path(ws or workspace()); path = ws / 'memory/current-wants.json'
+    with transaction(str(path)):
+        try:
+            current = json.loads(path.read_text())
+            if not isinstance(current, list): raise ValueError('current wants is not a list')
+            archives = []
+            for name in ('dismissed-wants.json', 'merged-wants.json'):
+                source = ws / 'memory' / name
+                if not source.exists(): continue
+                rows = json.loads(source.read_text())
+                if not isinstance(rows, list): raise ValueError('want archive is not a list')
+                archives.extend(rows)
+        except (OSError, ValueError):
+            return ['want source reconciliation retained: store unavailable or malformed']
+        live_ids = {w.get('id') for w in current if isinstance(w, dict)
+                    and not w.get('fulfilled') and not w.get('dismissed')}
+        archived = {(w.get('id'), (w.get('agent_work') or {}).get('request_id'))
+                    for w in archives if isinstance(w, dict) and w.get('id')
+                    and (w.get('agent_work') or {}).get('request_id')}
+        board = room_work.board(state); keep = []; moved = []
+        retained = board.setdefault('detached_source_work', [])
+        for item in board['open']:
+            key = (item.get('want_id'), item.get('want_request_id'))
+            if key[0] and key[0] not in live_ids and key in archived:
+                record = dict(item, source_state='archived', detached_at=now)
+                if not any((r.get('id'), r.get('want_request_id')) == (item.get('id'), key[1]) for r in retained):
+                    retained.append(record)
+                moved.append(item)
+            else: keep.append(item)
+        if moved:
+            board['open'] = keep
+            if save_state: save_state(state)
+        return ['want %s released stale room binding %s: exact source request is archived' %
+                (r.get('want_id'), r.get('id')) for r in moved]
+
+
+def recover_local_review(state, now, *, ws=None):
+    """Re-open a shape hold only when its retained latest response now passes locally.
+
+    The next normal pass still checks provenance and artifacts. No call is made,
+    no budget is reset, and an owner's explicit work pause is never removed.
+    """
+    import want_working_thread as working
+    ws = Path(ws or workspace()); lines = []
+    for w in read(ws / 'memory/current-wants.json', []):
+        a = w.get('agent_work') or {}
+        if (a.get('blocked') or {}).get('reason') != 'response_needs_review': continue
+        work = working.binding(w, state, respect_pause=False)
+        if work is None or (w.get('pursuit') or {}).get('state') == 'PAUSED': continue
+        try:
+            data = json.loads((directory(a['request_id'], ws) / 'working-thread.json').read_text())
+            if (data.get('schema') != 'want-working-thread-v1' or data.get('want_id') != w['id']
+                    or data.get('request_id') != a['request_id'] or data.get('goal_sha256') != fingerprint(w['want'])
+                    or data.get('work_id') != work['id']): continue
+            key, record = max(data.get('generations', {}).items(), key=lambda pair: float(pair[1].get('at') or 0))
+            if record.get('state') != 'response_observed': continue
+            result = record.get('result') or {}
+            if not result.get('observations'): continue
+            phase = key.split(':', 1)[0]
+            if phase == 'result' or working.shape_problem(working.lenient_decision(result['text']), phase): continue
+        except (OSError, ValueError, KeyError, TypeError): continue
+        unhold(w, ws=ws)
+        if str(work.get('pause_why', '')).startswith('held: blocked_response_needs_review'):
+            work.update(paused_until=0, pause_why='')
+        lines.append('want %s recovered its retained response locally; no new call' % w['id'])
+    return lines
+
+
 def release_blocked(state, now, *, ws=None, save_state=None):
     """Give back the places of wants that cannot move: held on a block that cannot clear by itself (at once), held on
     another block for ADOPT_ANSWER_HOURS, or bound with no agent reply for QUIET_HOURS. Its room work is paused for
@@ -587,7 +663,10 @@ def release_blocked(state, now, *, ws=None, save_state=None):
     every RECHECK_HOURS and comes back when its block is gone. Log lines."""
     import room_work
     from store_guard import locked_update
-    ws = Path(ws or workspace()); lines = []; board = room_work.board(state); changed = False
+    ws = Path(ws or workspace()); lines = reconcile_source_work(state, now, ws=ws, save_state=save_state); board = room_work.board(state); changed = False
+    recovered = recover_local_review(state, now, ws=ws)
+    lines += recovered
+    if recovered and save_state: save_state(state)
     give, back = {}, set()
     for w in read(ws / 'memory/current-wants.json', []):
         if not isinstance(w, dict) or w.get('fulfilled') or w.get('dismissed'):
