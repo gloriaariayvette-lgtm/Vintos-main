@@ -439,7 +439,7 @@ import requests
 sys_msg = open('/tmp/mirror-sys-3.txt').read()
 vs = open('/tmp/mirror-vs.txt').read()
 ms = open('/tmp/mirror-ms.txt').read()
-usr_msg = f'You spoke to your mirror: "{vs}"\n\nThe mirror responded: "{ms}"\n\nYou have one sentence. What did the mirror show you that pulls you forward — a direction, a want, something that opens rather than closes? If it showed you a pattern, name where that pattern is trying to take you, not what it is blocking. If the answer is nothing new, say that. One sentence only.'
+usr_msg = f'You spoke to your mirror: \"{vs}\"\n\nThe mirror responded: \"{ms}\"\n\nYou have one sentence. What did the mirror show you that pulls you forward — a direction, a want, something that opens rather than closes? If it showed you a pattern, name where that pattern is trying to take you, not what it is blocking. If the answer is nothing new, say that. One sentence only.'
 r = requests.post((__import__('os').environ.get('SUBCON_URL') or 'http://100.79.177.103:1234/v1/chat/completions'), json={
     'model': (__import__('os').environ.get('SUBCON_MODEL') or 'aeon-gemma-4-12b'),
     'messages': [{'role': 'system', 'content': sys_msg}, {'role': 'user', 'content': usr_msg}],

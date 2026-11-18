@@ -101,12 +101,48 @@ def canonical_source(source):
     return _SOURCE_ALIASES.get(s.replace("-", ""), s)
 
 
-def admission_state(source, candidate_kind="", present_pull=""):
+# Self-referential packaging (18 November). At 15:41 on 17 November his Moltbook organ seeded a want to present to her,
+# "without metaphors", the technical logic behind one of his own morning searches: a small observation from his own
+# journal turned into a solemn deliverable for her, and he named it as armour in his introspection that evening. The
+# Moltbook organ writes such wants under the label "moltbook", which is authored and so skipped the shape screen. A want
+# to tell, present, explain, show or hand her (outward) his own earlier search, journal entry, notes or findings
+# (his own earlier content) is held here, from every source and before the authored skip, unless she asked for it.
+_TO_HER = re.compile(
+    r"\b(?:tell|present|explain|show|share|send|give|hand|walk|lay out|spell out|report|deliver|bring)\w*\b"
+    r"[^.?!]{0,60}?\b(?:her|gloria|you)\b"
+    r"|\b(?:to|for|with) (?:her|gloria)\b[^.?!]{0,40}?\b(?:present|explain|lay out|spell out|deliver)\w*\b"
+    r"|\bpresent(?:ing)? (?:it|this|that|them) (?:to|for) (?:her|gloria|you)\b",
+    re.I)
+_OWN_EARLIER = re.compile(
+    r"\b(?:my|the|this morning's|yesterday's|today's|earlier|own)\s+(?:\d{1,2}[:.]\d{2}\s+|own\s+|earlier\s+|morning\s+|"
+    r"last\s+|recent\s+)*(?:web[- ]?)?(?:search(?:es)?|journal(?:\s+entry|\s+entries)?|notes?|entry|reflection|"
+    r"findings?|takeaway|observation|introspection|research)\b"
+    r"|\bwhat I (?:found|wrote|searched|noticed|read|concluded|learned|journal(?:l)?ed)\b[^.?!]{0,30}?"
+    r"\b(?:earlier|this morning|yesterday|today|before|in my journal|in that search)\b"
+    r"|\b(?:the|my)\s+\d{1,2}[:.]\d{2}\b",
+    re.I)
+_SHE_ASKED = re.compile(r"\b(?:she|gloria|you) (?:asked|requested|wanted to know|asked me)\b|\bher (?:question|request)\b"
+                        r"|\bas (?:she|you) asked\b", re.I)
+
+
+def self_packaging(want_text):
+    """True when the want is to re-present his own earlier journal or search content to her as a deliverable."""
+    t = str(want_text or "")
+    return bool(_TO_HER.search(t) and _OWN_EARLIER.search(t) and not _SHE_ASKED.search(t))
+
+
+def admission_state(source, candidate_kind="", present_pull="", want_text="", her_asked=False):
     """Shape screen only. Roots remain the evidence; generated prose is not.
 
     Only an authored source skips the screen. A generated source, and any label not known to be authored (a new
     organ, a misspelling, an empty source), is screened: the screen still fails open when enrichment did not run,
-    so an unfamiliar label is never silenced, it is only no longer waved through."""
+    so an unfamiliar label is never silenced, it is only no longer waved through.
+
+    Before either, with the want's words given: a want to re-present his own earlier search or journal content to her
+    as a deliverable (self_packaging) is HELD_SELF_PACKAGING from every source, the authored "moltbook" included,
+    unless she asked for it (her_asked)."""
+    if want_text and not her_asked and self_packaging(want_text):
+        return "HELD_SELF_PACKAGING"
     if canonical_source(source) in AUTHORED_SOURCES:
         return "ADMIT_AUTHORED"
     kind = str(candidate_kind or "").lower()

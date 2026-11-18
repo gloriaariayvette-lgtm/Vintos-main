@@ -291,6 +291,7 @@ SCRIPTS="$SCRIPTS hdc_episodic.py"   # who/what/where/when episodic memory in sh
 SCRIPTS="$SCRIPTS hdc_tag_recall.py"   # tag-keyed HDC recall behind the AprilTag lookup, opt-in (native_video tag_memory hdc=, server --tag-hdc); writes only its own state from its CLI; no cron (2026-11-15)
 BINS="$BINS mirror-trigger.sh"   # its cron entry runs the ~/Vintos copy, which was in no list; it matched the checkout when the thread gate was added (2026-10-27)
 SCRIPTS="$SCRIPTS lab_entity.py"   # the Lab's entity grounding, loaded by lab_investigations/lab_planner_trial with __import__; in no list, so the 16 November deploy left it out and Gloria copied it by hand (2026-11-17)
+SCRIPTS="$SCRIPTS emoclaw-fast-sync.py"   # his emotional-state.txt every 2 minutes (cron runs the workspace copy); in no list, so its 13 November atomic writes and the 18 November hour swing never reached Aegis
 
 CLIENTFILES="clients/mobile/stratagem_voice.js clients/mobile/index.html clients/mobile/client_lifecycle.js clients/mobile/avatar-bundle.js"
 MANIFEST="$(printf 'scripts/%s\n' $SCRIPTS; printf 'bin/%s\n' $BINS; printf '%s\n' $SKILLFILES $DOMAINFILES $CLIENTFILES broker/vintos-emoclaw-provenance.conf

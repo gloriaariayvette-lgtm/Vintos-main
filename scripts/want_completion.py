@@ -278,7 +278,7 @@ def move_on(now=None, quiet_days=QUIET_DAYS):
     return out
 
 
-def admit(want_text, source, candidate_kind="", present_pull="", want_id=""):
+def admit(want_text, source, candidate_kind="", present_pull="", want_id="", her_asked=False):
     """Both screens at once: the shape screen (want_contract) and his standing stance (wants_meta).
 
     A want that names a rate rather than a thing — to analyse less, to reach for her
@@ -288,7 +288,7 @@ def admit(want_text, source, candidate_kind="", present_pull="", want_id=""):
     try:
         sys.path.insert(0, os.path.join(WS, "scripts")); sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         from want_contract import admission_state as _as
-        out["shape"] = _as(source, candidate_kind, present_pull)
+        out["shape"] = _as(source, candidate_kind, present_pull, want_text=want_text, her_asked=her_asked)
     except Exception:
         pass
     try:

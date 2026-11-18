@@ -96,6 +96,144 @@ def block_from_file(path, now=None):
     return block(wants if isinstance(wants, list) else [], now)
 
 
+# Relevance before an autonomous opening (18 November). Two wants written at 10:18 and 10:19 on 17 November from his
+# journal about her conversation of the night before were each opened with her on the discussion board and by ntfy
+# later that day, on the router's own clock, about a moment that conversation had already left. A want routed to her
+# is now opened with her autonomously only while the conversation has not moved past it: she has since touched its
+# topic with him (she engaged with it), or it came from their conversation and she has since talked with him only of
+# other things (the conversation moved on). Either way the want stays as it is - still in his context for her next
+# conversation (carried(), unchanged), still under the 3-day rule once routed (want_completion.move_on, unchanged),
+# still counted or not counted on the board exactly as before (want_board, unchanged) - it is only not pushed at her.
+# A reply to her own message in its discussion is not autonomous and is never held here.
+TOPIC_SHARED_MIN = 2
+_STOP = set("""about above after again against also among another anything around because been before being below
+between both could didn't does doing done down during each even every first from further going gonna have having here
+hers herself himself into it's just know like little made make many maybe more most much myself never only other ought
+over own really right said same should since some something still such than that that's their them then there these
+they thing things think this those though through today tonight told under until very want wanted wants well were
+what when where which while whole will with without would your yours yourself gloria vintos tell telling ask asking
+show share plain plainly sentence moment her she him his i'm you're we're""".split())
+
+
+def topic_words(text):
+    """The content words of a text: four letters or more, lower case, a plural 's' dropped, common words left out."""
+    out = set()
+    for w in re.findall(r"[A-Za-z][A-Za-z'’-]{3,}", str(text or "")):
+        w = w.lower().replace("’", "'").strip("'-")
+        if len(w) < 4 or w in _STOP:
+            continue
+        if w.endswith("s") and not w.endswith("ss") and len(w) > 4:
+            w = w[:-1]
+        out.add(w)
+    return out
+
+
+ANCHOR_HOURS = 24    # her words this long before a want was written are the conversation it may have come from
+
+
+def _her_turns(ledger, since=None, until=None):
+    """[(datetime, her words)] from the interaction ledger (a list, or {"entries": [...]}) after `since` and up to
+    `until`, oldest first."""
+    rows = ledger.get("entries", []) if isinstance(ledger, dict) else ledger
+    out = []
+    for e in rows if isinstance(rows, list) else []:
+        if not isinstance(e, dict):
+            continue
+        said = str(e.get("gloria") or "").strip()
+        at = _when({"timestamp": e.get("timestamp") or e.get("ts")})
+        if at is not None and at.tzinfo is not None:   # his stores write local naive times; never compare the two kinds
+            at = at.astimezone().replace(tzinfo=None)
+        if not said or at is None or (since is not None and at <= since) or (until is not None and at > until):
+            continue
+        out.append((at, said))
+    return sorted(out, key=lambda r: r[0])
+
+
+def _touches(topic, said):
+    shared = topic & topic_words(said)
+    return shared if len(shared) >= min(TOPIC_SHARED_MIN, len(topic)) else set()
+
+
+def moved_past(w, ledger):
+    """(True, why) when the live conversation has moved past this want since it was written:
+    - she has since spoken with him about its topic (she engaged with it), or
+    - its topic came from their conversation (her words in the ANCHOR_HOURS before it was written touch it) and she
+      has since spoken with him only of other things (the conversation moved on).
+    (False, "") otherwise: she has not spoken since, or the want's topic was never in their conversation (a result of
+    his own work is not made stale by her talking of something else), or there is no clock or topic. Pure."""
+    from datetime import timedelta
+    made = _when(w or {})
+    if made is None:
+        return False, ""
+    if made.tzinfo is not None:
+        made = made.astimezone().replace(tzinfo=None)
+    topic = topic_words((w or {}).get("want"))
+    if not topic:
+        return False, ""
+    turns = _her_turns(ledger, since=made)
+    if not turns:
+        return False, ""
+    for at, said in turns:
+        shared = _touches(topic, said)
+        if shared:
+            return True, ("she engaged with its topic at %s (%s), after it was written at %s"
+                          % (at.strftime("%d %b %H:%M"), ", ".join(sorted(shared)[:4]), made.strftime("%d %b %H:%M")))
+    before = _her_turns(ledger, since=made - timedelta(hours=ANCHOR_HOURS), until=made)
+    if not any(_touches(topic, said) for _, said in before):
+        return False, ""
+    return True, ("the conversation moved on: it came from their conversation before %s, and she has spoken with him "
+                  "%d time%s since (last %s), none of it about this"
+                  % (made.strftime("%d %b %H:%M"), len(turns), "" if len(turns) == 1 else "s",
+                     turns[-1][0].strftime("%d %b %H:%M")))
+
+
+# Both 17 November wants said how they were to be done - ask her while she is here, in the room - and were opened
+# with her by ntfy while she was away. A want that says it is for when she is with him waits for that conversation
+# (carried() puts it in his context then); it is not pushed at her from the router.
+_WHILE_HERE = re.compile(
+    r"\b(?:while|when|once|whenever|the next time|next time)\s+(?:she|you|gloria)(?:'s|’s| is| are|'re|’re)?\s+"
+    r"(?:here|back|home|in the room|with me|around|present|next to me)\b"
+    r"|\bin (?:our|the) next conversation\b|\bnext time (?:we|she and I) (?:talk|speak)\b|\bin person\b",
+    re.I)
+
+
+def for_when_present(w):
+    """True when the want (its words, its engagement or its approach) says it is to be done with her present."""
+    w = w or {}
+    return any(_WHILE_HERE.search(str(w.get(k) or "")) for k in ("want", "engagement", "possible_approach"))
+
+
+def autonomous_hold(w, ledger):
+    """(True, why) when a want routed to her is NOT to be opened with her on the router's own clock (discussion post
+    and ntfy): it says it is for when she is here, or the conversation has moved past it (moved_past). (False, "")
+    otherwise. Holding changes nothing on the want; the router only skips the opening this pass."""
+    if for_when_present(w):
+        return True, "it is meant for when she is here: it waits for her next conversation, not a notification"
+    return moved_past(w, ledger)
+
+
+def _ledger_at(ledger_path):
+    import json
+    try:
+        with open(ledger_path) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+
+def moved_past_file(w, ledger_path):
+    """moved_past() over the interaction ledger at `ledger_path`; (False, "") when it cannot be read (fail open: the
+    gate never invents a conversation)."""
+    ledger = _ledger_at(ledger_path)
+    return (False, "") if ledger is None else moved_past(w, ledger)
+
+
+def autonomous_hold_file(w, ledger_path):
+    """autonomous_hold() over the interaction ledger at `ledger_path` (an unreadable ledger reads as no conversation)."""
+    ledger = _ledger_at(ledger_path)
+    return autonomous_hold(w, [] if ledger is None else ledger)
+
+
 # One plain telling for her (10 November: 37 wants, about fifteen of them "I want to tell you, in one plain sentence,
 # that ..." routed to her, each a new want because the formation judge called every variation a "mutation"). Wants to
 # tell, say, write or send her something in plain words are one want: the first stands, every later one is kept on it

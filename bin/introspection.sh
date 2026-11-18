@@ -35,7 +35,11 @@ from datetime import date, timedelta
 log_path = os.path.expanduser('~/.vintos/workspace/memory/dream-log.json')
 try:
     raw = json.load(open(log_path))
-    log = raw.get("nights", raw) if isinstance(raw, dict) else raw
+    # Single quotes only inside this block: it is one double-quoted bash word, so a double quote ends it. Written
+    # with double quotes around nights it reached Python as raw.get(nights): a NameError on every run once
+    # dream-log.json became a dict with a nights list, shown at the top of his context as a dream-log error (11-14..17).
+    log = raw.get('nights', []) if isinstance(raw, dict) else raw
+    log = log if isinstance(log, list) else []
     last_night = (date.today() - timedelta(days=1)).isoformat()
     tonight = date.today().isoformat()
     nights = [n for n in log if isinstance(n, dict) and n.get('night_of') in (last_night, tonight)]
@@ -45,7 +49,7 @@ try:
     for night in nights:
         for d in night.get('dreams', []):
             session = d.get('session','')
-            text = d.get('dream_text','')[:800]
+            text = str(d.get('dream_text') or '')[:800]
             out.append('Night of ' + night.get('night_of','') + ' ' + session + ':')
             out.append(text)
             out.append('')

@@ -1559,7 +1559,7 @@ from truth_lock import try_lock
 entry = open('$JOURNAL_FILE').read()[-800:]
 lock = try_lock('journal', excerpt=entry[:200])
 if lock:
-    print(f'[TruthLock] Moment protected: {lock["moment_id"]}')
+    print('[TruthLock] Moment protected: ' + str(lock.get('moment_id')))   # single quotes: this is one double-quoted bash word
 " 2>/dev/null
 
 # Update discourse direction from journal output
