@@ -76,7 +76,7 @@ HOW = {
           "(living-room TV; find searches YouTube and plays the top match)",
     "ECHO": "ECHO: say <words> | announce <words> | play <a song or artist> | stop (office Echo)",
     "BUZZ": "BUZZ: tap | double | heartbeat (the motor under her chair seat)",
-    "DESKTOP": "DESKTOP: <one task on her computer> (asks her phone to lend you the desktop for it)",
+    "DESKTOP": 'DESKTOP: {"target":"imac","kind":"browser or native","task":"one bounded task","inputs":["exact URL or iMac path"],"environment":"browser or absolute iMac executable path","done_when":"visible result","want_id":"source want ID for native work"} (one-line JSON; verified before asking)',
     "PRINT": "PRINT: <a thing to make on her K2 printer> (you decide it, Astra builds it, her slicing settings; she "
              "gets a yes/no text with the filament and slot before it prints)",
     "PAPER": "PAPER: <anything: one of your files, one of your works, or your words> [as photo | as page] (her Epson; "
@@ -355,10 +355,24 @@ def waiting_asks():
     """His questions still waiting on her: [(id, question)], oldest first."""
     try:
         import gloria_asks
-        rows = [r for r in gloria_asks.waiting() if r.get("by", "vintos") == "vintos"]
+        st = load_state()
+        rows = [r for r in gloria_asks.waiting() if r.get("by", "vintos") == "vintos"
+                and desktop_ask_current(r, st)]
         return [(r["id"], " ".join(str(r.get("title") or r.get("question") or "").split())[:160]) for r in rows]
     except Exception:
         return []
+
+
+def desktop_ask_current(row, st):
+    """An obsolete desktop question must not be offered again as a reminder."""
+    if not str(row.get('ref', '')).startswith('house-desktop:'): return True
+    import house_context
+    identity = house_context.desktop_target()[1]
+    return any(d.get('ask') == row.get('id') and isinstance(d.get('preflight'), dict)
+               and d['preflight'].get('target_identity') == identity
+               and d['preflight'].get('question') == row.get('question')
+               and d.get('status') not in ('needs_preflight', 'preflight_blocked')
+               for d in st.get('desktop', []))
 
 
 def his_want():
@@ -406,6 +420,10 @@ def prompt(moment, board, now, cfg, asks=None, want=None, st=None, context=None)
     lines.append("Choose a response connected to this moment. One meaningful act is often enough; the allowance "
                  "is a ceiling. First consider whether a concrete action_candidate can advance real work or something to enjoy together. "
                  "For desktop, propose one bounded task with a visible done condition; the phone ask obtains her Yes. "
+                 "The controlled desktop is the iMac. Aegis research files and Python environments are not on the iMac. "
+                 "Aegis is unavailable for desktop work; do not use the iMac to SSH back to it. "
+                 "Give exact input locations and the actual execution environment; never invent paths, transfers or readiness. "
+                 "If those are unknown, wait rather than ask to run the task. An agent hold or call cap is not bypassed by desktop control. "
                  "For TV, choose a relevant title/query when it fits the moment; respect an already-used TV. "
                  "Use outreach or a buzz when that is the purposeful choice, rather than automatically substituting it for available work. "
                  "If an agent already owns a candidate, choose a distinct supporting step or wait instead of restarting it. "
@@ -573,11 +591,13 @@ def act(kind, arg, moment, board, st, now, cfg, catalog=None):
             pattern = pattern if pattern in ("tap", "double", "heartbeat") else "tap"
             return Out.send("vintos/board/house-touch/buzz", pattern), "buzzed her chair: %s" % pattern
         if kind == "DESKTOP":
-            import gloria_asks
-            task = " ".join(arg.split())[:300]
+            import gloria_asks, house_context
+            if len(arg) > 4096: return False, 'desktop proposal is too long'
+            prepared = house_context.desktop_preflight(json.loads(arg))
             ref = "house-desktop:%d" % int(now)
-            row, said = gloria_asks.ask("May I take your desktop for this: %s?" % task, by="vintos", ref=ref)
-            if row: st["desktop"].append({"ask": row["id"], "task": task, "at": now, "started": False})
+            row, said = gloria_asks.ask(prepared['question'], by="vintos", ref=ref)
+            if row: st["desktop"].append({"ask": row["id"], "task": prepared['task'],
+                "preflight": prepared, "at": now, "started": False})
             return bool(row), said
         if kind == "REMIND":
             return remind(arg, st, now, cfg)
@@ -593,6 +613,7 @@ def remind(arg, st, now, cfg):
     if len(today) >= cfg["remind_per_day"]: return False, "today's %d reminders are used" % cfg["remind_per_day"]
     qid = (re.findall(r"Q-[0-9a-f]{8}", arg) or [""])[0]
     row = gloria_asks.get(qid) if qid else None
+    if row and not desktop_ask_current(row, st): return False, 'desktop question needs a new verified plan'
     if not row or row.get("state") != "asked": return False, "no question %s is waiting on her" % (qid or arg[:20])
     if any(r.get("id") == qid for r in today): return False, "%s was put back on her phone today already" % qid
     ok = gloria_asks.notify(row)
@@ -619,13 +640,27 @@ def tend_desktop(st, now):
     for d in st["desktop"]:
         if d.get("started") or now < float(d.get("retry_after") or 0): continue
         row = gloria_asks.get(d["ask"]) or {}
+        # Old vague asks have no execution contract. Even an old Yes cannot launch them.
+        import house_context
+        prepared = d.get('preflight') if isinstance(d.get('preflight'), dict) else {}
+        if (not prepared.get('plan') or prepared.get('target_identity') != house_context.desktop_target()[1]
+                or row.get('question') != prepared.get('question')):
+            d.update(status='needs_preflight', retry_after=now + 300)
+            continue
         if row.get("state") != "answered": continue
         if str(row.get("answer", "")).lower() != "yes":
             d["started"] = True; d["status"] = "declined"
             continue
         if str(row.get("answer", "")).lower() == "yes":
+            try:
+                checked = house_context.desktop_preflight(prepared['plan'])
+                if checked != prepared: raise ValueError('desktop plan changed since approval')
+            except Exception as e:
+                d.update(status='preflight_blocked', retry_after=now + 300,
+                         failure=str(e)[:200])
+                continue
             import desktop_control
-            out = desktop_control.start_from_chat("/desktop-control to " + d["task"], surface="house-boards")
+            out = desktop_control.start_from_chat("/desktop-control to " + checked['task'], surface="house-boards")
             d["started"] = bool(out.get("accepted"))
             d["status"] = "accepted" if d["started"] else "launch_rejected"
             if not d["started"]: d["retry_after"] = now + 300

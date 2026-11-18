@@ -323,6 +323,11 @@ def action_candidates(board, conversation):
     for w in rows:
         if (not isinstance(w, dict) or w.get('fulfilled') or w.get('dismissed') or _waiting(w)
                 or w.get('board')): continue
+        work = w.get('agent_work') or {}
+        # A house proposal is not an escape from an agent's hold, budget or ownership.
+        if ((w.get('pursuit') or {}).get('state') == 'PAUSED' or work.get('blocked')
+                or work.get('status') in ('queued', 'in_work', 'working', 'completed')):
+            continue
         text = str(w.get('want') or '')
         for act, pattern in patterns.items():
             if (act == 'DESKTOP' and board != 'house-touch') or (act == 'TV' and board != 'house-press-mic'): continue
@@ -333,5 +338,86 @@ def action_candidates(board, conversation):
                             'authority':'proposal only; existing approval and in-use protections apply'})
         if len(out)>=5: break
     return out[:5]
+
+
+def desktop_target():
+    """Identity only; never select or fall back to another computer."""
+    cfg = read_json(MEM/'desktop-target.json', {})
+    if not isinstance(cfg, dict): cfg = {}
+    identity = {k: cfg.get(k) for k in ('target', 'ssh_host', 'python', 'root')}
+    return cfg.get('target'), hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
+
+
+def desktop_preflight(plan):
+    """Validate a concrete iMac plan and its inputs without launching the task.
+
+    The model proposes locations; a bounded read-only helper verifies them. Remote
+    research stores are never assumed to be mounted on the selected desktop.
+    """
+    if not isinstance(plan, dict): raise ValueError('desktop proposal needs a structured plan')
+    target, identity = desktop_target()
+    if target != 'imac' or plan.get('target') != target:
+        raise ValueError('desktop proposal must name the configured iMac; Aegis is not available for house desktop work')
+    for key, limit in (('task', 300), ('done_when', 200), ('environment', 300)):
+        if not isinstance(plan.get(key), str) or not 1 <= len(plan[key].strip()) <= limit:
+            raise ValueError('desktop proposal needs a bounded ' + key)
+    import re
+    if re.search(r'\b(?:ssh|aegis)\b|/home/gloria', plan['task'] + ' ' + plan['environment'], re.I):
+        raise ValueError('house desktop work cannot run on or tunnel back to Aegis')
+    inputs = plan.get('inputs')
+    if not isinstance(inputs, list) or not 1 <= len(inputs) <= 5 or any(
+            not isinstance(p, str) or not p or len(p) > 300 for p in inputs):
+        raise ValueError('desktop proposal needs 1–5 exact input locations')
+    kind = plan.get('kind')
+    if kind not in ('browser', 'native'): raise ValueError('desktop proposal needs browser or native kind')
+    # Explicit research ownership must survive the move into a house proposal.
+    wid = plan.get('want_id')
+    source_goal = None
+    if wid:
+        rows = read_json(MEM/'current-wants.json', [])
+        want = next((w for w in rows if isinstance(w, dict) and w.get('id') == wid), None) if isinstance(rows, list) else None
+        if want is None or wid not in {w['want_id'] for w in action_candidates('house-touch', [])}:
+            raise ValueError('source want is unavailable, held, parked or already agent-owned')
+        source_goal = hashlib.sha256(str(want.get('want', '')).encode()).hexdigest()
+    if kind == 'native' and not wid:
+        raise ValueError('native work needs its live source want; do not recreate an existing agent task')
+    from urllib.parse import urlsplit
+    if kind == 'browser':
+        if plan['environment'] != 'browser' or any(urlsplit(p).scheme not in ('http', 'https') or not urlsplit(p).hostname for p in inputs):
+            raise ValueError('browser inputs must be exact HTTP(S) URLs and environment browser')
+    else:
+        if any(not p.startswith('/Users/') for p in inputs) or not plan['environment'].startswith(('/Users/', '/opt/', '/usr/')):
+            raise ValueError('native inputs and runtime must be explicit iMac paths, not Aegis paths')
+    # A question must disclose the whole bounded plan, without a truncated qualifier.
+    question = ('May I use the iMac for: %s? Inputs on iMac: %s. Environment on iMac: %s. Done when: %s.' %
+                (plan['task'], ', '.join(inputs), plan['environment'], plan['done_when']))
+    if len(question) > 900: raise ValueError('desktop proposal is too long to disclose in its approval')
+    _desktop_inputs_available(plan)
+    return {'plan': plan, 'target_identity': identity, 'source_goal_sha256': source_goal, 'question': question,
+            'task': ('On the iMac only: %s. Inputs: %s. Environment: %s. Done when: %s. '
+                     'Do not use SSH, Aegis or another computer; stop if these inputs or runtime are unavailable.' %
+                     (plan['task'], ', '.join(inputs), plan['environment'], plan['done_when']))}
+
+
+def _desktop_inputs_available(plan):
+    """Read-only iMac probe, independently of the proposed task text."""
+    import browser_mac
+    if plan['kind'] == 'browser':
+        if not browser_mac.available(): raise ValueError('iMac browser helper is unavailable')
+        return
+    import shlex
+    cfg = read_json(MEM/'desktop-target.json', {})
+    helper = cfg.get('python')
+    if not isinstance(helper, str) or not helper.startswith('/'):
+        raise ValueError('iMac read-only helper is not configured')
+    code = ('import json,os,pathlib,sys; d=json.load(sys.stdin); '
+            'print(json.dumps({"inputs":all(pathlib.Path(p).exists() for p in d["inputs"]),'
+            '"runtime":os.path.isfile(d["environment"]) and os.access(d["environment"],os.X_OK)}))')
+    r = browser_mac._ssh(shlex.quote(helper)+' -c '+shlex.quote(code),
+                         input=json.dumps(plan).encode(), capture_output=True, timeout=7)
+    if r.returncode: raise ValueError('iMac input/runtime verification failed')
+    data = json.loads(r.stdout)
+    if data.get('inputs') is not True or data.get('runtime') is not True:
+        raise ValueError('required files or executable runtime are absent on the iMac')
 
 

@@ -111,14 +111,23 @@ started = []
 desktop_control.start_from_chat = lambda text, surface="": (started.append(text) or {"accepted": True})
 gloria_asks.notify = lambda row, send=None: True
 st = B.load_state()
-ok, said = B.act("DESKTOP", "tidy the Downloads folder", "office", "house-touch", st, O, cfg)
+import house_context
+house_context.MEM.mkdir(parents=True, exist_ok=True)
+(house_context.MEM/'desktop-target.json').write_text(json.dumps({'target':'imac'}))
+(house_context.MEM/'current-wants.json').write_text(json.dumps([{'id':'fixture-downloads','want':'tidy the file folder in Downloads'}]))
+house_context._desktop_inputs_available = lambda plan: None  # no SSH or filesystem access on her iMac
+plan = {'target':'imac','kind':'native','task':'tidy the Downloads folder',
+        'inputs':['/Users/fixture/Downloads'],'environment':'/usr/bin/python3',
+        'done_when':'Downloads is organized','want_id':'fixture-downloads'}
+prepared = house_context.desktop_preflight(plan)
+ok, said = B.act("DESKTOP", json.dumps(plan), "office", "house-touch", st, O, cfg)
 check("DESKTOP asks her phone first", ok and len(st["desktop"]) == 1 and not started, said)
 B._atomic(B.STATE, st)
 B.tick(now=O + 10, cfg=cfg, decide=decide("NOTHING"))
 check("nothing starts while she has not answered", not started)
 gloria_asks.decide(st["desktop"][0]["ask"], "yes")
 B.tick(now=O + 20, cfg=cfg, decide=decide("NOTHING"))
-check("her Yes starts that one task", started == ["/desktop-control to tidy the Downloads folder"], started)
+check("her Yes starts that one task", started == ["/desktop-control to " + prepared["task"]], started)
 B.tick(now=O + 30, cfg=cfg, decide=decide("NOTHING"))
 check("and only once", len(started) == 1)
 

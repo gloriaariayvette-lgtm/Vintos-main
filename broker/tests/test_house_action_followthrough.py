@@ -62,10 +62,11 @@ class Tests(unittest.TestCase):
   _,user=B.prompt('office','house-touch',self.now,B.DEFAULTS,asks=[],want='',st={'boards':{},'shower':{}},context=ctx)
   for text in ('compare documents','visible done condition','phone ask','Do not choose an action merely','CHOICE:'):self.assertIn(text,user)
  def test_rejected_desktop_launch_does_not_consume_approved_request(self):
-  asks=types.SimpleNamespace(get=lambda _: {'state':'answered','answer':'yes'});calls=[]
+  prepared={'plan':{'task':'fixture'},'task':'bounded fixture','question':'Use the iMac for fixture?','target_identity':'fixture'}
+  asks=types.SimpleNamespace(get=lambda _: {'state':'answered','answer':'yes','question':prepared['question']});calls=[]
   control=types.SimpleNamespace(start_from_chat=lambda *a,**k:calls.append(k) or {'accepted':len(calls)>1})
-  st={'desktop':[{'ask':'Q-fixture','task':'bounded fixture','at':self.now,'started':False}]}
-  with patch.dict(sys.modules,gloria_asks=asks,desktop_control=control),patch.object(B,'_log',lambda *a:None):
+  st={'desktop':[{'ask':'Q-fixture','task':'bounded fixture','at':self.now,'started':False,'preflight':prepared}]}
+  with patch.dict(sys.modules,gloria_asks=asks,desktop_control=control),patch.object(B,'_log',lambda *a:None),patch.object(H,'desktop_target',lambda:('imac','fixture')),patch.object(H,'desktop_preflight',lambda p:prepared):
    B.tend_desktop(st,self.now);self.assertFalse(st['desktop'][0]['started']);B.tend_desktop(st,self.now+1);self.assertEqual(len(calls),1);B.tend_desktop(st,self.now+301);self.assertTrue(st['desktop'][0]['started']);self.assertEqual(calls[-1]['surface'],'house-boards')
 
 if __name__=='__main__':unittest.main()
