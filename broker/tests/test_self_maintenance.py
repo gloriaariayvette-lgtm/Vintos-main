@@ -174,27 +174,12 @@ check("the held thought is shown to him as a note, with the way to make it a wan
       and "say what you would do about it" in fb, fb)
 check("a note is shown once", "THOUGHTS KEPT AS NOTES" not in S.feedback())
 
-# ---- something to say or ask her is carried into conversation, not queued ----
+# ---- a wish for a state is passing; something to tell or ask her keeps its own lane ----
 check("a wish for a state, or to stop needing something, is passing too",
       K.passing_thought("I want the calm of a finished row of beans") and K.passing_thought("I want to stop needing the almanac to agree"))
 SAY = ["I want to tell her out loud that the plum blossom came early", "I want to ask Gloria, while she is in the garden, which bed she likes best"]
-BRING = ["I want to tell Gloria what my Lab just found about the soil sample", "I want to show her the cold frame I built",
-         "I want to ask the seed supplier about delivery"]
-check("only telling or asking her is a conversation move", all(K.conversation_move(t) for t in SAY) and not any(K.conversation_move(t) for t in BRING),
-      [t for t in SAY + BRING if K.conversation_move(t) != (t in SAY)])
-check("it is held at the wants' door from every source, unless she asked",
-      K.admission_state("moltbook", want_text=SAY[0]) == "HELD_CONVERSATION_MOVE"
-      and K.admission_state("journal", want_text=SAY[1], her_asked=True) == "ADMIT_AUTHORED"
-      and K.admission_state("lab-finding", want_text=BRING[0]) == "ADMIT_AUTHORED")
-NOW[0] = datetime(2031, 4, 6, 11, 0, 0)
-json.dump([{"want": SAY[0], "source": "moltbook", "state": "HELD_CONVERSATION_MOVE", "at": "2031-04-06T10:40:00"},
-           {"want": "held for another reason entirely", "state": "HELD_NO_PRESENT_PULL", "at": "2031-04-06T10:41:00"}], open(S.HELD, "w"))
-st = J.refresh()
-mine = [i for i in st["items"] if i["entry"].startswith("want ")]
-check("and carried as a planned line for a day and a half", len(mine) == 1 and mine[0]["shape"] == "move"
-      and mine[0]["expires"].startswith("2031-04-07T22:40"), mine)
-check("taken once", len([i for i in J.refresh()["items"] if i["entry"].startswith("want ")]) == 1)
-check("offered when her words touch it", "plum blossom" in J.turn_block("Did you see the plum blossom this morning?"))
+check("a thing to tell or ask her is not held here: the conversation lane (conversation_wants.py) owns it",
+      all(K.admission_state("journal", want_text=t) == "ADMIT_AUTHORED" for t in SAY) and not any(K.passing_thought(t) for t in SAY))
 
 # ---- a want he keeps is not ended by her silence ----
 json.dump([{"id": "w-k", "want": "I want to show her the bee frames on Sunday", "timestamp": "2031-03-01T09:00:00",
@@ -223,6 +208,8 @@ check("the journal's feedback command carries both records", "self_maintenance.f
 check("the deploy installs both modules", "journal_intentions.py self_maintenance.py" in src("scripts/deploy-atelier.sh"))
 server = src("bin/server.py")
 voice = server[server.index("async def voice_chat("):]
+check("a local call never fails because the carrier could not be loaded",
+      src("scripts/voice_local.py").count("pass                  # a call never fails because the carrier could not be loaded") == 2)
 check("the voice route carries the same block, outside test mode",
       '_ic_j.journal_carry(transcript, act=not _test_mode_active(), surface="voice")' in voice[:20000])
 check("the realtime and local voice lanes carry it too, never on a held call",

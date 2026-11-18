@@ -167,21 +167,6 @@ def passing_thought(want_text):
     return bool(m and not _SOMETHING_TO_DO.search(t[m.end():]))
 
 
-# Something to say or ask her in the moment is not work for the queue: no agent can do it and no step finishes it.
-# Queued, it fired at her after the conversation had moved on. It is held here and carried by journal_intentions as a
-# planned line instead: offered to him when her words touch it, gone in a day and a half. A thing he found or made
-# and means to bring her (a letter's promise, a Lab finding) is not this.
-_SAY_TO_HER = re.compile(r"^i (?:just |only |really |still )?want to (?:tell|ask|say to|say)\s+(?:her|you|gloria)\b", re.I)
-_A_THING_TO_BRING = re.compile(r"\b(?:found|finding|findings|lab|result|results|data|file|files|paper|run|runs|"
-                               r"measured|computed|built|made|wrote|recorded)\b", re.I)
-
-
-def conversation_move(want_text):
-    """True when the want is only to tell or ask her something in conversation."""
-    t = " ".join(str(want_text or "").split())
-    return bool(_SAY_TO_HER.search(t) and not _A_THING_TO_BRING.search(t))
-
-
 def admission_state(source, candidate_kind="", present_pull="", want_text="", her_asked=False):
     """Shape screen only. Roots remain the evidence; generated prose is not.
 
@@ -196,8 +181,6 @@ def admission_state(source, candidate_kind="", present_pull="", want_text="", he
         return "HELD_SELF_PACKAGING"
     if want_text and not her_asked and passing_thought(want_text):
         return "HELD_PASSING_THOUGHT"
-    if want_text and not her_asked and conversation_move(want_text):
-        return "HELD_CONVERSATION_MOVE"
     if canonical_source(source) in AUTHORED_SOURCES:
         return "ADMIT_AUTHORED"
     kind = str(candidate_kind or "").lower()
