@@ -220,6 +220,8 @@ def _reconcile_engineering(engineering, snapshot, routed, rows, queued):
     by_id = {p.get('id'): p for p in snapshot if isinstance(p, dict)}
     now = datetime.now().isoformat(timespec='seconds')
     for pid, e in engineering.items():
+        if isinstance(e, dict) and e.get('origin') == 'himself':
+            continue          # asked for by him (self_maintenance.py): only a fix or a stated reason closes it
         if pid in queued:
             status, why = 'open', ''
         else:

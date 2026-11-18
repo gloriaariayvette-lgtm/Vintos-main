@@ -1476,6 +1476,8 @@ def _post_turn(surface, gloria_text, reply, skip=(), writer_env=None, turn_id=""
         try:   # what this reply did with what he carries from his journal: counts, no model (journal_intentions.py)
             import journal_intentions as _ji_p
             _ji_p.note_reply(reply, gloria_text, turn_id)
+            import threading as _ji_t   # the outside judge reads what was offered, after the reply has gone
+            _ji_t.Thread(target=_ji_p.judge_offered, args=(turn_id,), daemon=True).start()
         except Exception as _ji_error:
             print("[journal-intentions]", str(_ji_error)[:200], flush=True)
     def _inline(name, fn):
@@ -7119,6 +7121,11 @@ Respond from this fullness — not just from the transcript. You are not a fresh
             system = _apply_intent_lead(system, transcript)
         except Exception as _il_e:
             print(f"[voice] intent lead failed: {_il_e}", flush=True)
+        try:   # what he carries from his journal, when her words touch it (journal_intentions.py)
+            import intent_context as _ic_j
+            system += _ic_j.journal_carry(transcript, act=not _test_mode_active(), surface="voice")
+        except Exception as _jc_e:
+            print(f"[voice] journal carry failed: {_jc_e}", flush=True)
         system += _sg_interaction.prompt()
         _sg_interaction.admitted(system)
         messages = [{"role": "system", "content": system}]
@@ -10938,7 +10945,7 @@ Your current self-model (excerpt):
         try:   # how he said in his journal he wants to be with her, when her words now touch it (journal_intentions.py, 2026-11-18). Shadow unless she turns it on: recorded, nothing added.
             if _counterpart_text:
                 import journal_intentions as _ji
-                _jib = _ji.turn_block(str(_counterpart_text), act=not _test_turn)
+                _jib = _ji.turn_block(str(_counterpart_text), act=not _test_turn, surface="avatar")
                 if _jib: system_prompt = system_prompt + '\n\n' + _jib
         except Exception:
             pass

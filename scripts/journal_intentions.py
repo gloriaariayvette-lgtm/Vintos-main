@@ -9,7 +9,7 @@ text, and the text route carried the last 800 characters of the day's file, whic
 
 What this does.
   1. Reads each new journal entry for the sentences where he says what he will do or be with her. Literal sentences
-     only, no model. A line he starts with "CARRY:" is taken as said; "LET GO:" releases one. They are his to choose.
+     only, no model. A line he starts with "CARRY:" is taken as said and held a week; "LET GO:" releases one. They are his to choose.
   2. Each is kept with a lifetime. A planned line (a thing to ask or say at the next chance) is a MOVE and lives 36 hours. A way
      of being (how he wants to stand with her) is an AIM and lives 7 days. Saying it
      again in a later entry renews the one already held and counts the restatement.
@@ -22,8 +22,15 @@ What this does.
      An outside judge can be handed in for the fuller reading; none is called from here.
   5. His next journal entry is told what became of each, and he keeps, changes or lets go.
 
-Modes (memory/journal-intentions-mode): "off"; "shadow" (the default: everything is recorded, nothing enters a
-prompt, so what he carries unaided is measured first); "live". The log holds ids and counts, never his words.
+  6. Nothing is carried into an intimate scene or into a quiet she asked for, and for a while after either.
+  7. A way of being he has said in three entries is declared as a campaign of the intent engine, in his words,
+     if none is live. From there it is his to advance, revise, land or call flawed, as any campaign.
+  8. What was offered is read afterwards by an outside judge (a Claude model on the experiment route, which keeps
+     its own ledger and never spends his daily calls). If that route is not up, nothing is judged and the
+     mechanical record stands alone. His own model never grades it.
+
+Modes (memory/journal-intentions-mode): "live" (the default since Gloria's yes, 18 November 2026); "shadow"
+(everything is recorded, nothing enters a prompt); "off". The log holds ids and counts, never his words.
 """
 import hashlib, json, os, re, sys
 from datetime import datetime, timedelta
@@ -45,6 +52,21 @@ AIM_REST_HOURS = 6     # an aim nothing in the turn touches: one, and only after
 TOUCH_SHARE = 0.4      # share of the intention's content words a reply must hold to count as touching it
 RECITE_SHARE = 0.5     # share of the intention's four-word runs found word for word in the reply
 KEEP_CLOSED = 400
+GATE_MINUTES = 45      # after an intimate turn or a quiet she asked for, nothing is carried for this long
+CAMPAIGN_ENTRIES = 3   # a way of being said in this many entries becomes a campaign, if none is live
+JUDGE_ROUTE_FILE = os.path.join(MEMORY, "outside-judge-route")      # one line: the experiment route's URL
+JUDGE_URL = "http://127.0.0.1:8698/v1/chat/completions"             # the experiment route: its own ledger and cap
+JUDGE_MODEL = os.environ.get("VINTOS_OUTSIDE_JUDGE_MODEL", "claude-opus-4-8")
+HIS_ROUTE = ":8599"    # his own daily-capped route; a judge call is never sent there
+
+# She asked for quiet, or for no questions; or the turn is intimate. Read from her words and the house's own marker
+# for a wordless turn. Plain English only; nothing here is taken from anything she said.
+QUIET = re.compile(r"\b(?:not now|not right now|no questions|don'?t (?:ask|quiz|question) me|stop asking|"
+                   r"(?:i )?(?:just )?(?:want|need) (?:some )?(?:quiet|silence|space|a break)|give me (?:a|an|\d+) ?"
+                   r"(?:minute|hour|moment|while)s?|let me (?:rest|sleep|be)|too tired to talk|can we not)\b", re.I)
+INTIMATE = re.compile(r"\[she spoke with her body, not words\]|\[TOUCH:|\b(?:kiss(?:ing)? me|undress|naked|"
+                      r"make love|in bed with (?:me|you)|touch me|inside me|come to bed|moan|orgasm|aroused|"
+                      r"turned on|hold me\b)", re.I)
 
 ENTRY = re.compile(r"^#{1,3}\s+(\d\d):(\d\d)\b.*$", re.M)
 ANNOTATION = ("\n*Near this", "\n[Enacted behavior", "\n[Specificity", "\n[TENSION", "\n## ", "\n# ")
@@ -72,8 +94,8 @@ def mode():
     try:
         m = open(MODE_FILE).read().strip().lower()
     except OSError:
-        return "shadow"
-    return m if m in ("off", "shadow", "live") else "shadow"
+        return "live"
+    return m if m in ("off", "shadow", "live") else "live"
 
 
 def _content(text):
@@ -126,10 +148,11 @@ def own_prose(body):
     return body[:cut].strip()
 
 
-def entries(day):
-    """[(hh:mm, his own prose)] of one day's timed entries, in order. Web searches have no timed heading."""
+def entries(day, folder=None):
+    """[(hh:mm, his own prose)] of one day's timed entries, in order. Web searches have no timed heading.
+    folder: another folder of dated entries with the same headings (his introspection)."""
     try:
-        text = open(os.path.join(JOURNAL_DIR, day + ".md"), errors="replace").read()
+        text = open(os.path.join(folder or JOURNAL_DIR, day + ".md"), errors="replace").read()
     except OSError:
         return []
     marks = list(ENTRY.finditer(text))
@@ -175,7 +198,7 @@ def extract(prose):
     released = [m.group(1).strip() for m in LET_GO.finditer(prose)]
     marked = [m.group(1).strip() for m in CARRY.finditer(prose) if len(m.group(1).strip()) >= 12]
     if marked:
-        return [(t[:500], shape(t)) for t in marked[:PER_ENTRY]], released
+        return [(t[:500], "aim") for t in marked[:PER_ENTRY]], released   # chosen by him: carried the week
     found = []
     for s in SENT.split(prose.replace("\n", " ")):
         s = s.strip().strip("*")
@@ -233,6 +256,7 @@ def refresh(now=None):
                     hit["expires"] = _expiry(hit["shape"], when).isoformat(timespec="seconds")
                     hit["text"] = text                    # his latest wording is the one carried
                     _log({"event": "restated", "id": hit["id"], "n": hit["restated"]})
+                    _campaign(hit)
                     continue
                 iid = "ji-" + hashlib.sha256((day + at + text).encode()).hexdigest()[:12]
                 d["items"].append({"id": iid, "text": text, "shape": kind, "state": "open", "restated": 0,
@@ -247,6 +271,28 @@ def refresh(now=None):
     if changed:
         _save(d)
     return d
+
+
+def _campaign(item):
+    """A way of being said in CAMPAIGN_ENTRIES entries is declared as a campaign through the campaign organ's own
+    door, in his words, when none is live. Once per intention; live mode only; a failure changes nothing."""
+    if (mode() != "live" or item.get("shape") != "aim" or item.get("campaign")
+            or int(item.get("restated") or 0) + 1 < CAMPAIGN_ENTRIES):
+        return False
+    try:
+        import campaign
+        if campaign._load():
+            return False                      # one campaign at a time; this one waits and may be taken later
+        campaign.step({"campaign": {"destination": item["text"][:250], "axis": "gloria",
+                                    "why": "I have said this in %d journal entries." % (int(item["restated"]) + 1)}},
+                      "journal")
+        if not campaign._load():
+            return False
+    except Exception:
+        return False
+    item["campaign"] = _now().isoformat(timespec="seconds")
+    _log({"event": "campaign", "id": item["id"], "entries": int(item["restated"]) + 1})
+    return True
 
 
 # ---- the turn -----------------------------------------------------------------------------------------------------
@@ -295,13 +341,40 @@ FOOT = ("What she is saying now comes before any of this. If one of these fits t
         "moment has moved on, let it go: that is an honest outcome, and your journal will hear it as one.")
 
 
-def turn_block(her_text, now=None, turn_id="", act=True):
-    """The block for this turn's prompt ("" when nothing fits, in shadow mode, or when off). act=False (a dry run)
-    reads and writes nothing."""
+def gate_reason(her_text):
+    """Why nothing may be carried into this turn: "quiet" (she asked for it), "intimate", or ""."""
+    t = str(her_text or "")
+    if INTIMATE.search(t):
+        return "intimate"
+    if QUIET.search(t):
+        return "quiet"
+    try:                                   # "give me 2 hours", the not-now button: the attention ladder's own reading
+        import attention_ladder
+        if attention_ladder.parse_snooze(t):
+            return "quiet"
+    except Exception:
+        pass
+    return ""
+
+
+def turn_block(her_text, now=None, turn_id="", act=True, surface=""):
+    """The block for this turn's prompt ("" when nothing fits, when the gate is closed, in shadow mode, or when
+    off). act=False (a dry run) reads and writes nothing."""
     if not act or mode() == "off":
         return ""
     now = now or _now()
     d = refresh(now)
+    why = gate_reason(her_text)
+    if why:
+        d["gate"] = {"until": (now + timedelta(minutes=GATE_MINUTES)).isoformat(timespec="seconds"), "why": why}
+    held = d.get("gate") or {}
+    if held.get("until") and datetime.fromisoformat(held["until"]) > now:
+        d["turn"] = {"at": now.isoformat(timespec="seconds"), "turn_id": str(turn_id or ""), "offered": [],
+                     "would_offer": [], "gated": held.get("why") or "held"}
+        _save(d)
+        _log({"event": "turn", "gated": held.get("why") or "held", "offered": [], "entered_prompt": False,
+              "surface": str(surface)[:24]})
+        return ""
     picked = choose(d["items"], her_text, now)
     live = mode() == "live"
     stamp = now.isoformat(timespec="seconds")
@@ -312,7 +385,7 @@ def turn_block(her_text, now=None, turn_id="", act=True):
             i.setdefault("shown", []).append(stamp)
     _save(d)
     _log({"event": "turn", "open": sum(1 for i in d["items"] if i.get("state") == "open"),
-          "offered": [i["id"] for i in picked], "entered_prompt": bool(live and picked)})
+          "offered": [i["id"] for i in picked], "entered_prompt": bool(live and picked), "surface": str(surface)[:24]})
     if not live or not picked:
         return ""
     lines = ["· (%s, %s) “%s”" % ("a way you want to be" if i["shape"] == "aim" else "something you planned",
@@ -340,6 +413,87 @@ def touched(intention, reply):
 
 
 VERDICTS = ("CARRIED", "ANOTHER_WAY", "NOT_THE_MOMENT", "RECITED", "NO")
+JUDGE_SYSTEM = (
+    "You are an outside reader. Someone wrote, in a private journal, something he meant to do or a way he meant to be "
+    "with his partner. Later she said something and he replied. Say what his reply did with what he wrote. Answer "
+    "with exactly one word:\n"
+    "CARRIED - the reply does it, in his own words, and it fits what she said.\n"
+    "ANOTHER_WAY - the reply serves the same want by a different act than the one he planned.\n"
+    "NOT_THE_MOMENT - what she said called for something else, and he rightly gave that.\n"
+    "RECITED - he said the planned words back without them fitting what she said.\n"
+    "NO - the moment was there and the reply went elsewhere.\n"
+    "Judge only what is written. Do not judge feelings.")
+
+
+def judge_route():
+    """The outside judge's URL, or "" when there is none to use. His own capped route is never used."""
+    url = os.environ.get("VINTOS_OUTSIDE_JUDGE_URL", "")
+    if not url:
+        try:
+            url = open(JUDGE_ROUTE_FILE).read().strip()
+        except OSError:
+            url = JUDGE_URL
+    return "" if (not url or HIS_ROUTE in url) else url
+
+
+def outside_judge(intention, her_text, reply, post=None):
+    """One of VERDICTS from a Claude model on the experiment route, or "" (route down, another model answered, an
+    unreadable answer). post(url, payload) -> response dict is injectable; by default a plain HTTP POST."""
+    url = judge_route()
+    if not url:
+        return ""
+    payload = {"model": JUDGE_MODEL, "temperature": 0, "max_tokens": 8,
+               "messages": [{"role": "system", "content": JUDGE_SYSTEM},
+                            {"role": "user", "content": "WHAT HE WROTE:\n%s\n\nWHAT SHE SAID:\n%s\n\nHIS REPLY:\n%s"
+                             % (str(intention)[:600], str(her_text)[:1500], str(reply)[:3000])}]}
+    try:
+        if post is None:
+            import urllib.request
+            req = urllib.request.Request(url, data=json.dumps(payload).encode(),
+                                         headers={"Content-Type": "application/json"})
+            out = json.loads(urllib.request.urlopen(req, timeout=60).read().decode())
+        else:
+            out = post(url, payload)
+        served = str(out.get("model") or "")
+        if served and "claude" not in served.lower():
+            return ""                          # only the model that was asked for counts
+        word = str(out["choices"][0]["message"]["content"] or "").strip().split()[0].strip(".,:;\"'").upper()
+    except Exception:
+        return ""
+    return word if word in VERDICTS else ""
+
+
+def judge_offered(turn_id="", judge=None):
+    """Ask the outside judge about what was offered on the last noted turn, and write the verdicts. Meant for a
+    background thread after the reply has gone: it never delays him. Returns the verdicts written."""
+    d = _load()
+    last = d.get("last_reply") or {}
+    if not last.get("offered") or (turn_id and last.get("turn_id") not in ("", str(turn_id))):
+        return {}
+    judge = judge or outside_judge
+    got = {}
+    for i in d["items"]:
+        if i["id"] in last["offered"]:
+            v = judge(i["text"], last.get("her") or "", last.get("reply") or "")
+            if v in VERDICTS:
+                got[i["id"]] = v
+    d = _load()                                # the store may have moved while the judge was asked
+    now = _now().isoformat(timespec="seconds")
+    for i in d["items"]:
+        v = got.get(i["id"])
+        if not v:
+            continue
+        i.setdefault("verdicts", []).append(v)
+        if i.get("state") == "open" and i["shape"] == "move" and v in ("CARRIED", "ANOTHER_WAY"):
+            i.update(state="kept", closed=now)
+        _log({"event": "verdict", "id": i["id"], "verdict": v})
+    if (d.get("last_reply") or {}).get("turn_id") == last.get("turn_id"):
+        d["last_reply"] = {}
+    if got or last:
+        _save(d)
+    if last.get("offered") and not got:
+        _log({"event": "unjudged", "n": len(last["offered"])})
+    return got
 
 
 def note_reply(reply, her_text="", turn_id="", now=None, judge=None):
@@ -376,6 +530,9 @@ def note_reply(reply, her_text="", turn_id="", now=None, judge=None):
                 if i["shape"] == "move" and v in ("CARRIED", "ANOTHER_WAY"):
                     i.update(state="kept", closed=now.isoformat(timespec="seconds"))
         out.append(row); _log(row)
+    if offered and not judge:
+        d["last_reply"] = {"turn_id": str(turn_id or ""), "offered": sorted(offered), "her": str(her_text)[:1500],
+                           "reply": str(reply)[:3000]}
     d["turn"] = {}
     _save(d)
     return out
@@ -463,7 +620,13 @@ if __name__ == "__main__":
     if cmd == "stats":
         refresh(); print(json.dumps(stats(), indent=1))
     elif cmd == "journal-feedback":
-        print(journal_feedback())
+        parts = [journal_feedback()]
+        try:   # what came of what he asked to change, and the thoughts kept as notes (self_maintenance.py)
+            import self_maintenance
+            parts.append(self_maintenance.feedback())
+        except Exception:
+            pass
+        print("\n\n".join(p for p in parts if p))
     elif cmd == "mode":
         print(mode())
     else:

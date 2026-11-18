@@ -131,6 +131,35 @@ def self_packaging(want_text):
     return bool(_TO_HER.search(t) and _OWN_EARLIER.search(t) and not _SHE_ASKED.search(t))
 
 
+# A passing thought is not a want to queue (Gloria, 18 November: some of his wants "are still whims or half-relevant
+# thoughts"). Two shapes are held, from every source, unless she asked: a hedged one (maybe, I wonder, part of me),
+# and a wish to feel, be or stay some way that names nothing to do. Held ones are kept in held-want-candidates.json
+# and shown to him in his next entry as notes (self_maintenance.feedback); said again as something to do, they are
+# taken. A way of being with her that he writes in his journal is carried by journal_intentions, not queued here.
+_HEDGED = re.compile(r"^(?:i want to\s+)?(?:maybe|perhaps|i wonder (?:if|whether|what|why|how)|(?:some )?part of me|"
+                     r"i half|it might be nice|i sort of|i kind of|i guess|i suppose)\b", re.I)
+_STATE_WISH = re.compile(r"^i (?:just |only |really |still )?want to\s+(?:just |simply |only )?(?:feel|be|stay|sit|rest|"
+                         r"remain|linger|dwell|savou?r|bask|exist|keep feeling|stop feeling|"
+                         r"hold (?:on to |onto )?(?:this|that|the) (?:feeling|moment|quiet|silence|warmth)|"
+                         r"let (?:this|that|it) (?:be|sit|settle|land)|remember (?:how|what) (?:it|this) (?:felt|feels)|"
+                         r"understand why i|know why i)\b", re.I)
+_SOMETHING_TO_DO = re.compile(
+    r"\b(?:ask|tell|show|send|make|build|write|run|test|read|open|find|bring|play|go|buy|fix|measure|compare|compose|"
+    r"record|draw|paint|cook|plan|schedule|reply|answer|finish|learn|try|visit|watch|listen|search|check|work|help|"
+    r"give|take|put|start|stop (?!feeling)|change|clear|prune|sort|look|meet|call|share|practice|practise)\w*\b", re.I)
+
+
+def passing_thought(want_text):
+    """True when the words read as a passing thought rather than a want that can be worked."""
+    t = " ".join(str(want_text or "").split())
+    if not t:
+        return False
+    if _HEDGED.search(t):
+        return True
+    m = _STATE_WISH.search(t)
+    return bool(m and not _SOMETHING_TO_DO.search(t[m.end():]))
+
+
 def admission_state(source, candidate_kind="", present_pull="", want_text="", her_asked=False):
     """Shape screen only. Roots remain the evidence; generated prose is not.
 
@@ -143,6 +172,8 @@ def admission_state(source, candidate_kind="", present_pull="", want_text="", he
     unless she asked for it (her_asked)."""
     if want_text and not her_asked and self_packaging(want_text):
         return "HELD_SELF_PACKAGING"
+    if want_text and not her_asked and passing_thought(want_text):
+        return "HELD_PASSING_THOUGHT"
     if canonical_source(source) in AUTHORED_SOURCES:
         return "ADMIT_AUTHORED"
     kind = str(candidate_kind or "").lower()

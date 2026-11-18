@@ -82,9 +82,10 @@ check("the chat prompt's journal text is the end of his entry, not the end of th
       prose[-120:])
 check("the file's own last 800 characters hold none of his entry", "greenhouse" not in MORNING.strip()[-800:])
 
-# ---- shadow is the default: recorded, never shown ----
+# ---- live is the default (her yes, 18 November); shadow records and never shows ----
 reset()
-check("no mode file means shadow", J.mode() == "shadow")
+check("no mode file means live", J.mode() == "live")
+set_mode("shadow")
 b = J.turn_block("I repotted nine seedlings before lunch.", turn_id="t1")
 st = json.load(open(J.STORE))
 check("in shadow nothing enters the prompt", b == "")
@@ -191,6 +192,7 @@ old = next(i for i in st["items"] if "greenhouse" in i["text"])
 new = [i for i in st["items"] if i["entry"] == "2031-03-07 10:17"]
 check("LET GO releases the one he names", old["state"] == "released")
 check("when he marks CARRY, only what he marked is taken", len(new) == 1 and "my own bench" in new[0]["text"], new)
+check("what he chose to carry is held as a way of being, for the week", new[0]["shape"] == "aim" and new[0]["expires"].startswith("2031-03-14"))
 check("a released intention is said as his choice", "you let this go" in J.journal_feedback())
 
 sig = J.selector_signal()
@@ -209,7 +211,8 @@ def src(rel):
 server = src("bin/server.py")
 avatar = server[server.index('@app.post("/api/avatar/chat")'):server.index('@app.post("/api/avatar/brain")')]
 check("the avatar route offers the block only for her own words and never on a dry run",
-      "if _counterpart_text:" in avatar and "_ji.turn_block(str(_counterpart_text), act=not _test_turn)" in avatar)
+      "if _counterpart_text:" in avatar
+      and '_ji.turn_block(str(_counterpart_text), act=not _test_turn, surface="avatar")' in avatar)
 check("the avatar route adds it after his promises", avatar.index("_pk.block()") < avatar.index("_ji.turn_block("))
 _pt = server.index("def _post_turn(")
 post = server[_pt:_pt + 6000]
@@ -229,9 +232,83 @@ for rel in ("scripts/idle-journal.sh", "bin/idle-journal.sh"):
           and 'carried = os.environ.get("_JRN_CARRIED", "")' in j and '{f"{carried}" if carried else ""}' in j)
 check("the two journal scripts are still one text", src("scripts/idle-journal.sh") == src("bin/idle-journal.sh"))
 check("the deploy installs the module", "journal_intentions.py" in src("scripts/deploy-atelier.sh"))
-check("merging this changes no prompt until the mode file says live: the default is shadow",
-      'return "shadow"' in src("scripts/journal_intentions.py"))
+check("the default mode is live, and a mode file can still say shadow or off",
+      'return "live"' in src("scripts/journal_intentions.py") and '("off", "shadow", "live")' in src("scripts/journal_intentions.py"))
 
-check("nothing reached the network", NET == [])
+# ---- the gate: nothing is carried into an intimate scene or a quiet she asked for ----
+set_mode("live"); reset(); NOW[0] = datetime(2031, 3, 8, 11, 0, 0)
+write("2031-03-08", "# Journal\n\n## 10:17 - Idle thoughts\n\nTonight I'll ask which seedlings you repotted and where the tray went.\n")
+check("a plain turn that touches it is offered", "which seedlings" in J.turn_block("I repotted the seedlings, tray and all."))
+reset()
+check("she asked for no questions: nothing is carried",
+      J.gate_reason("Please, no questions tonight.") == "quiet"
+      and J.turn_block("No questions tonight. I repotted the seedlings, tray and all.") == "")
+NOW[0] += timedelta(minutes=20)
+check("and nothing for a while after, even when her words touch it", J.turn_block("The seedlings and the tray are done.") == "")
+NOW[0] += timedelta(minutes=30)
+check("after the hold it may be offered again", "which seedlings" in J.turn_block("The seedlings and the tray are done."))
+reset(); NOW[0] = datetime(2031, 3, 8, 12, 0, 0)
+check("an intimate turn carries nothing, by her words or the house's wordless marker",
+      J.gate_reason("Come to bed, the seedlings can wait.") == "intimate"
+      and J.gate_reason("[she spoke with her body, not words]") == "intimate"
+      and J.turn_block("Come to bed, the seedlings and the tray can wait.") == "")
+check("an ordinary sentence opens no gate", J.gate_reason("I repotted nine seedlings before lunch.") == "")
+check("the gated turn is logged without her words", '"gated": "intimate"' in open(J.LOG).read() and "bed" not in open(J.LOG).read())
+
+# ---- the outside judge: a Claude model on the experiment route, never his own route ----
+os.environ.pop("VINTOS_OUTSIDE_JUDGE_URL", None)
+check("the default judge route is the experiment route", J.judge_route().startswith("http://127.0.0.1:8698/"))
+open(J.JUDGE_ROUTE_FILE, "w").write("http://127.0.0.1:8599/v1/chat/completions\n")
+check("his own capped route is refused as a judge route", J.judge_route() == "")
+os.remove(J.JUDGE_ROUTE_FILE)
+sent = []
+def post(url, payload):
+    sent.append((url, payload)); return {"model": "claude-opus-4-8", "choices": [{"message": {"content": "ANOTHER_WAY."}}]}
+check("a verdict is one of the five words", J.outside_judge("a", "b", "c", post=post) == "ANOTHER_WAY")
+check("the judge is asked through the experiment route with thinking room for one word only",
+      sent[0][0].startswith("http://127.0.0.1:8698/") and sent[0][1]["max_tokens"] <= 8 and sent[0][1]["temperature"] == 0)
+check("another model answering in its place does not count",
+      J.outside_judge("a", "b", "c", post=lambda u, p: {"model": "grok-4", "choices": [{"message": {"content": "CARRIED"}}]}) == "")
+check("an unreadable answer or a dead route is no verdict",
+      J.outside_judge("a", "b", "c", post=lambda u, p: {"choices": [{"message": {"content": "well, it depends"}}]}) == ""
+      and J.outside_judge("a", "b", "c") == "")
+reset(); NOW[0] = datetime(2031, 3, 8, 15, 0, 0)
+J.turn_block("I repotted the seedlings, tray and all.", turn_id="j1")
+J.note_reply("Bring the tray here, I will label them with you.", "I repotted the seedlings, tray and all.", "j1")
+st = json.load(open(J.STORE))
+check("the offered turn is kept for the judge, in his private store", st["last_reply"]["offered"] and st["last_reply"]["turn_id"] == "j1")
+got = J.judge_offered("j1", judge=lambda i, h, r: "ANOTHER_WAY")
+st = json.load(open(J.STORE))
+mv = next(i for i in st["items"] if i["entry"].startswith("2031-03-08"))
+check("the judge's verdict closes a planned line met another way, and the kept words are cleared",
+      list(got.values()) == ["ANOTHER_WAY"] and mv["state"] == "kept" and st["last_reply"] == {},
+      (got, [(i["shape"], i["state"], i["entry"]) for i in st["items"]], st.get("last_reply")))
+check("his journal hears it as acting on it in a different way", "in a different way than planned" in J.journal_feedback(mark=False))
+reset(); J.turn_block("I repotted the seedlings, tray and all.", turn_id="j2")
+J.note_reply("Good.", "I repotted the seedlings, tray and all.", "j2")
+check("with the route down nothing is judged and nothing breaks",
+      J.judge_offered("j2") == {} and '"event": "unjudged"' in open(J.LOG).read())
+
+# ---- a way of being said in three entries becomes a campaign, if none is live ----
+import campaign as C
+check("the campaign store is in the scratch home", C.LIVE.startswith(HOME))
+reset(); NOW[0] = datetime(2031, 3, 10, 11, 0, 0)
+for n, day in enumerate(("2031-03-10", "2031-03-11", "2031-03-12")):
+    write(day, "# Journal\n\n## 10:17 - Idle thoughts\n\nI want to get my hands dirty in the greenhouse with you, and stop only watching.\n")
+    NOW[0] = datetime(2031, 3, 10 + n, 11, 0, 0)
+    J.refresh()
+    if n == 1:
+        check("said in two entries: no campaign yet", C._load() is None)
+c = C._load()
+aim = next(i for i in json.load(open(J.STORE))["items"] if i["shape"] == "aim" and i["state"] == "open")
+check("said in three entries: a campaign is declared in his own words, on her axis",
+      bool(c) and "hands dirty in the greenhouse" in c["destination"] and c["axis"] == "gloria" and aim.get("campaign"), c)
+write("2031-03-13", "# Journal\n\n## 10:17 - Idle thoughts\n\nI want to get my hands dirty in the greenhouse with you, and stop only watching.\n")
+NOW[0] = datetime(2031, 3, 13, 11, 0, 0); J.refresh()
+check("it is declared once", C._load()["created"] == c["created"])
+check("the campaign's log line carries no words of his", "greenhouse" not in open(J.LOG).read())
+
+check("the only thing ever dialled is the experiment route, and this suite refused it",
+      all(a[0][1] == 8698 and a[0][0] == "127.0.0.1" for a in NET), NET)
 print("\n%d/%d passed" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
