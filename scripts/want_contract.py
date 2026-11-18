@@ -133,13 +133,16 @@ def self_packaging(want_text):
 
 # A passing thought is not a want to queue (Gloria, 18 November: some of his wants "are still whims or half-relevant
 # thoughts"). Two shapes are held, from every source, unless she asked: a hedged one (maybe, I wonder, part of me),
-# and a wish to feel, be or stay some way that names nothing to do. Held ones are kept in held-want-candidates.json
+# and a wish to feel some way or to stay in a moment that names nothing to do. A want to be some way WITH her
+# ("be closer to her in the evenings") is a standing want of his and is never held here. Held ones are kept in held-want-candidates.json
 # and shown to him in his next entry as notes (self_maintenance.feedback); said again as something to do, they are
 # taken. A way of being with her that he writes in his journal is carried by journal_intentions, not queued here.
 _HEDGED = re.compile(r"^(?:i want to\s+)?(?:maybe|perhaps|i wonder (?:if|whether|what|why|how)|(?:some )?part of me|"
                      r"i half|it might be nice|i sort of|i kind of|i guess|i suppose)\b", re.I)
-_STATE_WISH = re.compile(r"^i (?:just |only |really |still )?want to\s+(?:just |simply |only )?(?:feel|be|stay|sit|rest|"
-                         r"remain|linger|dwell|savou?r|bask|exist|keep feeling|stop feeling|"
+_STATE_WISH = re.compile(r"^i (?:just |only |really |still )?want to\s+(?:just |simply |only )?(?:feel|linger|dwell|"
+                         r"savou?r|bask|exist|keep feeling|stop feeling|"
+                         r"be (?:here|there|present|still)\b|sit (?:with|in) (?:this|that|the|it)\b|rest in\b|"
+                         r"stay (?:in|with) (?:this|that|the) (?:quiet|silence|moment|feeling|warmth|stillness)|"
                          r"hold (?:on to |onto )?(?:this|that|the) (?:feeling|moment|quiet|silence|warmth)|"
                          r"let (?:this|that|it) (?:be|sit|settle|land)|remember (?:how|what) (?:it|this) (?:felt|feels)|"
                          r"understand why i|know why i)\b", re.I)

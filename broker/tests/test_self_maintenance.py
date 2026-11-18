@@ -157,6 +157,8 @@ REAL = ["I want to build a cold frame for the lettuce", "I want to ask her which
 check("hedged thoughts and wishes to feel or be some way are passing", all(K.passing_thought(t) for t in PASSING),
       [t for t in PASSING if not K.passing_thought(t)])
 check("a want with something to do is not", not any(K.passing_thought(t) for t in REAL), [t for t in REAL if K.passing_thought(t)])
+check("a want to be some way with her is a standing want, never held as passing",
+      not K.passing_thought("I want to be closer to her in the evenings") and not K.passing_thought("I want to stay near her while she works"))
 check("a passing thought is held from an authored source as well",
       K.admission_state("journal", want_text=PASSING[3]) == "HELD_PASSING_THOUGHT"
       and K.admission_state("moltbook", want_text=PASSING[0]) == "HELD_PASSING_THOUGHT")
