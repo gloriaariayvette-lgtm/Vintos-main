@@ -264,6 +264,7 @@ def refresh(now=None):
                                    "expires": _expiry(kind, when).isoformat(timespec="seconds"),
                                    "shown": [], "touched": 0, "recited": 0, "turns": 0})
                 _log({"event": "opened", "id": iid, "shape": kind})
+    changed = _from_wants(d, now) or changed
     for i in d["items"]:
         if i.get("state") == "open" and datetime.fromisoformat(i["expires"]) <= now:
             i.update(state="lapsed", closed=now.isoformat(timespec="seconds")); changed = True
@@ -271,6 +272,39 @@ def refresh(now=None):
     if changed:
         _save(d)
     return d
+
+
+def _from_wants(d, now):
+    """A want that was only something to say or ask her (want_contract.conversation_move) is held at the wants' door
+    and carried here as a planned line. Each is taken once."""
+    try:
+        held = json.load(open(os.path.join(MEMORY, "held-want-candidates.json")))
+    except (OSError, ValueError):
+        return False
+    since, newest, took = d.get("wants_read") or "", d.get("wants_read") or "", False
+    for h in held if isinstance(held, list) else []:
+        at = str((h or {}).get("at") or "") if isinstance(h, dict) else ""
+        if not at or at <= since or h.get("state") != "HELD_CONVERSATION_MOVE" or not h.get("want"):
+            continue
+        newest = max(newest, at)
+        text = str(h["want"])[:400]
+        if _twin(text, [i for i in d["items"] if i.get("state") == "open"]):
+            continue
+        try:
+            when = datetime.fromisoformat(at[:19])
+        except ValueError:
+            when = now
+        iid = "ji-" + hashlib.sha256(("want" + at + text).encode()).hexdigest()[:12]
+        d["items"].append({"id": iid, "text": text, "shape": "move", "state": "open", "restated": 0,
+                           "opened": when.isoformat(timespec="seconds"), "entry": "want " + at[:16],
+                           "expires": _expiry("move", when).isoformat(timespec="seconds"),
+                           "shown": [], "touched": 0, "recited": 0, "turns": 0})
+        _log({"event": "opened", "id": iid, "shape": "move", "from": "want"})
+        took = True
+    if newest != since:
+        d["wants_read"] = newest
+        return True
+    return took
 
 
 def _campaign(item):
