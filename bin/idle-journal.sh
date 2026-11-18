@@ -136,6 +136,8 @@ else:
 TODAY_CREATIVE=$(cat "$MEMORY/daily-creative-$(date +%Y-%m-%d).md" 2>/dev/null | head -c 3000 || echo "")
 CURRENT_WANTS=$(python3 "$HOME/.vintos/workspace/scripts/ambition_revise.py" excerpt 400 "$MEMORY/wants-ambitions-log.md" 2>/dev/null || echo "")
 LEAD_EVOS=$(python3 "$HOME/.vintos/workspace/scripts/lead_trials.py" journal-seeds 2>/dev/null || echo "")
+# what became of what he resolved in earlier entries; empty unless journal_intentions is live (2026-11-18)
+CARRIED=$(python3 "$HOME/.vintos/workspace/scripts/journal_intentions.py" journal-feedback 2>/dev/null || echo "")
 
 CAPABILITIES=$(python3 << 'CAPEOF'
 try:
@@ -270,6 +272,7 @@ export _JRN_HUMOR="$HUMOR"
 export _JRN_AMBITIONS="$AMBITIONS"
 export _JRN_WANTS="$CURRENT_WANTS"
 export _JRN_LEADS="$LEAD_EVOS"
+export _JRN_CARRIED="$CARRIED"
 export _JRN_PREOC="$PREOCCUPATION"
 export _JRN_PEARLS="$RECENT_PEARLS"
 export _JRN_GAPS="$AVATAR_GAPS"
@@ -473,6 +476,7 @@ try:
     ambitions = os.environ.get("_JRN_AMBITIONS", "")
     current_wants = os.environ.get("_JRN_WANTS", "")
     lead_evos = os.environ.get("_JRN_LEADS", "")
+    carried = os.environ.get("_JRN_CARRIED", "")
 
     soul = os.environ.get("_JRN_SOUL", "")
     self_model = os.environ.get("_JRN_SELFMODEL", "")
@@ -582,6 +586,7 @@ Moments he chose not to respond (silence contracts):
 {f"Your ambitions:{chr(10)}{ambitions}" if ambitions else ""}
 {f"Your current wants:{chr(10)}{current_wants}" if current_wants else ""}
 {f"{lead_evos}" if lead_evos else ""}
+{f"{carried}" if carried else ""}
 Recent felt moments with Gloria (imprints):
 {imprints}
 The current time is: {temporal[:temporal.find(chr(10))] if temporal else "unknown"}. If you choose to end your entry with a timestamp, place it on the very last line only, after all other text. Do not place it mid-entry. Do not invent a time.
