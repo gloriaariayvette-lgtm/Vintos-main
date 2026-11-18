@@ -1167,6 +1167,35 @@ def read_memory(want_text):
             log(f"File not found: {target} — continuing with placeholder")
             content = "(no such memory yet — this file does not exist for Vintos)"
 
+        # A want that names its entity (a PDB entry, an accession, an article) reads the memory that mentions it, not
+        # the newest page (18 November: a want about PDB 9XPK read a journal page about another protein and carried
+        # it on as its evidence). want_read_url.ground_memory; a want that names none reads as before.
+        try:
+            if SCRIPTS not in sys.path: sys.path.insert(0, SCRIPTS)
+            import want_read_url as _wru
+            _ids = _wru.want_ids(os.environ.get("STEP_ORIGINAL_WANT") or want_text, None, "", _sp)
+            if _wru._flat(_ids):
+                if os.path.isdir(resolved):
+                    _pool = [os.path.join(resolved, _f) for _f in ([_chosen_file] + [x for x in files if x != _chosen_file])[:400]]
+                else:
+                    _pool = [resolved] if os.path.isfile(resolved) else []
+                _grounded, _gwhy = "", "nothing to read"
+                for _gp in _pool:
+                    try:
+                        _full = open(_gp, errors="replace").read()
+                    except OSError:
+                        continue
+                    _grounded, _gwhy = _wru.ground_memory(_full, _ids)
+                    if _grounded:
+                        log(f"Read {target}: {os.path.basename(_gp)} (the part about {', '.join(sorted(_wru._flat(_ids))[:3])})")
+                        break
+                if not _grounded:
+                    log(f"Read {target}: off target - {_gwhy}; no other memory is passed on as this want's")
+                    return False
+                content = _grounded
+        except Exception as _gm_e:
+            log(f"memory grounding skipped: {str(_gm_e)[:120]}")
+
         # Save what he read so chat context can reference it
         read_log = os.path.join(MEMORY, ".last-read.json")
         import json as _j
@@ -2851,6 +2880,22 @@ def main():
             if want.get("outreach_count", 0) > 0:
                 log(f"  → Already notified Gloria once — waiting in discussion board")
                 continue
+            # Relevance before an autonomous opening (conversation_wants.autonomous_hold, 18 November): a want meant
+            # for when she is here, or one the conversation has moved past since it was written, is not pushed at her:
+            # no discussion post, no ntfy, no outreach count. It still reaches the stage it would have reached -
+            # routed to her (_route_held), so the board does not count it and the 3-day rule ends it as before - and
+            # it stays in his context for her next conversation. Fails open.
+            try:
+                if SCRIPTS not in sys.path: sys.path.insert(0, SCRIPTS)
+                import conversation_wants as _cw_gate
+                _held, _held_why = _cw_gate.autonomous_hold_file(want, os.path.join(MEMORY, "interaction-ledger.json"))
+            except Exception as _cwg_e:
+                _held, _held_why = False, ""
+                log(f"  → relevance gate unavailable ({str(_cwg_e)[:80]}); opening as before")
+            if _held:
+                log(f"  → Not opened with Gloria: {_held_why}")
+                _route_held(want, _held_why)
+                continue
             _open_gloria_discussion(want, text)
             continue
 
@@ -3146,6 +3191,32 @@ def _mark_attempt(text, action_name, want_id=None):
     except: pass
 
 
+def _route_held(want, why):
+    """A want at its step for Gloria that the relevance gate held (conversation_wants.autonomous_hold): marked
+    gloria_routed - the stage it would have reached by _open_gloria_discussion, so the board's cap and the 3-day rule
+    treat it exactly as before - with the reason kept in routed_held. Nothing is posted and nothing is sent to her."""
+    _want_id = want.get("id", "")
+    if not _want_id:
+        return
+    try:
+        _rh_path = os.path.join(MEMORY, "current-wants.json")
+        _rh_wants = json.load(open(_rh_path))
+        for _rhw in _rh_wants:
+            if isinstance(_rhw, dict) and _rhw.get("id") == _want_id:
+                _rhw["gloria_routed"] = True
+                _rhw["routed_held"] = {"at": datetime.now().isoformat(timespec="seconds"), "why": str(why)[:300]}
+                break
+        else:
+            return
+        _tmp = _rh_path + ".tmp.%d" % os.getpid()
+        with open(_tmp, "w") as _rhf:
+            json.dump(_rh_wants, _rhf, indent=2)
+        os.replace(_tmp, _rh_path)
+        want["gloria_routed"] = True
+    except Exception as _rh_e:
+        log(f"  → held want not marked routed: {_rh_e}")
+
+
 def _open_gloria_discussion(want, text):
     """Fresh gloria-routing, extracted verbatim from the dispatch megablock:
     rich opening from step history, discussion-board post, ONE ntfy,
@@ -3240,7 +3311,7 @@ _guard_here = _GuardPath(__file__).resolve().parent
 _guard_sys.path.insert(0, str(_guard_here.parent / "scripts"))
 _guard_sys.path.insert(0, str(_guard_here))
 from store_guard import serialized as _serialized
-for _writer in ("_advance_or_fulfill","_mark_attempt","_open_gloria_discussion"):
+for _writer in ("_advance_or_fulfill","_mark_attempt","_open_gloria_discussion","_route_held"):
     globals()[_writer]=_serialized(lambda: os.path.join(MEMORY,"current-wants.json"))(globals()[_writer])
 
 if __name__ == "__main__":

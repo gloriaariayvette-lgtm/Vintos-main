@@ -2262,10 +2262,12 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
             import sys as _wa_sys
             _wa_sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
             from want_contract import admission_state as _want_admission_state
-        _admission = _want_admission_state(_src, _kind, _pull_now)
+        # she asked for it: the self-packaging screen (want_contract.self_packaging) does not hold it
+        _her_asked = bool(kwargs.get("asked_by_gloria") or kwargs.get("her_ask"))
+        _admission = _want_admission_state(_src, _kind, _pull_now, want_text=str(want_text), her_asked=_her_asked)
         try:   # review 254: the one admission door adds his standing stance to the shape screen
             from want_completion import admit as _wc_admit
-            _adm = _wc_admit(want_text, _src, _kind, _pull_now)
+            _adm = _wc_admit(want_text, _src, _kind, _pull_now, her_asked=_her_asked)
             if _adm["state"] == "HELD" and not str(_admission).startswith("HELD"):
                 _admission = "HELD_BY_STANDING_STANCE"
         except Exception:

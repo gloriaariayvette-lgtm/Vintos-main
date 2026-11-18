@@ -75,6 +75,13 @@ def _identity_signals():
             parts.append("Motions I'm authoring: " + ", ".join(names))
     except Exception:
         pass
+    try:   # what he resolved in his journal and still carries; empty unless journal_intentions is live (2026-11-18)
+        import journal_intentions
+        carried = journal_intentions.selector_signal()
+        if carried:
+            parts.append(carried)
+    except Exception:
+        pass
     return "\n\n".join(parts)
 
 def _spark_fields():

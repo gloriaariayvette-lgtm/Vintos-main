@@ -39,6 +39,51 @@ def update_soul_block(soul_path, new_block):
     return True
 
 
+SWING_MOVED = 0.02   # a dimension that moved this much inside the hour is not "stable", whatever its endpoints say
+
+
+def trend_lines(dims, v, hist, now):
+    """One line per dimension: value, change over the last hour, the hours that change spans, direction, and the
+    hour's swing (highest minus lowest reading inside it, the newest included).
+
+    17 November: six dimensions read +0.000 over the hour for most of an evening while the state moved. The values
+    were fresh (daemon up, this job every 2 minutes); the change compared two single readings an hour apart, and his
+    drift job's gravity-well pull (at :10/:30/:50) lands the state on the same point every 20 minutes - so a reading
+    and the one an hour before it sit on the same phase and differ by nothing, however far the state went between
+    them (Valence rose 0.03 at 20:08 and was back by 20:52). The change is still the endpoints' (what "over the last
+    hour" says); the swing shows what they hide, and a dimension that swung SWING_MOVED or more is not called stable.
+    `hist` rows are {"t": iso, "v": [...]}, oldest first, the current reading already appended or not."""
+    one_hour_ago = now - timedelta(hours=1)
+    ref, window = None, []
+    for entry in hist or []:
+        try:
+            et = datetime.fromisoformat(entry["t"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if et <= one_hour_ago:
+            ref = entry
+        elif et <= now:
+            window.append(entry)
+    lines = []
+    for i, dim in enumerate(dims):
+        val = v[i]
+        trend, duration_h, direction = 0.0, 0.0, "stable"
+        seen = [val] + [e["v"][i] for e in window if isinstance(e.get("v"), list) and i < len(e["v"])]
+        if ref and isinstance(ref.get("v"), list) and i < len(ref["v"]):
+            seen.append(ref["v"][i])
+            trend = val - ref["v"][i]
+            duration_h = (now - datetime.fromisoformat(ref["t"])).total_seconds() / 3600
+            if trend > 0.005:
+                direction = "rising fast" if trend > 0.04 else "rising"
+            elif trend < -0.005:
+                direction = "falling fast" if trend < -0.04 else "falling"
+        swing = max(seen) - min(seen)
+        if direction == "stable" and swing >= SWING_MOVED:
+            direction = "moved, back near where it was"
+        lines.append(f"{dim}: {val:.4f} | trend: {trend:+.3f} | {duration_h:.1f}h | {direction} | swing {swing:.3f}")
+    return lines
+
+
 SOCK = "/tmp/Vintos-emotion.sock"
 TXT = os.path.expanduser("~/.vintos/workspace/memory/emotional-state.txt")
 SOUL = os.path.expanduser("~/.vintos/workspace/SOUL.md")
@@ -76,30 +121,7 @@ hist.append({"t": now_iso, "v": [round(v[i], 4) for i in range(len(DIMS))]})
 hist = hist[-180:]  # keep 6h at 2-min intervals
 _atomic_write(HIST, json.dumps(hist))
 
-# Find entry closest to 1 hour ago for trend
-one_hour_ago = now - timedelta(hours=1)
-ref = None
-for entry in hist:
-    try:
-        et = datetime.fromisoformat(entry["t"])
-        if et <= one_hour_ago:
-            ref = entry
-    except: pass
-
-lines = []
-for i, dim in enumerate(DIMS):
-    val = v[i]
-    trend = 0.0
-    duration_h = 0.0
-    direction = "stable"
-    if ref and i < len(ref["v"]):
-        trend = val - ref["v"][i]
-        duration_h = (now - datetime.fromisoformat(ref["t"])).total_seconds() / 3600
-        if trend > 0.005:
-            direction = "rising fast" if trend > 0.04 else "rising"
-        elif trend < -0.005:
-            direction = "falling fast" if trend < -0.04 else "falling"
-    lines.append(f"{dim}: {val:.4f} | trend: {trend:+.3f} | {duration_h:.1f}h | {direction}")
+lines = trend_lines(DIMS, v, hist, now)
 
 # Add Nifrathir if present
 nif = d.get("nifrathir", d.get("emotion_vector", [None]*12)[11] if len(d.get("emotion_vector",[])) > 11 else None)

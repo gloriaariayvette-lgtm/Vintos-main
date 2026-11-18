@@ -239,6 +239,7 @@ SCRIPTS="$SCRIPTS gap_scan.py gap_review.py"   # the daily wall count and the Mo
 SCRIPTS="$SCRIPTS landings.py grok_subscription.py"   # her landing notes (2026-09-24); his Grok renders on her SuperGrok login (2026-09-25)
 SCRIPTS="$SCRIPTS failure_watch.py forge_tidy.py study_fix.py armed_watch.py promise_keeper.py"   # one morning message to Gloria when a part of him failed (2026-10-02); stop the old Lab write-ups (2026-10-03); his journal's promises made, reshaped or dropped (2026-10-03)
 SCRIPTS="$SCRIPTS study_agent.py study_sdk.py claude_sub.py film_night.py"   # study_sdk: Claude Code on his subscription writes the fix; the Study writes fixes with tools: read, edit, run one suite, repair (2026-10-22)
+SCRIPTS="$SCRIPTS journal_intentions.py self_maintenance.py"   # what he resolves in his journal about how to be with her, carried into the turn and told back (2026-11-18; shadow by default)
 SCRIPTS="$SCRIPTS software_quota.py"   # dated operational quotas; the owner-reviewed override JSON is installed separately
 BINS="$BINS pearl-engine.py pearl_engine.py"
 BINS="$BINS avatar_route_probe.py"   # diagnostic: runs the real /api/avatar/chat handler against live Grok + hub, writes to a throwaway workspace
@@ -291,6 +292,7 @@ SCRIPTS="$SCRIPTS hdc_episodic.py"   # who/what/where/when episodic memory in sh
 SCRIPTS="$SCRIPTS hdc_tag_recall.py"   # tag-keyed HDC recall behind the AprilTag lookup, opt-in (native_video tag_memory hdc=, server --tag-hdc); writes only its own state from its CLI; no cron (2026-11-15)
 BINS="$BINS mirror-trigger.sh"   # its cron entry runs the ~/Vintos copy, which was in no list; it matched the checkout when the thread gate was added (2026-10-27)
 SCRIPTS="$SCRIPTS lab_entity.py"   # the Lab's entity grounding, loaded by lab_investigations/lab_planner_trial with __import__; in no list, so the 16 November deploy left it out and Gloria copied it by hand (2026-11-17)
+SCRIPTS="$SCRIPTS emoclaw-fast-sync.py"   # his emotional-state.txt every 2 minutes (cron runs the workspace copy); in no list, so its 13 November atomic writes and the 18 November hour swing never reached Aegis
 
 CLIENTFILES="clients/mobile/stratagem_voice.js clients/mobile/index.html clients/mobile/client_lifecycle.js clients/mobile/avatar-bundle.js"
 MANIFEST="$(printf 'scripts/%s\n' $SCRIPTS; printf 'bin/%s\n' $BINS; printf '%s\n' $SKILLFILES $DOMAINFILES $CLIENTFILES broker/vintos-emoclaw-provenance.conf

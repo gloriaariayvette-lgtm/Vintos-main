@@ -163,8 +163,38 @@ def complete(want, how, by, note="", evidence=None):
     row["result"] = how; _log(row); return row
 
 
+def keep(want, by, note=""):
+    """He (or she) says this want stays. Marked on the want and logged; nothing else about it changes."""
+    wants, w = _find(want)
+    row = {"at": time.strftime("%Y-%m-%dT%H:%M:%S"), "want_id": (w or {}).get("id"), "want": str((w or {}).get("want", ""))[:250],
+           "how": "kept", "by": by, "note": str(note)[:300]}
+    if w is None:
+        row["result"] = "not live"; _log(row); return row
+    w["kept_at"] = row["at"]; w["kept_by"] = by
+    _atomic(WANTS, wants)
+    row["result"] = "kept"; _log(row); return row
+
+
+def reword(want, new_text, by, note=""):
+    """The want is said again in new words, in place: same id, steps and history. The old wording is kept beside
+    it and in the log, so nothing he once wanted is lost by being said better."""
+    new_text = " ".join(str(new_text or "").split())[:1200]
+    wants, w = _find(want)
+    row = {"at": time.strftime("%Y-%m-%dT%H:%M:%S"), "want_id": (w or {}).get("id"), "want": str((w or {}).get("want", ""))[:250],
+           "how": "reworded", "by": by, "note": str(note)[:300]}
+    if w is None:
+        row["result"] = "not live"; _log(row); return row
+    if len(new_text) < 12:
+        row["result"] = "refused: the new wording is too short to be a want"; _log(row); return row
+    w.setdefault("reworded_from", []).append({"want": w.get("want"), "at": row["at"], "by": by})
+    w["want"] = new_text; w["reworded_at"] = row["at"]
+    _atomic(WANTS, wants)
+    row["to"] = new_text[:250]; row["result"] = "reworded"; _log(row); return row
+
+
 DISCUSSIONS = os.path.join(MEMORY, "want-discussions.json")
 QUIET_DAYS = 3
+KEPT_DAYS = 14
 
 
 def _when(v):
@@ -262,6 +292,8 @@ def move_on(now=None, quiet_days=QUIET_DAYS):
                              note="its steps are done; not credited as fulfilled (%s)" % str(r.get("result"))[:120])
             out.append(r)
             continue
+        if str(w.get("kept_by") or "") == "himself" and now - (_when(w.get("kept_at")) or 0) < KEPT_DAYS * 86400:
+            continue   # he said KEEP: her silence does not end a want he has just chosen to keep
         if not routed_to_gloria(w):
             # Not put to her, so not waiting on her: silence from Gloria is no reason for it to end. A blocked
             # or idle want is the board's (want_board: parked, then released after its own 7 + 7 days).
@@ -278,7 +310,7 @@ def move_on(now=None, quiet_days=QUIET_DAYS):
     return out
 
 
-def admit(want_text, source, candidate_kind="", present_pull="", want_id=""):
+def admit(want_text, source, candidate_kind="", present_pull="", want_id="", her_asked=False):
     """Both screens at once: the shape screen (want_contract) and his standing stance (wants_meta).
 
     A want that names a rate rather than a thing — to analyse less, to reach for her
@@ -288,7 +320,7 @@ def admit(want_text, source, candidate_kind="", present_pull="", want_id=""):
     try:
         sys.path.insert(0, os.path.join(WS, "scripts")); sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         from want_contract import admission_state as _as
-        out["shape"] = _as(source, candidate_kind, present_pull)
+        out["shape"] = _as(source, candidate_kind, present_pull, want_text=want_text, her_asked=her_asked)
     except Exception:
         pass
     try:

@@ -104,9 +104,188 @@ def _first_link(text):
     return ""
 
 
-def pick_url(params, step_text, original="", want=None):
-    """(url, where) for this step: the address it is to open and where it was found; ('', why) when there is none."""
+def _links(text):
+    """Every whole link in a text, in order (a link written cut short is skipped, as in _first_link)."""
+    out = []
+    for l in _link_fetch().links_in(str(text or "")):
+        if l.get("cut"):
+            continue
+        u = l.get("original") or l.get("url")
+        if u and u not in out:
+            out.append(u)
+    return out
+
+
+# ---- entity grounding (18 November) ------------------------------------------------------------------------------
+# A want to open PDB 9XPK (a taste receptor) read, at its read_url step, the first link in the step's text: the step
+# text carries what earlier steps found and the mail that came in on other threads, and the first link there was an
+# AlphaFold model of a potato protein from another conversation. Its read_memory step had brought back a journal page
+# about an unrelated transporter. The Lab had the same fault with structures (lab_entity.py, the pendrin model); this
+# is the wants' version. When the want names its entity - a PDB entry, a UniProt accession, an AlphaFold model, a PMC
+# article or a DOI - in its own words or this step's own goal or params:
+#   - an address that names another entity of those kinds is refused, with the reason;
+#   - an address found anywhere but the want's own words, goal or params (earlier findings, mail, other threads) is
+#     used only when it names the want's own identifier;
+#   - with no such address, the canonical address of the exact identifier is opened (a PDB entry's mmCIF file);
+#   - a structure file that comes back naming none of the want's identifiers is refused as off target.
+# A want that names no identifier is read exactly as before.
+try:
+    _here()
+    from lab_entity import _ACCESSION as _UNIPROT     # the Lab's UniProt accession pattern: one definition
+except Exception:                                    # lab_entity needs lab_instruments; the same pattern
+    _UNIPROT = re.compile(r"(?<![A-Z0-9])(?:[OPQ][0-9][A-Z0-9]{3}[0-9]|[A-NR-Z][0-9](?:[A-Z][A-Z0-9]{2}[0-9]){1,2})"
+                          r"(?![A-Z0-9])")
+_PDB_SAID = re.compile(r"\b(?:PDB|RCSB)(?:[\s_-]*(?:ID|entry|code|structure))?[\s:#_-]*([1-9][A-Za-z0-9]{3})(?![A-Za-z0-9])",
+                       re.I)
+_PDB_BARE = re.compile(r"(?<![A-Za-z0-9-])([1-9][A-Z0-9]{3})(?![A-Za-z0-9])")
+_STRUCTURAL = re.compile(r"\b(?:structure|structural|protein|receptor|residue|active[- ]site|binding|cryo-?em|"
+                         r"crystal|coordinates|chain|ligand|domain|complex)", re.I)
+_AF = re.compile(r"\bAF-([A-Z0-9]{6,10})-F\d+", re.I)
+_PMC = re.compile(r"\bPMC\d{5,9}\b", re.I)
+_DOI = re.compile(r"\b10\.\d{4,9}/[^\s\"'<>)\]]+")
+_URL_PDB = re.compile(r"rcsb\.org/(?:structure|pdb|3d-view)/([1-9][A-Za-z0-9]{3})\b|"
+                      r"files\.rcsb\.org/(?:download|view|header)/([1-9][A-Za-z0-9]{3})\.|"
+                      r"ebi\.ac\.uk/pdbe/entry/pdb/([1-9][A-Za-z0-9]{3})\b", re.I)
+_URL_ACC = re.compile(r"(?:uniprot\.org/(?:uniprotkb|uniprot)/|alphafold\.ebi\.ac\.uk/(?:entry|api/prediction)/)"
+                      r"([A-Za-z0-9]{6,10})\b", re.I)
+KINDS = ("pdb", "uniprot", "pmc", "doi")
+
+
+def declared_ids(text):
+    """{'pdb', 'uniprot', 'pmc', 'doi': set} named in a text (DOIs lower case, the rest upper case). A bare
+    four-character PDB code counts only with two letters in it and structural words in the text, so '120V' or '2026'
+    is never taken for a structure; 'PDB 1ABC' or an RCSB address always counts."""
+    t = str(text or "")
+    out = {k: set() for k in KINDS}
+    out["pdb"] |= {m.upper() for m in _PDB_SAID.findall(t)}
+    if _STRUCTURAL.search(t):
+        out["pdb"] |= {m for m in _PDB_BARE.findall(t) if sum(c.isalpha() for c in m) >= 2}
+    for m in _URL_PDB.findall(t):
+        out["pdb"] |= {x.upper() for x in m if x}
+    out["uniprot"] |= {m.upper() for m in _AF.findall(t)}
+    out["uniprot"] |= {m.upper() for m in _URL_ACC.findall(t)}
+    out["uniprot"] |= {m for m in _UNIPROT.findall(t) if m not in out["pdb"]}
+    out["pmc"] |= {m.upper() for m in _PMC.findall(t)}
+    out["doi"] |= {m.lower().rstrip(".,;") for m in _DOI.findall(t)}
+    return out
+
+
+def _flat(ids):
+    return {x for v in (ids or {}).values() for x in v}
+
+
+def want_ids(original="", want=None, goal="", params=None):
+    """The identifiers the want declares: in its own words, this step's goal and this step's params - never in what
+    earlier steps found or the mail beside them, which carry other threads."""
     p = params if isinstance(params, dict) else {}
+    # the step's address is what is being checked, never a declaration of what the want is about
+    vals = " ".join(str(v) for k, v in p.items() if isinstance(v, (str, int, float)) and k not in ("url", "link", "href"))
+    return declared_ids("\n".join(str(x or "") for x in (original, (want or {}).get("want"), goal, vals)))
+
+
+def on_target(url, ids):
+    """(verdict, why): 'own' when the address names one of the want's identifiers, 'other' when it names another
+    entity of those kinds (why says which), 'neutral' when it names none."""
+    mine = {x.lower() for x in _flat(ids)}
+    u = str(url or "")
+    if any(x in u.lower() for x in mine):
+        return "own", ""
+    # another entity of the same family as the want's: a molecule (PDB, UniProt/AlphaFold) or an article (PMC, DOI). A
+    # paper's DOI is not "another structure" for a want about a structure.
+    fam = {"pdb": "mol", "uniprot": "mol", "pmc": "art", "doi": "art"}
+    want_fams = {fam[k] for k, v in (ids or {}).items() if v}
+    found = declared_ids(u)
+    named = sorted(x for k, v in found.items() if fam.get(k) in want_fams for x in v if x.lower() not in mine)
+    if named:
+        return "other", "it names %s, not this want's %s" % (", ".join(named[:3]), ", ".join(sorted(_flat(ids))[:4]))
+    return "neutral", ""
+
+
+def canonical_url(ids):
+    """(url, what) for the want's exact identifier, the most specific kind first; ('', '') when there is none."""
+    for kind, fmt, what in (("pdb", "https://files.rcsb.org/download/%s.cif", "PDB entry %s (its mmCIF file)"),
+                            ("uniprot", "https://rest.uniprot.org/uniprotkb/%s.txt", "UniProt entry %s"),
+                            ("pmc", "https://pmc.ncbi.nlm.nih.gov/articles/%s/", "article %s"),
+                            ("doi", "https://doi.org/%s", "DOI %s")):
+        for x in sorted((ids or {}).get(kind) or []):
+            return fmt % x, what % x
+    return "", ""
+
+
+def _pick_grounded(p, step_text, original, want, ids):
+    refused = []
+
+    def take(u, where, own_words):
+        verdict, why = on_target(u, ids)
+        if verdict == "own" or (verdict == "neutral" and own_words):
+            return True
+        refused.append("%s (%s): %s" % (u[:120], where,
+                                        why or "found outside the want's own words and it does not name %s"
+                                        % ", ".join(sorted(_flat(ids))[:4])))
+        return False
+
+    u = str(p.get("url") or "").strip()
+    if u.lower().startswith(("http://", "https://")) and take(u, "the step's own address", True):
+        return u, "the step's own address"
+    goal = _goal(step_text)
+    for text, where in ((goal, "the step's goal"), (original or (want or {}).get("want"), "the want itself")):
+        for u in _links(text):
+            if take(u, "a link in " + where, True):
+                return u, "a link in %s" % where
+    for h in reversed((want or {}).get("step_history") or []):
+        if isinstance(h, dict):
+            for u in _links(h.get("findings")):
+                where = "a link step %s (%s) found" % (h.get("step") + 1 if isinstance(h.get("step"), int) else "?",
+                                                       h.get("capability"))
+                if take(u, where, False):
+                    return u, where
+    for u in _links(step_text):
+        if take(u, "a link in the step's text", False):
+            return u, "a link in the step's text"
+    u, what = canonical_url(ids)
+    if u:
+        return u, "the canonical address of the want's own identifier, %s%s" % (
+            what, ("; refused: " + "; ".join(refused[:3])) if refused else "")
+    return "", "no address for %s%s" % (", ".join(sorted(_flat(ids))), ("; refused: " + "; ".join(refused[:3])) if refused else "")
+
+
+def off_target_structure(r, text, ids):
+    """Why a structure file that came back is not the want's entity (it names none of its identifiers in its first
+    lines while naming another), or '' when it is, or when it is not a structure file."""
+    if not r.get("structure") or not _flat(ids):
+        return ""
+    head = str(text or "")[:4000]
+    if any(x.lower() in head.lower() for x in _flat(ids)):
+        return ""
+    other = sorted(_flat(declared_ids("PDB " + head[:400] + "\n" + head)) - _flat(ids))
+    return ("the structure file names %s, not this want's %s" % (", ".join(other[:3]) or "none of them",
+                                                                   ", ".join(sorted(_flat(ids))[:4])))
+
+
+def ground_memory(content, ids, chars=2000):
+    """(excerpt, why) for a read_memory step of a want that names its entity: the part of what was read that
+    mentions one of its identifiers (a window around the first mention), or ('', why) when none of it does. With no
+    identifiers, (content[:chars], '')."""
+    c = str(content or "")
+    flat = sorted(_flat(ids))
+    if not flat:
+        return c[:chars], ""
+    low = c.lower()
+    hits = [low.find(x.lower()) for x in flat if x.lower() in low]
+    if not hits:
+        return "", "nothing read mentions %s" % ", ".join(flat[:4])
+    at = min(hits)
+    start = max(0, at - chars // 3)
+    return c[start:start + chars], ""
+
+
+def pick_url(params, step_text, original="", want=None):
+    """(url, where) for this step: the address it is to open and where it was found; ('', why) when there is none.
+    A want that names its entity is grounded to it (above); any other is read as before."""
+    p = params if isinstance(params, dict) else {}
+    ids = want_ids(original, want, _goal(step_text), p)
+    if _flat(ids):
+        return _pick_grounded(p, step_text, original, want, ids)
     u = str(p.get("url") or "").strip()
     if u:
         return u, "the step's own address"
@@ -193,6 +372,9 @@ def run(params, step_text, want_id="", original="", want=None, mem=None, fetch=N
         except Exception:
             pass
         r = dict(r, why="a structure file: only link_fetch's preview of it is kept, not the whole file")
+    _off = off_target_structure(r, text, want_ids(original, want, _goal(step_text), params))
+    if _off:        # another entity's structure: refused, never kept as this want's evidence
+        r, structure = dict(r, fetched=False, kind="off_target", why=_off), False
     read = bool(r.get("fetched")) and bool(text.strip())
     full = read and not structure and not (r.get("truncated") or r.get("kind") == "truncated")
     label = FULL if full else (PART if read else NOT)

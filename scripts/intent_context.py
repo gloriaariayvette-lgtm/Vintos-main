@@ -44,6 +44,17 @@ def admit_voice_lead(event_id):
     return target, prompt_block(target)
 
 
+def journal_carry(her_text, act=True, surface="voice"):
+    """What he carries from his journal, for a voice turn (journal_intentions.turn_block): the same block the
+    avatar route gets, with the same gate. "" when nothing fits or anything fails; never raises."""
+    try:
+        import journal_intentions
+        block = journal_intentions.turn_block(str(her_text or ""), act=bool(act), surface=surface)
+        return ("\n\n" + block) if block else ""
+    except Exception:
+        return ""
+
+
 def _clean(s):
     """A human sentence, or nothing. Raw dict/list reprs (some axes store their
     target as a structure) never belong in his context, so drop them."""

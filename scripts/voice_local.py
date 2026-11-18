@@ -184,6 +184,12 @@ def turn(audio_b64, sample_rate, instructions, framing="", ladder_call=None):
     system = str(instructions or "") + interaction.prompt()
     if intent_prompt:
         system += "\n\n" + intent_prompt
+    if not ladder_call:   # what he carries from his journal, when her words touch it (journal_intentions.py)
+        try:
+            from intent_context import journal_carry
+            system += journal_carry(heard["transcript"], act=not _test_turn, surface="voice-local")
+        except Exception:
+            pass                  # a call never fails because the carrier could not be loaded
     if framing: system += "\n\nLIVE RIGHT NOW (this replaces earlier LIVE blocks):\n" + str(framing)
     system += ("\n\nLOCAL LIVE VOICE: answer in one to three conversational sentences unless "
         "Gloria explicitly asks for something longer. Your Chatterbox voice performs these exact "
@@ -430,6 +436,12 @@ def turn_stream(audio_b64, sample_rate, instructions, framing="", ladder_call=No
     system = str(instructions or "") + interaction.prompt()
     if intent_prompt:
         system += "\n\n" + intent_prompt
+    if not ladder_call:   # what he carries from his journal, when her words touch it (journal_intentions.py)
+        try:
+            from intent_context import journal_carry
+            system += journal_carry(heard["transcript"], act=not _test_turn, surface="voice-local")
+        except Exception:
+            pass                  # a call never fails because the carrier could not be loaded
     if framing: system += "\n\nLIVE RIGHT NOW (this replaces earlier LIVE blocks):\n" + str(framing)
     system += ("\n\nLOCAL LIVE VOICE: answer in one to three conversational sentences unless "
         "Gloria explicitly asks for something longer. Your Chatterbox voice performs these exact "

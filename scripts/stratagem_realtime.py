@@ -51,6 +51,9 @@ def admit(raw, event_id, hold=False):
             intent_target, intent_prompt = admit_voice_lead(event_id)
             if intent_prompt:
                 prompt += "\n\n" + intent_prompt
+            if not hold:
+                from intent_context import journal_carry
+                prompt += journal_carry(raw, surface="voice-realtime")
         except Exception:
             pass
         session.admitted(prompt)

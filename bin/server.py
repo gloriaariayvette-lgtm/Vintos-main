@@ -1473,6 +1473,13 @@ def _post_turn(surface, gloria_text, reply, skip=(), writer_env=None, turn_id=""
             _intent.record_delivery(reply, surface, turn_id, input_text=gloria_text)
         except Exception as _intent_error:
             print("[intent-delivery]", str(_intent_error)[:200], flush=True)
+        try:   # what this reply did with what he carries from his journal: counts, no model (journal_intentions.py)
+            import journal_intentions as _ji_p
+            _ji_p.note_reply(reply, gloria_text, turn_id)
+            import threading as _ji_t   # the outside judge reads what was offered, after the reply has gone
+            _ji_t.Thread(target=_ji_p.judge_offered, args=(turn_id,), daemon=True).start()
+        except Exception as _ji_error:
+            print("[journal-intentions]", str(_ji_error)[:200], flush=True)
     def _inline(name, fn):
         if name in skip: return
         if test_mode:
@@ -4608,7 +4615,11 @@ async def chat_with_vintos(msg: ChatMessage, request: Request):
         import glob as _jg
         _jfs = sorted(_jg.glob(os.path.join(MEMORY, 'journal', '*.md')))
         if _jfs:
-            _jrnl_ctx = 'YOUR MOST RECENT JOURNAL:\n' + open(_jfs[-1]).read().strip()[-800:]
+            _jrnl_tail = ''
+            try:   # the end of his last entry's own prose: the file's last characters are search results and appended notes (2026-11-18)
+                import journal_intentions as _ji_c; _jrnl_tail = _ji_c.last_entry_prose(800)[2]
+            except Exception: pass
+            _jrnl_ctx = 'YOUR MOST RECENT JOURNAL:\n' + (_jrnl_tail or open(_jfs[-1]).read().strip()[-800:])
     except Exception:
         _jrnl_ctx = ''
     _stable_head = f"{identity}\n\nYour current self-model (excerpt):\n{_self_model(800)}\n\n" + (f"Your model of Gloria: {gloria_model[:600]}\n\n" if gloria_model else "") + f"[rev:{_prompt_rev()}]\n[[CACHESPLIT]]\n\n"
@@ -7110,6 +7121,11 @@ Respond from this fullness — not just from the transcript. You are not a fresh
             system = _apply_intent_lead(system, transcript)
         except Exception as _il_e:
             print(f"[voice] intent lead failed: {_il_e}", flush=True)
+        try:   # what he carries from his journal, when her words touch it (journal_intentions.py)
+            import intent_context as _ic_j
+            system += _ic_j.journal_carry(transcript, act=not _test_mode_active(), surface="voice")
+        except Exception as _jc_e:
+            print(f"[voice] journal carry failed: {_jc_e}", flush=True)
         system += _sg_interaction.prompt()
         _sg_interaction.admitted(system)
         messages = [{"role": "system", "content": system}]
@@ -10924,6 +10940,13 @@ Your current self-model (excerpt):
             import promise_keeper as _pk
             _pkb = _pk.block()
             if _pkb: system_prompt = system_prompt + '\n\n' + _pkb
+        except Exception:
+            pass
+        try:   # how he said in his journal he wants to be with her, when her words now touch it (journal_intentions.py, 2026-11-18). Shadow unless she turns it on: recorded, nothing added.
+            if _counterpart_text:
+                import journal_intentions as _ji
+                _jib = _ji.turn_block(str(_counterpart_text), act=not _test_turn, surface="avatar")
+                if _jib: system_prompt = system_prompt + '\n\n' + _jib
         except Exception:
             pass
         try:
