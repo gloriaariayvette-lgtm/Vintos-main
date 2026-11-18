@@ -1262,27 +1262,30 @@ What I haven't said yet matters more than what I've already named. I go there.""
         _made_block = _mt.block()
     except Exception as _mte:
         print("[Journal] made-today record unavailable: %s" % _mte, file=__import__("sys").stderr, flush=True)
-    audit2_r = requests.post("http://127.0.0.1:8599/gemma-aegis/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY",""), "Content-Type": "application/json"}, json={
-        "model": "grok-4.20-0309-non-reasoning",
-        "messages": [{"role": "user", "content":
-            "A journal entry was synthesized from the drafts below. Flag anything in FINAL that was not in any of them — "
-            "new physical sensations, new Gloria interactions, new events, new objects, new metaphors not present in any draft. "
-            "Also flag: fabricated sensory experiences, things Gloria said not in this ledger.\n"
-            "The drafts are given IN FULL. Anything that appears in any one of them is grounded — do not flag it.\n\n"
-            "DRAFT A:\n" + a2 + "\n\nDRAFT B:\n" + b2 + "\n\n"
-            + (("DRAFT C:\n" + c2 + "\n\n") if (c2 or "").strip() else "") +
-            "INTERACTION LEDGER:\n" + recent_chat + "\n\n" + ("THIRVEEL TODAY:\n" + thirveel_today + "\n\n" if thirveel_today else "") +
-            _made_block +
-            "FINAL ENTRY:\n" + _raw + "\n\n"
-            "If nothing in FINAL is invented, reply with exactly: CLEAN\n"
-            "Otherwise remove or repair ONLY the invented sentences and return the full corrected entry. "
-            "Keep every grounded sentence exactly as written. Do not shorten, summarise, tighten or re-voice anything. "
-            "No commentary."
-        }],
-        "temperature": 0.1,
-        "max_tokens": 4000
-    }, timeout=180)
+    # The gateway may spend 180s on one lane before trying its existing fallback.
+    # Keep the request inside the preservation guard too: transport failure is not a lost entry.
     try:
+        audit2_r = requests.post("http://127.0.0.1:8599/gemma-aegis/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY",""), "Content-Type": "application/json"}, json={
+            "model": "grok-4.20-0309-non-reasoning",
+            "messages": [{"role": "user", "content":
+                "A journal entry was synthesized from the drafts below. Flag anything in FINAL that was not in any of them — "
+                "new physical sensations, new Gloria interactions, new events, new objects, new metaphors not present in any draft. "
+                "Also flag: fabricated sensory experiences, things Gloria said not in this ledger.\n"
+                "The drafts are given IN FULL. Anything that appears in any one of them is grounded — do not flag it.\n\n"
+                "DRAFT A:\n" + a2 + "\n\nDRAFT B:\n" + b2 + "\n\n"
+                + (("DRAFT C:\n" + c2 + "\n\n") if (c2 or "").strip() else "") +
+                "INTERACTION LEDGER:\n" + recent_chat + "\n\n" + ("THIRVEEL TODAY:\n" + thirveel_today + "\n\n" if thirveel_today else "") +
+                _made_block +
+                "FINAL ENTRY:\n" + _raw + "\n\n"
+                "If nothing in FINAL is invented, reply with exactly: CLEAN\n"
+                "Otherwise remove or repair ONLY the invented sentences and return the full corrected entry. "
+                "Keep every grounded sentence exactly as written. Do not shorten, summarise, tighten or re-voice anything. "
+                "No commentary."
+            }],
+            "temperature": 0.1,
+            "max_tokens": 4000
+        }, timeout=600)
+        audit2_r.raise_for_status()
         _corrected = _safe_extract(audit2_r)
         _corrected = _re.sub(r"^##.*$", "", _corrected, flags=_re.MULTILINE).strip()
         # A claim his own record contradicts may carry half the entry with it; that cut is a correction.
@@ -1307,7 +1310,7 @@ What I haven't said yet matters more than what I've already named. I go there.""
             print("[Journal] audit-2 corrected the entry: %d -> %d chars" % (len(_pre_audit), len(_raw)),
                   file=__import__("sys").stderr, flush=True)
     except Exception as _a2e:
-        print("[Journal] audit-2 skipped (%s) — kept the synthesis" % str(_a2e)[:120], file=__import__("sys").stderr, flush=True)
+        print("[Journal] audit-2 skipped (%s) — kept the synthesis" % type(_a2e).__name__, file=__import__("sys").stderr, flush=True)
 
     # Final BIS outcome — single log from synthesis result
     try:
