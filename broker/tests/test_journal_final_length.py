@@ -62,7 +62,7 @@ check("bash -n cannot see inside a heredoc, so every block is compiled here",
       not broken, "; ".join(broken))
 
 print("\n--- audit 2 sees all three drafts, whole ---")
-a2 = S.index("audit2_r = requests.post")
+a2 = S.index("audit2_r = _local_post(")   # the journal's local calls retry once (18 November)
 audit2 = S[a2:S.index("# Final BIS outcome", a2)]   # the whole audit section, however long it grows
 check("A2 is passed in full, not its first 800 characters",
       '"DRAFT A:\\n" + a2 + ' in audit2 and "a2[:800]" not in audit2, "a2[:800]" in audit2)

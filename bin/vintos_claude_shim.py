@@ -484,14 +484,51 @@ def xai_complete(j, call=None):
     if err is not None and d is None: _log(f"xai error: {err['reason']}"); return err
     return GR.from_openai(d, "xai")
 
+# The MacBook's LM Studio serves AEON with reasoning ON by default: without a switch every call spent its tokens
+# thinking and came back empty (finish "length", content "") or minutes late (18 November: his journal's audit timed
+# out, and every short verdict fell through to Claude). Of the switches its OpenAI endpoint was tried with, only
+# reasoning_effort "none" turns thinking off (chat_template_kwargs and "low" did not). No thinking (Gloria, standing rule).
+GEMMA_THINKING_OFF = {"reasoning_effort": "none", "chat_template_kwargs": {"enable_thinking": False}}
+GEMMA_TOK_PER_S = 10   # measured, AEON on the MacBook, thinking off (about 11 tokens a second)
+
+def gemma_timeout(j):
+    """Seconds to wait on the MacBook: room for the reply it may write at its measured speed, never under 120 or over
+    480. A flat 180 cut long answers (the journal's audit asks for up to 4000 tokens) before they could finish."""
+    try: mt = int(j.get("max_tokens") or j.get("max_completion_tokens") or 1024)
+    except (TypeError, ValueError): mt = 1024
+    return max(120, min(480, 60 + mt // GEMMA_TOK_PER_S))
+
+def gemma_body(j):
+    """The request the MacBook gets: the caller's own fields, AEON forced, thinking off whatever the caller asked."""
+    body = {k: v for k, v in j.items() if k not in ("route", "stream", "paid_reserved", "reasoning", "max_completion_tokens")}
+    body["model"] = GEMMA_MODEL
+    if not body.get("max_tokens") and j.get("max_completion_tokens"):
+        body["max_tokens"] = j["max_completion_tokens"]   # the answer's own budget; no reasoning room is needed
+    body["reasoning_effort"] = GEMMA_THINKING_OFF["reasoning_effort"]
+    body["chat_template_kwargs"] = dict(body.get("chat_template_kwargs") or {}, **GEMMA_THINKING_OFF["chat_template_kwargs"])
+    return body
+
+def _strip_reasoning(d):
+    """Content only: any reasoning the server still returned is dropped and counted. Returns the reasoning chars."""
+    n = 0
+    for ch in ((d or {}).get("choices") or []):
+        msg = (ch or {}).get("message") or {}
+        for k in ("reasoning_content", "reasoning"):
+            if msg.get(k):
+                n += len(str(msg.pop(k)))
+    return n
+
 def gemma_complete(j, call=None):
-    """Local Gemma, model forced. Returns a GR result; features Gemma cannot honour make it unavailable."""
+    """Local AEON on the MacBook, model forced, thinking off. Returns a GR result; features it cannot honour make it
+    unavailable. Content only: reasoning is stripped, and a reply that was all reasoning is empty -> the next lane."""
     call = call or _Call(j)
     unsup = unsupported_features(j, "gemma")
     if unsup: return GR.make_result("gemma", status="unavailable", reason="unsupported on gemma: " + ",".join(unsup))
-    body = {k: v for k, v in j.items() if k != "route"}; body["model"] = GEMMA_MODEL
-    _, d, err = _post_json("gemma", GEMMA_URL, body, {"Content-Type": "application/json"}, 180, call)
+    body = gemma_body(j)
+    _, d, err = _post_json("gemma", GEMMA_URL, body, {"Content-Type": "application/json"}, gemma_timeout(j), call)
     if err is not None and d is None: _log(f"gemma error: {err['reason']}"); return err
+    _rc = _strip_reasoning(d)
+    if _rc: _log(f"gemma: thinking-off not honoured ({_rc} reasoning chars stripped; content only)")
     res = GR.from_openai(d, "gemma")
     if not res["model"]: res["model"] = GEMMA_MODEL
     return res

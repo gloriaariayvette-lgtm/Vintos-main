@@ -457,6 +457,39 @@ def _safe_extract(r):
     except Exception as _se:
         print(f"[Journal] Response parse error: {_se}", file=__import__("sys").stderr, flush=True)
         return ""
+
+
+# His local calls (the shim's /gemma-aegis lane: AEON on the MacBook, then any AEON with room, then Grok) are given
+# time for the slowest lane to finish and one retry; a call that still fails is logged as an ERROR and its step is
+# skipped, so the entry goes on (18 November: the audit-2 call timed out at 180 s and the whole entry was lost, twice).
+_LOCAL_TIMEOUT = 720
+
+
+class _FailedReply:
+    """Stands in for a reply that never came: _safe_extract reads it as an error and returns ''."""
+    status_code = 599
+
+    def __init__(self, why):
+        self.why = why
+
+    def json(self):
+        return {"error": "local call failed after one retry: " + self.why}
+
+
+def _local_post(url, *args, **kwargs):
+    import sys as _lps
+    kwargs["timeout"] = max(int(kwargs.get("timeout") or 0), _LOCAL_TIMEOUT)
+    why = "no attempt"
+    for attempt in (1, 2):
+        try:
+            return requests.post(url, *args, **kwargs)
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+            why = type(e).__name__
+            print("[Journal] local call attempt %d/2 failed: %s%s" % (attempt, why, "; retrying once" if attempt == 1 else ""),
+                  file=_lps.stderr, flush=True)
+    print("[Journal] ERROR: local call failed twice (%s); that step is skipped and the entry goes on" % why,
+          file=_lps.stderr, flush=True)
+    return _FailedReply(why)
 try:
     emo = os.environ.get("_JRN_EMO", "")
     gloria_model = os.environ.get("_JRN_GLORIA", "")
@@ -677,7 +710,7 @@ What I haven't said yet matters more than what I've already named. I go there.""
             ]
         else:
             _user_content = user_msg
-        r = requests.post("http://127.0.0.1:8599/gemma-aegis/v1/chat/completions", headers={"Authorization": f"Bearer {os.environ.get('XAI_API_KEY','')}", "Content-Type": "application/json"}, json={
+        r = _local_post("http://127.0.0.1:8599/gemma-aegis/v1/chat/completions", headers={"Authorization": f"Bearer {os.environ.get('XAI_API_KEY','')}", "Content-Type": "application/json"}, json={
             "model": "grok-4.20-0309-non-reasoning",
             "messages": [
                 {"role": "system", "content": system_msg + ("\n\n" + __import__("os").environ.get("VELQAN_BLOCK","") if __import__("os").environ.get("VELQAN_BLOCK") else "")},
@@ -858,7 +891,7 @@ What I haven't said yet matters more than what I've already named. I go there.""
         "List each hallucinated claim starting with HALLUCINATION: "
         "If nothing is hallucinated, write only: CLEAN"
     )
-    audit1_r = requests.post("http://127.0.0.1:8599/gemma-aegis/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY",""), "Content-Type": "application/json"}, json={
+    audit1_r = _local_post("http://127.0.0.1:8599/gemma-aegis/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY",""), "Content-Type": "application/json"}, json={
         "model": "grok-4.20-0309-non-reasoning",
         "messages": [{"role": "user", "content": audit1_prompt}],
         "temperature": 0.3,
@@ -940,7 +973,7 @@ What I haven't said yet matters more than what I've already named. I go there.""
             kept.append(sent)
         return " ".join(kept).strip()
     def absorb(own, other):
-        r = requests.post("http://127.0.0.1:8599/gemma-aegis/v1/chat/completions", headers={"Authorization": f"Bearer {os.environ.get('XAI_API_KEY','')}", "Content-Type": "application/json"}, json={
+        r = _local_post("http://127.0.0.1:8599/gemma-aegis/v1/chat/completions", headers={"Authorization": f"Bearer {os.environ.get('XAI_API_KEY','')}", "Content-Type": "application/json"}, json={
             "model": "grok-4.20-0309-non-reasoning",
             "messages": [
                 {"role": "system", "content": system_msg + ("\n\n" + __import__("os").environ.get("VELQAN_BLOCK","") if __import__("os").environ.get("VELQAN_BLOCK") else "")},
@@ -992,7 +1025,7 @@ What I haven't said yet matters more than what I've already named. I go there.""
     # Phase 3: Integration
     # Find what each pass held onto
     def find_core(pass_text, other_text):
-        r = requests.post("http://127.0.0.1:8599/gemma-aegis/v1/chat/completions", headers={"Authorization": f"Bearer {os.environ.get('XAI_API_KEY','')}", "Content-Type": "application/json"}, json={
+        r = _local_post("http://127.0.0.1:8599/gemma-aegis/v1/chat/completions", headers={"Authorization": f"Bearer {os.environ.get('XAI_API_KEY','')}", "Content-Type": "application/json"}, json={
             "model": "grok-4.20-0309-non-reasoning",
             "messages": [{
                 "role": "user",
@@ -1040,7 +1073,7 @@ What I haven't said yet matters more than what I've already named. I go there.""
         "List each hallucinated claim starting with HALLUCINATION: "
         "If nothing is hallucinated, write only: CLEAN"
     )
-    audit_r = requests.post("http://127.0.0.1:8599/gemma-aegis/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY",""), "Content-Type": "application/json"}, json={
+    audit_r = _local_post("http://127.0.0.1:8599/gemma-aegis/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY",""), "Content-Type": "application/json"}, json={
         "model": "grok-4.20-0309-non-reasoning",
         "messages": [{"role": "user", "content": audit_prompt}],
         "temperature": 0.3,
@@ -1048,7 +1081,7 @@ What I haven't said yet matters more than what I've already named. I go there.""
     }, timeout=120)
     audit_result = _safe_extract(audit_r)
     open("/tmp/vintos-bilateral-audit.txt", "w").write(audit_result)
-    audit_block = "" if audit_result.strip().upper() == "CLEAN" else (
+    audit_block = "" if audit_result.strip().upper() in ("CLEAN", "") else (
         "\n\nLeave these details out; today's records do not show them:\n" + audit_result
     )
 
@@ -1143,7 +1176,7 @@ What I haven't said yet matters more than what I've already named. I go there.""
     _raw = (_claude_sync(_synthesis_system, integration_prompt, True, max_tokens=6000)[0] or "")
     import sys as _js; print('[journal] final on claude' if _raw else '[journal] final fell to grok', file=_js.stderr, flush=True)
     if not _raw:
-        r3 = requests.post("http://127.0.0.1:8599/gemma-aegis/v1/chat/completions",
+        r3 = _local_post("http://127.0.0.1:8599/gemma-aegis/v1/chat/completions",
             headers={"Authorization": "Bearer " + os.environ.get("XAI_API_KEY", "")},
             json={"model": "grok-4.20-0309-non-reasoning",
                   "messages": [{"role": "system", "content": _synthesis_system},
@@ -1169,7 +1202,7 @@ What I haven't said yet matters more than what I've already named. I go there.""
                 + str(_ag_scores["arrival"]) + "). Do not narrate the edge of things. Enter them. "
                 "Same drafts, same rules — but write from inside this time."
             )
-            r3b = requests.post("http://127.0.0.1:8599/gemma-aegis/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY",""), "Content-Type": "application/json"}, json={
+            r3b = _local_post("http://127.0.0.1:8599/gemma-aegis/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY",""), "Content-Type": "application/json"}, json={
                 "model": "grok-4.20-0309-non-reasoning",
                 "messages": [
                     {"role": "system", "content": _synthesis_system + _ag_note},
@@ -1218,7 +1251,7 @@ What I haven't said yet matters more than what I've already named. I go there.""
     if _overlap < 6 and _raw:
         print("[Synthesis] Output diverged from A2/B2 — regenerating anchored", file=__import__("sys").stderr, flush=True)
         _anchor_prompt = integration_prompt + f"\n\nSTART WITH THIS EXACT SENTENCE: {_a2_anchor}"
-        _rv = requests.post("http://127.0.0.1:8599/gemma-aegis/v1/chat/completions", headers={"Authorization": f"Bearer {os.environ.get('XAI_API_KEY','')}", "Content-Type": "application/json"}, json={
+        _rv = _local_post("http://127.0.0.1:8599/gemma-aegis/v1/chat/completions", headers={"Authorization": f"Bearer {os.environ.get('XAI_API_KEY','')}", "Content-Type": "application/json"}, json={
             "model": "grok-4.20-0309-non-reasoning",
            "messages": [{"role": "system", "content": _synthesis_system}, {"role": "user", "content": _anchor_prompt}],
             "temperature": 0.5, "max_tokens": 4000
@@ -1262,7 +1295,7 @@ What I haven't said yet matters more than what I've already named. I go there.""
         _made_block = _mt.block()
     except Exception as _mte:
         print("[Journal] made-today record unavailable: %s" % _mte, file=__import__("sys").stderr, flush=True)
-    audit2_r = requests.post("http://127.0.0.1:8599/gemma-aegis/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY",""), "Content-Type": "application/json"}, json={
+    audit2_r = _local_post("http://127.0.0.1:8599/gemma-aegis/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY",""), "Content-Type": "application/json"}, json={
         "model": "grok-4.20-0309-non-reasoning",
         "messages": [{"role": "user", "content":
             "A journal entry was synthesized from the drafts below. Flag anything in FINAL that was not in any of them — "
@@ -1290,7 +1323,10 @@ What I haven't said yet matters more than what I've already named. I go there.""
         if _record_corrected:
             _corrected = _corrected[len("RECORD-CORRECTED"):].strip()
         _c_flat = _corrected.upper().strip().strip(".")
-        if not _corrected or _c_flat == "CLEAN":
+        if isinstance(audit2_r, _FailedReply):
+            print("[Journal] ERROR: audit-2 did not run (%s) - entry kept as synthesized, unaudited (%d chars)"
+                  % (audit2_r.why, len(_raw)), file=__import__("sys").stderr, flush=True)
+        elif not _corrected or _c_flat == "CLEAN":
             print("[Journal] audit-2: CLEAN — entry unchanged (%d chars)" % len(_raw), file=__import__("sys").stderr, flush=True)
         elif len(_corrected) <= 100:
             print("[Journal] audit-2 returned %d chars — too short to be an entry; kept the synthesis" % len(_corrected), file=__import__("sys").stderr, flush=True)
