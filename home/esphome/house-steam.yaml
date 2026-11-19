@@ -16,11 +16,12 @@ esphome:
       - lambda: 'shower_dac::mute_idle();'
   project:
     name: vintos.house-speaker
-    version: "2026.11.12-steam-r4"
+    version: "2026.11.18-owner-audio-r1"
   includes:
     - shower_dac.h
     - wav_pcm.h
     - steam_signal.h
+    - owner_audio_window.h
 
 external_components:
   - source:
@@ -50,6 +51,10 @@ captive_portal:
 api:
   encryption:
     key: !secret house_steam_api_key
+  actions:
+    - action: arm_owner_audio_test
+      then:
+        - lambda: 'id(owner_audio_window).arm(millis());'
 
 ota:
   - platform: esphome
@@ -68,7 +73,7 @@ mqtt:
       then:
         - if:
             condition:
-              binary_sensor.is_on: shower_active
+              lambda: 'return id(owner_audio_window).allows(id(shower_active).state, id(gloria_near).state, millis());'
             then:
               - lambda: 'shower_dac::play(x, id(speaker_volume).state / 100.0f);'
     - topic: vintos/board/house-steam/stop
@@ -80,6 +85,9 @@ esp32_ble_tracker:
     active: false
 
 globals:
+  - id: owner_audio_window
+    type: house_steam::OwnerAudioWindow
+    restore_value: false
   - id: steam_state
     type: int
     initial_value: "-1"
@@ -159,7 +167,8 @@ interval:
             - mqtt.publish_json:
                 topic: vintos/board/house-steam/diagnostic
                 payload: |-
-                  root["revision"] = "steam-r4";
+                  root["revision"] = "owner-audio-r1";
+                  root["owner_audio_test_armed"] = id(owner_audio_window).active(millis());
                   root["uptime_ms"] = millis();
                   root["reset_reason"] = int(esp_reset_reason());
                   root["idle_muted"] = shower_dac::idle_muted();
@@ -174,6 +183,10 @@ interval:
   - interval: 1s
     then:
       - lambda: |-
+          id(owner_audio_window).expire(millis());
+          if (shower_dac::busy() && !id(owner_audio_window).allows(id(shower_active).state, id(gloria_near).state, millis())) {
+            shower_dac::stop();
+          }
           bool b = shower_dac::busy();
           if (b != id(was_busy)) {
             id(was_busy) = b;

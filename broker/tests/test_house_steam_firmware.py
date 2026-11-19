@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[2] / 'home/esphome'
 
 class SteamFirmware(unittest.TestCase):
     def test_required_sources_are_packaged(self):
-        for name in ('shower_dac.h', 'wav_pcm.h', 'steam_signal.h',
+        for name in ('shower_dac.h', 'wav_pcm.h', 'steam_signal.h', 'owner_audio_window.h',
                      'components/speaker_streaming/__init__.py'):
             self.assertTrue((ROOT / name).is_file(), name)
 
@@ -18,7 +18,7 @@ class SteamFirmware(unittest.TestCase):
         compiler = shutil.which('c++')
         self.assertIsNotNone(compiler, 'firmware behavior checks require a C++ compiler')
         with tempfile.TemporaryDirectory() as temp:
-            for name in ('steam-signal', 'wav-pcm', 'resampler', 'noise-shaping'):
+            for name in ('steam-signal', 'wav-pcm', 'resampler', 'noise-shaping', 'owner-audio'):
                 with self.subTest(name=name):
                     binary = Path(temp) / name
                     subprocess.run([compiler, '-std=c++17', '-O2', '-I', str(ROOT),
