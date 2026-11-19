@@ -3095,8 +3095,9 @@ def agent_wants_pass(api, channel, dot, state, now, rows=(), put=None, notify=No
                 return None
         used_before = used()
         try:
+            generation_mode = {'local_only': True} if local_only else {}
             chosen = working.generate(w, work, want_agent.workspace(), phase, trigger, instruction,
-                                      writer=writer, identity=identity, local_only=local_only)
+                                      writer=writer, identity=identity, **generation_mode)
         except WorkBlocked as exc:
             used_after = used()
             if (exc.reason in want_agent.NO_CALL_MADE or (exc.reason == 'interrupted_call_needs_review'
