@@ -64,5 +64,58 @@ class LocalResultReview(unittest.TestCase):
         self.assertIsNone(W.local_result_review_binding(self.want, state))
 
 
+    def test_ordinary_result_parse_failure_gets_capped_correction(self):
+        raw = 'Confirmed narrative with no JSON decision.'
+        self.seed(raw)
+        answers = []
+        def writer(system, user):
+            answers.append(json.loads(user))
+            return reply(json.dumps(dict(message='Explicit corrected decision.', accept=False)))
+        out = W.generate(self.want, self.work, self.ws, 'result',
+                         'verified-result-trigger', 'fixture', writer=writer)
+        self.assertFalse(out['accept'])
+        self.assertEqual(len(answers), 1)
+        self.assertIn('not JSON', answers[0]['correction'])
+        rec = W.load(self.want, self.work, self.ws)['generations'][self.key]
+        self.assertEqual(rec['rejected'][0]['result']['text'], raw)
+        self.assertEqual(len(Fixture.calls(self)), 1)
+
+    def test_ordinary_result_narrative_corrections_stop_at_cap(self):
+        self.seed('Initial observed narrative.')
+        calls = []
+        def writer(*args):
+            calls.append(True)
+            return reply('Still narrative.')
+        with self.assertRaisesRegex(B.WorkBlocked, 'response_needs_review'):
+            W.generate(self.want, self.work, self.ws, 'result',
+                       'verified-result-trigger', 'fixture', writer=writer)
+        self.assertEqual(len(calls), W.SHAPE_RETRIES)
+        self.assertEqual(len(Fixture.calls(self)), W.SHAPE_RETRIES)
+        rec = W.load(self.want, self.work, self.ws)['generations'][self.key]
+        self.assertEqual(len(rec['rejected']), W.SHAPE_RETRIES)
+        self.assertEqual(rec['state'], 'response_observed')
+
+    def test_capture_decode_failure_is_not_shape_rejection(self):
+        before = self.seed('Observed narrative.')
+        from witness_capture import Capture
+        with patch.object(Capture, 'select', side_effect=json.JSONDecodeError('capture failure', '', 0)):
+            with self.assertRaisesRegex(B.WorkBlocked, 'response_needs_review'):
+                W.generate(self.want, self.work, self.ws, 'result',
+                           'verified-result-trigger', 'fixture',
+                           writer=lambda *_: self.fail('capture failure must not call'))
+        self.assertEqual(W.load(self.want, self.work, self.ws)['generations'][self.key], before)
+
+    def test_budget_block_preserves_original_rejected_observation(self):
+        raw = 'Observed narrative before exhausted budget.'
+        self.seed(raw)
+        with patch.object(B, 'reserve', side_effect=B.WorkBlocked('per_want_call_cap')):
+            with self.assertRaisesRegex(B.WorkBlocked, 'per_want_call_cap'):
+                W.generate(self.want, self.work, self.ws, 'result',
+                           'verified-result-trigger', 'fixture',
+                           writer=lambda *_: self.fail('budget must prevent provider'))
+        rec = W.load(self.want, self.work, self.ws)['generations'][self.key]
+        self.assertEqual(rec['rejected'][0]['result']['text'], raw)
+
+
 if __name__ == '__main__':
     unittest.main()

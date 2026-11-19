@@ -520,10 +520,23 @@ def generate(want, work, ws, phase, trigger, instruction, writer=ask, identity=N
             # Recovered text is an operator claim, not a provider observation.
             capture.observe(observation, invocation.request_id if invocation and not recovered else None)
         capture.select(raw)
+    except Exception as exc:
+        # Missing or invalid provenance is not a response-shape failure.
+        raise WorkBlocked('response_needs_review') from exc
+    try:
         decision = lenient_decision(raw)
+    except json.JSONDecodeError as exc:
+        if local_only or phase != 'result':
+            raise WorkBlocked('response_needs_review') from exc
+        # Capture succeeded and the response is durably observed. This is a
+        # fresh, capped correction of a confirmed malformed reply, not replay
+        # of an uncertain call. Retain the original through the rejection path.
+        decision = None
+        problem = 'Return one JSON object with message and explicit boolean accept; the observed reply was not JSON.'
     except Exception as exc:
         raise WorkBlocked('response_needs_review') from exc
-    problem = shape_problem(decision, phase)
+    else:
+        problem = shape_problem(decision, phase)
     if problem:
         if local_only:
             raise WorkBlocked('response_needs_review')
