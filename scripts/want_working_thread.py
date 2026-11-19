@@ -33,6 +33,24 @@ def binding(want, state, thread=None, *, respect_pause=True):
     return items[0]
 
 
+
+def local_result_review_binding(want, state):
+    """Resolve only an automatic shape hold for local review, never an owner pause.
+
+    This grants no acceptance or provider-call permission. The caller must first
+    verify the received result and use generate(local_only=True) for its exact trigger.
+    """
+    a = want.get('agent_work') or {}
+    if (a.get('status') != 'result_ready'
+            or (a.get('blocked') or {}).get('reason') != 'response_needs_review'
+            or (want.get('pursuit') or {}).get('state') == 'PAUSED'):
+        return None
+    work = binding(want, state, respect_pause=False)
+    if work is None or not str(work.get('pause_why', '')).startswith('held: blocked_response_needs_review'):
+        return None
+    return work
+
+
 def trusted(row):
     return row.get('who') == 'dot' or (row.get('who') == 'agent'
         and row.get('agent_authenticated') is True and row.get('name') in ('Claude Code', 'Muse', 'Grok Bot', 'Dot'))
@@ -405,7 +423,7 @@ def shape_problem(decision, phase):
     return ''
 
 
-def generate(want, work, ws, phase, trigger, instruction, writer=ask, identity=None):
+def generate(want, work, ws, phase, trigger, instruction, writer=ask, identity=None, *, local_only=False):
     """Persist call intent and response before parsing; never replay uncertain calls."""
     from want_agent import fingerprint
     from witness_capture import Capture
@@ -418,6 +436,8 @@ def generate(want, work, ws, phase, trigger, instruction, writer=ask, identity=N
     if record.get('state') in ('running', 'uncertain'):
         raise WorkBlocked('interrupted_call_needs_review')
     if record.get('retry_after', 0) > time.time(): raise WorkBlocked('provider_retry_backoff')
+    if local_only and record.get('state') != 'response_observed':
+        raise WorkBlocked('response_needs_review')
     if record.get('state') != 'response_observed':
         system, history = prompt(want, work, ws, identity)
         from want_work_budget import remaining
@@ -500,11 +520,26 @@ def generate(want, work, ws, phase, trigger, instruction, writer=ask, identity=N
             # Recovered text is an operator claim, not a provider observation.
             capture.observe(observation, invocation.request_id if invocation and not recovered else None)
         capture.select(raw)
+    except Exception as exc:
+        # Missing or invalid provenance is not a response-shape failure.
+        raise WorkBlocked('response_needs_review') from exc
+    try:
         decision = lenient_decision(raw)
+    except json.JSONDecodeError as exc:
+        if local_only or phase != 'result':
+            raise WorkBlocked('response_needs_review') from exc
+        # Capture succeeded and the response is durably observed. This is a
+        # fresh, capped correction of a confirmed malformed reply, not replay
+        # of an uncertain call. Retain the original through the rejection path.
+        decision = None
+        problem = 'Return one JSON object with message and explicit boolean accept; the observed reply was not JSON.'
     except Exception as exc:
         raise WorkBlocked('response_needs_review') from exc
-    problem = shape_problem(decision, phase)
+    else:
+        problem = shape_problem(decision, phase)
     if problem:
+        if local_only:
+            raise WorkBlocked('response_needs_review')
         # Observed and parsed, only the wrong shape: not uncertain. The rejected reply is kept as an observation and
         # the same phase is generated again with the correction, at most SHAPE_RETRIES times; each regeneration is a
         # reserved call on this want's budget. Past that it waits for review.

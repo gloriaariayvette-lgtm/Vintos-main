@@ -3077,7 +3077,7 @@ def agent_wants_pass(api, channel, dot, state, now, rows=(), put=None, notify=No
     calls_left = [2]
     accepted_results = {}
     held_lines = []
-    def decision(w, work, phase, trigger, instruction):
+    def decision(w, work, phase, trigger, instruction, *, local_only=False):
         # One want's block holds that want only (10 November: a want at its per-want call cap raised out of this
         # whole pass, every pass, and no other want was answered or handed over). The stop file and a broken
         # policy or budget store still stop the lane; the day's call cap stops calls for the pass.
@@ -3095,8 +3095,9 @@ def agent_wants_pass(api, channel, dot, state, now, rows=(), put=None, notify=No
                 return None
         used_before = used()
         try:
+            generation_mode = {'local_only': True} if local_only else {}
             chosen = working.generate(w, work, want_agent.workspace(), phase, trigger, instruction,
-                                      writer=writer, identity=identity)
+                                      writer=writer, identity=identity, **generation_mode)
         except WorkBlocked as exc:
             used_after = used()
             if (exc.reason in want_agent.NO_CALL_MADE or (exc.reason == 'interrupted_call_needs_review'
@@ -3243,13 +3244,28 @@ def agent_wants_pass(api, channel, dot, state, now, rows=(), put=None, notify=No
         working.answered(w, work, want_agent.workspace(), events, body, sent, now)
         return sent
     def review(w, result):
-        work = working.binding(w, state)
+        # finish has already checked the exact received manifest and its digest.
+        # An automatic shape hold may inspect only its retained exact generation;
+        # it must not turn a missing/invalid decision into another provider call.
+        local_work = working.local_result_review_binding(w, state)
+        work = local_work or working.binding(w, state)
         if work is None: raise RuntimeError('result has no current want-room binding')
+        if local_work is not None:
+            import room_work
+            # Local recovery still takes a room place if delivery fails or the
+            # retained decision rejects the result. Do not unhold into a full
+            # room. Exclude this row even when its automatic pause has expired.
+            others = [item for item in room_work.in_hand(state, now) if item is not work]
+            if len(others) >= room_work.MAX_OPEN:
+                return None
         trigger = want_agent.fingerprint(json.dumps(result, sort_keys=True))
         try:
-            chosen = decision(w, work, 'result', trigger, result)
+            chosen = decision(w, work, 'result', trigger, result, local_only=local_work is not None)
         except want_agent.WantHeld:
             return None                      # the result stays retained; finish goes on to the next want
+        if local_work is not None:
+            work.update(paused_until=0, pause_why='')
+            save(state)
         if chosen['accept']:
             accepted_results[w['agent_work']['request_id']] = (chosen['message'], result)
             return chosen['message']

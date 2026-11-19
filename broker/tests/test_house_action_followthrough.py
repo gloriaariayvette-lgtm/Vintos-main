@@ -32,7 +32,7 @@ class Tests(unittest.TestCase):
   self.write('dismissed-wants.json',[{'id':'one','agent_work':{'request_id':row['want_request_id']}}]);A.reconcile_source_work(state,self.now,ws=self.ws);self.assertEqual(state['room_work']['open'],[row])
  def test_fulfilled_binding_is_left_for_completion_cleanup(self):
   row=self.work();state={'room_work':{'open':[row]}};self.write('current-wants.json',[])
-  self.write('fulfilled-wants.json',[{'id':'one','fulfilled':True,'agent_work':{'request_id':row['want_request_id'],'status':'completed'}}])
+  self.write('fulfilled-wants.json',[{'id':'one','fulfilled':True,'agent_work':{'request_id':row['want_request_id'],'status':'completed','result':{'summary':'fixture'},'delivery':{'state':'sent'}}}])
   A.reconcile_source_work(state,self.now,ws=self.ws);self.assertEqual(state['room_work']['open'],[row])
  def test_future_receipt_instruction_not_completion_claim(self):
   self.assertEqual(W.shape_problem({'message':'Then post WANT RESULT WA-fixture on its own line.','accept':False},'opening'),'')

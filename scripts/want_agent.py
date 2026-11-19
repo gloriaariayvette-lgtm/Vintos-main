@@ -599,6 +599,23 @@ def reconcile_source_work(state, now, *, ws=None, save_state=None):
                 rows = json.loads(source.read_text())
                 if not isinstance(rows, list): raise ValueError('want archive is not a list')
                 archives.extend(rows)
+            # SK-d0b42347: another ending door can archive a fulfilled source without
+            # publishing an agent result. Its room row must not occupy MAX_HELD forever.
+            # Detach it as archived, never as delivered/done; the archive and working
+            # context remain untouched. Confirmed deliveries keep the finish cleanup.
+            source = ws / 'memory/fulfilled-wants.json'
+            if source.exists():
+                rows = json.loads(source.read_text())
+                if not isinstance(rows, list): raise ValueError('want archive is not a list')
+                for row in rows:
+                    if not isinstance(row, dict) or row.get('fulfilled') is not True: continue
+                    agent = row.get('agent_work') or {}
+                    if not isinstance(agent, dict): raise ValueError('invalid archived agent work')
+                    delivery = agent.get('delivery') or {}
+                    if not isinstance(delivery, dict): raise ValueError('invalid archived delivery')
+                    if agent.get('result') and delivery.get('state') in ('sent', 'acknowledged'):
+                        continue
+                    archives.append(row)
         except (OSError, ValueError):
             return ['want source reconciliation retained: store unavailable or malformed']
         live_ids = {w.get('id') for w in current if isinstance(w, dict)
