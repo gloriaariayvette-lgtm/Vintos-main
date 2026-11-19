@@ -17,4 +17,8 @@ class OwnerAudioWindow {
   uint32_t started_ = 0;
   bool armed_ = false;
 };
+inline OwnerAudioWindow &owner_audio_window() {
+  static OwnerAudioWindow window;
+  return window;
+}
 }  // namespace house_steam

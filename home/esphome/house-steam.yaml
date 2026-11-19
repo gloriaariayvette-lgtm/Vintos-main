@@ -54,7 +54,7 @@ api:
   actions:
     - action: arm_owner_audio_test
       then:
-        - lambda: 'id(owner_audio_window).arm(millis());'
+        - lambda: 'house_steam::owner_audio_window().arm(millis());'
 
 ota:
   - platform: esphome
@@ -73,7 +73,7 @@ mqtt:
       then:
         - if:
             condition:
-              lambda: 'return id(owner_audio_window).allows(id(shower_active).state, id(gloria_near).state, millis());'
+              lambda: 'return house_steam::owner_audio_window().allows(id(shower_active).state, id(gloria_near).state, millis());'
             then:
               - lambda: 'shower_dac::play(x, id(speaker_volume).state / 100.0f);'
     - topic: vintos/board/house-steam/stop
@@ -85,9 +85,6 @@ esp32_ble_tracker:
     active: false
 
 globals:
-  - id: owner_audio_window
-    type: house_steam::OwnerAudioWindow
-    restore_value: false
   - id: steam_state
     type: int
     initial_value: "-1"
@@ -168,7 +165,7 @@ interval:
                 topic: vintos/board/house-steam/diagnostic
                 payload: |-
                   root["revision"] = "owner-audio-r1";
-                  root["owner_audio_test_armed"] = id(owner_audio_window).active(millis());
+                  root["owner_audio_test_armed"] = house_steam::owner_audio_window().active(millis());
                   root["uptime_ms"] = millis();
                   root["reset_reason"] = int(esp_reset_reason());
                   root["idle_muted"] = shower_dac::idle_muted();
@@ -183,8 +180,8 @@ interval:
   - interval: 1s
     then:
       - lambda: |-
-          id(owner_audio_window).expire(millis());
-          if (shower_dac::busy() && !id(owner_audio_window).allows(id(shower_active).state, id(gloria_near).state, millis())) {
+          house_steam::owner_audio_window().expire(millis());
+          if (shower_dac::busy() && !house_steam::owner_audio_window().allows(id(shower_active).state, id(gloria_near).state, millis())) {
             shower_dac::stop();
           }
           bool b = shower_dac::busy();
