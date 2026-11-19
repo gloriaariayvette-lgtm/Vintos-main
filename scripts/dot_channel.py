@@ -3259,13 +3259,8 @@ def agent_wants_pass(api, channel, dot, state, now, rows=(), put=None, notify=No
             if len(others) >= room_work.MAX_OPEN:
                 return None
         trigger = want_agent.fingerprint(json.dumps(result, sort_keys=True))
-        # SK-d0b42347: a retained reply that is observed but only wrongly shaped (a narrative, no decision) would be
-        # refused locally every pass while its hold kept the ordinary path away. It takes the ordinary capped
-        # correction: an explicit JSON decision is asked for, within the want's budget; accept is never read from prose.
-        local_only = local_work is not None and not working.observed_shape_failure(
-            w, work, want_agent.workspace(), 'result', trigger)
         try:
-            chosen = decision(w, work, 'result', trigger, result, local_only=local_only)
+            chosen = decision(w, work, 'result', trigger, result, local_only=local_work is not None)
         except want_agent.WantHeld:
             return None                      # the result stays retained; finish goes on to the next want
         if local_work is not None:
