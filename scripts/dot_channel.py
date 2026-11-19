@@ -3249,6 +3249,14 @@ def agent_wants_pass(api, channel, dot, state, now, rows=(), put=None, notify=No
         local_work = working.local_result_review_binding(w, state)
         work = local_work or working.binding(w, state)
         if work is None: raise RuntimeError('result has no current want-room binding')
+        if local_work is not None:
+            import room_work
+            # Local recovery still takes a room place if delivery fails or the
+            # retained decision rejects the result. Do not unhold into a full
+            # room. Exclude this row even when its automatic pause has expired.
+            others = [item for item in room_work.in_hand(state, now) if item is not work]
+            if len(others) >= room_work.MAX_OPEN:
+                return None
         trigger = want_agent.fingerprint(json.dumps(result, sort_keys=True))
         try:
             chosen = decision(w, work, 'result', trigger, result, local_only=local_work is not None)
