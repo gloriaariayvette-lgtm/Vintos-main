@@ -618,8 +618,10 @@ def reconcile_source_work(state, now, *, ws=None, save_state=None):
                     archives.append(row)
         except (OSError, ValueError):
             return ['want source reconciliation retained: store unavailable or malformed']
-        live_ids = {w.get('id') for w in current if isinstance(w, dict)
-                    and not w.get('fulfilled') and not w.get('dismissed')}
+        live = [w for w in current if isinstance(w, dict) and not w.get('fulfilled') and not w.get('dismissed')]
+        live_ids = {w.get('id') for w in live}
+        # A live want that owns the same request (re-adopted or joined) keeps the row.
+        live_requests = {w['agent_work'].get('request_id') for w in live if isinstance(w.get('agent_work'), dict)}
         archived = {(w.get('id'), (w.get('agent_work') or {}).get('request_id'))
                     for w in archives if isinstance(w, dict) and w.get('id')
                     and (w.get('agent_work') or {}).get('request_id')}
@@ -627,7 +629,7 @@ def reconcile_source_work(state, now, *, ws=None, save_state=None):
         retained = board.setdefault('detached_source_work', [])
         for item in board['open']:
             key = (item.get('want_id'), item.get('want_request_id'))
-            if key[0] and key[0] not in live_ids and key in archived:
+            if key[0] and key[0] not in live_ids and key[1] not in live_requests and key in archived:
                 record = dict(item, source_state='archived', detached_at=now)
                 if not any((r.get('id'), r.get('want_request_id')) == (item.get('id'), key[1]) for r in retained):
                     retained.append(record)

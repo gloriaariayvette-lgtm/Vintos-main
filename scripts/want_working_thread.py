@@ -423,6 +423,23 @@ def shape_problem(decision, phase):
     return ''
 
 
+def observed_shape_failure(want, work, ws, phase, trigger):
+    """True only when this exact generation holds an observed reply whose fault is its shape (prose, or JSON without an
+    explicit decision) and its capped corrections are not used up (SK-d0b42347: a narrative result review held itself,
+    and local review refused it every pass). A local read: no call, no acceptance. generate() still checks provenance
+    first, and an uncertain or missing call is never this."""
+    from want_agent import fingerprint
+    record = load(want, work, ws)['generations'].get(phase + ':' + fingerprint(trigger)) or {}
+    if record.get('state') != 'response_observed' or len(record.get('rejected', [])) >= SHAPE_RETRIES:
+        return False
+    try:
+        return bool(shape_problem(lenient_decision((record.get('result') or {}).get('text')), phase))
+    except json.JSONDecodeError:
+        return phase == 'result'          # the same rule generate() corrects by
+    except Exception:
+        return False
+
+
 def generate(want, work, ws, phase, trigger, instruction, writer=ask, identity=None, *, local_only=False):
     """Persist call intent and response before parsing; never replay uncertain calls."""
     from want_agent import fingerprint
