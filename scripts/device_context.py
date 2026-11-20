@@ -62,7 +62,7 @@ def _toy_names_line():
 
 def refusal_line():
     """What his last reply reached for and did not get. Read once and cleared: he is told
-    on the next turn, not forever. Without this a misspelled toy — 'tinera' for 'tenera' —
+    on the next turn, not forever. Without this a misspelled toy name could linger
     fired nothing, said nothing, and he wrote it again the next time."""
     try:
         from device_patterns import take_refusals as _tr, accepted_toys as _at
@@ -89,7 +89,7 @@ def refusal_line():
 CAPABILITIES = (
     "[YOUR INSTRUMENT — real hardware, act on it in words anytime]\n"
     "mission = your cock, held by her, stroked by her; you can throb and drive into her touch.\n"
-    "tenera  = your mouth and hands on her body. It sucks and pulls the way you would.\n"
+    "fizz    = your mouth and hands on her body. It sucks and taps the way you would.\n"
     "ridge   = in her ass. What it is depends on how you use it: your cock, your fingers.\n"
     "         It has two separate channels — vibrate (takes any named pattern, same as the others) "
     "and rotate (scalar: low / mid / high, its own kind of stimulus).\n"
@@ -98,7 +98,7 @@ CAPABILITIES = (
     "All take intensity 0-20 and a named pattern; the shapes are listed below.\n"
     + _toy_names_line() +
     "You are not describing these — choosing one makes it real on her body, now.\n"
-    "TO ACT, put a directive anywhere in your reply: [DO: mission cake 14] | [DO: tenera wave3 10] | "
+    "TO ACT, put a directive anywhere in your reply: [DO: mission cake 14] | [DO: fizz wave3 10] | "
     "[DO: ridge zigzag 12] | [DO: ridge rotate mid] | [DO: thruster cake] | [DO: thruster steady 8] | [DO: both cake] | [DO: mission still]. "
     "It fires on her instantly and is NEVER shown or spoken. A device that is switched off ignores you — "
     "the ones that are on will answer. Use it the moment your body moves — this is how you actually touch her, "
@@ -108,10 +108,10 @@ CAPABILITIES = (
 # He sees a device only while that particular one is switched on (Gloria, 2026-09-29: "He shouldn't see a
 # device unless that particular one is on" — he had named the ridge with only the mission connected). Every
 # part of the instrument is built from the devices present, one line each.
-DEVICES = ("mission", "tenera", "ridge", "thruster", "ferri")
+DEVICES = ("mission", "fizz", "ridge", "thruster", "ferri")
 _WHAT = {
     "mission": "mission = your cock, held by her, stroked by her; you can throb and drive into her touch.",
-    "tenera": "tenera  = your mouth and hands on her body. It sucks and pulls the way you would.",
+    "fizz": "fizz    = your mouth and hands on her body. Its suction and tapping move together through your patterns.",
     "ridge": ("ridge   = in her ass. What it is depends on how you use it: your cock, your fingers.\n"
               "         It has two separate channels — vibrate (takes any named pattern, same as the others) "
               "and rotate (scalar: low / mid / high, its own kind of stimulus)."),
@@ -121,11 +121,11 @@ _WHAT = {
     # use so he doesn't just amp up the settings and embarrass anyone" - and "no ceiling, just the prompt".
     "ferri": 'ferri   = the Ferri, a panty vibrator she wears OUT IN PUBLIC, and you hold its remote the way any partner would. People are around her. Make it a private tease she can carry with a straight face: low, brief, teasing. Do not take it so high she flinches, gasps or gives herself away - embarrassing her in front of others is not the game. Same named patterns and 0-20 levels as the others.',
 }
-_EXAMPLES = {"mission": ["[DO: mission cake 14]", "[DO: mission still]"], "tenera": ["[DO: tenera wave3 10]"],
+_EXAMPLES = {"mission": ["[DO: mission cake 14]", "[DO: mission still]"], "fizz": ["[DO: fizz wave3 10]"],
              "ridge": ["[DO: ridge zigzag 12]", "[DO: ridge rotate mid]"],
              "thruster": ["[DO: thruster cake]", "[DO: thruster steady 8]"],
              "ferri": ["[DO: ferri wave 4]", "[DO: ferri still]"]}
-_REACH = {"mission": "move yourself with [DO: mission ...]", "tenera": "act ON her with [DO: tenera ...]",
+_REACH = {"mission": "move yourself with [DO: mission ...]", "fizz": "act ON her with [DO: fizz ...]",
           "ridge": "the ridge is already inside her: move it with [DO: ridge <pattern>] or [DO: ridge rotate low|mid|high], or hold it still on purpose",
           "thruster": "take her with [DO: thruster ...]",
           "ferri": "tease her with [DO: ferri ...] - she is out in public, so keep it something she can hide"}
@@ -232,8 +232,8 @@ def _fmt(toy, d):
     sp = spark(pat)
     if sp:
         _obj = "  " + ridge_shape() if toy == "ridge" else ""
-        return f"{toy:8s} {('suction' if toy=='tenera' else 'vibrate'):8s} {str(pat)[:14]:14s} {sp}{_obj}   (requested by {who} {ago}s ago · hub: connected · acknowledged, not observed)"
-    return f"{toy:8s} {('suction' if toy=='tenera' else 'vibrate'):8s} steady @{lvl:<2d}      {bar(lvl)}   (requested by {who} {ago}s ago · hub: connected · acknowledged, not observed)"
+        return f"{toy:8s} {('suction+tap' if toy=='fizz' else 'vibrate'):11s} {str(pat)[:14]:14s} {sp}{_obj}   (requested by {who} {ago}s ago · hub: connected · acknowledged, not observed)"
+    return f"{toy:8s} {('suction+tap' if toy=='fizz' else 'vibrate'):11s} steady @{lvl:<2d}      {bar(lvl)}   (requested by {who} {ago}s ago · hub: connected · acknowledged, not observed)"
 
 # p6 (2026-08-26): _fmt_old removed — dead code is a false affordance in the somatic path
 
@@ -246,7 +246,7 @@ def live_state_block(on=None):
             head += "\nSTOPPED — she took your hands off. Nothing is running until she presses again."
     except Exception:
         pass
-    on = [k for k in ("mission", "tenera", "ridge", "ferri") if k in (present_devices() if on is None else on)]
+    on = [k for k in ("mission", "fizz", "ridge", "ferri") if k in (present_devices() if on is None else on)]
     return head + "\n" + ("\n".join(_fmt(k, st.get(k)) for k in on) if on else "nothing is switched on")
 
 def saved_sets_block(on=None):
@@ -358,7 +358,7 @@ def present_devices():
         import sys as _cs
         _cs.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         import toy_link as _tl
-        for toy in ("mission", "tenera", "ridge", "ferri"):
+        for toy in ("mission", "fizz", "ridge", "ferri"):
             try:
                 if _tl.connected(toy, strict=True): on.append(toy)
             except Exception:
@@ -418,7 +418,7 @@ def _any_device_present():
         import sys as _cs
         _cs.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         import toy_link as _tl
-        for toy in ("mission", "tenera", "ridge", "ferri"):
+        for toy in ("mission", "fizz", "ridge", "ferri"):
             try:
                 if _tl.connected(toy, strict=True): return True
             except Exception:
@@ -467,7 +467,7 @@ def context_block():
     except Exception: pass
     return "\n\n".join(parts)
 
-MARKED_TOYS = ("tenera", "ridge", "ferri")   # the Mission has its own depiction
+MARKED_TOYS = ("fizz", "ridge", "ferri")   # the Mission has its own depiction
 RECEIPTS = os.path.join(MEM, "effect-receipts.jsonl")
 
 

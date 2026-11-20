@@ -17,7 +17,7 @@ MEM = os.path.join(TMP, ".vintos", "workspace", "memory"); os.makedirs(MEM)
 class Response:
     status_code = 200
     def json(self):
-        toys = {tid: {"status": "1"} for tid in ("18690ad0e996", "c09b9e4704ae", "f044d37536a9")}
+        toys = {tid: {"status": "1"} for tid in ("449fdaf75b1e", "c09b9e4704ae", "f044d37536a9")}
         return {"code": 200, "data": {"toys": toys}}
 
 class Requests:
@@ -136,7 +136,7 @@ DP._run("mission", "throb", [14], ev, None)                       # a live patte
 check("pattern thread aborts: only a zero is sent, never a level", sent == [("mission", 0)] and ev.is_set(), sent)
 sent[:] = []
 lib = os.path.join(MEM, "gcs-saved-patterns.json")
-json.dump([{"patterns": {"mission": "cake", "tenera": "wave3"}}], open(lib, "w"))
+json.dump([{"patterns": {"mission": "cake", "fizz": "wave3"}}], open(lib, "w"))
 out = {}
 check("saved/last replay refused while stopped", DP.play("both", "last", outcome=out) is False and sent == [] and not hub_positive(), (out, sent, hub_sends()))
 out = {}
@@ -148,7 +148,7 @@ sent[:] = []
 EG.claim_execution({"mission"}, "lease-1")
 check("a stop retry (lease expiry) only ever sends zeros", DP._stop_if_owned(["mission"], "lease-1") == ["mission"] and sent == [("mission", 0)], sent)
 sent[:] = []
-DP.fire_his_intent("[DO: mission cake 14] [TOUCH: tenera 10]", EG.TurnContext("t82", "avatar"))
+DP.fire_his_intent("[DO: mission cake 14] [TOUCH: fizz 10]", EG.TurnContext("t82", "avatar"))
 check("a whole reply of starts fires nothing while stopped", sent == [] and not hub_positive(), (sent, hub_sends()))
 TL.send = _real_send
 # a permit issued BEFORE the stop cannot carry a tick through afterwards
@@ -179,7 +179,7 @@ for armed in (False, True):
     reset(); p = fresh(); p.expires = (datetime.now() - timedelta(seconds=1)).isoformat()
     check("%s: expired permit does not dispatch, reason recorded" % tag, not TL.send("mission", 8, permit=p, effect_digest="D") and not hub_positive() and denied_for("permit_expired"), hub_sends())
     reset(); p = fresh()
-    check("%s: permit for mission cannot fire tenera" % tag, not TL.send("tenera", 8, permit=p, effect_digest="D") and not hub_positive() and denied_for("permit_target_mismatch"))
+    check("%s: permit for mission cannot fire fizz" % tag, not TL.send("fizz", 8, permit=p, effect_digest="D") and not hub_positive() and denied_for("permit_target_mismatch"))
     reset(); p = fresh(kind="start")
     check("%s: a start permit cannot run a pattern" % tag, not TL.send_pattern("mission", [4, 8], permit=p, effect_digest="D") and not hub_positive() and denied_for("permit_kind_mismatch"))
     reset(); p = fresh(kind="start")

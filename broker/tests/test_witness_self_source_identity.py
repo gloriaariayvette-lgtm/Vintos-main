@@ -27,7 +27,7 @@ class Tests(unittest.TestCase):
         self.ns=self.case.ns
         tree=ast.parse((ROOT/'scripts/jepa_self_head.py').read_text())
         node=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='his_words')
-        self.ns['_DEVICE_LINE']=re.compile(r'^(?:ridge|tenera|ferri):',re.I)
+        self.ns['_DEVICE_LINE']=re.compile(r'^(?:ridge|fizz|ferri):',re.I)
         exec(compile(ast.Module(body=[node],type_ignores=[]),'actual-his-words','exec'),self.ns)
         self.root=self.case.root
         self.assertNotIn('.vintos',self.root.parts)

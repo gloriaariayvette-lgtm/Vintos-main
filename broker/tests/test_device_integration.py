@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Loaded-path regressions for effect permits, transport wrappers, and leases."""
 import json, os, shutil, sys, tempfile
+from unittest.mock import patch
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(HERE)), "scripts")
@@ -12,7 +13,7 @@ class Response:
 
     def json(self):
         toys = {tid: {"status": "1"} for tid in (
-            "18690ad0e996", "c09b9e4704ae", "f044d37536a9")}
+            "449fdaf75b1e", "c09b9e4704ae", "f044d37536a9")}
         return {"code": 200, "data": {"toys": toys}}
 
 
@@ -30,6 +31,22 @@ sys.modules["requests"] = Requests
 import effect_gate as EG
 import toy_link as TL
 import device_patterns as DP
+
+
+def test_fizz_replaces_tenera_and_drives_both_channels():
+    assert TL.TOYS["fizz"] == "449fdaf75b1e"
+    assert "tenera" not in TL.TOYS
+    assert TL.ACTIONS["fizz"] == "All"
+    assert TL._PFUNC["fizz"] == "s,o"
+    assert "fizz" in DP.KNOWN_TOYS and "tenera" not in DP.KNOWN_TOYS
+    with Env():
+        # A low-level transport check only: requests is the in-process stub above.
+        with patch.object(TL, "_gate", return_value=(True, "send")):
+            assert TL.send("fizz", 7)
+            assert Requests.calls[-1]["json"]["action"] == "All:7"
+            assert Requests.calls[-1]["json"]["toy"] == "449fdaf75b1e"
+            assert TL.send_pattern("fizz", [2, 7], interval_ms=600, seconds=2)
+            assert Requests.calls[-1]["json"]["rule"] == "V:1;F:s,o;S:600#"
 
 
 class Env:

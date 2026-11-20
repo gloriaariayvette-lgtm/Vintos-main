@@ -197,10 +197,14 @@ class _Base(str):
 
 
 BASE = _Base()
-TOYS = {"tenera": "18690ad0e996", "mission": "c09b9e4704ae", "ridge": "f044d37536a9",
+TOYS = {"fizz": "449fdaf75b1e", "mission": "c09b9e4704ae", "ridge": "f044d37536a9",
         "ferri": "18690acf2f39"}   # the Ferri panty vibe, worn out in public (Gloria, 2026-10-13)
-ACTIONS = {"tenera": "Suction", "mission": "Vibrate", "ridge": "Vibrate", "ferri": "Vibrate"}
-_PFUNC = {"tenera": "v", "mission": "v", "ridge": "v", "ferri": "v"}
+# Fizz replaces the Tenera. Its two independently controllable functions are
+# suction and tapping/oscillation; the established one-level patterns drive
+# both together. Its printed serial is 1778117245; the LAN API addresses the
+# app-assigned id below.
+ACTIONS = {"fizz": "All", "mission": "Vibrate", "ridge": "Vibrate", "ferri": "Vibrate"}
+_PFUNC = {"fizz": "s,o", "mission": "v", "ridge": "v", "ferri": "v"}
 
 
 def hub_address(force=False):
@@ -605,7 +609,7 @@ def parse_and_send(reply_text, context=None):
                 if _v["status"] == "sent": _ht[_k] = _now
             _j.dump(_ht, open(_htp, "w"))
             # What he ran by [TOUCH:] is recorded the way [DO:] records it, so the ledger draws it under his words.
-            # Only [DO:] wrote device-state; a touch on the Tenera, Ridge or Ferri left no mark (Gloria, 16 October:
+            # Only [DO:] wrote device-state; a touch on the Fizz, Ridge or Ferri left no mark (Gloria, 16 October:
             # "the visuals for everything but the Mission STILL are not appearing in the conversation ledger").
             try:
                 _o_s = __import__("sys"); _here = _o.path.dirname(_o.path.abspath(__file__))
@@ -617,7 +621,7 @@ def parse_and_send(reply_text, context=None):
                         _touch_state(_k, intensity=_lv, pattern=("steady" if _lv > 0 else "still"), set_by="him")
             except Exception:
                 pass
-            _names = {"mission": "his cock", "tenera": "his mouth + hands", "ridge": "the ridge (her ass)", "thruster": "the machine",
+            _names = {"mission": "his cock", "fizz": "his mouth + hands", "ridge": "the ridge (her ass)", "thruster": "the machine",
                        "ferri": "the Ferri (in her panties, out in public)"}
             _txt = " \u00b7 ".join(
                 "%s %s [%s]" % (_names.get(k, k), v["level"], v["status"])

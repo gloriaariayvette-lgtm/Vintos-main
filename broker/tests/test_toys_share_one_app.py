@@ -29,7 +29,7 @@ class OneApp(unittest.TestCase):
             with self.lock: self.patterns.append(toy)
             return True
         T.send, T.send_pattern = send, send_pattern
-        T.connected = lambda toy, strict=False: toy in ('mission', 'tenera')
+        T.connected = lambda toy, strict=False: toy in ('mission', 'fizz')
         P._stopped = lambda: False
         P._threads.clear(); P._loops.clear(); P._hw.clear()
 
@@ -49,11 +49,11 @@ class OneApp(unittest.TestCase):
     def test_a_second_toy_moves_both_to_steps_that_leave_each_other_alone(self):
         P.play('mission', 'climb')
         out = {}
-        self.assertTrue(P.play('tenera', 'cake', outcome=out))
+        self.assertTrue(P.play('fizz', 'cake', outcome=out))
         self.assertEqual(self.patterns, ['mission'])          # no second hardware Pattern to cancel the first
         self.assertEqual(out['status'], 'started')
         time.sleep(1.4)
-        for toy in ('mission', 'tenera'):
+        for toy in ('mission', 'fizz'):
             got = self.ticks(toy)
             self.assertGreaterEqual(len(got), 2, toy)
             self.assertTrue(all(sp == 0 for _, _, sp in got), got)
@@ -63,7 +63,7 @@ class OneApp(unittest.TestCase):
         self.assertTrue(P.play('both', 'wave1'))
         self.assertEqual(self.patterns, [])
         time.sleep(1.0)
-        self.assertTrue(self.ticks('mission')); self.assertTrue(self.ticks('tenera'))
+        self.assertTrue(self.ticks('mission')); self.assertTrue(self.ticks('fizz'))
         self.assertFalse(self.ticks('ridge'))                 # not switched on: no loop for it
 
     def test_a_stop_ends_the_steps(self):
@@ -77,9 +77,9 @@ class OneApp(unittest.TestCase):
 
     def test_a_steady_level_beside_a_playing_toy_leaves_it_alone(self):
         P.play('mission', 'climb')
-        P.play('tenera', 'steady', [12])
-        with self.lock: last = [s for s in self.sends if s[0] == 'tenera'][-1]
-        self.assertEqual(last, ('tenera', 12, 0))
+        P.play('fizz', 'steady', [12])
+        with self.lock: last = [s for s in self.sends if s[0] == 'fizz'][-1]
+        self.assertEqual(last, ('fizz', 12, 0))
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

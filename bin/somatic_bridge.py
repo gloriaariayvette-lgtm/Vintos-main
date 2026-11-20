@@ -59,7 +59,7 @@ HELD_GRACE_SECONDS = 45.0    # no new frames but recently here = still being hel
 SESSION_END_SECONDS = 180   # demoted to backstop     # silence this long = session over
 NUDGE_CAP_PER_MIN = 0.03     # per dimension
 MOTOR_TOY = "mission"
-TENERA_TOY = "tenera"
+FIZZ_TOY = "fizz"
 HIS_HOLD_SECONDS = 12.0
 def _read_his_touch():
     import json as _hj, os as _ho
@@ -125,7 +125,7 @@ def classify(window):
             "pressure": _pressure, "pressure_dir": _pdir, "zone": _zone}
 
 
-# compute_motor() and compute_tenera() lived here: they turned Arousal/Desire/
+# Earlier affect-to-motor helpers lived here: they turned Arousal/Desire/
 # Dominance into a motor amplitude. Neither was ever called — the loop drives
 # devices only downward, and he drives them upward via [TOUCH]/[DO] tags. They
 # are deleted rather than left dormant: an affect-to-amplitude function sitting
@@ -137,13 +137,13 @@ HIS_LOOP_FRESH_SECONDS = 30 * 60   # no command of his outlives its lease (effec
 
 def _his_loop_active(now=None):
     """True if HE deliberately set a looping pattern that can still be running — the bridge must
-    not silence his choice. A state older than the longest lease cannot be running: tenera's
+    not silence his choice. A state older than the longest lease cannot be running: an old device's
     "soft 6" from mid-October stayed in device-state.json, so every session after it never
     ended and the silence backstop never fired (13 November)."""
     now = time.time() if now is None else now
     try:
         d = json.load(open(os.path.expanduser("~/.vintos/workspace/memory/device-state.json")))
-        for _toy in ("mission", "tenera"):
+        for _toy in ("mission", "fizz"):
             t = d.get(_toy) or {}
             if (t.get("set_by") == "him" and t.get("pattern") not in (None, "still")
                     and float(t.get("intensity", 0) or 0) > 0
@@ -220,7 +220,7 @@ def tick_loop():
             if not _contact and not _his_loop_active():
                 if last_motor_level != 0:
                     toy_link.send(MOTOR_TOY, 0)
-                    try: toy_link.send(TENERA_TOY, 0)
+                    try: toy_link.send(FIZZ_TOY, 0)
                     except Exception: pass
                     last_motor_level = 0
                 print("[ACT] no-contact -> silence", flush=True)
