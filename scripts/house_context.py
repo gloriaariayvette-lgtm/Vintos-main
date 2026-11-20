@@ -171,18 +171,16 @@ def compute_headroom():
 
 def capability_options(board):
     """Concrete uses of the existing hands, independent of research-want keywords."""
-    if board not in ('house-touch', 'house-press-mic'): return []
-    options = [
-        {'action': 'DESKTOP', 'outcome': 'Show a relevant video, document or existing render in a separate window on the configured desktop. Name the task and visible done condition.',
-         'approval': 'Her explicit Yes is required. Aegis may supply files/compute; do not disturb Studio.'},
-        {'action': 'PAPER', 'outcome': 'Offer a page of your words or an existing work/image on the Epson.',
-         'approval': 'Her Yes for this job, paper and ink; no print has started.'},
-        {'action': 'PRINT', 'outcome': 'Propose a useful or meaningful object for the Creality K2, using her existing slicing/material settings.',
-         'approval': 'Her Yes for this job and filament; no build or print is proven by a proposal.'}]
     if board == 'house-press-mic':
-        options.insert(0, {'action': 'TV', 'outcome': 'Choose a specific video or search query to share on the living-room TV.',
-                           'constraint': 'Never interrupt something she is watching; the existing adapter checks ownership again.'})
-    return options
+        return [{'action': 'TV', 'outcome': 'Choose a specific video or search query to share on the living-room TV.',
+                 'constraint': 'Never interrupt something she is watching; the existing adapter checks ownership again.'}]
+    if board == 'house-touch':
+        return [
+            {'action': 'DESKTOP', 'outcome': 'Show a relevant video, document or existing render in a separate window on the configured iMac desktop. Name the task and visible done condition.',
+             'approval': 'Her explicit Yes is required. Aegis may supply files/compute; do not disturb Studio.'},
+            {'action': 'PAPER', 'outcome': 'Offer a page of your words or an existing work/image on the Epson.',
+             'approval': 'Her Yes for this job, paper and ink; no print has started.'}]
+    return []
 
 
 def desktop_approvals(st):
@@ -206,7 +204,8 @@ def _probe(board, only=None):
     spec=importlib.util.spec_from_file_location('house_home', str(Path(__file__).with_name('vintos-home.py')))
     home=importlib.util.module_from_spec(spec);spec.loader.exec_module(home)
     cfg=home.load_config()
-    room={'house-steam':'bathroom','house-touch':'office','house-press-mic':'living_room'}[board]
+    room={'house-steam':'bathroom','house-touch':'office','house-press-mic':'living_room',
+          'house-kitchen':'kitchen'}[board]
     lights=(cfg.get('rooms',{}).get(room) or {}).get('lights') or []
     def lighting():
         # Reading the Govee state never powers a lamp or changes its color.
@@ -269,10 +268,11 @@ def _probe(board, only=None):
                            cwd=Path(__file__).parent, timeout=7)
         if r.returncode: return {'status':'unavailable'}
         return json.loads(r.stdout)
-    probes={'lights':lighting,'ha':ha}
-    if board in ('house-touch', 'house-press-mic'):
+    probes={'lights':lighting}
+    if board in ('house-steam', 'house-touch'): probes['ha']=ha
+    if board == 'house-touch':
         probes.update(paper=lambda:printer('paper_print',('reachable','accepting','state','reasons')),
-                      k2=lambda:printer('k2_printer',('reachable','state','cfs_connected')), desktop=desktop)
+                      desktop=desktop)
     if board=='house-press-mic': probes['tv']=tv
     if only is not None: return probes[only]()
     def bounded(key):
@@ -286,8 +286,8 @@ def _probe(board, only=None):
         for k,f in futures.items():
             try:out[k]=f.result()
             except Exception as e:out[k]={'status':'unavailable','error_type':type(e).__name__}
-    if board in ('house-touch', 'house-press-mic'):
-        out['printers']={k:out.pop(k) for k in ('paper','k2')}
+    if board == 'house-touch':
+        out['printers']={'paper':out.pop('paper')}
     return out
 
 
@@ -373,8 +373,7 @@ def action_candidates(board, conversation):
     if not isinstance(rows, list): return []
     patterns = {'DESKTOP': r'\b(browser|desktop|computer|document|spreadsheet|chart|file|website|search|compare|read|write|render)\b',
                 'TV': r'\b(watch|video|film|movie|youtube|documentary|television)\b',
-                'PAPER': r'\b(paper|poster|printout|postcard|photo|painting|poem)\b',
-                'PRINT': r'\b(3d|stl|cad|filament|prototype|bracket|enclosure)\b'}
+                'PAPER': r'\b(paper|poster|printout|postcard|photo|painting|poem)\b'}
     import re
     out = []
     rows = sorted([w for w in rows if isinstance(w, dict)],
@@ -395,7 +394,8 @@ def action_candidates(board, conversation):
                 or w.get('board')): continue
         text = str(w.get('want') or '')
         for act, pattern in patterns.items():
-            if board not in ('house-touch', 'house-press-mic') or (act == 'TV' and board != 'house-press-mic'): continue
+            allowed = {'house-touch': {'DESKTOP', 'PAPER'}, 'house-press-mic': {'TV'}}.get(board, set())
+            if act not in allowed: continue
             if re.search(pattern, text, re.I):
                 out.append({'want_id':w.get('id'), 'objective':short(text,600),
                             'possible_action':act, 'source':_canon(w.get('source')) if w.get('source') else w.get('source'),

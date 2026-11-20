@@ -33,6 +33,10 @@ public = H.block(roots=(root,), private=False)
 check("an email to someone outside the house does not describe Gloria's ring or her videos",
       "ring" not in public and "videos to Gloria" not in public and "desktop control" in public, public)
 check("his own prompts still know them", "Gloria's ring" in H.block(roots=(root,)))
+open(os.path.join(root, "print_3d.py"), "w").write("x")
+k2 = H.block(roots=(root,))
+check("the want-forming inventory exposes K2 before selection and keeps it out of room boards",
+      "Creality K2" in k2 and "print_3d step" in k2 and "belongs to wants, not room-board menus" in k2, k2)
 for path in ("bin/idle-journal.sh", "bin/vintos-journal.sh", "scripts/want_email.py"):
     check("%s reads the live inventory beside CAPABILITIES.md" % path, "his_inventory" in open(os.path.join(REPO, path)).read())
 check("email reads it without Gloria's own", "_have(private=False)" in open(os.path.join(REPO, "scripts", "want_email.py")).read())

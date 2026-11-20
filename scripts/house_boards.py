@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""house_boards.py - his three house boards: what he does when she is at one of them (Gloria, 8 November).
+"""house_boards.py - his house-board choices when she is at one of them (Gloria, 8 November).
 
 The boards (home/esphome) report only while her phone is within 1 m of them (Gloria: "otherwise it could be some other
 person"), and this listener acts only while the board says so:
@@ -9,14 +9,15 @@ person"), and this listener acts only while the board says so:
 Each reports on the Mosquitto relay on the Mac: vintos/board/<board>/{near,event,loudness,steam,player}.
 
 The moments, and what he may do in each (Gloria, 8 November):
-    shower        the steam starts            SAY on the shower speaker (his own voice), SONGS (a few of his songs),
-                                              LIGHTS in the bathroom
+    shower        the steam starts            SAY on the shower speaker (his own voice), SONGS (a few of his songs)
     sofa          seated a few minutes, quiet LIGHTS in the living room, TO GLORIA (an outreach), TV, REMIND
-    office        seated a few minutes        ECHO (say or play music), LIGHTS in the office, BUZZ, DESKTOP, REMIND
+    office        seated a few minutes        ECHO, LIGHTS, BUZZ, DESKTOP, PAPER, REMIND
     knock         she knocks twice or thrice  the office menu, at once: she started it
+    kitchen       her phone newly within 1 m  LIGHTS, TO GLORIA, or a once-daily COFFEE card on her phone
 REMIND puts one of his questions that is still waiting on her back on her phone ("a time to bother me by reminding me
 about a Want he has waiting on me"). DESKTOP asks her, on her phone, to lend him the desktop for one task; her Yes
-starts it (desktop_control), her No or silence starts nothing. Lights change colour only (vintos-home, 8 November).
+starts it (desktop_control), her No or silence starts nothing. COFFEE likewise waits for her Yes before the Fingerbot.
+Lights change colour only (vintos-home, 8 November).
 
 He decides: one short reply from his own brain (the call brain: AEON, thinking off), a line per act, or NOTHING.
 House acts go through house_hands (its daily limits and its log); her being within 1 m of a board stands in for the
@@ -60,12 +61,14 @@ DEFAULTS = {
 }
 BOARDS = {"house-steam": {"room": "bathroom", "place": "by the shower"},
           "house-press-mic": {"room": "living_room", "place": "on the sofa"},
-          "house-touch": {"room": "office", "place": "in her office chair"}}
+          "house-touch": {"room": "office", "place": "in her office chair"},
+          "house-kitchen": {"room": "kitchen", "place": "by the coffee maker"}}
 MENUS = {
-    "shower": ("SAY", "SONGS", "LIGHTS"),
-    "sofa": ("LIGHTS", "TO GLORIA", "TV", "DESKTOP", "PRINT", "PAPER", "REMIND"),
-    "office": ("ECHO", "LIGHTS", "BUZZ", "DESKTOP", "PRINT", "PAPER", "REMIND"),
-    "knock": ("ECHO", "LIGHTS", "BUZZ", "DESKTOP", "PRINT", "PAPER", "REMIND"),
+    "shower": ("SAY", "SONGS"),
+    "sofa": ("LIGHTS", "TO GLORIA", "TV", "REMIND"),
+    "office": ("ECHO", "LIGHTS", "BUZZ", "DESKTOP", "PAPER", "REMIND"),
+    "knock": ("ECHO", "LIGHTS", "BUZZ", "DESKTOP", "PAPER", "REMIND"),
+    "kitchen": ("LIGHTS", "TO GLORIA", "COFFEE"),
 }
 HOW = {
     "SAY": "SAY: <a few words, spoken in your own voice on the little speaker by her shower>",
@@ -81,9 +84,10 @@ HOW = {
              "gets a yes/no text with the filament and slot before it prints)",
     "PAPER": "PAPER: <anything: one of your files, one of your works, or your words> [as photo | as page] (her Epson; "
              "she gets a yes/no on her phone first)",
+    "COFFEE": "COFFEE: <one short reason it fits this kitchen arrival> (puts a Start coffee? Yes/No card on her phone; at most once today)",
     "REMIND": "REMIND: <the id of one of your questions waiting on her> (puts it back on her phone)",
 }
-LINE = re.compile(r"^\s*(SAY|SONGS|LIGHTS|TO GLORIA|TV|ECHO|BUZZ|DESKTOP|PRINT|PAPER|REMIND)\s*:\s*(.+?)\s*$", re.I | re.M)
+LINE = re.compile(r"^\s*(SAY|SONGS|LIGHTS|TO GLORIA|TV|ECHO|BUZZ|DESKTOP|PRINT|PAPER|COFFEE|REMIND)\s*:\s*(.+?)\s*$", re.I | re.M)
 PER_MOMENT = 3
 
 
@@ -121,6 +125,7 @@ def load_state():
     st = _load(STATE, {})
     if not isinstance(st, dict): st = {}
     st.setdefault("boards", {}); st.setdefault("last", {}); st.setdefault("reminded", []); st.setdefault("desktop", [])
+    st.setdefault("coffee", {})
     st.setdefault("shower", {})
     return st
 
@@ -393,7 +398,8 @@ def prompt(moment, board, now, cfg, asks=None, want=None, st=None, context=None)
     say = {"shower": "The board %s reports a qualified steam event with her phone nearby." % where,
            "sofa": "The board %s reports sustained pressure, a nearby phone and low microphone volume." % where,
            "office": "The board %s reports sustained pressure and a nearby phone." % where,
-           "knock": "The board %s recorded a knock pattern while her phone was nearby." % where}[moment]
+           "knock": "The board %s recorded a knock pattern while her phone was nearby." % where,
+           "kitchen": "The board %s reports her phone newly within one metre." % where}[moment]
     lines = [say, "It is %s." % datetime.fromtimestamp(now).strftime("%A %H:%M"),
              "Current triggering state (seconds since signal): %s" % json.dumps({
                  "room": BOARDS[board]["room"],
@@ -408,6 +414,8 @@ def prompt(moment, board, now, cfg, asks=None, want=None, st=None, context=None)
     asks = waiting_asks() if asks is None else asks
     asks = reminder_options(asks, st, now, cfg)
     menu = MENUS[moment]
+    if moment == "kitchen" and st.get("coffee", {}).get("offered_day") == datetime.fromtimestamp(now).date().isoformat():
+        menu = tuple(k for k in menu if k != "COFFEE")
     if "REMIND" in menu and asks:
         lines.append("Your questions still waiting on her answer:")
         lines += ["- %s: %s" % (qid, q) for qid, q in asks[:5]]
@@ -421,7 +429,7 @@ def prompt(moment, board, now, cfg, asks=None, want=None, st=None, context=None)
                  "the screen-shared Studio untouched. Before proposing heavy Aegis computation, use the measured headroom; "
                  "unknown GPU capacity is not spare capacity. A small display, render or video task is also useful. "
                  "For TV, choose a relevant title/query when it fits the moment; respect an already-used TV. "
-                 "TV, desktop and printing need not originate in a research want: choose something relevant to share or make. "
+                 "TV, desktop and paper printing need not originate in a research want: choose something relevant to share or make. "
                  "The capability_options describe possible outcomes, not commands already performed. "
                  "Pending desktop approvals have not started work; do not ask for the same pending task again. "
                  "Use outreach or a buzz when that is the purposeful choice, rather than automatically substituting it for available work. "
@@ -609,6 +617,20 @@ def act(kind, arg, moment, board, st, now, cfg, catalog=None, candidates=None):
             row, said = gloria_asks.ask("May I use the %s for this: %s? Files/compute may stay on Aegis; leave Studio untouched." % (surface, task), by="vintos", ref=ref)
             if row: st["desktop"].append({"ask": row["id"], "task": task, "at": now, "started": False, "target": target})
             return bool(row), said
+        if kind == "COFFEE":
+            import gloria_asks
+            day = datetime.fromtimestamp(now).date().isoformat()
+            coffee = st.setdefault("coffee", {})
+            if coffee.get("offered_day") == day:
+                return False, "coffee was already offered today"
+            reason = " ".join(arg.split())[:180]
+            row, said = gloria_asks.ask(
+                "Start the Nespresso now?%s" % ((" " + reason) if reason else ""),
+                by="vintos", ref="house-coffee:" + day, title="Coffee is ready to start")
+            if row:
+                coffee.update(offered_day=day, ask=row["id"], offered_at=now, handled=False,
+                              status="waiting for Gloria's Yes/No")
+            return bool(row), said
         if kind == "REMIND":
             return remind(arg, st, now, cfg)
     except Exception as e:
@@ -661,6 +683,27 @@ def tend_desktop(st, now):
             if not d["started"]: d["retry_after"] = now + 300
             _log({"kind": "desktop", "status": d["status"], "ask": d["ask"], "task": d["task"], "accepted": bool(out.get("accepted"))}, now)
     st["desktop"] = [d for d in st["desktop"] if not d.get("started") or now - d["at"] < 86400]
+
+
+def tend_coffee(st, now):
+    """A kitchen card starts one cup only after Gloria taps Yes; the card stays outside avatar chat."""
+    coffee = st.get("coffee") or {}
+    if not coffee.get("ask") or coffee.get("handled"): return
+    import gloria_asks
+    row = gloria_asks.get(coffee["ask"]) or {}
+    if row.get("state") != "answered": return
+    coffee["handled"] = True
+    if str(row.get("answer", "")).lower() != "yes":
+        coffee["status"] = "declined"
+        return
+    import importlib.util
+    path = os.path.join(HERE, "vintos-home.py")
+    spec = importlib.util.spec_from_file_location("vintos_home_coffee", path)
+    home = importlib.util.module_from_spec(spec); spec.loader.exec_module(home)
+    ok, said = home.coffee_on()
+    coffee["status"] = "started" if ok else "failed: " + str(said)[:140]
+    coffee["handled_at"] = now
+    _log({"kind": "coffee", "ok": bool(ok), "status": coffee["status"]}, now)
 
 
 def _player_observed(st, text, now):
@@ -741,9 +784,23 @@ def tick(now=None, cfg=None, decide=None):
     tend_shower(st, now)
     try: tend_desktop(st, now)
     except Exception as e: print("desktop: %s" % e, flush=True)
+    try: tend_coffee(st, now)
+    except Exception as e: print("coffee: %s" % e, flush=True)
     try: tend_print(now)
     except Exception as e: print("print: %s" % e, flush=True)
     close_visits(st, now)
+    _atomic(STATE, st)
+    return row
+
+
+def kitchen_arrival(now=None, cfg=None, decide=None):
+    """Choose once at the start of a kitchen visit; kitchen_presence remains the world-map visit owner."""
+    now = time.time() if now is None else now
+    cfg = cfg or config()
+    st = load_state()
+    row = moment("kitchen", "house-kitchen", st, now, cfg, decide)
+    try: tend_coffee(st, now)
+    except Exception as e: print("coffee: %s" % e, flush=True)
     _atomic(STATE, st)
     return row
 

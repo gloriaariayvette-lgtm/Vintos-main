@@ -3,7 +3,7 @@
 him one thing, Blender makes the model, her settings slice it, she gets one yes/no text naming the filament and slot,
 and only her Yes sends it, with the slot map her printer page would send. Nothing here reaches the printer, Claude,
 Astra, Blender or her phone."""
-import json, os, socket, sys, tempfile
+import ast, json, os, socket, sys, tempfile
 HERE = os.path.dirname(os.path.abspath(__file__)); REPO = os.path.dirname(os.path.dirname(HERE))
 HOME = tempfile.mkdtemp(prefix="k2-"); os.environ["HOME"] = HOME
 os.environ["SPARK_WORKSPACE"] = os.path.join(HOME, ".vintos", "workspace")
@@ -47,9 +47,25 @@ check("PRINT: starts a job and says she gets a text first", ok and "text" in sai
 jid = spawned[0][-1]
 ok2, said2 = P.start("another thing", spawn=lambda c: None)
 check("one job at a time", not ok2 and "going already" in said2, said2)
-check("the office chair and the knock offer PRINT", "PRINT" in B.MENUS["office"] and "PRINT" in B.MENUS["knock"]
-      and "PRINT" not in B.MENUS["sofa"] and B.HOW["PRINT"].startswith("PRINT: "))
+check("K2 is wants-only and no room board offers PRINT",
+      all("PRINT" not in B.MENUS[m] for m in ("shower", "sofa", "office", "knock"))
+      and B.HOW["PRINT"].startswith("PRINT: "))
 check("the Slack hands list PRINT", "PRINT: a thing to make on her Creality K2" in open(os.path.join(REPO, "scripts", "dot_channel.py")).read())
+router = open(os.path.join(REPO, "bin", "wants-router.py")).read()
+check("the wants router exposes the K2 lane before execution",
+      '"action": "print_3d"' in router and '"print_3d": print_3d' in router
+      and "print_lane.start(want_text)" in router)
+node = next(n for n in ast.parse(router).body if isinstance(n, ast.FunctionDef) and n.name == "print_3d")
+ns = {"sys": sys, "SCRIPTS": os.path.join(REPO, "scripts"), "log": lambda _: None}
+exec(compile(ast.Module(body=[node], type_ignores=[]), "wants-router.py", "exec"), ns)
+old_start = P.start; routed = []
+try:
+    P.start = lambda want: (routed.append(want) or (True, "K2 job queued behind Gloria's final Yes"))
+    routed_result = ns["print_3d"]("I want to 3D print a small cable guide")
+finally:
+    P.start = old_start
+check("a 3D want enters print_lane and retains its approval receipt",
+      routed == ["I want to 3D print a small cable guide"] and "final Yes" in routed_result, routed_result)
 
 # the worker, with stand-ins
 asked_him, astra_briefs, texts = [], [], []

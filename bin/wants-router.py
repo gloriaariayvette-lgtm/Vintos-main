@@ -495,6 +495,11 @@ CAPABILITIES = [
         "desc": "Generate an HTML chart from pattern analysis data",
     },
     {
+        "keywords": ["3d print", "3d-print", "print a 3d", "print an object", "model and print", "creality k2", "k2 printer", "filament prototype"],
+        "action": "print_3d",
+        "desc": "Propose and build one physical object on the Creality K2; Gloria gives the final Yes before printing",
+    },
+    {
         "keywords": ["search", "look up", "find out", "research", "google"],
         "action": "web_search",
         "desc": "Search the web for something",
@@ -538,6 +543,18 @@ def write_poem(want_text):
         return True
     log(f"Poetry failed: {result.stderr[:200]}")
     return False
+
+
+def print_3d(want_text):
+    """Hand a genuine object-making want to the existing K2 lane; that lane retains Gloria's final send gate."""
+    try:
+        sys.path.insert(0, SCRIPTS)
+        import print_lane
+        ok, said = print_lane.start(want_text)
+        return said if ok else False
+    except Exception as exc:
+        log("  -> K2 lane failed: %s" % str(exc)[:180])
+        return False
 
 
 def make_art(want_text):
@@ -1794,6 +1811,7 @@ ACTION_MAP = {
     "make_chart": make_chart,
     "write_poem": write_poem,
     "moltbook": moltbook,
+    "print_3d": print_3d,
 }
 
 

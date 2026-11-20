@@ -48,7 +48,7 @@ class Tests(unittest.TestCase):
  def test_action_candidates_are_live_grounded_and_room_specific(self):
   self.write('current-wants.json',[{'id':'dead','want':'watch a film','dismissed':True},{'id':'web','want':'compare the document on the website','source':'email'},{'id':'film','want':'watch a documentary','source':'idle-journal'}])
   office=H.action_candidates('house-touch',[]);sofa=H.action_candidates('house-press-mic',[])
-  self.assertEqual([x['want_id'] for x in office],['web']);self.assertEqual([x['want_id'] for x in sofa],['web','film']);self.assertIn('proposal only',office[0]['authority'])
+  self.assertEqual([x['want_id'] for x in office],['web']);self.assertEqual([x['want_id'] for x in sofa],['film']);self.assertIn('proposal only',office[0]['authority'])
  def test_action_candidates_respect_the_want_gates(self):
   # waiting on Gloria (routed or parked awaiting her) and any parked want stay out; the source label is canonical
   self.write('current-wants.json',[{'id':'routed','want':'compare the document on the website','gloria_routed':True},
@@ -61,20 +61,55 @@ class Tests(unittest.TestCase):
   ctx={'catalog':[],'conversation':[],'outcomes':[],'action_candidates':[{'want_id':'web','objective':'compare documents','possible_action':'DESKTOP'}]}
   _,user=B.prompt('office','house-touch',self.now,B.DEFAULTS,asks=[],want='',st={'boards':{},'shower':{}},context=ctx)
   for text in ('compare documents','visible done condition','phone ask','Do not choose an action merely','CHOICE:'):self.assertIn(text,user)
- def test_seated_places_offer_desktop_and_both_printers_without_a_want(self):
-  for moment,board in (('office','house-touch'),('sofa','house-press-mic')):
-   ctx={'catalog':[],'conversation':[],'outcomes':[],'action_candidates':[],
-        'capability_options':H.capability_options(board),'desktop_approvals':[]}
-   _,user=B.prompt(moment,board,self.now,B.DEFAULTS,asks=[],want='',st={'boards':{},'shower':{},'reminded':[]},context=ctx)
-   for text in ('DESKTOP:','PRINT:','PAPER:','capability_options'):self.assertIn(text,user)
-  self.assertIn('TV:',B.prompt('sofa','house-press-mic',self.now,B.DEFAULTS,asks=[],want='',
-   st={'boards':{},'shower':{},'reminded':[]},context=ctx)[1])
+ def test_board_capabilities_are_room_specific_and_k2_is_wants_only(self):
+  office_ctx={'catalog':[],'conversation':[],'outcomes':[],'action_candidates':[],
+              'capability_options':H.capability_options('house-touch'),'desktop_approvals':[]}
+  _,office=B.prompt('office','house-touch',self.now,B.DEFAULTS,asks=[],want='',
+   st={'boards':{},'shower':{},'reminded':[]},context=office_ctx)
+  for text in ('DESKTOP:','PAPER:','ECHO:','BUZZ:','capability_options'):self.assertIn(text,office)
+  for text in ('TV:','PRINT:'):self.assertNotIn(text,office)
+  sofa_ctx={'catalog':[],'conversation':[],'outcomes':[],'action_candidates':[],
+            'capability_options':H.capability_options('house-press-mic'),'desktop_approvals':[]}
+  _,sofa=B.prompt('sofa','house-press-mic',self.now,B.DEFAULTS,asks=[],want='',
+   st={'boards':{},'shower':{},'reminded':[]},context=sofa_ctx)
+  for text in ('TV:','LIGHTS:','TO GLORIA:','capability_options'):self.assertIn(text,sofa)
+  for text in ('DESKTOP:','PRINT:','PAPER:','ECHO:','BUZZ:'):self.assertNotIn(text,sofa)
+  shower_ctx={'catalog':[],'conversation':[],'outcomes':[],'action_candidates':[],
+              'capability_options':[],'desktop_approvals':[]}
+  _,shower=B.prompt('shower','house-steam',self.now,B.DEFAULTS,asks=[],want='',
+   st={'boards':{},'shower':{},'reminded':[]},context=shower_ctx)
+  self.assertIn('SAY:',shower);self.assertIn('SONGS:',shower);self.assertNotIn('LIGHTS:',shower)
  def test_spent_reminder_is_not_offered_again(self):
   st={'boards':{},'shower':{},'reminded':[{'id':'Q-1234abcd','day':'1970-01-12'}]}
   ctx={'catalog':[],'conversation':[],'outcomes':[],'action_candidates':[],'capability_options':[],'desktop_approvals':[]}
   _,user=B.prompt('sofa','house-press-mic',self.now,B.DEFAULTS,
    asks=[('Q-1234abcd','old question'),('Q-9999aaaa','fresh question')],want='',st=st,context=ctx)
   self.assertNotIn('Q-1234abcd',user);self.assertIn('Q-9999aaaa',user)
+ def test_kitchen_offers_lights_message_and_one_daily_phone_gated_coffee(self):
+  ctx={'catalog':[],'conversation':[],'outcomes':[],'action_candidates':[],
+       'capability_options':[],'desktop_approvals':[]}
+  st={'boards':{},'shower':{},'reminded':[],'coffee':{}}
+  _,user=B.prompt('kitchen','house-kitchen',self.now,B.DEFAULTS,asks=[],want='',st=st,context=ctx)
+  for text in ('LIGHTS:','TO GLORIA:','COFFEE:','Yes/No card'):self.assertIn(text,user)
+  asked=[];asks=types.SimpleNamespace(ask=lambda q,**k:(asked.append((q,k)) or ({'id':'Q-coffee'},'asked')))
+  with patch.dict(sys.modules,gloria_asks=asks):
+   ok,_=B.act('COFFEE','a warm cup fits','kitchen','house-kitchen',st,self.now,B.DEFAULTS)
+   again,why=B.act('COFFEE','again','kitchen','house-kitchen',st,self.now+1,B.DEFAULTS)
+  self.assertTrue(ok);self.assertFalse(again);self.assertIn('already offered',why);self.assertEqual(len(asked),1)
+  self.assertIn('Start the Nespresso now?',asked[0][0]);self.assertEqual(asked[0][1]['ref'],'house-coffee:1970-01-12')
+  _,later=B.prompt('kitchen','house-kitchen',self.now+2,B.DEFAULTS,asks=[],want='',st=st,context=ctx)
+  self.assertNotIn('COFFEE:',later);self.assertIn('LIGHTS:',later);self.assertIn('TO GLORIA:',later)
+ def test_coffee_never_starts_before_yes_and_yes_is_handled_once(self):
+  state={'coffee':{'ask':'Q-coffee','handled':False}};calls=[]
+  asked=types.SimpleNamespace(get=lambda _: {'state':'asked'})
+  with patch.dict(sys.modules,gloria_asks=asked):B.tend_coffee(state,self.now)
+  self.assertFalse(state['coffee']['handled']);self.assertEqual(calls,[])
+  answered=types.SimpleNamespace(get=lambda _: {'state':'answered','answer':'yes'})
+  home=types.SimpleNamespace(coffee_on=lambda:(calls.append('start') or (True,'started')))
+  spec=types.SimpleNamespace(loader=types.SimpleNamespace(exec_module=lambda module:None))
+  with patch.dict(sys.modules,gloria_asks=answered),patch('importlib.util.spec_from_file_location',return_value=spec),patch('importlib.util.module_from_spec',return_value=home),patch.object(B,'_log',lambda *a:None):
+   B.tend_coffee(state,self.now);B.tend_coffee(state,self.now+1)
+  self.assertEqual(calls,['start']);self.assertTrue(state['coffee']['handled']);self.assertEqual(state['coffee']['status'],'started')
  def test_desktop_want_id_becomes_the_full_task_and_names_target(self):
   asked=[]
   asks=types.SimpleNamespace(get=lambda _:None,ask=lambda q,**k:(asked.append(q) or ({'id':'Q-new'},'asked')))
