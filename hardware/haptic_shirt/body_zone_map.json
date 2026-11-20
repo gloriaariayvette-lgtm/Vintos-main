@@ -1,0 +1,102 @@
+{
+  "drv_pairs": {
+    "chest": {
+      "bus": 0,
+      "address": "0x5A",
+      "discs": 2
+    },
+    "back": {
+      "bus": 1,
+      "address": "0x5A",
+      "discs": 2
+    }
+  },
+  "mosfet_channels": {
+    "0": {
+      "zone": "right_waist",
+      "label": "Right waist",
+      "connected": true
+    },
+    "1": {
+      "zone": "right_small_of_back",
+      "label": "Right small of back",
+      "connected": true
+    },
+    "2": {
+      "zone": "right_collarbone",
+      "label": "Right collarbone",
+      "connected": true,
+      "observation": "User reports a smaller buzz at this location despite the same full-on command"
+    },
+    "3": {
+      "zone": "right_upper_arm",
+      "label": "Right upper arm",
+      "connected": true,
+      "observation": "User reports a smaller buzz despite the same full-on command"
+    },
+    "15": {
+      "zone": "left_waist",
+      "label": "Left waist",
+      "connected": true,
+      "mapping_source": "Individually identified by user during CH15 playback",
+      "observation": "User reports a small buzz despite the same full-on command"
+    },
+    "14": {
+      "zone": "left_small_of_back",
+      "label": "Left small of back",
+      "connected": true,
+      "mapping_source": "User specified the matching left-side order"
+    },
+    "13": {
+      "zone": "left_collarbone",
+      "label": "Left collarbone",
+      "connected": true,
+      "mapping_source": "User specified the matching left-side order"
+    },
+    "12": {
+      "zone": "left_upper_arm",
+      "label": "Left upper arm",
+      "connected": true,
+      "mapping_source": "User confirmed the left upper arm during the full-strength channel 12 test"
+    },
+    "4": {
+      "zone": "right_elbow",
+      "label": "Right elbow",
+      "connected": true,
+      "mapping_source": "User confirmed both longer arm sweeps strong and in the correct elbow/wrist order on November 19"
+    },
+    "11": {
+      "zone": "left_elbow",
+      "label": "Left elbow",
+      "connected": true,
+      "mapping_source": "User confirmed both longer arm sweeps strong and in the correct elbow/wrist order on November 19"
+    },
+    "10": {
+      "zone": "left_wrist",
+      "label": "Left wrist",
+      "connected": true,
+      "mapping_source": "User confirmed both longer arm sweeps strong and in the correct elbow/wrist order on November 19"
+    },
+    "6": {
+      "zone": "right_wrist",
+      "label": "Right wrist",
+      "connected": true,
+      "mapping_source": "User felt nothing on CH5, then explicitly identified CH6 as right wrist on November 19"
+    }
+  },
+  "pending_channels": [],
+  "skipped_channels": {
+    "7": "Middle skipped at user instruction; not individually tested",
+    "8": "Middle skipped at user instruction; not individually tested",
+    "9": "Middle skipped at user instruction; not individually tested",
+    "5": "Full-on command read back correctly, no buzz felt; adjacent CH6 identified as right wrist."
+  },
+  "unassigned_channel_positions": [
+    5,
+    7,
+    8,
+    9
+  ],
+  "remaining_mosfet_motors_to_wire": 0,
+  "spare_channel_capacity_after_all_12_mosfet_motors": 4
+}

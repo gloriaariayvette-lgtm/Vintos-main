@@ -1,0 +1,8 @@
+.runtime/
+.blevenv/
+.venv/
+__pycache__/
+.tools/
+build/
+logs/
+pairing-code.txt

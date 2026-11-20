@@ -1,3 +1,10 @@
+## 19 November — haptic shirt Mac bridge and three-minute loops
+
+- Review branch adds firmware and a Mac USB/Bluetooth adapter in `hardware/haptic_shirt/`.
+- Specialized chest/back pairs support an explicit loop option: repeat for 180 seconds, then stop. Stop requests cancel the host producer; disconnect aborts without replay.
+- Prompt includes looping guidance and is emitted only after a fresh authenticated controller response. Battery-only wave playback and physical on/off/on context behavior were confirmed on the bench.
+- Still pending: production action/context wiring through the existing somatic authority and result-reporting route, review, and Gloria-controlled deployment. This source branch does not install a live service or inject context on Aegis.
+
 ## 14 November — pearls: one gate, pressure at 0.33, and Gloria's review page
 
 Gloria's decisions: lower the pressure gate to 0.33, keep the 2-failure rule, close every way a pearl got in
