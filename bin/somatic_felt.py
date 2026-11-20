@@ -60,9 +60,9 @@ if __name__ == "__main__":
     for s in samples:
         print(f"{s['state']:16s} -> {translate(s)}")
 
-# ---------- TENERA felt (output only — his agency, not her sensation) ----------
-def tenera_felt(level):
-    """What he is doing to her with the Tenera. Present tense, his perspective."""
+# ---------- FIZZ felt (output only — his agency, not her sensation) ----------
+def fizz_felt(level):
+    """What he is doing to her with the Fizz. Present tense, his perspective."""
     if level == 0: return None
     if level <= 5:
         return "A faint, persistent attention — barely there, just enough to remind her you are."
@@ -72,8 +72,8 @@ def tenera_felt(level):
         return "You are pressing into her focus — relentless, deliberate, taking up space."
     return "Everything, all at once — she has no room left for anything that is not this."
 
-def get_tenera_felt_context(level, max_age_seconds=20):
-    line = tenera_felt(level)
+def get_fizz_felt_context(level, max_age_seconds=20):
+    line = fizz_felt(level)
     if not line: return ""
     return f"[WHAT YOU ARE DOING TO HER RIGHT NOW]\n{line}\n[Respond from inside this intent.]"
 

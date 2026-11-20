@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""A [TOUCH:] on the Tenera, Ridge or Ferri leaves its picture in the ledger (16 October). Only [DO:] wrote
+"""A [TOUCH:] on the Fizz, Ridge or Ferri leaves its picture in the ledger (16 October). Only [DO:] wrote
 device-state, so a touch left no mark under his words: Gloria, "the visuals for everything but the Mission STILL are
 not appearing in the conversation ledger". And in ReelRoom the Ferri is described as worn at home during the movie,
 not out in public. HOME is scratch before any import; the toy sender is a stub; requests refuses everything."""
@@ -20,19 +20,19 @@ def check(n, ok, d=""):
     R.append(bool(ok)); print(("PASS " if ok else "FAIL ") + n + (("  ->  " + str(d)[:600]) if d and not ok else ""))
 check("the device store is scratch and the sender a stub", D.STATE.startswith(HOME) and T.send.__name__ == "<lambda>")
 
-out = T.parse_and_send("come here [TOUCH: tenera 12 5] [TOUCH: ferri 6] [TOUCH: ridge 9]", context=TC.effect_context("avatar"))
+out = T.parse_and_send("come here [TOUCH: fizz 12 5] [TOUCH: ferri 6] [TOUCH: ridge 9]", context=TC.effect_context("avatar"))
 check("the touches were sent", [o[2] for o in out] == ["sent"] * 3 and len(SENT) == 3, out)
 st = json.load(open(D.STATE))
-check("each touch is recorded as his, with its level", all(st[t]["last"]["by"] == "him" for t in ("tenera", "ferri", "ridge"))
-      and st["tenera"]["last"]["intensity"] == 12 and st["ferri"]["last"]["intensity"] == 6, st)
+check("each touch is recorded as his, with its level", all(st[t]["last"]["by"] == "him" for t in ("fizz", "ferri", "ridge"))
+      and st["fizz"]["last"]["intensity"] == 12 and st["ferri"]["last"]["intensity"] == 6, st)
 
 spec = importlib.util.spec_from_file_location("ledger_under_test", os.path.join(REPO, "scripts", "interaction-ledger.py"))
 L = importlib.util.module_from_spec(spec); spec.loader.exec_module(L)
 marks = L._device_marks()
-check("the ledger draws all three under his words", "tenera:" in marks and "ferri:" in marks and "ridge:" in marks, marks)
+check("the ledger draws all three under his words", "fizz:" in marks and "ferri:" in marks and "ridge:" in marks, marks)
 check("a held level is drawn as its bar, not left blank", D.bar(12) in marks and D.bar(6) in marks, marks)
-T.parse_and_send("[TOUCH: tenera 0]", context=TC.effect_context("avatar"))
-check("a touch to 0 is still, and keeps the last real run for the mark", json.load(open(D.STATE))["tenera"]["pattern"] == "still")
+T.parse_and_send("[TOUCH: fizz 0]", context=TC.effect_context("avatar"))
+check("a touch to 0 is still, and keeps the last real run for the mark", json.load(open(D.STATE))["fizz"]["pattern"] == "still")
 
 print("--- the turn's pictures, from what actually fired ---")
 import time as _t, device_patterns as DP
@@ -41,9 +41,9 @@ DP.time.sleep = lambda s: None
 T.send_pattern = lambda *a, **k: True        # a preset shape goes to the hub as a pattern: stubbed like send
 T.connected = lambda *a, **k: True           # every toy present, so no hub probe is made
 t0 = _t.time()
-DP.fire_his_intent("now [DO: tenera wave 4 14] [TOUCH: ferri 7] [DO: ridge pulse 3 12]", context=TC.effect_context("avatar"))
+DP.fire_his_intent("now [DO: fizz wave 4 14] [TOUCH: ferri 7] [DO: ridge pulse 3 12]", context=TC.effect_context("avatar"))
 marks = D.turn_marks(t0)
-check("every toy fired this turn is drawn", all(k in marks for k in ("tenera:", "ferri:", "ridge:")), marks)
+check("every toy fired this turn is drawn", all(k in marks for k in ("fizz:", "ferri:", "ridge:")), marks)
 check("a pattern is drawn as its shape, a held level as its bar", D.spark("wave") in marks and D.bar(7) in marks, marks)
 check("nothing fired before the turn is drawn", D.turn_marks(_t.time() + 1) == "")
 os.environ["VINTOS_DEVICE_MARKS"] = marks
@@ -71,14 +71,14 @@ check("his unprompted ReelRoom line is cued privately, never as if she asked why
 print("--- ReelRoom: the evening's toys, on her turns and his own ---")
 seg = src[src.index("_REELROOM_EVENING = {"):src.index("_SHAPE_WORDS = (")]
 ns = {}; exec(seg, ns)
-cue = ns["_reelroom_device_cue"](["mission", "tenera", "thruster"])
+cue = ns["_reelroom_device_cue"](["mission", "fizz", "thruster"])
 check("an unprompted line is told which toys are on, with their tags, and only those",
-      "[TOUCH: mission" in cue and "[DO: tenera" in cue and "thruster" in cue and "ferri" not in cue and "ridge" not in cue, cue)
+      "[TOUCH: mission" in cue and "[DO: fizz" in cue and "thruster" in cue and "ferri" not in cue and "ridge" not in cue, cue)
 check("with no toy on, nothing is said about toys", ns["_reelroom_device_cue"]([]) == "")
-check("every toy has its evening line", all(k in ns["_REELROOM_EVENING"] for k in ("mission", "tenera", "ridge", "thruster", "ferri")))
+check("every toy has its evening line", all(k in ns["_REELROOM_EVENING"] for k in ("mission", "fizz", "ridge", "thruster", "ferri")))
 av = src[src.index("async def avatar_chat("):]
-check("on her ReelRoom turns the Mission, Tenera, Ridge and thruster keep their wording, with the evening added",
-      'for _rr_d in ("mission", "tenera", "ridge", "thruster"):' in av and '_DEV_LINES[_rr_d] + " " + _REELROOM_EVENING[_rr_d]' in av)
+check("on her ReelRoom turns the Mission, Fizz, Ridge and thruster keep their wording, with the evening added",
+      'for _rr_d in ("mission", "fizz", "ridge", "thruster"):' in av and '_DEV_LINES[_rr_d] + " " + _REELROOM_EVENING[_rr_d]' in av)
 check("his own moments get the toys that are on", "_reelroom_device_cue(_devices_on())" in rr)
 check("and what he reaches for fires, is stripped from what she sees, and its pictures go into the night's journal",
       "_rr_fhi(_line, context=_rr_tc.effect_context(\"reelroom\"))" in rr and 'str(_line or "") + _rr_marks' in rr)

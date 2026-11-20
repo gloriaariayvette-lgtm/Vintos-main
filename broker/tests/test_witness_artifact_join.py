@@ -350,10 +350,10 @@ class Tests(unittest.TestCase):
     def test_cleanup_contract_matches_actual_reader(self):
         tree=ast.parse((ROOT/'scripts/jepa_self_head.py').read_text())
         node=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='his_words')
-        ns={'_DEVICE_LINE':re.compile(r'^(?:ridge|tenera|ferri):',re.I)}
+        ns={'_DEVICE_LINE':re.compile(r'^(?:ridge|fizz|ferri):',re.I)}
         exec(compile(ast.Module(body=[node],type_ignores=[]),'actual-reader','exec'),ns)
         for text in (' voice ','--source','  a\n\nridge: x\n\nferri: y ','ridge: sole paragraph',
-                     'a\n\nordinary\n\nTENERA: x','Unicode é\n\nparagraph',''):
+                     'a\n\nordinary\n\nFIZZ: x','Unicode é\n\nparagraph',''):
             self.assertEqual(J.normalized_reply(text),ns['his_words'](text))
 
     def test_report_projects_fixed_counts_without_private_labels(self):

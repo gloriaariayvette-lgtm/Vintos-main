@@ -43,7 +43,7 @@ if "--turn" in sys.argv:
     del sys.argv[_i:_i + 2]
 # Earlier turns come from his interaction ledger: 300 exchanges across his surfaces, where the avatar history keeps 40.
 LEDGER_PATH = os.path.expanduser("~/.vintos/workspace/memory/interaction-ledger.json")
-_MARK = re.compile(r"\n\n(?:tenera:|ridge:|ferri:)[\s\S]*$")   # the device pictures under his words, not his words
+_MARK = re.compile(r"\n\n(?:fizz:|ridge:|ferri:)[\s\S]*$")   # the device pictures under his words, not his words
 
 def _exchanges():
     rows = json.load(open(LEDGER_PATH))

@@ -173,7 +173,7 @@ with Env() as e:
     check("permit covers its own level", permit.covers("mission", 12, "pattern", digest="d"))
     check("permit rejects a missing digest", not permit.covers("mission", 12, "pattern"))
     check("permit rejects a higher level", not permit.covers("mission", 18, "pattern", digest="d"))
-    check("permit rejects another toy", not permit.covers("tenera", 12, "pattern", digest="d"))
+    check("permit rejects another toy", not permit.covers("fizz", 12, "pattern", digest="d"))
     EG.ARMED_FLAG = os.path.join(e.tmp, "nonexistent")
 
 print("\n%d/%d passed" % (sum(R), len(R)))

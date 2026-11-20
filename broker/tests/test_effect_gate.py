@@ -189,7 +189,7 @@ def test_armed_grants_a_permit_with_clean_context():
         assert "mission" in permit.targets and permit.turn_id == "t1"
         assert permit.covers("mission", 12, "start") is True
         assert permit.covers("mission", 13, "start") is False    # above the maximum
-        assert permit.covers("tenera", 12, "start") is False     # wrong target
+        assert permit.covers("fizz", 12, "start") is False     # wrong target
         assert permit.consume() is True
         assert permit.consume() is False       # single-use start
 

@@ -56,7 +56,7 @@ JP.encoder = lambda: Enc()
 
 print("--- his words, from the ledger ---")
 check("device marks the ledger appends are not his words",
-      SH.his_words("I'm here.\n\nridge:  <shape>\n        <track>   wave  ▁▃\n\ntenera: pulse  ▁▃  @4") == "I'm here.")
+      SH.his_words("I'm here.\n\nridge:  <shape>\n        <track>   wave  ▁▃\n\nfizz: pulse  ▁▃  @4") == "I'm here.")
 check("a paragraph of his own survives", SH.his_words("one\n\ntwo") == "one\n\ntwo")
 check("the broken 'voice' junk is not a reply", SH.his_words("voice") == "")
 TAC = {"output_provenance": "stratagem_influenced", "may_witness": False}

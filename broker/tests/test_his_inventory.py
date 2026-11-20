@@ -21,7 +21,7 @@ blk = H.block(actions=["web_search", "make_art"], roots=(root,))
 check("the block carries organs, want steps and the way to ask for what is missing",
       "desktop control" in blk and "make_art, web_search" in blk and "the Forge will look into it" in blk, blk)
 check("no device is ever named here (he sees a device only while it is on)",
-      not any(d in H.block(roots=H.ROOTS).lower() for d in ("mission", "tenera", "ridge", "thruster")))
+      not any(d in H.block(roots=H.ROOTS).lower() for d in ("mission", "fizz", "ridge", "thruster")))
 check("the connected tools come from the catalog", "gmail" in H._connected_tools())
 src = open(os.path.join(REPO, "bin", "emoclaw_utils.py")).read()
 check("his want generator and step planner both read it", "from his_inventory import block as _have_block" in src

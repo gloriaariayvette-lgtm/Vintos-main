@@ -18,7 +18,7 @@ ns = {"json": json, "os": os, "time": time}
 exec(m.group(0), ns)
 f = os.path.join(mem, "device-state.json")
 now = 2_000_000_000.0
-def state(**t): json.dump({"tenera": t}, open(f, "w"))
+def state(**t): json.dump({"fizz": t}, open(f, "w"))
 state(intensity=6, pattern="soft", set_by="him", ts=now - 60)
 check("a loop he set a minute ago is running", ns["_his_loop_active"](now))
 state(intensity=6, pattern="soft", set_by="him", ts=now - 31 * 60)

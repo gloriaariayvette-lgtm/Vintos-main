@@ -81,7 +81,7 @@ check("nothing is written", [f for f in after if f not in before] == [], [f for 
 check("Argon's side is printed beneath", "gemini-4-argon" in out, out[-300:])
 check("there is no sample line any more", "kettle" not in open(os.path.join(REPO, "bin", "avatar_dryrun.py")).read())
 # --list and --turn: an earlier turn from his ledger (300 exchanges), his actual reply, nothing written
-json.dump([{"timestamp": "2026-10-10T22:01:00", "surface": "avatar", "gloria": "slower, please", "vintos": "Slower. There.\n\ntenera: wave  x  @4"},
+json.dump([{"timestamp": "2026-10-10T22:01:00", "surface": "avatar", "gloria": "slower, please", "vintos": "Slower. There.\n\nfizz: wave  x  @4"},
            {"timestamp": "2026-10-10T22:01:30", "surface": "avatar", "gloria": "slower, please", "vintos": "Slower. There."},
            {"timestamp": "2026-10-10T22:02:59", "surface": "voice", "gloria": "don't stop", "vintos": "I won't."},
            {"timestamp": "2026-10-10T22:03:00", "surface": "avatar", "gloria": "don't stop", "vintos": "I won't."},

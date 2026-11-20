@@ -62,7 +62,7 @@ check("a fresh process tries the remembered address first", T.endpoint() == PHON
 print("--- the device she has with her is seen ---")
 T._status_cache.update(t=0.0, map={})
 check("a toy the hub reports is present away from home", T.connected("ferri", strict=True))
-check("a toy that is not the Ferri is never looked for on her phone", not T.connected("tenera", strict=True))
+check("a toy that is not the Ferri is never looked for on her phone", not T.connected("fizz", strict=True))
 POSTS.clear()
 T._post({"command": "Function", "action": "Stop", "timeSec": 0, "toy": T.TOYS["ferri"], "apiVer": 1})
 check("a Ferri send goes to the address that answered", POSTS and all(u == PHONE for u in POSTS), POSTS)

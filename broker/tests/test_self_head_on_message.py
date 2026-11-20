@@ -63,7 +63,7 @@ open(os.path.join(MEM, "interaction-ledger.corrupt-20261002-000000.json"), "w").
 json.dump([{"timestamp": at(0, 30), "gloria": "q0 words", "vintos": "q0 reply", "turn_id": "Q0"}],
           open(os.path.join(MEM, "interaction-ledger.archive.json.20260930"), "w"))
 live = [{"timestamp": at(15, 0), "gloria": "l0 words", "vintos": "l0 reply", "turn_id": "L0", "provenance": OK},
-        {"timestamp": at(15, 5, 40), "gloria": "l1 words", "vintos": "l1 reply\n\ntenera: pulse", "turn_id": "L1"},
+        {"timestamp": at(15, 5, 40), "gloria": "l1 words", "vintos": "l1 reply\n\nfizz: pulse", "turn_id": "L1"},
         {"timestamp": at(15, 10, 40), "gloria": "l2 words", "vintos": "l2 secret", "turn_id": "L2", "provenance": TAC},
         {"timestamp": at(15, 15, 40), "gloria": "look", "vintos": "l3 reply", "turn_id": "L3"}]
 json.dump(live, open(SH.LEDGER, "w"))

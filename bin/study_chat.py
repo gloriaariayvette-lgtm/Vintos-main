@@ -90,7 +90,7 @@ READ_ONLY_ROOTS = ("shared",)
 # GREP them - his body's laws are his to know - but never EDIT them from this room; those go to Gloria by hand.
 SECRET_DENY = re.compile(r"(key|secret|token|credential|\.env|vintos\.env)", re.I)
 TOUCH_DENY = re.compile(r"(deploy|systemd|crontab|broker|atelier|device_patterns|device-patterns|somatic|thruster|"
-                        r"mission|tenera|ridge|consent|study_chat|strip_body_vocab)", re.I)
+                        r"mission|fizz|ridge|consent|study_chat|strip_body_vocab)", re.I)
 DENY_NAME = re.compile(SECRET_DENY.pattern[:-1] + "|" + TOUCH_DENY.pattern[1:], re.I)   # the union, for callers that meant "either"
 def _is_chokepoint(path):
     """The shared protected-paths list (scripts/protected_paths.py, ~/.vintos/protected-paths.json):

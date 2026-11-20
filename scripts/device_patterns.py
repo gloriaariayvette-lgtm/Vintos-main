@@ -277,9 +277,9 @@ def play(toy, pattern, args=None, dur=None, permit=None, effect_digest=None,
             except Exception:
                 _lease_left = None
             _peak = max(_lv)
-            _TENERA_MIN_IV = 600   # suction needs a slower step to actuate dramatically
-            if toy in _SYNC or toy == "tenera":
-                _iv = max(_iv, _TENERA_MIN_IV)
+            _SUCTION_MIN_IV = 600   # suction needs a slower step to actuate dramatically
+            if toy in _SYNC or toy == "fizz":
+                _iv = max(_iv, _SUCTION_MIN_IV)
             # Thruster only: he can pick a tempo per pattern. slow = half speed
             # (double the step interval), medium = as authored, fast = double speed.
             # A tempo word rides in args, like rotate low/mid/high; power is untouched.
@@ -363,7 +363,7 @@ _TOUCH = re.compile(r"\[TOUCH:\s*(\w+)\s+(\d+)(?:\s+\d+)?\s*\]", re.I)
 def _strip_tags(t):
     return _TOUCH.sub("", _DIR.sub("", t)).strip()
 
-KNOWN_TOYS = ("mission", "tenera", "ridge", "thruster", "ferri")
+KNOWN_TOYS = ("mission", "fizz", "ridge", "thruster", "ferri")
 LEGACY_PATTERNS = ("steady", "throb", "pulse", "build", "wave")
 STOP_WORDS = ("still", "stop", "off")
 

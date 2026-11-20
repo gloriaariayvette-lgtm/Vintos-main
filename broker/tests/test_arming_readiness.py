@@ -93,7 +93,7 @@ with Armed() as a:
     permit, mode, _ = EG.authorize(TC.effect_context("voice"), "mission", 12, kind="pattern")
     check("permit granted on an effect-only surface", mode == "send" and permit is not None)
     check("permit will not exceed its level", not permit.covers("mission", 18, "pattern"))
-    check("permit will not cross to another toy", not permit.covers("tenera", 12, "pattern"))
+    check("permit will not cross to another toy", not permit.covers("fizz", 12, "pattern"))
 
 print("\n%d/%d passed" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

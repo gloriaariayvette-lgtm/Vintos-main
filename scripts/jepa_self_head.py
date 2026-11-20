@@ -133,7 +133,7 @@ def _ev():
 
 
 # ---------------------------------------------------------------- his words, her words
-_DEVICE_LINE = re.compile(r"^(?:ridge|tenera|ferri):", re.I)
+_DEVICE_LINE = re.compile(r"^(?:ridge|fizz|ferri):", re.I)
 
 
 def his_words(text):
