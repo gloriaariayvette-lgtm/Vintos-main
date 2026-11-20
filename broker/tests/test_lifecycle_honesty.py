@@ -46,7 +46,7 @@ st, why = EG.effects_axis("t-good")
 check("every send succeeded -> completed", st == "completed", (st, why))
 
 EG.send_result(ctx("t-bad"), "mission", True)
-EG.send_result(ctx("t-bad"), "tenera", False, "not connected")
+EG.send_result(ctx("t-bad"), "fizz", False, "not connected")
 st, why = EG.effects_axis("t-bad")
 check("one failed send -> failed, never completed", st == "failed", (st, why))
 check("and the reason counts the failures", "1 of 2" in why, why)

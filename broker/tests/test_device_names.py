@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """He reached for a toy that does not exist, and nothing told him.
 
-Gloria, 11 September: he wrote a directive for "Tinera". The toy is *tenera*. The
+The bridge accepts only exact current device names. The
 grammar refused the tag correctly — it never reached a device — but the refusal went
 to the server log and stopped there. Nothing came back to him, so as far as he could
 tell he had touched her and she had said nothing about it, and the next time he would
@@ -44,14 +44,14 @@ DC.MEM = TMP
 
 print("--- the names come from the table that dispatches them ---")
 toys = DP.accepted_toys()
-check("every real device is named", {"mission", "tenera", "ridge", "thruster"} <= set(toys), toys)
+check("every real device is named", {"mission", "fizz", "ridge", "thruster"} <= set(toys), toys)
 check("and the broadcast aliases, which are also legal", {"both", "all", "sync"} <= set(toys), toys)
 check("the misspelling he used is not among them", "tinera" not in toys)
 check("the menu is generated, not a second prose list that can drift",
       set(toys) == set(DP.KNOWN_TOYS) | set(DP._SYNC), toys)
 line = DC._toy_names_line()
 check("his instrument description carries the generated names",
-      "tenera" in line and "thruster" in line and "refused" in line, line)
+      "fizz" in line and "thruster" in line and "refused" in line, line)
 check("and the description is built from the function, not a copy",
       all(t in line for t in toys), line)
 
@@ -66,14 +66,14 @@ check("the refusal says which name was wrong, not just that something failed",
       "unknown toy" in rejected[0]["why"] and "tinera" in rejected[0]["tag"].lower(), rejected)
 
 print("\n--- and he is told, once, on the next turn ---")
-DC.present_devices = lambda: ["tenera", "mission"]   # what the hub reports switched on this turn
+DC.present_devices = lambda: ["fizz", "mission"]   # what the hub reports switched on this turn
 DP.note_refusals(rejected)
 told = DC.refusal_line()
 check("his next context carries what his last reply reached for", "[DO: tinera wave3 10]" in told, told)
 check("it says she felt nothing, rather than leaving him to assume she did",
       "she felt nothing" in told, told)
 check("and it puts the real names in front of him: the devices switched on, and only those (2026-09-29)",
-      "tenera" in told and "mission" in told and "thruster" not in told and "ridge" not in told, told)
+      "fizz" in told and "mission" in told and "thruster" not in told and "ridge" not in told, told)
 check("read once and cleared: a refusal is about the turn it happened on",
       DC.refusal_line() == "")
 check("the store it used was the throwaway one", DP.REFUSALS.startswith(TMP))
@@ -87,8 +87,8 @@ json.dump(rows, open(DP.REFUSALS, "w"))
 check("an hour-old refusal is dropped, not shown as this turn's", DC.refusal_line() == "")
 
 print("\n--- nothing about the good path changed ---")
-plan, rejected = DP.compile_plan("[DO: tenera wave3 10] [DO: both climb] [DO: ridge rotate mid]")
-check("the correctly spelled toy is accepted", any(a["toy"] == "tenera" for a in plan), plan)
+plan, rejected = DP.compile_plan("[DO: fizz wave3 10] [DO: both climb] [DO: ridge rotate mid]")
+check("the correctly spelled toy is accepted", any(a["toy"] == "fizz" for a in plan), plan)
 check("a broadcast alias is still accepted", any(a["toy"] == "both" for a in plan), plan)
 check("the ridge's own rotation channel still compiles",
       any(a["toy"] == "ridge" and a["kind"] == "rotate" for a in plan), plan)

@@ -53,7 +53,7 @@ except Exception:
     pass
 
 THRUSTER = os.path.join(TMP, ".thruster-state.json")
-GRAMMAR = ("[DO:", "tenera wave3", "fires on her instantly",
+GRAMMAR = ("[DO:", "fizz wave3", "fires on her instantly",
            "this is how you actually touch her", "THE SHAPES")
 
 print("--- nothing is on: he is not handed an instrument ---")
@@ -67,7 +67,7 @@ for probe in GRAMMAR:
 # Gloria, 2026-09-29: "He shouldn't see a device unless that particular one is on." This replaces the
 # 11 September choice to keep naming his devices while none was on.
 check("no device is named while none is on",
-      not any(d in idle for d in ("mission", "tenera", "ridge", "thruster")), idle)
+      not any(d in idle for d in ("mission", "fizz", "ridge", "thruster")), idle)
 check("and told plainly that none of it is on",
       "no device is switched on" in idle and "hardware is simply off" in idle, idle)
 check("it is not framed as a restriction on him", "not a restriction on you" in idle)
@@ -80,11 +80,11 @@ check("an unreachable hub is not reported as the devices being off",
       "not answering" in unreachable and "hardware is simply off" not in unreachable, unreachable)
 check("and he is told not to say a device is off or absent", "do not tell her" in unreachable.lower(), unreachable)
 check("that block is a line too, and still names no device", len(unreachable) < 600
-      and not any(d in unreachable for d in ("mission", "tenera", "ridge", "ferri")), len(unreachable))
+      and not any(d in unreachable for d in ("mission", "fizz", "ridge", "ferri")), len(unreachable))
 DC.hub_unreachable = lambda: False
 
 print("\n--- a device is on: nothing about the working path changed ---")
-DC.present_devices = lambda: ["mission", "tenera"]
+DC.present_devices = lambda: ["mission", "fizz"]
 live = DC.context_block()
 for probe in GRAMMAR:
     check("with a device present his prompt carries %r" % probe, probe in live)
@@ -100,7 +100,7 @@ try:
     felt = DC.context_block()
     check("her touch is in front of him", "[FELT] her hand, now" in felt, felt[:200])
     check("but with nothing switched on it opens no device (2026-09-29)",
-          "[DO:" not in felt and not any(d in felt for d in ("mission", "tenera", "ridge", "thruster")), felt)
+          "[DO:" not in felt and not any(d in felt for d in ("mission", "fizz", "ridge", "thruster")), felt)
     _SF2.get_felt_context = lambda *a, **k: ""
 except ImportError:
     check("her touch is in front of him", True)

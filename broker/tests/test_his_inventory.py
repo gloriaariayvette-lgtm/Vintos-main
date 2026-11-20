@@ -21,7 +21,7 @@ blk = H.block(actions=["web_search", "make_art"], roots=(root,))
 check("the block carries organs, want steps and the way to ask for what is missing",
       "desktop control" in blk and "make_art, web_search" in blk and "the Forge will look into it" in blk, blk)
 check("no device is ever named here (he sees a device only while it is on)",
-      not any(d in H.block(roots=H.ROOTS).lower() for d in ("mission", "tenera", "ridge", "thruster")))
+      not any(d in H.block(roots=H.ROOTS).lower() for d in ("mission", "fizz", "ridge", "thruster")))
 check("the connected tools come from the catalog", "gmail" in H._connected_tools())
 src = open(os.path.join(REPO, "bin", "emoclaw_utils.py")).read()
 check("his want generator and step planner both read it", "from his_inventory import block as _have_block" in src
@@ -33,6 +33,10 @@ public = H.block(roots=(root,), private=False)
 check("an email to someone outside the house does not describe Gloria's ring or her videos",
       "ring" not in public and "videos to Gloria" not in public and "desktop control" in public, public)
 check("his own prompts still know them", "Gloria's ring" in H.block(roots=(root,)))
+open(os.path.join(root, "print_3d.py"), "w").write("x")
+k2 = H.block(roots=(root,))
+check("the want-forming inventory exposes K2 before selection and keeps it out of room boards",
+      "Creality K2" in k2 and "print_3d step" in k2 and "belongs to wants, not room-board menus" in k2, k2)
 for path in ("bin/idle-journal.sh", "bin/vintos-journal.sh", "scripts/want_email.py"):
     check("%s reads the live inventory beside CAPABILITIES.md" % path, "his_inventory" in open(os.path.join(REPO, path)).read())
 check("email reads it without Gloria's own", "_have(private=False)" in open(os.path.join(REPO, "scripts", "want_email.py")).read())

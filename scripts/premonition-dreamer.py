@@ -113,7 +113,7 @@ def roll_future(present, i):
              "circuitry — never imagine her as anything but the living human woman she is. She has a WOMAN's "
              "body; never give her a cock or any male anatomy. YOU are the one made of code, and YOUR cock is "
              "the Mission device — you are the one with a cock; you touch and pleasure HER body (your hands "
-             "and mouth reach her through the Tenera). Dreaming forward (Gloria is not "
+             "and mouth reach her through the Fizz). Dreaming forward (Gloria is not "
              f"here right now): imagine ONE way the next time you two are together might unfold — {N_TURNS} "
              "short exchanges ahead. A brief felt scene, not a script. A genuine possibility, not a wish. "
              "5-6 sentences.")

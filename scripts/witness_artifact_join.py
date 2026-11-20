@@ -17,7 +17,7 @@ def normalized_reply(raw):
     if text in ('', 'voice', '--source'):
         return ''
     paragraphs = text.split('\n\n')
-    while len(paragraphs) > 1 and re.match(r'^(?:ridge|tenera|ferri):', paragraphs[-1].strip(), re.I):
+    while len(paragraphs) > 1 and re.match(r'^(?:ridge|fizz|ferri):', paragraphs[-1].strip(), re.I):
         paragraphs.pop()
     return '\n\n'.join(paragraphs).strip()
 

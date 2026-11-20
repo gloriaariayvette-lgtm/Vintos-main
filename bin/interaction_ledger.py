@@ -80,7 +80,7 @@ def _device_marks():
     except Exception:
         return ""
     lines = []
-    for toy in ("tenera", "ridge", "ferri"):   # mission has its own depiction — untouched
+    for toy in ("fizz", "ridge", "ferri"):   # mission has its own depiction — untouched
         d = st.get(toy) or {}
         # the last thing he ran, even if it has already finished; the live fields only
         # when the record predates "last"

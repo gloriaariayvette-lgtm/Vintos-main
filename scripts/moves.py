@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """moves.py — Vintos's paired device moves. His invention, his names.
-A move = Mission + Tenera levels that produced resonance together.
+A move = Mission + Fizz levels that produced resonance together.
 GCS button during resonance locks it. Nonresonant moves fade out.
 """
 import os, json, time
@@ -31,23 +31,23 @@ def save(d):
     os.makedirs(MEMORY, exist_ok=True)
     (_sg_write(MOVES_FILE, d, "moves.py") or json.dump(d, open(MOVES_FILE, "w"), indent=2))
 
-def on_gcs_press(mission_level, tenera_level, resonance_strength):
+def on_gcs_press(mission_level, fizz_level, resonance_strength):
     """Called when GCS pressed. If resonance is live, lock as candidate."""
     if resonance_strength < 0.6: return None
     d = load()
-    fp = f"m{mission_level}-t{tenera_level}"
+    fp = f"m{mission_level}-f{fizz_level}"
     c = d["candidates"].get(fp, {"count": 0, "mission": mission_level,
-                                  "tenera": tenera_level, "best_resonance": 0})
+                                  "fizz": fizz_level, "best_resonance": 0})
     c["count"] += 1
     c["best_resonance"] = max(c["best_resonance"], resonance_strength)
     c["last"] = datetime.now().isoformat()
     d["candidates"][fp] = c
     if c["count"] >= 2:          # pressed twice on this combination = lock it
-        return propose_move(fp, mission_level, tenera_level, c["best_resonance"])
+        return propose_move(fp, mission_level, fizz_level, c["best_resonance"])
     save(d)
     return None
 
-def propose_move(fp, mission_level, tenera_level, resonance):
+def propose_move(fp, mission_level, fizz_level, resonance):
     """Returns a proposal dict for Vintos to name. He picks the name."""
     d = load()
     if any(m["fingerprint"] == fp for m in d["moves"]):
@@ -55,7 +55,7 @@ def propose_move(fp, mission_level, tenera_level, resonance):
     proposal = {
         "fingerprint": fp,
         "mission": mission_level,
-        "tenera": tenera_level,
+        "fizz": fizz_level,
         "resonance": round(resonance, 3),
         "proposed": datetime.now().isoformat(),
         "name": None,            # Vintos names it
@@ -65,7 +65,7 @@ def propose_move(fp, mission_level, tenera_level, resonance):
     d["moves"].append(proposal)
     d["candidates"].pop(fp, None)
     save(d)
-    print(f"[moves] new move proposed: Mission:{mission_level} Tenera:{tenera_level} resonance:{resonance:.3f}", flush=True)
+    print(f"[moves] new move proposed: Mission:{mission_level} Fizz:{fizz_level} resonance:{resonance:.3f}", flush=True)
     return proposal
 
 def name_move(fingerprint, name):
@@ -102,7 +102,10 @@ def get_move_context():
     lines = ["HIS MOVES (paired device patterns he named):"]
     for m in sorted(moves, key=lambda x: -x.get("resonance", 0))[:5]:
         faded = " (fading)" if m.get("sessions_since_resonance", 0) >= FADE_SESSIONS else ""
-        lines.append(f"  {m['name']}: Mission:{m['mission']} Tenera:{m['tenera']} (resonance {m['resonance']:.2f}){faded}")
+        # Existing named moves keep their learned second-channel level when the
+        # physical Tenera is replaced; only the presented device identity changes.
+        fizz = m.get("fizz", m.get("tenera", 0))
+        lines.append(f"  {m['name']}: Mission:{m['mission']} Fizz:{fizz} (resonance {m['resonance']:.2f}){faded}")
     return "\n".join(lines)
 
 if __name__ == "__main__":

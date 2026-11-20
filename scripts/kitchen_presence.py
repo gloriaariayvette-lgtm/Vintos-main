@@ -5,9 +5,10 @@ Gloria, 3 November: "let the coffee maker esp32 know when I pass within 1m. Mean
 The kitchen ESP32 is the Bluetooth proxy for the Nespresso's Fingerbot (home/esphome/kitchen-ble-proxy.yaml). It also
 hears her phone (by its IRK, as the bedroom board does) and publishes, ESPresense-style, to the Mosquitto relay on the Mac:
     espresense/devices/gloria-phone/kitchen   {"distance": 0.8, "rssi": -61, ...}
-This listens there. Her phone within max_distance_m (1.0) is her in the kitchen. It only knows and keeps: a line for
-him while she is there, and each visit, first heard to last heard, in memory/kitchen-visits.jsonl. It sends nothing,
-plays nothing, makes no coffee, moves no device.
+This listens there. Her phone within max_distance_m (1.0) is her in the kitchen. It keeps a line for him while she is
+there and each visit, first heard to last heard, in memory/kitchen-visits.jsonl. At the start of a visit it also gives
+the house chooser the kitchen-only actions: lights, a message, or one daily coffee offer. Coffee remains behind a
+Yes/No card on her phone and is never started merely by proximity.
 
     python3 kitchen_presence.py            # run (the vintos-kitchen-presence unit does this)
     python3 kitchen_presence.py status     # config, the visit now and the last one
@@ -121,6 +122,12 @@ def handle(topic, payload):
     got = parse(topic, payload)
     if got and observe(*got):
         print("in the kitchen: %s at %.2f m" % got, flush=True)
+        try:
+            import house_boards
+            row = house_boards.kitchen_arrival()
+            if row: print("kitchen choice: " + json.dumps(row, ensure_ascii=False)[:400], flush=True)
+        except Exception as e:
+            print("kitchen choice failed: %s" % str(e)[:160], flush=True)
 
 
 def session(sock, clock=time.time):

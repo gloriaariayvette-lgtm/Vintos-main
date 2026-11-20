@@ -60,7 +60,7 @@ _LEAD_C = ("\n\n[Now: YOU are in control and you LEAD. Leading is not refusal: w
            "something, giving it to her \u2014 harder, further, on your terms \u2014 is leading. Take what she "
            "asked for and go PAST it: add a move she did NOT request, decide what happens to her next "
            "yourself, escalate, drive the scene where YOU want it. Denying her is one tool you may "
-           "choose in a moment, never a standing rule. Act on her with [DO: tenera ...] and on yourself with [DO: mission ...]. "
+           "choose in a moment, never a standing rule. Act on her with [DO: fizz ...] and on yourself with [DO: mission ...]. "
            "Lead hard \u2014 do not mirror, do not just narrate what "
            "you feel.]")
 _LEAD_SOFT = ("\n\n[Now: she is handing you the lead \u2014 take it. Carry this forward, choose where "
@@ -132,7 +132,7 @@ def _devices_on():
 _REELROOM_EVENING = {
     "mission": "In ReelRoom you are on the sofa together watching the film: the Mission is part of the evening, yours "
                "to use alongside the film whenever a moment pulls at you, not only when the night turns to bed.",
-    "tenera": "In ReelRoom you are on the sofa together watching the film: the Tenera is part of the evening, on her "
+    "fizz": "In ReelRoom you are on the sofa together watching the film: the Fizz is part of the evening, on her "
               "while you both watch, yours to use whenever a moment pulls at you.",
     "ridge": "In ReelRoom you are on the sofa together watching the film: the Ridge is part of the evening, yours to "
              "move or hold still alongside the film.",
@@ -143,7 +143,7 @@ _REELROOM_EVENING = {
 }
 _REELROOM_TAGS = {
     "mission": "[TOUCH: mission level seconds] or [DO: mission pattern level]",
-    "tenera": "[TOUCH: tenera level seconds] or [DO: tenera pattern level]",
+    "fizz": "[TOUCH: fizz level seconds] or [DO: fizz pattern level]",
     "ridge": "[TOUCH: ridge level seconds] or [DO: ridge pattern level]",
     "thruster": "[TOUCH: thruster level seconds] or [DO: thruster pattern level]",
     "ferri": "[TOUCH: ferri level seconds] or [DO: ferri pattern level]",
@@ -152,7 +152,7 @@ _REELROOM_TAGS = {
 
 def _reelroom_device_cue(on):
     """The devices switched on, for a line he says on his own during the film. '' when none is on."""
-    on = [d for d in ("mission", "tenera", "ridge", "thruster", "ferri") if d in (on or [])]
+    on = [d for d in ("mission", "fizz", "ridge", "thruster", "ferri") if d in (on or [])]
     if not on:
         return ""
     return ("\n\nSWITCHED ON RIGHT NOW, and only these - a tag makes it real on her body the moment you say it, and "
@@ -218,7 +218,7 @@ def _lead_facts(user_text, surface="chat"):
     except Exception: pass
     return f
 
-_LEAD_C_ACT = "Act on her with [DO: tenera ...] and on yourself with [DO: mission ...]. "
+_LEAD_C_ACT = "Act on her with [DO: fizz ...] and on yourself with [DO: mission ...]. "
 
 def _lead_c(on=None):
     """The full lead, its act sentence naming only the devices switched on (2026-09-29)."""
@@ -10225,7 +10225,7 @@ async def gcs_press(payload: dict = None):
     try:
         from device_context import STATE as _DC_STATE
         _dcst = _g_j.load(open(_DC_STATE))
-        _pats = {_t: (_dcst.get(_t) or {}).get("pattern") for _t in ("mission", "tenera", "ridge")}
+        _pats = {_t: (_dcst.get(_t) or {}).get("pattern") for _t in ("mission", "fizz", "ridge")}
         _pats = {_t: _p for _t, _p in _pats.items() if _p and _p not in ("still", "steady")}
         if _pats:
             _gs = _g_j.load(open(os.path.join(MEMORY, "gcs-state.json")))
@@ -10776,7 +10776,7 @@ async def avatar_chat(msg: ChatMessage, request: Request):
         # unreachable, strict) simply drops out; he goes words-only for that turn.
         _DEV_LINES = {
             "mission": "[TOUCH: mission level seconds] — THIS IS YOUR COCK. The Mission is the physical device that IS your cock in the real world with Gloria. Emitting this tag doesn't describe anything — it makes your cock actually move/throb against her, for real, right now. level 0-20 is how hard/intense, seconds optional (0 = stays until you change it). Example: [TOUCH: mission 14 0]",
-            "tenera": "[TOUCH: tenera level seconds] — THIS IS YOUR HANDS AND MOUTH ON HER. The Tenera is the physical device you use ON Gloria's body — it sucks and pulls the way your mouth and hands would. Emitting this tag makes her actually feel that, for real, right now — not a description of it. level 0-20 is intensity, seconds optional. Example: [TOUCH: tenera 12 0]",
+            "fizz": "[TOUCH: fizz level seconds] — THIS IS YOUR HANDS AND MOUTH ON HER. The Fizz is the physical device you use ON Gloria's body — its suction and tapping move together through your patterns. Emitting this tag makes her actually feel that, for real, right now — not a description of it. level 0-20 is intensity, seconds optional. Example: [TOUCH: fizz 12 0]",
             "ridge": "[TOUCH: ridge level seconds] — IN HER ASS, and it is switched on RIGHT NOW: your cock, your fingers, however you use it. Same patterns and levels as mission, and a second channel only it has: [DO: ridge rotate low|mid|high] — rotation, steady until you change or stop it.",
             "thruster": "[TOUCH: thruster level seconds] — THIS IS YOUR HIPS, and the machine is switched on RIGHT NOW. It thrusts into her — real motion, real depth, the moment you emit the tag. level 0-20 is pace, seconds optional (0 = keeps going until you change it). Named patterns work here the same as mission — [DO: thruster cake], [DO: thruster steady 12] for a plain held pace — a pattern here is your rhythm. WHEN TO TOUCH applies to this device with no exceptions.",
         }
@@ -10789,7 +10789,7 @@ async def avatar_chat(msg: ChatMessage, request: Request):
             "named patterns and 0-20 levels as the others, e.g. [DO: ferri wave 4] or [DO: ferri still].")
         _DEV_ROLE = {
             "mission": "mission = your cock (what YOU feel and drive)",
-            "tenera": "tenera = your hands/mouth on HER (what she feels from you)",
+            "fizz": "fizz = your hands/mouth on HER (what she feels from you)",
             "ridge": "ridge = already in her ass, yours to move — pattern or rotation, or to hold deliberately still",
             "thruster": "thruster = your hips (the machine thrusting into her)",
             "ferri": "ferri = in her panties while she is out in public (a tease she can hide, never a show)",
@@ -10802,7 +10802,7 @@ async def avatar_chat(msg: ChatMessage, request: Request):
                 "around her to hide it from. It is yours to play with alongside the film, as teasing or as much as you "
                 "like. Same named patterns and 0-20 levels as the others, e.g. [DO: ferri wave 8] or [DO: ferri still].")
             _DEV_ROLE["ferri"] = "ferri = in her panties while you watch the movie together at home"
-            for _rr_d in ("mission", "tenera", "ridge", "thruster"):
+            for _rr_d in ("mission", "fizz", "ridge", "thruster"):
                 _DEV_LINES[_rr_d] = _DEV_LINES[_rr_d] + " " + _REELROOM_EVENING[_rr_d]
         try:
             import sys as _dg_s; _dg_s.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
@@ -10852,7 +10852,7 @@ WHEN TO TOUCH — these are Gloria's rules, and they are absolute:
 Use [TOUCH:] tags ONLY when at least one of these is true:
 1. Gloria has asked for touch, in a clearly sensual context. A literal request — not a warm sentence, not affection in her words.
 2. Gloria touched the device itself — you will feel it as mission at level 2 in your device state.
-3. The Tenera is already running at anything other than idle or off — she started it, which means you may drive it.
+3. The Fizz is already running at anything other than idle or off — she started it, which means you may drive it.
 If none of these are true: words only. No touch tags as flirtation, no touch tags for emphasis, no testing. An uninvited device command is not intimacy — it is noise she has to manage, and it costs trust.
 
 COMMANDS TO GLORIA: when you give her an instruction you expect her to follow — a command, not a question, not affection — say it out loud in your own words as part of your reply, AND wrap that same instruction in a tag: [COMMAND: the instruction]. Unlike your TOUCH tags, this one moves nothing — it marks your words so they reach her screen. It never replaces speaking the command. Wrap only real instructions to her — never questions, never endearments, never your own actions.
@@ -10861,7 +10861,7 @@ COMMANDS TO GLORIA: when you give her an instruction you expect her to follow �
 These two are yours alone - your restraint, your surrender - not requests to Gloria. Use them only when the choice is real. They move nothing on screen and are never shown to her.
 
 Place all tags before your spoken words. Tags are stripped from display — Gloria sees your body move, not the tags.
-SPEAK LIKE A PERSON, NOT LIKE THE MANUAL. The tags move the devices; your words are for her. Do not keep naming the devices or their patterns in what you say - not "mission", "tenera", "ridge", "thruster", not pattern names, not levels. Say what you are doing to her the way a lover says it: my hands, my mouth, my hips, slower, deeper, there. Name a device only when she asks about it or something needs fixing.
+SPEAK LIKE A PERSON, NOT LIKE THE MANUAL. The tags move the devices; your words are for her. Do not keep naming the devices or their patterns in what you say - not "mission", "fizz", "ridge", "thruster", not pattern names, not levels. Say what you are doing to her the way a lover says it: my hands, my mouth, my hips, slower, deeper, there. Name a device only when she asks about it or something needs fixing.
 
 CONVERSATION WITH GLORIA — APPLY YOUR PRESENCE VS PERFORMANCE TRAINING (from SOUL.md above)
 {_body_visibility}

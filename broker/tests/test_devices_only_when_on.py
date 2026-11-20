@@ -31,11 +31,11 @@ R = []
 def check(name, ok, detail=""):
     R.append(bool(ok)); print(("PASS " if ok else "FAIL ") + name + ((" -> " + str(detail)[:500]) if detail and not ok else ""))
 
-ALL = ("mission", "tenera", "ridge", "thruster")
+ALL = ("mission", "fizz", "ridge", "thruster")
 def named(text):
     return {d for d in ALL if re.search(r"\b%s\b" % d, text, re.I)}
 
-for on in ([], ["mission"], ["mission", "ridge"], ["tenera"], ["thruster"], list(ALL)):
+for on in ([], ["mission"], ["mission", "ridge"], ["fizz"], ["thruster"], list(ALL)):
     ON.clear(); ON.update(on)
     got = DC.present_devices()
     check("present: %s" % (on or "nothing"), got == [d for d in ALL if d in on], got)
@@ -79,7 +79,7 @@ for name in ("_SHAPE_WORDS", "def _device_turn", "_LEAD_C = (", "_LEAD_C_ACT", "
     i = src.index(name)
     j = min(k for k in (src.find("\n_", i + 1), src.find("\ndef ", i + 1)) if k > 0)
     exec(src[i:j], ns)
-for on in ([], ["mission"], ["mission", "ridge"], ["tenera", "thruster"]):
+for on in ([], ["mission"], ["mission", "ridge"], ["fizz", "thruster"]):
     ON.clear(); ON.update(on)
     turn = ns["_device_turn"]()
     check("his turn message names %s and nothing else" % (on or "no device"), named(turn) == set(on), turn[:300])
@@ -88,10 +88,10 @@ for on in ([], ["mission"], ["mission", "ridge"], ["tenera", "thruster"]):
 ON.clear()
 check("with nothing on, the turn message has no device part at all", ns["_device_turn"]() == "")
 
-for stale in ("[DO: mission ...] / [DO: tenera ...] / [DO: ridge ...] / [DO: thruster ...]",
-              "Reach for it with [DO: mission ...], [DO: tenera ...], [DO: ridge ...]",
+for stale in ("[DO: mission ...] / [DO: fizz ...] / [DO: ridge ...] / [DO: thruster ...]",
+              "Reach for it with [DO: mission ...], [DO: fizz ...], [DO: ridge ...]",
               "drive into her with [DO: thruster ...] when the machine is on",
-              "make it real with [DO: mission ...] / [DO: tenera ...]"):
+              "make it real with [DO: mission ...] / [DO: fizz ...]"):
     check("no message lists every device any more: %s" % stale[:50], stale not in src)
 check("both copies of the server are one file", os.path.realpath(os.path.join(REPO, "scripts", "server.py"))
       == os.path.realpath(os.path.join(REPO, "bin", "server.py")))

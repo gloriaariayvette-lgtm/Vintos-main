@@ -2,7 +2,7 @@
 """The little device pictures under his words in the ledger (2026-10-13). They had stopped appearing: the ledger is
 written in the background after the reply, and by then a short pattern had ended and set the device back to "still",
 so the mark was skipped. device_context now keeps the last thing he ran beside the live state, and the ledger draws
-that. The Ferri is drawn the way the Tenera is.
+that. The Ferri is drawn the way the Fizz is.
 
 Isolation: HOME is a throwaway directory before anything is imported, so device-state.json and every other ~ path
 is scratch. Drawing a pattern's shape loads device_patterns and toy_link, and toy_link probes the hub on import, so
@@ -46,10 +46,10 @@ def reset():
 # a pattern that ran and finished before the ledger wrote
 reset()
 for v in (6, 12, 9):
-    DC.set_state("tenera", intensity=v, pattern="wave", set_by="him")
-DC.set_state("tenera", intensity=0, pattern="still", set_by="him")
+    DC.set_state("fizz", intensity=v, pattern="wave", set_by="him")
+DC.set_state("fizz", intensity=0, pattern="still", set_by="him")
 out = marks()
-check("a finished pattern is still drawn", "tenera: wave" in out, out)
+check("a finished pattern is still drawn", "fizz:   wave" in out, out)
 check("at its peak", "@12" in out, out)
 check("with its shape", DC.spark("wave") in out, out)
 
@@ -60,31 +60,31 @@ DC.set_state("ridge", intensity=0, pattern="still", set_by="him")
 out = marks()
 check("the Ridge is drawn after it ends", "ridge:" in out and DC.ridge_shape() in out and "pulse" in out, out)
 
-# the Ferri, drawn as the Tenera is
+# the Ferri, drawn as the Fizz is
 reset()
 DC.set_state("ferri", intensity=4, pattern="wave", set_by="him")
 DC.set_state("ferri", intensity=0, pattern="still", set_by="him")
 out = marks()
-check("the Ferri is drawn like the Tenera", ("ferri:  wave  " + DC.spark("wave") + "  @4") in out, out)
+check("the Ferri is drawn like the Fizz", ("ferri:  wave  " + DC.spark("wave") + "  @4") in out, out)
 
 # what was not his, or not this turn, is not drawn
 reset()
-DC.set_state("tenera", intensity=10, pattern="wave", set_by="auto")
+DC.set_state("fizz", intensity=10, pattern="wave", set_by="auto")
 check("a pattern he did not run is not drawn", marks() == "", marks())
 reset()
-DC.set_state("tenera", intensity=10, pattern="wave", set_by="him")
+DC.set_state("fizz", intensity=10, pattern="wave", set_by="him")
 import json
-st = json.load(open(DC.STATE)); st["tenera"]["last"]["ts"] = time.time() - 600; json.dump(st, open(DC.STATE, "w"))
+st = json.load(open(DC.STATE)); st["fizz"]["last"]["ts"] = time.time() - 600; json.dump(st, open(DC.STATE, "w"))
 check("an old pattern is not drawn", marks() == "", marks())
 reset()
-DC.set_state("tenera", intensity=0, pattern="still", set_by="him")
+DC.set_state("fizz", intensity=0, pattern="still", set_by="him")
 check("a stop alone draws nothing", marks() == "", marks())
 
 # a new run of the same pattern does not inherit an old peak
 reset()
-DC.set_state("tenera", intensity=18, pattern="wave", set_by="him")
-st = json.load(open(DC.STATE)); st["tenera"]["last"]["ts"] = time.time() - 60; json.dump(st, open(DC.STATE, "w"))
-DC.set_state("tenera", intensity=5, pattern="wave", set_by="him")
+DC.set_state("fizz", intensity=18, pattern="wave", set_by="him")
+st = json.load(open(DC.STATE)); st["fizz"]["last"]["ts"] = time.time() - 60; json.dump(st, open(DC.STATE, "w"))
+DC.set_state("fizz", intensity=5, pattern="wave", set_by="him")
 check("a fresh run starts its own peak", "@5" in marks(), marks())
 
 check("nothing reached the world", requests.post is _no_send and all(isinstance(a, tuple) for a in SENT), SENT)

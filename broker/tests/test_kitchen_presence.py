@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """She is in the kitchen when her phone is within 1 m of the coffee maker's ESP32 (3 November). Scratch HOME; every
-socket is refused; nothing is sent. The relay only knows and keeps: a line for him and each visit."""
+socket is refused. The relay keeps the world-map visit and starts one house choice only when a visit begins."""
 import json, os, socket, sys, tempfile
 HERE = os.path.dirname(os.path.abspath(__file__)); REPO = os.path.dirname(os.path.dirname(HERE))
 HOME = tempfile.mkdtemp(prefix="kitchen-"); os.environ["HOME"] = HOME
@@ -49,6 +49,19 @@ json.dump({"max_distance_m": 2.0}, open(K.CONFIG, "w"))
 check("the distance can be changed in her config", K.observe("gloria-phone", 1.6, now=T + 310 + 3600 + 260) is False
       and json.load(open(K.STATE))["last_here_distance"] == 1.6)
 check("what the board heard is kept for calibrating", json.load(open(K.SEEN))["gloria-phone"]["count"] >= 10)
+
+# ---- a new visit reaches the chooser; mere proximity still performs no device action itself -------------------------
+calls=[]
+fake=type('HouseBoards',(),{'kitchen_arrival':staticmethod(lambda:calls.append('arrival') or {'kind':'moment'})})
+old=sys.modules.get('house_boards');sys.modules['house_boards']=fake
+try:
+    os.remove(K.STATE)
+    K.handle("espresense/devices/gloria-phone/kitchen", b'{"distance": 0.6}')
+    K.handle("espresense/devices/gloria-phone/kitchen", b'{"distance": 0.7}')
+finally:
+    if old is None:sys.modules.pop('house_boards',None)
+    else:sys.modules['house_boards']=old
+check("only a newly begun kitchen visit opens the house chooser", calls == ['arrival'], calls)
 
 # ---- he is told through the world block ------------------------------------------------------------------------------
 import time, world_model

@@ -12,7 +12,7 @@ D._authorize = lambda context, toy, level, kind, pattern="", args=None: (True, "
 calls = []
 D.toy_link.send = lambda toy, level, seconds=0, **k: (calls.append(("send", toy, level)) or True)
 D.toy_link.rotate = lambda toy, level, seconds=0, **k: (calls.append(("rotate", toy, level)) or True)
-D.toy_link.TOYS = {"mission": "a", "tenera": "b", "ridge": "c"}
+D.toy_link.TOYS = {"mission": "a", "fizz": "b", "ridge": "c"}
 R = []
 def check(n, ok, d=""):
     R.append(bool(ok)); print(("PASS " if ok else "FAIL ") + n + (("  ->  " + str(d)[:100]) if d else ""))
@@ -35,12 +35,12 @@ calls.clear(); D.fire_his_intent("[DO: ridge rotate 0]")
 check("P03-02 [DO: ridge rotate 0] -> exactly one rotate('ridge', 0)", calls == [("rotate", "ridge", 0)], calls)
 
 # P03-03: broadcast stop cancels the three local loops and sends one zero per concrete device
-evs = {t: threading.Event() for t in ("mission", "tenera", "ridge", "thruster")}
+evs = {t: threading.Event() for t in ("mission", "fizz", "ridge", "thruster")}
 D._threads.update(evs)
 calls.clear(); D.fire_his_intent("[DO: all stop]")
 check("P03-03 all local stop events set", all(e.is_set() for e in evs.values()))
 targets = sorted(c[1] for c in calls if c[0] == "send" and c[2] == 0)
-check("P03-03 one zero send per concrete target, alias never a device key", targets == ["mission", "ridge", "tenera", "thruster"] and "all" not in targets, calls)
+check("P03-03 one zero send per concrete target, alias never a device key", targets == ["fizz", "mission", "ridge", "thruster"] and "all" not in targets, calls)
 
 # P02-04: a local thread start is recorded as started, no transport claim
 def started_play(toy, pattern, args=None, dur=None, permit=None, effect_digest=None, outcome=None):
