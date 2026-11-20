@@ -79,12 +79,12 @@ class Tests(unittest.TestCase):
   _,shower=B.prompt('shower','house-steam',self.now,B.DEFAULTS,asks=[],want='',
    st={'boards':{},'shower':{},'reminded':[]},context=shower_ctx)
   self.assertIn('SAY:',shower);self.assertIn('SONGS:',shower);self.assertNotIn('LIGHTS:',shower)
- def test_spent_reminder_is_not_offered_again(self):
+ def test_board_prompts_do_not_offer_waiting_question_reminders(self):
   st={'boards':{},'shower':{},'reminded':[{'id':'Q-1234abcd','day':'1970-01-12'}]}
   ctx={'catalog':[],'conversation':[],'outcomes':[],'action_candidates':[],'capability_options':[],'desktop_approvals':[]}
   _,user=B.prompt('sofa','house-press-mic',self.now,B.DEFAULTS,
    asks=[('Q-1234abcd','old question'),('Q-9999aaaa','fresh question')],want='',st=st,context=ctx)
-  self.assertNotIn('Q-1234abcd',user);self.assertIn('Q-9999aaaa',user)
+  self.assertNotIn('Q-1234abcd',user);self.assertNotIn('Q-9999aaaa',user);self.assertNotIn('REMIND:',user)
  def test_kitchen_offers_lights_message_and_one_daily_phone_gated_coffee(self):
   ctx={'catalog':[],'conversation':[],'outcomes':[],'action_candidates':[],
        'capability_options':[],'desktop_approvals':[]}

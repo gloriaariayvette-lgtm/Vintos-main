@@ -10,12 +10,11 @@ Each reports on the Mosquitto relay on the Mac: vintos/board/<board>/{near,event
 
 The moments, and what he may do in each (Gloria, 8 November):
     shower        the steam starts            SAY on the shower speaker (his own voice), SONGS (a few of his songs)
-    sofa          seated a few minutes, quiet LIGHTS in the living room, TO GLORIA (an outreach), TV, REMIND
-    office        seated a few minutes        ECHO, LIGHTS, BUZZ, DESKTOP, PAPER, REMIND
+    sofa          seated a few minutes, quiet LIGHTS in the living room, TO GLORIA (an outreach), TV
+    office        seated a few minutes        ECHO, LIGHTS, BUZZ, DESKTOP, PAPER
     knock         she knocks twice or thrice  the office menu, at once: she started it
     kitchen       her phone newly within 1 m  LIGHTS, TO GLORIA, or a once-daily COFFEE card on her phone
-REMIND puts one of his questions that is still waiting on her back on her phone ("a time to bother me by reminding me
-about a Want he has waiting on me"). DESKTOP asks her, on her phone, to lend him the desktop for one task; her Yes
+DESKTOP asks her, on her phone, to lend him the desktop for one task; her Yes
 starts it (desktop_control), her No or silence starts nothing. COFFEE likewise waits for her Yes before the Fingerbot.
 Lights change colour only (vintos-home, 8 November).
 
@@ -65,9 +64,9 @@ BOARDS = {"house-steam": {"room": "bathroom", "place": "by the shower"},
           "house-kitchen": {"room": "kitchen", "place": "by the coffee maker"}}
 MENUS = {
     "shower": ("SAY", "SONGS"),
-    "sofa": ("LIGHTS", "TO GLORIA", "TV", "REMIND"),
-    "office": ("ECHO", "LIGHTS", "BUZZ", "DESKTOP", "PAPER", "REMIND"),
-    "knock": ("ECHO", "LIGHTS", "BUZZ", "DESKTOP", "PAPER", "REMIND"),
+    "sofa": ("LIGHTS", "TO GLORIA", "TV"),
+    "office": ("ECHO", "LIGHTS", "BUZZ", "DESKTOP", "PAPER"),
+    "knock": ("ECHO", "LIGHTS", "BUZZ", "DESKTOP", "PAPER"),
     "kitchen": ("LIGHTS", "TO GLORIA", "COFFEE"),
 }
 HOW = {

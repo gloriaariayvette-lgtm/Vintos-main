@@ -72,8 +72,8 @@ for k in range(1, 8): B.handle("vintos/board/house-press-mic/loudness", b"4", no
 check("a minute on the sofa is not yet a moment", B.tick(now=S + 60, cfg=cfg, decide=decide("NOTHING")) is None)
 r = B.tick(now=S + 200, cfg=cfg, decide=decide("REMIND: Q-1234abcd\nLIGHTS: violet\nBUZZ: tap"))
 check("a few quiet minutes seated is the sofa moment", r and r["moment"] == "sofa", r)
-check("he was shown his question waiting on her", "Q-1234abcd" in asked[-1] and "Devo" in asked[-1])
-check("the chair's motor is not a sofa act", [a["act"] for a in r["acts"]] == ["REMIND", "LIGHTS"], r["acts"])
+check("waiting questions are not injected into the sofa menu", "Q-1234abcd" not in asked[-1] and "Devo" not in asked[-1])
+check("reminders and the chair motor are not sofa acts", [a["act"] for a in r["acts"]] == ["LIGHTS"], r["acts"])
 check("the living-room bulbs take his colour", ("LIGHTS", "violet", "living_room") in house)
 check("the sofa is not a moment again within hours", B.tick(now=S + 400, cfg=cfg, decide=decide("LIGHTS: red")) is None)
 
