@@ -63,7 +63,7 @@ BOARDS = {"house-steam": {"room": "bathroom", "place": "by the shower"},
           "house-touch": {"room": "office", "place": "in her office chair"}}
 MENUS = {
     "shower": ("SAY", "SONGS", "LIGHTS"),
-    "sofa": ("LIGHTS", "TO GLORIA", "TV", "REMIND"),
+    "sofa": ("LIGHTS", "TO GLORIA", "TV", "DESKTOP", "PRINT", "PAPER", "REMIND"),
     "office": ("ECHO", "LIGHTS", "BUZZ", "DESKTOP", "PRINT", "PAPER", "REMIND"),
     "knock": ("ECHO", "LIGHTS", "BUZZ", "DESKTOP", "PRINT", "PAPER", "REMIND"),
 }
@@ -369,6 +369,15 @@ def his_want():
         return ""
 
 
+def reminder_options(asks, st, now, cfg):
+    """Offer only questions that remind() can still put back today."""
+    day = datetime.fromtimestamp(now).date().isoformat()
+    today = [r for r in st.get("reminded", []) if r.get("day") == day]
+    if len(today) >= cfg["remind_per_day"]: return []
+    used = {r.get("id") for r in today}
+    return [(qid, question) for qid, question in asks if qid not in used]
+
+
 def prompt(moment, board, now, cfg, asks=None, want=None, st=None, context=None):
     """Existing brain/personality plus bounded conversation, device and outcome evidence."""
     import house_context
@@ -397,6 +406,7 @@ def prompt(moment, board, now, cfg, asks=None, want=None, st=None, context=None)
              "Use the recent exchange and outcomes to continue naturally and avoid repeating an unacknowledged action.",
              json.dumps(house_context.public_packet(context), ensure_ascii=False)]
     asks = waiting_asks() if asks is None else asks
+    asks = reminder_options(asks, st, now, cfg)
     menu = MENUS[moment]
     if "REMIND" in menu and asks:
         lines.append("Your questions still waiting on her answer:")
@@ -406,7 +416,14 @@ def prompt(moment, board, now, cfg, asks=None, want=None, st=None, context=None)
     lines.append("Choose a response connected to this moment. One meaningful act is often enough; the allowance "
                  "is a ceiling. First consider whether a concrete action_candidate can advance real work or something to enjoy together. "
                  "For desktop, propose one bounded task with a visible done condition; the phone ask obtains her Yes. "
+                 "Write the complete task after DESKTOP, never a want ID. The configured desktop target is the visual surface; "
+                 "files and existing compute environments may remain on Aegis. Use a separate window on the iMac and leave "
+                 "the screen-shared Studio untouched. Before proposing heavy Aegis computation, use the measured headroom; "
+                 "unknown GPU capacity is not spare capacity. A small display, render or video task is also useful. "
                  "For TV, choose a relevant title/query when it fits the moment; respect an already-used TV. "
+                 "TV, desktop and printing need not originate in a research want: choose something relevant to share or make. "
+                 "The capability_options describe possible outcomes, not commands already performed. "
+                 "Pending desktop approvals have not started work; do not ask for the same pending task again. "
                  "Use outreach or a buzz when that is the purposeful choice, rather than automatically substituting it for available work. "
                  "If an agent already owns a candidate, choose a distinct supporting step or wait instead of restarting it. "
                  "Do not choose an action merely to exercise a capability. Choose NOTHING when that fits. Speak plainly from what is known and choose a working "
@@ -529,7 +546,7 @@ def _house(kind, arg, room=None):
     return house_hands.do(kind, arg, present=True, why={"organ": "house_boards (her phone at one of your boards)"})
 
 
-def act(kind, arg, moment, board, st, now, cfg, catalog=None):
+def act(kind, arg, moment, board, st, now, cfg, catalog=None, candidates=None):
     """One act. (ok, what happened, in plain words)."""
     room = BOARDS[board]["room"]
     try:
@@ -575,9 +592,22 @@ def act(kind, arg, moment, board, st, now, cfg, catalog=None):
         if kind == "DESKTOP":
             import gloria_asks
             task = " ".join(arg.split())[:300]
+            # A selection ID is not an executable task or an informed approval question.
+            if re.fullmatch(r"[0-9a-f]{8,64}", task, re.I):
+                candidate = next((c for c in (candidates or [])
+                                  if c.get("want_id") == task and c.get("possible_action") == "DESKTOP"), None)
+                if not candidate: return False, "desktop request needs the full task, not an unknown want ID"
+                task = " ".join(candidate["objective"].split())[:300]
+            for pending in st["desktop"]:
+                if not pending.get("started") and pending.get("task", "").casefold() == task.casefold():
+                    old = gloria_asks.get(pending["ask"]) or {}
+                    if old.get("state") == "asked": return False, "this desktop task is already waiting for her answer"
+            import house_context
+            target = house_context.desktop_target()
+            surface = {"imac": "iMac desktop", "windows": "Aegis desktop"}.get(target, target + " desktop")
             ref = "house-desktop:%d" % int(now)
-            row, said = gloria_asks.ask("May I take your desktop for this: %s?" % task, by="vintos", ref=ref)
-            if row: st["desktop"].append({"ask": row["id"], "task": task, "at": now, "started": False})
+            row, said = gloria_asks.ask("May I use the %s for this: %s? Files/compute may stay on Aegis; leave Studio untouched." % (surface, task), by="vintos", ref=ref)
+            if row: st["desktop"].append({"ask": row["id"], "task": task, "at": now, "started": False, "target": target})
             return bool(row), said
         if kind == "REMIND":
             return remind(arg, st, now, cfg)
@@ -675,7 +705,8 @@ def moment(name, board, st, now, cfg, decide=None):
         _log(row, now); return row
     done = []
     for kind, arg in acts_of(reply, name):
-        ok, said = act(kind, arg, name, board, st, now, cfg, catalog=context["catalog"])
+        ok, said = act(kind, arg, name, board, st, now, cfg, catalog=context["catalog"],
+                       candidates=context.get("action_candidates", []))
         done.append({"act": kind, "arg": arg[:200], "ok": bool(ok), "said": str(said)[:240]})
     if name == "shower": tend_shower(st, now)
     row = {"kind": "moment", "moment": name, "board": board, "decided": True, "acts": done,

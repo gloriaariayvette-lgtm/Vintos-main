@@ -152,7 +152,54 @@ def select_songs(arg, catalog, maximum):
     return [by_id[x] for x in ids]
 
 
-def _probe(board):
+def desktop_target():
+    return read_json(MEM/'desktop-target.json', {}).get('target', 'windows')
+
+
+def compute_headroom():
+    """Aegis metadata only: no workload launch, model query, or model eviction."""
+    out = {'host': 'Aegis', 'gpu_capacity': 'unknown'}
+    try:
+        out['load_1m'] = os.getloadavg()[0]
+        out['logical_cpus'] = os.cpu_count()
+        values = dict(line.split(':', 1) for line in Path('/proc/meminfo').read_text().splitlines())
+        out['available_memory_mib'] = int(values['MemAvailable'].split()[0]) // 1024
+        out['total_memory_mib'] = int(values['MemTotal'].split()[0]) // 1024
+    except (OSError, ValueError, KeyError): out['status'] = 'unavailable'
+    return out
+
+
+def capability_options(board):
+    """Concrete uses of the existing hands, independent of research-want keywords."""
+    if board not in ('house-touch', 'house-press-mic'): return []
+    options = [
+        {'action': 'DESKTOP', 'outcome': 'Show a relevant video, document or existing render in a separate window on the configured desktop. Name the task and visible done condition.',
+         'approval': 'Her explicit Yes is required. Aegis may supply files/compute; do not disturb Studio.'},
+        {'action': 'PAPER', 'outcome': 'Offer a page of your words or an existing work/image on the Epson.',
+         'approval': 'Her Yes for this job, paper and ink; no print has started.'},
+        {'action': 'PRINT', 'outcome': 'Propose a useful or meaningful object for the Creality K2, using her existing slicing/material settings.',
+         'approval': 'Her Yes for this job and filament; no build or print is proven by a proposal.'}]
+    if board == 'house-press-mic':
+        options.insert(0, {'action': 'TV', 'outcome': 'Choose a specific video or search query to share on the living-room TV.',
+                           'constraint': 'Never interrupt something she is watching; the existing adapter checks ownership again.'})
+    return options
+
+
+def desktop_approvals(st):
+    import gloria_asks
+    rows = []
+    for d in st.get('desktop', []):
+        if d.get('started'): continue
+        q = gloria_asks.get(d.get('ask')) or {}
+        if q.get('state') not in ('asked', 'answered'): continue
+        if q.get('state') == 'answered' and str(q.get('answer', '')).lower() != 'yes': continue
+        rows.append({'task': short(d.get('task'), 300), 'target': d.get('target', desktop_target()),
+                     'approval': 'waiting for her answer' if q.get('state') == 'asked' else 'yes received; launch pending',
+                     'execution': d.get('status', 'not started')})
+    return rows[-5:]
+
+
+def _probe(board, only=None):
     """Executed in a killable child. All operations are read-only metadata queries."""
     import requests
     from concurrent.futures import ThreadPoolExecutor
@@ -186,11 +233,13 @@ def _probe(board):
         return {'echo':{'state':short(states.get(ent,{}).get('state'),40),
                         'configured':bool((cfg.get('entities') or {}).get('echo_speak'))}}
     def desktop():
-        target=read_json(MEM/'desktop-target.json',{}).get('target','windows')
+        target=desktop_target()
         import desktop_agent
         st=desktop_agent.read_state()
         out={'target':target,'status':short(st.get('status'),40),
-             'last_result':short(st.get('reason'),160),'requires_user_approval':True}
+             'last_result':short(st.get('reason'),160),'requires_user_approval':True,
+             'files_and_compute':'Aegis; accessible through the approved remote routes',
+             'aegis_headroom':compute_headroom()}
         if target=='imac':
             # Permission metadata only; no screenshot, launch or input action.
             cmd=[sys.executable,'-c','import json,desktop_mac; print(json.dumps(desktop_mac.rpc("permissions")["permissions"]))']
@@ -204,25 +253,41 @@ def _probe(board):
         subprocess.run(['adb','connect',home.TV_ADB],capture_output=True,timeout=2)
         rc,power=home._adb('dumpsys','power',timeout=2)
         if rc:return {'power':'unknown','reachable':False}
-        return {'power':'on' if 'mWakefulness=Awake' in power else ('off' if 'mWakefulness=Asleep' in power else 'unknown'),'reachable':True}
-    def printers():
-        # Each status reader is isolated from printing, uploads and motion.
-        code = ('import json,paper_print,k2_printer; '
-                'p=paper_print.status(); k=k2_printer.status(); '
-                'print(json.dumps({"paper":{x:p.get(x) for x in ("reachable","accepting","state","reasons")},'
-                '"k2":{x:k.get(x) for x in ("reachable","state","cfs_connected")}}))')
+        import house_hands
+        state=home.tv_status()
+        # The actual adapter retains the final in-use check when an action is attempted.
+        in_use=state.get('power') == 'on' and state.get('source') not in (None, 'unknown')
+        reason='She is watching something you did not put on' if in_use and not house_hands._he_is_driving() else ''
+        return {'power':state.get('power', 'unknown'), 'reachable':True,
+                'app':short(state.get('app'),100), 'takeover_blocked':bool(reason),
+                'limitation':short(reason,180)}
+    def printer(module, fields):
+        # Each printer is independent: a sleeping Epson cannot hide a responding K2.
+        code = ('import json,%s; s=%s.status(); print(json.dumps({x:s.get(x) for x in %r}))'
+                % (module,module,fields))
         r = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True,
                            cwd=Path(__file__).parent, timeout=7)
         if r.returncode: return {'status':'unavailable'}
         return json.loads(r.stdout)
     probes={'lights':lighting,'ha':ha}
-    if board == 'house-touch': probes['printers'] = printers
-    probes.update({'desktop':desktop} if board=='house-touch' else ({'tv':tv} if board=='house-press-mic' else {}))
-    with ThreadPoolExecutor(max_workers=4) as ex:
-        futures={k:ex.submit(f) for k,f in probes.items()};out={}
+    if board in ('house-touch', 'house-press-mic'):
+        probes.update(paper=lambda:printer('paper_print',('reachable','accepting','state','reasons')),
+                      k2=lambda:printer('k2_printer',('reachable','state','cfs_connected')), desktop=desktop)
+    if board=='house-press-mic': probes['tv']=tv
+    if only is not None: return probes[only]()
+    def bounded(key):
+        # A single hanging printer or ADB query must not erase every other device's readiness.
+        r=subprocess.run([sys.executable,str(Path(__file__).resolve()),'--probe-one',board,key],
+                         capture_output=True,text=True,timeout=8)
+        if r.returncode: return {'status':'unavailable'}
+        return json.loads(r.stdout)
+    with ThreadPoolExecutor(max_workers=len(probes)) as ex:
+        futures={k:ex.submit(bounded,k) for k in probes};out={}
         for k,f in futures.items():
             try:out[k]=f.result()
             except Exception as e:out[k]={'status':'unavailable','error_type':type(e).__name__}
+    if board in ('house-touch', 'house-press-mic'):
+        out['printers']={k:out.pop(k) for k in ('paper','k2')}
     return out
 
 
@@ -253,7 +318,7 @@ def snapshot(board,st,now,cfg,probe=True):
     conversation=recent_conversation(now)
     try:catalog=song_catalog(conversation) if board=='house-steam' else []
     except Exception:catalog=[]
-    pending=[d for d in st.get('desktop',[]) if not d.get('started')]
+    pending=desktop_approvals(st)
     sh=st.get('shower',{})
     try:
         import room_proximity
@@ -266,7 +331,8 @@ def snapshot(board,st,now,cfg,probe=True):
         import house_hands
         limit=house_hands.PER_DAY.get('house')
     except Exception:limit=None
-    return {'action_candidates':action_candidates(board, conversation), 'conversation':conversation,'readiness':readiness(board,now) if probe else {},
+    return {'action_candidates':action_candidates(board, conversation), 'capability_options':capability_options(board),
+            'desktop_approvals':pending, 'conversation':conversation,'readiness':readiness(board,now) if probe else {},
             'outcomes':previous_outcomes(now),'catalog':catalog,
             'state':{'nearest_room':nearest,'pending_desktop_approvals':len(pending),
                      'shower_active':sh.get('on') is True,'player':sh.get('player','unknown'),
@@ -297,14 +363,18 @@ def receipt(ctx):
 
 if __name__=='__main__' and len(sys.argv)==3 and sys.argv[1]=='--probe':
     print(json.dumps(_probe(sys.argv[2])))
+elif __name__=='__main__' and len(sys.argv)==4 and sys.argv[1]=='--probe-one':
+    print(json.dumps(_probe(sys.argv[2],sys.argv[3])))
 
 
 def action_candidates(board, conversation):
     """Ground optional house acts in current work, without granting authority."""
     rows = read_json(MEM/'current-wants.json', [])
     if not isinstance(rows, list): return []
-    patterns = {'DESKTOP': r'\b(browser|desktop|computer|document|spreadsheet|chart|file|website|search|compare|read|write)\b',
-                'TV': r'\b(watch|video|film|movie|youtube|documentary|television)\b'}
+    patterns = {'DESKTOP': r'\b(browser|desktop|computer|document|spreadsheet|chart|file|website|search|compare|read|write|render)\b',
+                'TV': r'\b(watch|video|film|movie|youtube|documentary|television)\b',
+                'PAPER': r'\b(paper|poster|printout|postcard|photo|painting|poem)\b',
+                'PRINT': r'\b(3d|stl|cad|filament|prototype|bracket|enclosure)\b'}
     import re
     out = []
     rows = sorted([w for w in rows if isinstance(w, dict)],
@@ -325,7 +395,7 @@ def action_candidates(board, conversation):
                 or w.get('board')): continue
         text = str(w.get('want') or '')
         for act, pattern in patterns.items():
-            if (act == 'DESKTOP' and board != 'house-touch') or (act == 'TV' and board != 'house-press-mic'): continue
+            if board not in ('house-touch', 'house-press-mic') or (act == 'TV' and board != 'house-press-mic'): continue
             if re.search(pattern, text, re.I):
                 out.append({'want_id':w.get('id'), 'objective':short(text,600),
                             'possible_action':act, 'source':_canon(w.get('source')) if w.get('source') else w.get('source'),

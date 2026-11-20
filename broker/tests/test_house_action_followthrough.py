@@ -48,7 +48,7 @@ class Tests(unittest.TestCase):
  def test_action_candidates_are_live_grounded_and_room_specific(self):
   self.write('current-wants.json',[{'id':'dead','want':'watch a film','dismissed':True},{'id':'web','want':'compare the document on the website','source':'email'},{'id':'film','want':'watch a documentary','source':'idle-journal'}])
   office=H.action_candidates('house-touch',[]);sofa=H.action_candidates('house-press-mic',[])
-  self.assertEqual([x['want_id'] for x in office],['web']);self.assertEqual([x['want_id'] for x in sofa],['film']);self.assertIn('proposal only',office[0]['authority'])
+  self.assertEqual([x['want_id'] for x in office],['web']);self.assertEqual([x['want_id'] for x in sofa],['web','film']);self.assertIn('proposal only',office[0]['authority'])
  def test_action_candidates_respect_the_want_gates(self):
   # waiting on Gloria (routed or parked awaiting her) and any parked want stay out; the source label is canonical
   self.write('current-wants.json',[{'id':'routed','want':'compare the document on the website','gloria_routed':True},
@@ -61,6 +61,28 @@ class Tests(unittest.TestCase):
   ctx={'catalog':[],'conversation':[],'outcomes':[],'action_candidates':[{'want_id':'web','objective':'compare documents','possible_action':'DESKTOP'}]}
   _,user=B.prompt('office','house-touch',self.now,B.DEFAULTS,asks=[],want='',st={'boards':{},'shower':{}},context=ctx)
   for text in ('compare documents','visible done condition','phone ask','Do not choose an action merely','CHOICE:'):self.assertIn(text,user)
+ def test_seated_places_offer_desktop_and_both_printers_without_a_want(self):
+  for moment,board in (('office','house-touch'),('sofa','house-press-mic')):
+   ctx={'catalog':[],'conversation':[],'outcomes':[],'action_candidates':[],
+        'capability_options':H.capability_options(board),'desktop_approvals':[]}
+   _,user=B.prompt(moment,board,self.now,B.DEFAULTS,asks=[],want='',st={'boards':{},'shower':{},'reminded':[]},context=ctx)
+   for text in ('DESKTOP:','PRINT:','PAPER:','capability_options'):self.assertIn(text,user)
+  self.assertIn('TV:',B.prompt('sofa','house-press-mic',self.now,B.DEFAULTS,asks=[],want='',
+   st={'boards':{},'shower':{},'reminded':[]},context=ctx)[1])
+ def test_spent_reminder_is_not_offered_again(self):
+  st={'boards':{},'shower':{},'reminded':[{'id':'Q-1234abcd','day':'1970-01-12'}]}
+  ctx={'catalog':[],'conversation':[],'outcomes':[],'action_candidates':[],'capability_options':[],'desktop_approvals':[]}
+  _,user=B.prompt('sofa','house-press-mic',self.now,B.DEFAULTS,
+   asks=[('Q-1234abcd','old question'),('Q-9999aaaa','fresh question')],want='',st=st,context=ctx)
+  self.assertNotIn('Q-1234abcd',user);self.assertIn('Q-9999aaaa',user)
+ def test_desktop_want_id_becomes_the_full_task_and_names_target(self):
+  asked=[]
+  asks=types.SimpleNamespace(get=lambda _:None,ask=lambda q,**k:(asked.append(q) or ({'id':'Q-new'},'asked')))
+  st={'desktop':[]};candidate={'want_id':'5fa2d6fc','objective':'render the comparison and show the completed chart','possible_action':'DESKTOP'}
+  with patch.dict(sys.modules,gloria_asks=asks),patch.object(H,'desktop_target',lambda:'imac'):
+   ok,_=B.act('DESKTOP','5fa2d6fc','office','house-touch',st,self.now,B.DEFAULTS,candidates=[candidate])
+  self.assertTrue(ok);self.assertEqual(st['desktop'][0]['task'],candidate['objective'])
+  self.assertIn('iMac desktop',asked[0]);self.assertIn(candidate['objective'],asked[0]);self.assertNotIn('5fa2d6fc',asked[0])
  def test_rejected_desktop_launch_does_not_consume_approved_request(self):
   asks=types.SimpleNamespace(get=lambda _: {'state':'answered','answer':'yes'});calls=[]
   control=types.SimpleNamespace(start_from_chat=lambda *a,**k:calls.append(k) or {'accepted':len(calls)>1})
