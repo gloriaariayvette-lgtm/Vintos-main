@@ -131,11 +131,36 @@ check("a letter to Gloria goes through his own outreach, with only the one line"
 H.do("TO GLORIA", "second", run=launch)
 check("two letters a day from here", not H.do("TO GLORIA", "third", run=launch)[0])
 
+BOARD_SENDS = []
+def board_send(*args, **kwargs):
+    BOARD_SENDS.append((args, kwargs)); return {"state": "sent", "resent": False}
+ok, shown = H.board_to_gloria("the sofa made me think of you", "house-press-mic", "2026-10-05-1", board_send)
+check("a board message is delivered directly, without launching autonomous outreach",
+      ok and len(BOARD_SENDS) == 1 and len(LAUNCHED) == 4
+      and BOARD_SENDS[0][0][0].startswith("board-message-house-press-mic-")
+      and BOARD_SENDS[0][1]["why"]["entry_kind"] == "board_message", (BOARD_SENDS, LAUNCHED))
+check("a board message did not consume either ordinary letter slot",
+      len(H._today("to_gloria")) == 3 and len(H._today("board_message")) == 0)
+old_board_to_gloria = H.board_to_gloria
+BOARD_ROUTE = []
+H.board_to_gloria = lambda arg, board, ref: (BOARD_ROUTE.append((arg, board, ref)) or (True, "sent"))
+launched_before = len(LAUNCHED)
+ok, _ = H.do("TO GLORIA", "from the kitchen", present=True, source="board",
+             why={"board":"house-kitchen", "action_ref":"2026-10-05-1"})
+H.board_to_gloria = old_board_to_gloria
+check("the house-hands board route records a board message and never invokes outreach",
+      ok and BOARD_ROUTE == [("from the kitchen", "house-kitchen", "2026-10-05-1")]
+      and len(LAUNCHED) == launched_before and len(H._today("board_message")) == 1,
+      (BOARD_ROUTE, LAUNCHED, H._rows()))
+
 # --- the day's cap, and a message with several hands in it ------------------------------------------------------------
 reset()
 for _ in range(H.PER_DAY["house"]):
     H.do("LIGHTS", "warm", home=home)
 check("%d house acts a day" % H.PER_DAY["house"], "used" in H.do("LIGHTS", "warm", home=home)[1])
+check("a board act uses its board allowance rather than the shared house allowance",
+      H.do("LIGHTS", "warm office", home=home, present=True, source="board",
+           why={"board":"house-touch", "action_ref":"2026-10-05-1"})[0])
 reset()
 msg = "Putting the set on.\nTV: https://youtu.be/dQw4w9WgXcQ\nLIGHTS: purple\nECHO: say it's on\nLIGHTS: red\nThat's it."
 out, log = H.act_on(msg, home=home)

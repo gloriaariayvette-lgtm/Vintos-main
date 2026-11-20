@@ -297,6 +297,32 @@ def to_gloria(arg, run=None):
     return True, "your outreach is writing to Gloria about: %s" % topic
 
 
+def board_to_gloria(arg, board, ref, deliverer=None):
+    """Send words chosen at a nearby board without spending an outreach slot."""
+    topic = arg.strip()[:250]
+    if not topic:
+        return False, "say what it is about"
+    if board not in ("house-steam", "house-press-mic", "house-touch", "house-kitchen"):
+        return False, "unknown house board"
+    if not ref:
+        return False, "board action reference is missing"
+    if deliverer is None:
+        import deliver
+        deliverer = deliver.deliver
+    artifact = "board-message-%s-%s" % (board, re.sub(r"[^a-zA-Z0-9_.-]", "-", str(ref))[:80])
+    receipt = deliverer(
+        artifact, "ntfy", topic, title="Vintos",
+        authority=lambda: (True, "her phone is present at this house board"),
+        why={"organ": "house_boards", "trigger": "her phone is at %s" % board,
+             "rule": "within this board's three successful actions today",
+             "entry_kind": "board_message", "refs": {"board": board, "board_action": str(ref)}})
+    if receipt.get("state") != "sent":
+        return False, "board message was not sent: %s" % receipt.get("why", "delivery failed")
+    if receipt.get("repeat"):
+        return False, "that board message was already sent"
+    return True, "sent from %s: %s" % (board, topic)
+
+
 def make(arg, run=None):
     """One thing made with his own tools, on her subscription. It takes minutes, so it is started here and what
     landed is said in the channel on the next pass (make_thing.py). Nothing here spends money, so nobody has to
@@ -331,11 +357,18 @@ def _detach(cmd, env):
     subprocess.Popen(cmd, env=env, stdout=out, stderr=out, start_new_session=True)
 
 
-def do(kind, arg, home=None, run=None, present=False, why=None):
+def do(kind, arg, home=None, run=None, present=False, why=None, source=None):
     """One act from one line. (ok, the line to show in its place). present: she is at one of his boards.
     why: optional {organ, trigger, want_id, rule} from the caller, kept with a done act (action_provenance.py)."""
     kind = kind.upper()
-    if kind in ("TV", "ECHO", "LIGHTS") and len(_today("house")) >= PER_DAY["house"]:
+    board_source = source == "board"
+    given = why if isinstance(why, dict) else {}
+    valid_board_source = (given.get("board") in ("house-steam", "house-press-mic", "house-touch", "house-kitchen")
+                          and bool(given.get("action_ref"))
+                          and kind in ("TV", "ECHO", "LIGHTS", "TO GLORIA", "PRINT", "PAPER"))
+    if board_source and not valid_board_source:
+        ok, said = False, "board source is missing a valid board, action reference or permitted action"
+    elif not board_source and kind in ("TV", "ECHO", "LIGHTS") and len(_today("house")) >= PER_DAY["house"]:
         ok, said = False, "today's %d house acts are used" % PER_DAY["house"]
     else:
         try:
@@ -355,16 +388,19 @@ def do(kind, arg, home=None, run=None, present=False, why=None):
             elif kind == "PAPER":
                 import paper_print
                 ok, said = paper_print.start(arg)
+            elif kind == "TO GLORIA" and board_source:
+                ok, said = board_to_gloria(arg, given.get("board"), given.get("action_ref"))
             else:
                 ok, said = to_gloria(arg, run)
         except Exception as exc:
             ok, said = False, "it failed: %s" % str(exc)[:160]
-    bucket = {"MISCHIEF": "mischief", "TO GLORIA": "to_gloria", "MAKE": "make", "PRINT": "print", "PAPER": "paper"}.get(kind, "house")
+    bucket = ("board_message" if board_source and kind == "TO GLORIA" else
+              "board" if board_source else
+              {"MISCHIEF": "mischief", "TO GLORIA": "to_gloria", "MAKE": "make", "PRINT": "print", "PAPER": "paper"}.get(kind, "house"))
     _note(bucket, "%s: %s" % (kind, arg), ok, said)
     if ok:
         try:
             import action_provenance
-            given = why if isinstance(why, dict) else {}
             action_provenance.record(
                 "house" if bucket == "house" else "house_" + bucket, "%s: %s" % (kind, str(arg)[:80]), given.get("organ") or "house_hands",
                 trigger=given.get("trigger") or ("she is at one of your boards" if present else None),

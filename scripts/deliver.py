@@ -140,8 +140,9 @@ def _provenance(artifact_id, channel, title, given, authority_why):
         import action_provenance
         refs = dict(given.get("refs") or {}) if isinstance(given.get("refs"), dict) else {}
         refs.update(artifact_id=artifact_id, channel=channel)
+        entry_kind = "board_message" if given.get("entry_kind") == "board_message" else "outreach"
         action_provenance.record(
-            "outreach", "%s (%s)" % (str(title or "Vintos")[:60], artifact_id),
+            entry_kind, "%s (%s)" % (str(title or "Vintos")[:60], artifact_id),
             given.get("organ") or "deliver (caller: %s)" % str(artifact_id).split("-")[0],
             trigger=given.get("trigger"), want_id=given.get("want_id"),
             rule=given.get("rule") or (("allowed because: %s" % authority_why) if authority_why else None),

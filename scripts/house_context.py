@@ -324,13 +324,11 @@ def snapshot(board,st,now,cfg,probe=True):
         import room_proximity
         nearest=room_proximity.nearest(now=now)
     except Exception:nearest=None
-    rows=tail_rows(MEM/'house-actions.jsonl')
-    today=datetime.fromtimestamp(now).date()
-    used=sum(datetime.fromtimestamp(stamp(r.get('at'))).date()==today and r.get('kind')=='house' for r in rows)
-    try:
-        import house_hands
-        limit=house_hands.PER_DAY.get('house')
-    except Exception:limit=None
+    day=datetime.fromtimestamp(now).date().isoformat()
+    budget=st.get('board_actions',{}).get(board,{})
+    try:used=max(0,int(budget.get('successful',0) or 0)) if isinstance(budget,dict) and budget.get('day')==day else 0
+    except (TypeError,ValueError):used=0
+    limit=3
     return {'action_candidates':action_candidates(board, conversation), 'capability_options':capability_options(board),
             'desktop_approvals':pending, 'conversation':conversation,'readiness':readiness(board,now) if probe else {},
             'outcomes':previous_outcomes(now),'catalog':catalog,
@@ -339,8 +337,9 @@ def snapshot(board,st,now,cfg,probe=True):
                      'queue_count':len(sh.get('queue',[])),
                      'queued_titles':[short(r.get('title'),100) if isinstance(r,dict) else 'legacy audio' for r in sh.get('queue',[])[:4]],
                      'audio_inflight':{k:sh.get('inflight',{}).get(k) for k in ('title','status')},
-                     'house_action_limit':limit,
-                     'house_actions_observed_today':used}}
+                     'board_action_limit':limit,
+                     'board_actions_successful_today':used,
+                     'board_actions_remaining_today':max(0,limit-used)}}
 
 
 def public_packet(ctx):

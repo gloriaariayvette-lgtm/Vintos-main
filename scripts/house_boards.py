@@ -10,7 +10,7 @@ Each reports on the Mosquitto relay on the Mac: vintos/board/<board>/{near,event
 
 The moments, and what he may do in each (Gloria, 8 November):
     shower        the steam starts            SAY on the shower speaker (his own voice), SONGS (a few of his songs)
-    sofa          seated a few minutes, quiet LIGHTS in the living room, TO GLORIA (an outreach), TV
+    sofa          seated a few minutes, quiet LIGHTS in the living room, TO GLORIA (a board message), TV
     office        seated a few minutes        ECHO, LIGHTS, BUZZ, DESKTOP, PAPER
     knock         she knocks twice or thrice  the office menu, at once: she started it
     kitchen       her phone newly within 1 m  LIGHTS, TO GLORIA, or a once-daily COFFEE card on her phone
@@ -19,8 +19,9 @@ starts it (desktop_control), her No or silence starts nothing. COFFEE likewise w
 Lights change colour only (vintos-home, 8 November).
 
 He decides: one short reply from his own brain (the call brain: AEON, thinking off), a line per act, or NOTHING.
-House acts go through house_hands (its daily limits and its log); her being within 1 m of a board stands in for the
-clock's quiet hours there, since she is plainly awake and at it. Every moment and act: memory/house-boards.jsonl.
+Each physical board gets at most three successful actions per local day. Board actions have their own budget and do
+not spend house-hands or autonomous-outreach slots; her being within 1 m of a board stands in for the clock's quiet
+hours there, since she is plainly awake and at it. Every moment and act: memory/house-boards.jsonl.
 
     python3 house_boards.py            run (the vintos-house-boards unit does this)
     python3 house_boards.py status     config, what each board last said, and the last moments
@@ -73,7 +74,7 @@ HOW = {
     "SAY": "SAY: <a few words, spoken in your own voice on the little speaker by her shower>",
     "SONGS": "SONGS: <song ID>[, <song ID>...] (choose up to %d from the offered titles; play those tracks after SAY)",
     "LIGHTS": "LIGHTS: <a colour name or #rrggbb> (the bulbs of this room take that colour; brightness is not yours)",
-    "TO GLORIA": "TO GLORIA: <what about, one line> (your outreach writes to her, in your words)",
+    "TO GLORIA": "TO GLORIA: <what about, one line> (a board message to her, in your words; not an outreach slot)",
     "TV": "TV: find <what to put on, in your words> | <YouTube link> | on | off | pause | play | volume <0-15> | status "
           "(living-room TV; find searches YouTube and plays the top match)",
     "ECHO": "ECHO: say <words> | announce <words> | play <a song or artist> | stop (office Echo)",
@@ -88,6 +89,7 @@ HOW = {
 }
 LINE = re.compile(r"^\s*(SAY|SONGS|LIGHTS|TO GLORIA|TV|ECHO|BUZZ|DESKTOP|PRINT|PAPER|COFFEE|REMIND)\s*:\s*(.+?)\s*$", re.I | re.M)
 PER_MOMENT = 3
+PER_BOARD_DAY = 3
 
 
 def _load(path, default):
@@ -126,7 +128,28 @@ def load_state():
     st.setdefault("boards", {}); st.setdefault("last", {}); st.setdefault("reminded", []); st.setdefault("desktop", [])
     st.setdefault("coffee", {})
     st.setdefault("shower", {})
+    st.setdefault("board_actions", {})
     return st
+
+
+def board_action_count(st, board, now):
+    day = datetime.fromtimestamp(now).date().isoformat()
+    row = st.setdefault("board_actions", {}).get(board)
+    if not isinstance(row, dict) or row.get("day") != day:
+        return 0
+    try: return max(0, int(row.get("successful", 0)))
+    except (TypeError, ValueError): return 0
+
+
+def board_actions_remaining(st, board, now):
+    return max(0, PER_BOARD_DAY - board_action_count(st, board, now))
+
+
+def record_board_action(st, board, now):
+    day = datetime.fromtimestamp(now).date().isoformat()
+    used = board_action_count(st, board, now) + 1
+    st.setdefault("board_actions", {})[board] = {"day": day, "successful": used}
+    return used
 
 
 def _board(st, name):
@@ -420,6 +443,9 @@ def prompt(moment, board, now, cfg, asks=None, want=None, st=None, context=None)
         lines += ["- %s: %s" % (qid, q) for qid, q in asks[:5]]
     want = his_want() if want is None else want
     if want: lines.append("What is most alive in you right now: %s" % want)
+    remaining = board_actions_remaining(st, board, now)
+    lines.append("This physical board has %d of its %d successful actions remaining today. Board messages use this "
+                 "board allowance, not autonomous-outreach slots." % (remaining, PER_BOARD_DAY))
     lines.append("Choose a response connected to this moment. One meaningful act is often enough; the allowance "
                  "is a ceiling. First consider whether a concrete action_candidate can advance real work or something to enjoy together. "
                  "For desktop, propose one bounded task with a visible done condition; the phone ask obtains her Yes. "
@@ -436,7 +462,7 @@ def prompt(moment, board, now, cfg, asks=None, want=None, st=None, context=None)
                  "Do not choose an action merely to exercise a capability. Choose NOTHING when that fits. Speak plainly from what is known and choose a working "
                  "channel rather than reciting every unavailable device. Desktop work still needs her explicit Yes. "
                  "For SONGS, choose listed IDs in the order you mean; no invented titles or track URLs.")
-    lines.append("\nWhat you can do here, one line each (at most %d):" % PER_MOMENT)
+    lines.append("\nWhat you can do here, one line each (at most %d):" % min(PER_MOMENT, remaining))
     lines += ["  " + (HOW[k] % cfg["songs_max"] if k == "SONGS" else HOW[k]) for k in menu
               if k != "REMIND" or asks]
     lines.append("Add CHOICE: one short sentence naming the intended outcome or concrete reason to wait. "
@@ -545,12 +571,15 @@ def his_songs(n, selected=None):
     return out
 
 
-def _house(kind, arg, room=None):
+def _house(kind, arg, room=None, board=None, action_ref=None):
     import house_hands
     if kind == "LIGHTS":
         colour = (arg.split() or [""])[0]
         arg = "%s %s" % (colour, room) if room else colour
-    return house_hands.do(kind, arg, present=True, why={"organ": "house_boards (her phone at one of your boards)"})
+    return house_hands.do(
+        kind, arg, present=True, source="board",
+        why={"organ": "house_boards (her phone at one of your boards)", "board": board,
+             "action_ref": action_ref, "rule": "within this board's three successful actions today"})
 
 
 def act(kind, arg, moment, board, st, now, cfg, catalog=None, candidates=None):
@@ -558,7 +587,9 @@ def act(kind, arg, moment, board, st, now, cfg, catalog=None, candidates=None):
     room = BOARDS[board]["room"]
     try:
         if kind in ("LIGHTS", "TO GLORIA", "TV", "ECHO", "PRINT", "PAPER"):
-            return _house(kind, arg, room if kind == "LIGHTS" else None)
+            sequence = board_action_count(st, board, now) + 1
+            action_ref = "%s-%d" % (datetime.fromtimestamp(now).date().isoformat(), sequence)
+            return _house(kind, arg, room if kind == "LIGHTS" else None, board, action_ref)
         if kind == "SAY":
             words = " ".join(arg.split())[:300]
             path = his_voice(words)
@@ -736,6 +767,11 @@ def tend_shower(st, now):
 def moment(name, board, st, now, cfg, decide=None):
     """He decides and acts. The row logged."""
     st["last"][name] = now
+    if board_actions_remaining(st, board, now) <= 0:
+        row = {"kind": "moment", "moment": name, "board": board, "decided": False,
+               "why": "this board's three successful actions are used today", "acts": []}
+        _log(row, now)
+        return row
     import house_context
     context = house_context.snapshot(board, st, now, cfg)
     system, user = prompt(name, board, now, cfg, st=st, context=context)
@@ -747,9 +783,15 @@ def moment(name, board, st, now, cfg, decide=None):
         _log(row, now); return row
     done = []
     for kind, arg in acts_of(reply, name):
+        if board_actions_remaining(st, board, now) <= 0:
+            break
         ok, said = act(kind, arg, name, board, st, now, cfg, catalog=context["catalog"],
                        candidates=context.get("action_candidates", []))
         done.append({"act": kind, "arg": arg[:200], "ok": bool(ok), "said": str(said)[:240]})
+        if ok:
+            record_board_action(st, board, now)
+            # Persist the successful debit immediately after the external action.
+            _atomic(STATE, st)
     if name == "shower": tend_shower(st, now)
     row = {"kind": "moment", "moment": name, "board": board, "decided": True, "acts": done,
            "nothing": not done, "context": context_receipt,
