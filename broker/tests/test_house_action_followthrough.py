@@ -61,6 +61,63 @@ class Tests(unittest.TestCase):
   ctx={'catalog':[],'conversation':[],'outcomes':[],'action_candidates':[{'want_id':'web','objective':'compare documents','possible_action':'DESKTOP'}]}
   _,user=B.prompt('office','house-touch',self.now,B.DEFAULTS,asks=[],want='',st={'boards':{},'shower':{}},context=ctx)
   for text in ('compare documents','visible done condition','phone ask','Do not choose an action merely','CHOICE:'):self.assertIn(text,user)
+ def test_board_capabilities_are_room_specific_and_k2_is_wants_only(self):
+  office_ctx={'catalog':[],'conversation':[],'outcomes':[],'action_candidates':[],
+              'capability_options':H.capability_options('house-touch'),'desktop_approvals':[]}
+  _,office=B.prompt('office','house-touch',self.now,B.DEFAULTS,asks=[],want='',
+   st={'boards':{},'shower':{},'reminded':[]},context=office_ctx)
+  for text in ('DESKTOP:','PAPER:','ECHO:','BUZZ:','capability_options'):self.assertIn(text,office)
+  for text in ('TV:','PRINT:'):self.assertNotIn(text,office)
+  sofa_ctx={'catalog':[],'conversation':[],'outcomes':[],'action_candidates':[],
+            'capability_options':H.capability_options('house-press-mic'),'desktop_approvals':[]}
+  _,sofa=B.prompt('sofa','house-press-mic',self.now,B.DEFAULTS,asks=[],want='',
+   st={'boards':{},'shower':{},'reminded':[]},context=sofa_ctx)
+  for text in ('TV:','LIGHTS:','TO GLORIA:','capability_options'):self.assertIn(text,sofa)
+  for text in ('DESKTOP:','PRINT:','PAPER:','ECHO:','BUZZ:'):self.assertNotIn(text,sofa)
+  shower_ctx={'catalog':[],'conversation':[],'outcomes':[],'action_candidates':[],
+              'capability_options':[],'desktop_approvals':[]}
+  _,shower=B.prompt('shower','house-steam',self.now,B.DEFAULTS,asks=[],want='',
+   st={'boards':{},'shower':{},'reminded':[]},context=shower_ctx)
+  self.assertIn('SAY:',shower);self.assertIn('SONGS:',shower);self.assertNotIn('LIGHTS:',shower)
+ def test_board_prompts_do_not_offer_waiting_question_reminders(self):
+  st={'boards':{},'shower':{},'reminded':[{'id':'Q-1234abcd','day':'1970-01-12'}]}
+  ctx={'catalog':[],'conversation':[],'outcomes':[],'action_candidates':[],'capability_options':[],'desktop_approvals':[]}
+  _,user=B.prompt('sofa','house-press-mic',self.now,B.DEFAULTS,
+   asks=[('Q-1234abcd','old question'),('Q-9999aaaa','fresh question')],want='',st=st,context=ctx)
+  self.assertNotIn('Q-1234abcd',user);self.assertNotIn('Q-9999aaaa',user);self.assertNotIn('REMIND:',user)
+ def test_kitchen_offers_lights_message_and_one_daily_phone_gated_coffee(self):
+  ctx={'catalog':[],'conversation':[],'outcomes':[],'action_candidates':[],
+       'capability_options':[],'desktop_approvals':[]}
+  st={'boards':{},'shower':{},'reminded':[],'coffee':{}}
+  _,user=B.prompt('kitchen','house-kitchen',self.now,B.DEFAULTS,asks=[],want='',st=st,context=ctx)
+  for text in ('LIGHTS:','TO GLORIA:','COFFEE:','Yes/No card'):self.assertIn(text,user)
+  asked=[];asks=types.SimpleNamespace(ask=lambda q,**k:(asked.append((q,k)) or ({'id':'Q-coffee'},'asked')))
+  with patch.dict(sys.modules,gloria_asks=asks):
+   ok,_=B.act('COFFEE','a warm cup fits','kitchen','house-kitchen',st,self.now,B.DEFAULTS)
+   again,why=B.act('COFFEE','again','kitchen','house-kitchen',st,self.now+1,B.DEFAULTS)
+  self.assertTrue(ok);self.assertFalse(again);self.assertIn('already offered',why);self.assertEqual(len(asked),1)
+  self.assertIn('Start the Nespresso now?',asked[0][0]);self.assertEqual(asked[0][1]['ref'],'house-coffee:1970-01-12')
+  _,later=B.prompt('kitchen','house-kitchen',self.now+2,B.DEFAULTS,asks=[],want='',st=st,context=ctx)
+  self.assertNotIn('COFFEE:',later);self.assertIn('LIGHTS:',later);self.assertIn('TO GLORIA:',later)
+ def test_coffee_never_starts_before_yes_and_yes_is_handled_once(self):
+  state={'coffee':{'ask':'Q-coffee','handled':False}};calls=[]
+  asked=types.SimpleNamespace(get=lambda _: {'state':'asked'})
+  with patch.dict(sys.modules,gloria_asks=asked):B.tend_coffee(state,self.now)
+  self.assertFalse(state['coffee']['handled']);self.assertEqual(calls,[])
+  answered=types.SimpleNamespace(get=lambda _: {'state':'answered','answer':'yes'})
+  home=types.SimpleNamespace(coffee_on=lambda:(calls.append('start') or (True,'started')))
+  spec=types.SimpleNamespace(loader=types.SimpleNamespace(exec_module=lambda module:None))
+  with patch.dict(sys.modules,gloria_asks=answered),patch('importlib.util.spec_from_file_location',return_value=spec),patch('importlib.util.module_from_spec',return_value=home),patch.object(B,'_log',lambda *a:None):
+   B.tend_coffee(state,self.now);B.tend_coffee(state,self.now+1)
+  self.assertEqual(calls,['start']);self.assertTrue(state['coffee']['handled']);self.assertEqual(state['coffee']['status'],'started')
+ def test_desktop_want_id_becomes_the_full_task_and_names_target(self):
+  asked=[]
+  asks=types.SimpleNamespace(get=lambda _:None,ask=lambda q,**k:(asked.append(q) or ({'id':'Q-new'},'asked')))
+  st={'desktop':[]};candidate={'want_id':'5fa2d6fc','objective':'render the comparison and show the completed chart','possible_action':'DESKTOP'}
+  with patch.dict(sys.modules,gloria_asks=asks),patch.object(H,'desktop_target',lambda:'imac'):
+   ok,_=B.act('DESKTOP','5fa2d6fc','office','house-touch',st,self.now,B.DEFAULTS,candidates=[candidate])
+  self.assertTrue(ok);self.assertEqual(st['desktop'][0]['task'],candidate['objective'])
+  self.assertIn('iMac desktop',asked[0]);self.assertIn(candidate['objective'],asked[0]);self.assertNotIn('5fa2d6fc',asked[0])
  def test_rejected_desktop_launch_does_not_consume_approved_request(self):
   asks=types.SimpleNamespace(get=lambda _: {'state':'answered','answer':'yes'});calls=[]
   control=types.SimpleNamespace(start_from_chat=lambda *a,**k:calls.append(k) or {'accepted':len(calls)>1})

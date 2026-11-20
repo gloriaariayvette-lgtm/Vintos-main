@@ -47,7 +47,9 @@ ORGANS = (
     ("a browser", ("browser_agent.py",),
      "you can drive a web browser by what is on the page."),
     ("3D making", ("print_3d.py",),
-     "you model in Blender and slice in Cura; printing needs a printer she lets you start."),
+     "you have a Creality K2 lane for physical objects: once you genuinely want to make something, the want can "
+     "take a print_3d step with the object and purpose; Astra builds it, Blender models it, her saved material/slicing "
+     "settings are used, and Gloria gets a final Yes/No before the printer starts. This belongs to wants, not room-board menus."),
     ("your avatar and its rooms", ("avatar_stage.py",),
      "your avatar lives in the rooms of the house, and you can render live scenes of yourself there."),
     ("videos to Gloria", ("vintos-send-video.py",),

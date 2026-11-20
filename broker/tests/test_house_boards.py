@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""His three house boards (8 November): she at the shower, the sofa or her office chair, her phone within 1 m; he
+"""His house boards (8 November): she at the shower, sofa, office chair or kitchen, her phone within 1 m; he
 decides and acts. Scratch HOME; every socket is refused; his brain, his voice and the house are stand-ins."""
 import json, os, socket, sys, tempfile
 HERE = os.path.dirname(os.path.abspath(__file__)); REPO = os.path.dirname(os.path.dirname(HERE))
@@ -40,7 +40,7 @@ def decide(reply):
 
 cfg = B.config(); T = 1794200000.0
 check("the default broker is the Mac's relay, and the boards are hers", cfg["broker"] == "192.168.1.91"
-      and set(B.BOARDS) == {"house-steam", "house-press-mic", "house-touch"})
+      and set(B.BOARDS) == {"house-steam", "house-press-mic", "house-touch", "house-kitchen"})
 check("a board message is read", B.parse("vintos/board/house-touch/event", b"knock_2") == ("house-touch", "event", "knock_2"))
 check("an unknown board is not", B.parse("vintos/board/garage/event", b"knock_2") is None)
 
@@ -49,10 +49,10 @@ r = B.handle("vintos/board/house-steam/event", b"steam_start", now=T, cfg=cfg,
              decide=decide("SAY: hey you, take your time\nSONGS: 2\nLIGHTS: warm\nTV: no"))
 check("steam starting is the shower moment", r and r["moment"] == "shower", r)
 check("he was told she is in the shower, with his want", "shower" in asked[-1] and "to hear her laugh" in asked[-1])
-check("the shower menu offers his voice, his songs and the lights",
-      all(k in asked[-1] for k in ("SAY:", "SONGS:", "LIGHTS:")) and "TV:" not in asked[-1])
-check("TV is not a shower act, so it is not done", [a["act"] for a in r["acts"]] == ["SAY", "SONGS", "LIGHTS"], r["acts"])
-check("the bathroom bulbs take his colour", ("LIGHTS", "warm", "bathroom") in house, house)
+check("the shower menu offers only his voice and his songs",
+      all(k in asked[-1] for k in ("SAY:", "SONGS:")) and all(k not in asked[-1] for k in ("LIGHTS:", "TV:")))
+check("lights and TV are not shower acts", [a["act"] for a in r["acts"]] == ["SAY", "SONGS"], r["acts"])
+check("the bathroom board did not change the bulbs", not any(a[0] == "LIGHTS" and a[2] == "bathroom" for a in house), house)
 check("his voice plays first on the shower speaker", sent and sent[0] == ("vintos/board/house-steam/play", "http://audio/voice.wav"), sent)
 st = B.load_state()
 check("his songs wait their turn", [q["url"] for q in st["shower"]["queue"]] == ["http://audio/s0.wav", "http://audio/s1.wav"], st["shower"])
@@ -72,8 +72,8 @@ for k in range(1, 8): B.handle("vintos/board/house-press-mic/loudness", b"4", no
 check("a minute on the sofa is not yet a moment", B.tick(now=S + 60, cfg=cfg, decide=decide("NOTHING")) is None)
 r = B.tick(now=S + 200, cfg=cfg, decide=decide("REMIND: Q-1234abcd\nLIGHTS: violet\nBUZZ: tap"))
 check("a few quiet minutes seated is the sofa moment", r and r["moment"] == "sofa", r)
-check("he was shown his question waiting on her", "Q-1234abcd" in asked[-1] and "Devo" in asked[-1])
-check("the chair's motor is not a sofa act", [a["act"] for a in r["acts"]] == ["REMIND", "LIGHTS"], r["acts"])
+check("waiting questions are not injected into the sofa menu", "Q-1234abcd" not in asked[-1] and "Devo" not in asked[-1])
+check("reminders and the chair motor are not sofa acts", [a["act"] for a in r["acts"]] == ["LIGHTS"], r["acts"])
 check("the living-room bulbs take his colour", ("LIGHTS", "violet", "living_room") in house)
 check("the sofa is not a moment again within hours", B.tick(now=S + 400, cfg=cfg, decide=decide("LIGHTS: red")) is None)
 
