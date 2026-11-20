@@ -66,6 +66,8 @@ B.moment("sofa", "house-press-mic", cap_state, T, cfg, decide=decide(
     "LIGHTS: blue\nLIGHTS: green\nLIGHTS: gold"))
 check("failed board work does not spend the board allowance",
       B.board_action_count(cap_state, "house-press-mic", T) == 2, cap_state.get("board_actions"))
+check("a successful board action, not merely a decision, starts the long cooldown",
+      cap_state["last_success"].get("sofa") == T, cap_state.get("last_success"))
 B.moment("sofa", "house-press-mic", cap_state, T + 1, cfg, decide=decide("LIGHTS: violet"))
 before_calls = len(calls)
 blocked = B.moment("sofa", "house-press-mic", cap_state, T + 2, cfg,
@@ -76,7 +78,23 @@ check("a fourth successful action from the same board is not attempted",
 HC.snapshot, B.prompt, B.act = old_snapshot, old_prompt, old_act
 cap_state["board_actions"] = {}
 cap_state["last"] = {}
+cap_state["last_success"] = {}
+cap_state["attempted"] = {}
 B._atomic(B.STATE, cap_state)
+
+retry_state = B.load_state(); retry_state["last_success"] = {}; retry_state["attempted"] = {}
+retry_state["last"] = {}; retry_state["board_actions"] = {}
+retry_state["boards"]["house-press-mic"] = {"near":True, "near_ts":T, "pressed_since":T-300,
+ "sit_since":T-300, "loud":[[T,2.0]], "visit":{"since":T-300,"last_near":T,"seated_s":0,"loud":[]}}
+HC.snapshot, B.prompt, B.act = (lambda *a,**k:{"catalog":[],"action_candidates":[]}), (lambda *a,**k:("s","u")), (lambda *a,**k:(False,"fixture failure"))
+B.moment("sofa", "house-press-mic", retry_state, T, cfg, decide=decide("LIGHTS: blue"))
+check("an all-failed sofa decision does not start the three-hour cooldown",
+      not retry_state["last_success"].get("sofa") and B.due(retry_state,T+60,cfg) is None,
+      retry_state.get("last_success"))
+retry_state["boards"]["house-press-mic"]["loud"].append([T+301,2.0])
+check("an all-failed sofa decision becomes eligible after the short retry interval",
+      B.due(retry_state,T+301,cfg) == ("sofa","house-press-mic"), retry_state)
+HC.snapshot, B.prompt, B.act = old_snapshot, old_prompt, old_act
 
 # ---- the shower ------------------------------------------------------------------------------------------------------
 r = B.handle("vintos/board/house-steam/event", b"steam_start", now=T, cfg=cfg,

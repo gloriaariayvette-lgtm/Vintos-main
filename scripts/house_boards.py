@@ -51,6 +51,7 @@ DEFAULTS = {
     "sit_minutes": 3,            # seated this long (and near) before the sofa or the chair is a moment
     "quiet_loudness": 15,        # the sofa is quiet when the loudness (0-100) of these minutes stays below this
     "cooldown_hours": 3,         # the sofa and the chair are a moment at most this often
+    "retry_minutes": 5,          # a decision that completes no action may try again after this short interval
     "knock_cooldown_minutes": 2,
     "songs_max": 3, "song_seconds": 240,
     "shower_cooldown_minutes": 30,
@@ -125,7 +126,8 @@ def _log(row, now):
 def load_state():
     st = _load(STATE, {})
     if not isinstance(st, dict): st = {}
-    st.setdefault("boards", {}); st.setdefault("last", {}); st.setdefault("reminded", []); st.setdefault("desktop", [])
+    st.setdefault("boards", {}); st.setdefault("last", {}); st.setdefault("last_success", {})
+    st.setdefault("attempted", {}); st.setdefault("reminded", []); st.setdefault("desktop", [])
     st.setdefault("coffee", {})
     st.setdefault("shower", {})
     st.setdefault("board_actions", {})
@@ -310,7 +312,7 @@ def observe(st, board, kind, text, now, cfg):
             _near(st, board, now); b["visit"]["shower"] = True
             if st["shower"].get("on"): return None
             st["shower"] = {"on": True, "since": now, "queue": [], "player": "idle"}
-            if now - float(st["last"].get("shower", 0)) < 60 * cfg["shower_cooldown_minutes"]:
+            if now - float(st["last_success"].get("shower", 0)) < 60 * cfg["shower_cooldown_minutes"]:
                 return None
             return ("shower", board)
     if kind == "near":
@@ -356,7 +358,7 @@ def observe(st, board, kind, text, now, cfg):
         b["pressed_since"] = None; b["sit_since"] = None; return None
     if text in ("knock_2", "knock_3") and board == "house-touch":
         b["visit"]["knocks"] = int(b["visit"].get("knocks", 0)) + 1
-        if now - float(st["last"].get("knock", 0)) < 60 * cfg["knock_cooldown_minutes"]: return None
+        if now - float(st["attempted"].get("knock", 0)) < 60 * cfg["knock_cooldown_minutes"]: return None
         return ("knock", board)
     return None
 
@@ -368,7 +370,8 @@ def due(st, now, cfg):
         since = b.get("sit_since") if b.get("pressed_since") is not None else None
         since = b.get("pressed_since") if since is None else since
         if not b.get("near") or since is None or now - since < 60 * cfg["sit_minutes"]: continue
-        if now - float(st["last"].get(moment, 0)) < 3600 * cfg["cooldown_hours"]: continue
+        if now - float(st["last_success"].get(moment, 0)) < 3600 * cfg["cooldown_hours"]: continue
+        if now - float(st["attempted"].get(moment, 0)) < 60 * cfg["retry_minutes"]: continue
         if moment == "sofa":
             recent = [v for t, v in b["loud"] if now - t <= 60 * cfg["sit_minutes"]]
             if not recent or max(recent) >= cfg["quiet_loudness"]: continue   # loud, or the mic has said nothing
@@ -462,6 +465,10 @@ def prompt(moment, board, now, cfg, asks=None, want=None, st=None, context=None)
                  "Do not choose an action merely to exercise a capability. Choose NOTHING when that fits. Speak plainly from what is known and choose a working "
                  "channel rather than reciting every unavailable device. Desktop work still needs her explicit Yes. "
                  "For SONGS, choose listed IDs in the order you mean; no invented titles or track URLs.")
+    if moment == "sofa":
+        lines.append("At the sofa, prefer an action she can experience in the room: put on a relevant TV selection "
+                     "and/or change the living-room light colour when readiness permits. TO GLORIA is secondary and "
+                     "must not be the only action when a room action is available.")
     lines.append("\nWhat you can do here, one line each (at most %d):" % min(PER_MOMENT, remaining))
     lines += ["  " + (HOW[k] % cfg["songs_max"] if k == "SONGS" else HOW[k]) for k in menu
               if k != "REMIND" or asks]
@@ -766,7 +773,8 @@ def tend_shower(st, now):
 
 def moment(name, board, st, now, cfg, decide=None):
     """He decides and acts. The row logged."""
-    st["last"][name] = now
+    st["attempted"][name] = now
+    st["last"][name] = now       # legacy/status field; cooldowns use last_success only
     if board_actions_remaining(st, board, now) <= 0:
         row = {"kind": "moment", "moment": name, "board": board, "decided": False,
                "why": "this board's three successful actions are used today", "acts": []}
@@ -790,6 +798,7 @@ def moment(name, board, st, now, cfg, decide=None):
         done.append({"act": kind, "arg": arg[:200], "ok": bool(ok), "said": str(said)[:240]})
         if ok:
             record_board_action(st, board, now)
+            st["last_success"][name] = now
             # Persist the successful debit immediately after the external action.
             _atomic(STATE, st)
     if name == "shower": tend_shower(st, now)

@@ -73,6 +73,7 @@ class Tests(unittest.TestCase):
   _,sofa=B.prompt('sofa','house-press-mic',self.now,B.DEFAULTS,asks=[],want='',
    st={'boards':{},'shower':{},'reminded':[]},context=sofa_ctx)
   for text in ('TV:','LIGHTS:','TO GLORIA:','capability_options'):self.assertIn(text,sofa)
+  self.assertIn('TO GLORIA is secondary',sofa);self.assertIn('TV selection',sofa)
   for text in ('DESKTOP:','PRINT:','PAPER:','ECHO:','BUZZ:'):self.assertNotIn(text,sofa)
   shower_ctx={'catalog':[],'conversation':[],'outcomes':[],'action_candidates':[],
               'capability_options':[],'desktop_approvals':[]}
