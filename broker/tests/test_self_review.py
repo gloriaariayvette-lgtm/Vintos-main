@@ -18,6 +18,8 @@ def load_module(name, rel):
 
 SR = load_module("self_review_tested", "scripts/self_review.py")
 SB = load_module("self_review_builder_tested", "scripts/self_review_builder.py")
+# Some tests replace SR.embeddings with a stub; the cache tests need the real one.
+REAL_EMBEDDINGS = SR.embeddings
 
 
 class SelfReviewTests(unittest.TestCase):
@@ -37,8 +39,80 @@ class SelfReviewTests(unittest.TestCase):
             value = getattr(SB, name)
             setattr(SB, name, os.path.join(self.mem, os.path.basename(value)))
         SB.RUNTIME_MAP = os.path.join(self.mem, "self-review-runtime-map.json")
+        SR.embeddings = REAL_EMBEDDINGS
+        SR._EMB.update(path=None, rows=None, sig=None, new=False, touched=False, flushed=0.0)
+        self.http_calls = []
+        self._real_http = SR._embed_http
+        def fake_http(texts):
+            self.http_calls.append(list(texts))
+            return [[float(len(t) % 7 + 1), 1.0, float(i + 1)] for i, t in enumerate(texts)]
+        SR._embed_http = fake_http
 
-    def tearDown(self): self.t.cleanup()
+    def tearDown(self):
+        SR._embed_http = self._real_http
+        SR._EMB.update(path=None, rows=None, sig=None, new=False, touched=False, flushed=0.0)
+        self.t.cleanup()
+
+    def count_cache_writes(self):
+        writes = []
+        real = SR.atomic_json
+        def counting(path, obj, indent=2):
+            if path == SR.EMBCACHE: writes.append(path)
+            return real(path, obj, indent=indent)
+        SR.atomic_json = counting
+        self.addCleanup(setattr, SR, "atomic_json", real)
+        return writes
+
+    def test_embedding_cache_is_not_rewritten_per_similarity_call(self):
+        # review() compares each candidate with every earlier proposal; this must
+        # not turn into one full-cache rewrite per comparison.
+        olds = ["earlier proposal number %d about a missing capability" % i for i in range(300)]
+        SR.embeddings(olds + ["candidate"], cap=400)
+        writes = self.count_cache_writes()
+        for old in olds:
+            self.assertIsNotNone(SR.similarity("candidate", old))
+        self.assertEqual(writes, [])
+        self.assertTrue(SR.flush_embeddings(force=True))
+        self.assertEqual(len(writes), 1)
+        self.assertFalse(SR.flush_embeddings(force=True))   # nothing pending, nothing written
+
+    def test_new_vectors_wait_for_the_interval_then_reach_disk(self):
+        writes = self.count_cache_writes()
+        SR.embeddings(["first text long enough"])
+        self.assertFalse(SR.flush_embeddings())               # inside the 5-minute window
+        SR._EMB["flushed"] -= SR.EMBCACHE_FLUSH_NEW_SECONDS + 1
+        self.assertTrue(SR.flush_embeddings())
+        self.assertEqual(len(writes), 1)
+        SR.embeddings(["first text long enough"])            # a hit only refreshes used_at
+        SR._EMB["flushed"] -= SR.EMBCACHE_FLUSH_NEW_SECONDS + 1
+        self.assertFalse(SR.flush_embeddings())               # touches wait the longer interval
+        SR._EMB["flushed"] -= SR.EMBCACHE_FLUSH_TOUCH_SECONDS
+        self.assertTrue(SR.flush_embeddings())
+
+    def test_flushed_cache_survives_a_restart_without_re_embedding(self):
+        SR.embeddings(["a text that is embedded once"]); SR.flush_embeddings(force=True)
+        SR._EMB.update(path=None, rows=None, sig=None, new=False, touched=False, flushed=0.0)
+        self.http_calls.clear()
+        out = SR.embeddings(["a text that is embedded once"])
+        self.assertEqual(self.http_calls, [])
+        self.assertEqual(len(out), 1)
+
+    def test_another_writers_rows_are_merged_not_lost(self):
+        SR.embeddings(["mine, from the watcher process"])
+        with open(SR.EMBCACHE, "w") as f:                    # a CLI pass wrote meanwhile
+            json.dump({"rows": {"theirs": {"vector": [1.0], "used_at": "2099-01-01", "preview": "x"}}}, f)
+        SR.flush_embeddings(force=True)
+        with open(SR.EMBCACHE) as f: rows = json.load(f)["rows"]
+        self.assertIn("theirs", rows)
+        self.assertIn(SR.digest("mine, from the watcher process", size=32), rows)
+
+    def test_eviction_still_keeps_the_most_recently_used(self):
+        SR.EMBCACHE_MAX_ROWS, old_max = 3, SR.EMBCACHE_MAX_ROWS
+        self.addCleanup(setattr, SR, "EMBCACHE_MAX_ROWS", old_max)
+        for i in range(5):
+            SR.embeddings(["text number %d for eviction" % i])
+        self.assertEqual(len(SR._EMB["rows"]), 3)
+        self.assertIn(SR.digest("text number 4 for eviction", size=32), SR._EMB["rows"])
 
     def write_events(self, rows):
         for row in rows: SR.append(SR.EVENTS, row)

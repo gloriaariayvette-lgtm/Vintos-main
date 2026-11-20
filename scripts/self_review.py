@@ -58,6 +58,7 @@ def _subcon_model(model):
     return _subcon_route(None, model)[1]
 
 
+import atexit
 import contextlib
 import fcntl
 import hashlib
@@ -168,10 +169,10 @@ def load_json(path, default):
         return default
 
 
-def atomic_json(path, obj):
+def atomic_json(path, obj, indent=2):
     tmp = path + ".tmp.%s" % os.getpid()
     with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(obj, f, ensure_ascii=False, indent=2)
+        json.dump(obj, f, ensure_ascii=False, indent=indent)
         f.flush(); os.fsync(f.fileno())
     os.replace(tmp, path)
 
@@ -373,16 +374,89 @@ def _embed_http(texts):
     return [d["embedding"] for d in data["data"]]
 
 
-def embeddings(texts, cap=None):
-    cfg = config(); cap = int(cap or cfg["fresh_embed_cap"])
+# The cache is held in memory and written at most once per pass (2026-11-19).
+# embeddings() used to reload and rewrite the whole cache file on every call.
+# review() calls similarity() once per earlier proposal for every candidate, so
+# one review rewrote the ~58 MB file thousands of times: about 3 TB/day of disk
+# writes on Aegis and a core spent re-parsing it. Vectors and eviction are
+# unchanged; only when the file is written changed. A lost unwritten row costs
+# one re-embed, nothing more: this is a cache, not a ledger.
+EMBCACHE_MAX_ROWS = 2500
+EMBCACHE_FLUSH_NEW_SECONDS = 300      # new vectors reach disk within 5 minutes
+EMBCACHE_FLUSH_TOUCH_SECONDS = 1800   # used_at-only refreshes (LRU order) within 30
+_EMB = {"path": None, "rows": None, "sig": None, "new": False, "touched": False, "flushed": 0.0}
+
+
+def _file_sig(path):
+    try:
+        st = os.stat(path)
+        return (st.st_mtime_ns, st.st_size)
+    except OSError:
+        return None
+
+
+def _cache_rows_from_disk():
     cache = load_json(EMBCACHE, {})
     rows = cache.get("rows", {}) if isinstance(cache, dict) else {}
+    return rows if isinstance(rows, dict) else {}
+
+
+def _emb_rows():
+    """The in-memory rows, (re)loaded when the path changed or another writer
+    replaced the file while nothing here is pending."""
+    sig = _file_sig(EMBCACHE)
+    pending = _EMB["new"] or _EMB["touched"]
+    if _EMB["path"] != EMBCACHE or _EMB["rows"] is None or (sig != _EMB["sig"] and not pending):
+        _EMB.update(path=EMBCACHE, rows=_cache_rows_from_disk(), sig=sig,
+                    new=False, touched=False, flushed=time.time())
+    return _EMB["rows"]
+
+
+def _evict(rows):
+    if len(rows) > EMBCACHE_MAX_ROWS:
+        rows = dict(sorted(rows.items(), key=lambda kv: kv[1].get("used_at", ""))[-EMBCACHE_MAX_ROWS:])
+    return rows
+
+
+def flush_embeddings(force=False):
+    """Write the cache if it has pending changes and its interval has passed
+    (always, when force). Returns True when the file was written."""
+    if _EMB["rows"] is None or _EMB["path"] != EMBCACHE: return False
+    if not (_EMB["new"] or _EMB["touched"]): return False
+    age = time.time() - _EMB["flushed"]
+    due = force or (_EMB["new"] and age >= EMBCACHE_FLUSH_NEW_SECONDS) or \
+        age >= EMBCACHE_FLUSH_TOUCH_SECONDS
+    if not due: return False
+    rows = _EMB["rows"]
+    if _file_sig(EMBCACHE) != _EMB["sig"]:
+        # Another process (a CLI pass) wrote meanwhile: keep both, newest use wins.
+        for h, r in _cache_rows_from_disk().items():
+            if not isinstance(r, dict): continue
+            if h not in rows or str(r.get("used_at", "")) > str(rows[h].get("used_at", "")):
+                rows[h] = r
+        rows = _evict(rows)
+    atomic_json(EMBCACHE, {"model": EMBED_MODEL, "rows": rows, "updated_at": now_iso()}, indent=None)
+    _EMB.update(rows=rows, sig=_file_sig(EMBCACHE), new=False, touched=False, flushed=time.time())
+    return True
+
+
+def _flush_at_exit():
+    try: flush_embeddings(force=True)
+    except Exception as e: log("embedding cache not written at exit: %s" % str(e)[:160])
+
+
+atexit.register(_flush_at_exit)
+
+
+def embeddings(texts, cap=None):
+    cfg = config(); cap = int(cap or cfg["fresh_embed_cap"])
+    rows = _emb_rows()
     out, fresh = {}, []
     for text in texts:
         h = digest(text, size=32)
         if h in rows and isinstance(rows[h].get("vector"), list):
             out[h] = rows[h]["vector"]
-            rows[h]["used_at"] = now_iso()
+            rows[h]["used_at"] = now_iso(); _EMB["touched"] = True
         elif len(fresh) < cap:
             fresh.append((h, text))
     if fresh:
@@ -391,11 +465,10 @@ def embeddings(texts, cap=None):
             for (h, text), vec in zip(fresh, vecs):
                 out[h] = _unit(vec)
                 rows[h] = {"vector": out[h], "used_at": now_iso(), "preview": text[:80]}
+                _EMB["new"] = True
         except Exception as e:
             fault("embedding", e, pending=len(fresh))
-    if len(rows) > 2500:
-        rows = dict(sorted(rows.items(), key=lambda kv: kv[1].get("used_at", ""))[-2500:])
-    atomic_json(EMBCACHE, {"model": EMBED_MODEL, "rows": rows, "updated_at": now_iso()})
+    _EMB["rows"] = _evict(rows)
     return out
 
 
@@ -1002,6 +1075,7 @@ def tick(force_review=False):
         props, state = review(force=force_review, state=state)
         result["proposals"] = props
         atomic_json(STATE, state); refresh_surface()
+        flush_embeddings()
         # Scores create offers, never decisions.  Vintos chooses each internal
         # build proposal, then the separate bounded builder may act.  Protected
         # proposals wait for Gloria's explicit decision.
