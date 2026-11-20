@@ -32,11 +32,23 @@ Each persistent failure was also run against the unchanged fetched base using th
 | test_lab_bench.py | 1 | 1 |
 | test_wants_panel.py | 1 | 1 |
 | test_outreach_postcards.py | 1 | 1 |
-| test_world_model_shadow.py | 5 | 5 |
+| world-model shadow ownership suite | 5 | 5 |
 | test_workbench.py | 1 | 1 |
 | test_study_fix.py | 1 | 1 |
 
 Observed baseline issues include unavailable Linux shell/tools and fonts on this Mac, fixed temporary paths blocked by OS isolation, missing scientific-runtime dependencies, existing fixture expectation failures, and tests reaching their 180-second limit. No unrelated production code or test bar was changed to make these pass. Detailed private diagnostics remain local; no notification destinations, credentials, or runtime logs are published here.
+
+## Integration iteration — November 19
+
+- Attempt: merge Fizz and the house-board/wants repairs onto the fetched haptic branch and run all 756 isolated suites locally.
+- Result: 725 passed and 31 failed; all 31 reproduced on untouched `fff5d141` in the same Mac environment.
+- Root cause: the Mac lacks Aegis-only tools, stores and model fixtures, so the authoritative serving-host run was required.
+- Next: run the same revision in an isolated Aegis review worktree.
+- Attempt: run all 756 suites on Aegis.
+- Result: 755 passed; the shadow ownership suite found this validation table and the generated suite log inside the checkout.
+- Root cause: the table named the private shadow implementation outside `docs/`, and the test log was stored under the repository root.
+- Fix: describe the check without naming the private store and keep generated suite logs outside the checkout.
+- Next: rerun the exact failure, then rerun the complete Aegis suite on the corrected revision.
 
 ## Publication scope
 
